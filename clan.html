@@ -55,6 +55,22 @@
   };
   try{ if(!getApps().length) initializeApp(firebaseConfig); }catch(e){}
   const db = getFirestore();
+  // Expose common Firestore helpers to the global scope so non-module scripts (e.g., main.js)
+  // can access the same Firestore instance and functions when this page is loaded.
+  try{
+    window.db = db;
+    window.doc = doc;
+    window.updateDoc = updateDoc;
+    window.setDoc = setDoc;
+    window.addDoc = addDoc;
+    window.collection = collection;
+    window.getDoc = getDoc;
+    window.getDocs = getDocs;
+    window.onSnapshot = onSnapshot;
+    window.arrayUnion = arrayUnion;
+    window.arrayRemove = arrayRemove;
+    window.serverTimestamp = serverTimestamp;
+  }catch(e){}
   // Local helper: escape HTML to prevent XSS and ensure availability in this module
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
   window.currentChatUnsub = null;

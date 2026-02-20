@@ -134,12 +134,22 @@ body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap))
     border-radius: 6px;
     box-shadow: 0 8px 28px rgba(0,0,0,0.18);
     font-size: 14px;
+    z-index: 1190; /* keep below the toggle button (z-index:1200) so it remains clickable */
     /* start hidden off-canvas to the right; toggled by adding `open` */
     transform: translateX(110%);
     transform-origin: right center;
     transition: transform 280ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease;
     opacity: 0;
     pointer-events: none;
+}
+.special-menu,
+#leftBar,
+#divineLeftBar,
+#mainContent,
+#leftQuickBtns,
+.left-bar-clone {
+    /* smooth movement when menus open/close */
+    transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease, margin 260ms cubic-bezier(.2,.9,.2,1);
 }
 .special-menu.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
 
@@ -148,7 +158,7 @@ body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap))
     position: fixed;
     right: 12px;
     top: 90px;
-    z-index: 1200;
+    z-index: 99999; /* ensure toggle always sits above overlays/menus */
     width: 44px;
     height: 44px;
     border-radius: 999px;
@@ -161,6 +171,7 @@ body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap))
     display: flex;
     align-items: center;
     justify-content: center;
+    pointer-events: auto;
 }
 #specialMenuBtn:active { transform: translateY(1px); }
 .special-menu h3 { margin: 0 0 8px 0; font-size: 16px; }
@@ -528,6 +539,21 @@ body.leftbar-closed #merchPageBtn { left: 12px; }
 #mainContent {
     position: relative;
     z-index: 500;
+}
+
+/* enable GPU-accelerated transforms for smoother movement */
+#mainContent { will-change: transform, opacity, margin; }
+
+/* Smoothly translate key visible elements when the left upgrades menu opens/closes.
+   These rules only provide transitions; the page already shifts via
+   `body.leftbar-open` / `body.leftbar-closed` margin changes. */
+body.transitions-enabled h1,
+body.transitions-enabled .main-image,
+body.transitions-enabled .info-card,
+body.transitions-enabled #leftQuickBtns,
+body.transitions-enabled .main-image-wrap {
+    transition: transform 260ms cubic-bezier(.2,.9,.2,1), margin 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease;
+    will-change: transform, margin, opacity;
 }
 
 /* Critical click indicator */

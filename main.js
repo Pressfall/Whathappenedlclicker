@@ -81,6 +81,97 @@ function addToCount(v) {
     }
 }
 
+// syncs the what happends and golden what happends for clan
+async function syncClanStats() {
+    try {
+        console.debug('syncClanStats: called');
+        const clanId = localStorage.getItem('player_clanId');
+        const username = localStorage.getItem('player_username');
+
+        // If the player isn't in a clan, do nothing
+        if (!clanId || !username || clanId === 'undefined') {
+            console.debug('syncClanStats: abort — missing clanId/username', { clanId, username });
+            return;
+        }
+
+        // Ensure we are sending Numbers, not Decimal objects
+        // Use the game's primary currency variables (`count` and `goldenWhat`)
+        // Convert Decimal instances to plain Numbers when necessary.
+        const ptsValue = (typeof count !== 'undefined') ? (isDecimalInstance(count) ? count.toNumber() : Number(count)) : 0;
+        const gptsValue = (typeof goldenWhat !== 'undefined') ? (isDecimalInstance(goldenWhat) ? goldenWhat.toNumber() : Number(goldenWhat)) : 0;
+
+        // Reference to the member document in the clan
+        // Note: Ensure 'db' is initialized and accessible in main.js
+        console.log('syncClanStats: preparing update', { clanId, username, points: ptsValue, gpoints: gptsValue });
+        // Support both modular and namespaced Firebase SDKs for member doc write.
+        if (typeof doc === 'function' && typeof db !== 'undefined') {
+            const memberRef = doc(db, 'clans', clanId, 'members', username);
+            const payload = { points: ptsValue, gpoints: gptsValue, lastUpdate: Date.now() };
+            // Prefer setDoc with merge so the member doc is created if missing
+            if (typeof setDoc === 'function') {
+                await setDoc(memberRef, payload, { merge: true });
+            } else if (typeof updateDoc === 'function') {
+                try {
+                    await updateDoc(memberRef, payload);
+                } catch (e) {
+                    // If update failed because the doc didn't exist, try set if available
+                    if (typeof setDoc === 'function') {
+                        await setDoc(memberRef, payload, { merge: true });
+                    } else {
+                        throw e;
+                    }
+                }
+            } else {
+                console.warn('syncClanStats: modular Firestore present but no setDoc/updateDoc available');
+            }
+        } else if (typeof firebase !== 'undefined' && firebase.firestore) {
+            try {
+                const fs = firebase.firestore();
+                const memberRef = fs.collection('clans').doc(clanId).collection('members').doc(username);
+                // Use set with merge to create the document if it doesn't exist
+                await memberRef.set({ points: ptsValue, gpoints: gptsValue, lastUpdate: Date.now() }, { merge: true });
+            } catch (e) {
+                console.warn('syncClanStats: firebase.firestore fallback failed', e);
+                throw e;
+            }
+        } else {
+            console.warn('syncClanStats: no Firestore API available to write clan stats');
+        }
+
+        // Also update the player's profile document so clan pages and queries reflect the latest totals
+        try {
+            const profilePayload = {
+                username: username,
+                score: ptsValue,
+                points: ptsValue,
+                totalScore: ptsValue,
+                golden: gptsValue,
+                goldenWhat: gptsValue,
+                totalGoldenEver: gptsValue,
+                totalGolden: gptsValue,
+                updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
+                clanId: clanId
+            };
+            if (typeof doc === 'function' && typeof setDoc === 'function' && typeof db !== 'undefined') {
+                const profileRef = doc(db, 'profiles', username);
+                await setDoc(profileRef, profilePayload, { merge: true });
+            } else if (typeof firebase !== 'undefined' && firebase.firestore) {
+                const fs = firebase.firestore();
+                await fs.collection('profiles').doc(username).set(profilePayload, { merge: true });
+            } else {
+                console.debug('syncClanStats: no Firestore API available to write profile');
+            }
+            console.log('syncClanStats: profile updated');
+        } catch (e) {
+            console.warn('syncClanStats: profile update failed', e);
+        }
+        
+        console.log("Clan stats synced to cloud.");
+    } catch (e) {
+        console.warn("Clan sync failed:", e);
+    }
+}
+
 // main image max-width (px) controlled by settings slider
 let mainImageMaxWidth = 700;
 
@@ -7541,7 +7632,12 @@ function initApp() {
         }
     } catch (e) {}
     // autosave every 5 seconds
-    setInterval(saveGame, 5000);
+    console.debug('setting autosave interval (saves every 30s)');
+    setInterval(() => {
+    saveGame();
+    syncClanStats(); // Add this line
+    console.log ('Game auto-saved');
+}, 30000); // Syncs every 30 seconds
     // save on unload
     window.addEventListener('beforeunload', saveGame);
     // restore bulk select UI if present
@@ -7605,6 +7701,16 @@ function initApp() {
             const loadingOverlay = document.getElementById('loadingOverlay');
             if (loadingOverlay) {
                 loadingOverlay.style.display = 'none';
+            }
+        } catch (e) {}
+        try {
+            // enable CSS transitions after initial layout stabilizes to avoid initial jump
+            setTimeout(() => { try { document.body.classList.add('transitions-enabled'); } catch (e) {} }, 120);
+        } catch (e) {}
+        // Update player profile in Firebase after game loads (so count and goldenWhat are loaded from save)
+        try {
+            if (typeof window.writeProfile === 'function') {
+                setTimeout(() => { window.writeProfile().catch(() => {}); }, 500);
             }
         } catch (e) {}
         console.log('initApp: finished (overlay hidden)');

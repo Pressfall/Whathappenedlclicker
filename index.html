@@ -1116,6 +1116,21 @@
     // Firestore instance used for leaderboard submissions from the game
     try {
         const db = getFirestore(app);
+        // Expose Firestore helpers to global scope for non-module scripts (main.js)
+        try{
+            window.db = db;
+            window.doc = doc;
+            window.updateDoc = updateDoc;
+            window.setDoc = setDoc;
+            window.addDoc = addDoc;
+            window.collection = collection;
+            window.getDoc = getDoc;
+            window.getDocs = getDocs;
+            window.onSnapshot = onSnapshot;
+            window.arrayUnion = arrayUnion;
+            window.arrayRemove = arrayRemove;
+            window.serverTimestamp = serverTimestamp;
+        }catch(e){}
         // Ensure player has a local username for chat/clan participation
         function ensureUsername(){
             try{
@@ -1652,11 +1667,26 @@
                 let score = 0;
                 try { if (typeof count !== 'undefined') score = (count && typeof count.toNumber === 'function') ? count.toNumber() : Number(count||0); } catch(e){ score = 0; }
                 const golden = (typeof goldenWhat !== 'undefined') ? (goldenWhat && typeof goldenWhat.toNumber === 'function' ? goldenWhat.toNumber() : Number(goldenWhat||0)) : 0;
-                await setDoc(doc(db,'profiles',username), { username, title, score, golden, updatedAt: serverTimestamp(), clanId: (localStorage.getItem('player_clanId')||null) }, { merge: true });
+                // Save with primary field names and fallback field names for backward compatibility
+                const profileData = { 
+                    username, 
+                    title, 
+                    score,
+                    // Fallback field names in case clan page looks for these variations
+                    points: score,
+                    totalScore: score,
+                    golden, 
+                    goldenWhat: golden,
+                    totalGoldenEver: golden,
+                    totalGolden: golden,
+                    updatedAt: serverTimestamp(), 
+                    clanId: (localStorage.getItem('player_clanId')||null)
+                };
+                await setDoc(doc(db,'profiles',username), profileData, { merge: true });
             }catch(e){ console.warn('writeProfile failed', e); }
         }
-        // write immediately and then hourly
-        writeProfile().catch(()=>{});
+        // Defer initial write until after main.js has loaded game save (initApp will call this)
+        // setInterval periodic updates still run hourly after initial write
         setInterval(()=>{ writeProfile().catch(()=>{}); }, 60*60*1000);
         // expose a helper on window to submit the current game 'normal' score (count) to the leaderboard
         window.submitLeaderboardFromGame = async function() {
