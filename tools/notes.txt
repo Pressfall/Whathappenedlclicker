@@ -10,3 +10,11 @@ TO DOS:
 -----------------------------------------------------------
     - Make sure buffs from daily spins work
     - Make clans work, and add clan events
+    -clan shop
+    - MAKE THE CLAN EVENTS 
+    -- Bossfight
+    --clanVclan clicks
+    --clan race
+    --prestige party
+    --construction event
+    --endless boss
