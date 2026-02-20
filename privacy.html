@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Privacy Policy — WHAT HAPPENED clicker</title>
+  <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
+  <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
+  <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body style="max-width:900px;margin:28px auto;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#eee;background:#111;padding:20px;border-radius:8px;">
+  <button onclick="window.location.href='index.html'" style="position:fixed;top:12px;left:12px;z-index:1300;background:#333;color:#fff;padding:8px 10px;border-radius:6px;border:none;">← Back</button>
+  <h1>Privacy Policy</h1>
+  <p>Effective date: January 9, 2026</p>
+
+  <h2>Overview</h2>
+  <p>This privacy policy explains what information <strong>WHAT HAPPENED clicker</strong> collects and how it is used. The site stores game state locally (via <code>localStorage</code>), and optionally posts public leaderboard entries to a leaderboard server when enabled. This page focuses on how data related to the game's features is handled.</p>
+
+  <h2>Data Controller & Contact</h2>
+  <p>Data controller: the operator of the WHAT HAPPENED clicker website. For privacy questions or to exercise your rights (access, deletion, correction, portability, restriction), contact: <strong>whathappenedclicker@gmail.com</strong>.</p>
+
+  <h2>Information We Collect</h2>
+  <ul>
+    <li><strong>Local save data:</strong> Your game progress (counts, levels, settings, and divine/golden state) is stored in your browser's <code>localStorage</code>. This data stays on your device unless you intentionally share it.</li>
+    <li><strong>Leaderboard entries:</strong> When you save a username and submit a score to the leaderboard, the leaderboard stores the <em>username</em>, a string representation of your count, and a timestamp. If you run the optional leaderboard server, that server will persist these entries.</li>
+    <li><strong>Server logs & metadata:</strong> If you submit leaderboard data to a hosted leaderboard server (for example, Firestore/Firestore REST endpoints), that server may also log IP addresses, request metadata, and other technical information necessary to operate and secure the service.</li>
+    <li><strong>Third-party services:</strong> Third-party services used to display content or provide features may collect information in order to operate. This can include cookies, device identifiers, and signals about your interactions. The site itself does not send these signals to third parties beyond what those services collect when loaded in the browser.</li>
+  </ul>
+
+  <h2>How We Use Information</h2>
+  <ul>
+    <li>Store and restore your game progress in <code>localStorage</code> for a better experience.</li>
+    <li>Publish leaderboard entries (username, score, timestamp) only when you submit them intentionally via the leaderboard UI.</li>
+    <li>Use third-party content or services that may use cookies or other browser storage to provide or measure their features.</li>
+  </ul>
+
+  <h2>Legal Basis (for EU/EEA users)</h2>
+  <p>If you are located in the European Economic Area (EEA), we rely on the following lawful bases for processing personal data:</p>
+  <ul>
+    <li><strong>Performance of a contract / provision of service:</strong> storing and restoring your game progress in <code>localStorage</code> and enabling game functionality.</li>
+    <li><strong>Legitimate interests:</strong> operating and securing leaderboard services and preventing abuse.</li>
+    <li><strong>Consent:</strong> where required (for example, personalized advertising consent in some jurisdictions), we will obtain consent before using cookies or storing trackers for ad personalization.</li>
+  </ul>
+
+  <h2>Advertising</h2>
+  <p>The site may display ads via Google AdSense (publisher ID <strong>ca-pub-7259344384263515</strong>). Google may use cookies and other identifiers to provide, personalize, and measure ads. The use of AdSense on this site is subject to Google's policies and privacy practices. For details, see:</p>
+  <ul>
+    <li><a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener">Google Ads technologies</a></li>
+    <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy & Terms</a></li>
+  </ul>
+  <h3>Ad personalization & opt-out</h3>
+  <p>If you want to opt out of ad personalization by Google, visit <a href="https://adssettings.google.com/" target="_blank" rel="noopener">Google Ads Settings</a>. You can also opt out of many third-party ad networks via the Network Advertising Initiative (NAI) or the Digital Advertising Alliance (DAA).</p>
+
+  <h2>Cookies and Local Storage</h2>
+  <p>The site itself uses <code>localStorage</code> to save game data and user preferences. We do not use server-side cookies for tracking. However, third-party scripts or services may set cookies in your browser according to their own policies.</p>
+
+  <p>If you operate the site for users in the European Union, you should display a cookie/consent banner and obtain consent for non-essential cookies or personalized advertising as required by local law.</p>
+
+  <h2>Leaderboard Server</h2>
+  <p>When you submit a score to the public leaderboard, only the username (up to 20 characters), your score (string), and a timestamp are sent to the configured leaderboard API endpoint. If you run your own local leaderboard server, that server's operator controls how the data is stored and processed. The client will not automatically share your local save file—only the explicit leaderboard submission is sent.</p>
+
+  <p><strong>Third-party hosting:</strong> the default leaderboard implementation may use Google Firebase / Firestore. See Firebase privacy information: <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">https://firebase.google.com/support/privacy</a>. The leaderboard server operator may collect additional data such as IP addresses or request logs necessary for security and abuse prevention.</p>
+
+  <h2>Data Retention</h2>
+  <p>Local save data remains on your device until you delete it (via the game's "Clear Save" control or by clearing localStorage). Leaderboard entries are retained on the leaderboard server according to that server's policy.</p>
+
+  <p><strong>Suggested default retention:</strong> if you operate a leaderboard server, consider retaining leaderboard entries for a reasonable period (for example, 12 months) unless you are required to keep them longer. Provide users with the ability to request deletion sooner.</p>
+
+  <h2>Your Rights & Controls</h2>
+  <ul>
+    <li>You can delete your local save at any time using the game's "Clear Save" button in Settings.</li>
+    <li>You can request removal of a leaderboard entry by contacting the leaderboard server operator (if one is configured). The client provides a delete endpoint when a server is configured.</li>
+    <li>To control cookies and ad personalization, follow the browser controls and the links above for Google Ads Settings and opt-out resources.</li>
+  </ul>
+
+  <p><strong>EU/EEA / UK rights:</strong> you may have the right to access, correct, delete, restrict processing of, or obtain a copy of your personal data. To exercise these rights, contact <strong>whathappenedclicker@gmail.com</strong>. We will verify requests and typically respond within 30 days. In some cases we may request additional information to confirm your identity.</p>
+
+  <p><strong>California residents (CCPA/CPRA):</strong> California residents have the right to request disclosure of personal information collected, categories of sources, purposes, and third-party recipients, and can request deletion or opt-out of sale/sharing. To exercise CCPA rights, contact <strong>whathappenedclicker@gmail.com</strong>. We do not knowingly sell personal information about consumers.</p>
+
+  <h2>Children</h2>
+  <p>The site is not intended for children under 13. We do not knowingly collect personal information from children under 13. If you believe we have collected such information, please contact us (below) so we can remove it.</p>
+
+  <p>If you are a parent or guardian and wish to request removal of data for a child, contact <strong>whathappenedclicker@gmail.com</strong> and include evidence you are the child's parent or guardian and the username or timestamp of the entry to remove.</p>
+
+  <h2>Security</h2>
+  <p>We take reasonable steps to protect the data you store on the leaderboard (if you run a server) and to avoid accidental disclosure. However, no transmission or storage system is perfectly secure; use caution when sharing personally-identifying information.</p>
+
+  <p>When the site communicates with servers (for leaderboard submission) it uses HTTPS. Server operators should implement standard security practices such as access controls, least privilege for stored credentials, and regular log monitoring.</p>
+
+  <h2>Contact</h2>
+  <p>If you have questions about this privacy policy or want to request removal of leaderboard data, contact the site operator: <strong>whathappenedclicker@gmail.com</strong>.</p>
+
+  <h2>International Transfers</h2>
+  <p>Leaderboard services or third-party processors (such as Google/Firebase) may store or transfer data outside your country (for example, to the United States). By using the leaderboard service you consent to such transfer. If you are in the EU/EEA and concerned about transfers, contact the email above for details.</p>
+
+  <h2>Complaints & Supervisory Authority</h2>
+  <p>If you are located in the EU/EEA and you are not satisfied with our response to a privacy request, you have the right to lodge a complaint with your local data protection authority.</p>
+
+  <h2>Changes to this policy</h2>
+  <p>We may update this privacy policy from time to time. The "Effective date" at the top indicates when the current policy took effect. Significant changes will be communicated on the site where reasonably possible.</p>
+
+  <p><em>Note:</em> This guidance is provided for convenience and does not constitute legal advice. For full legal compliance tailored to your jurisdiction and hosting choices, consider consulting a qualified privacy attorney.</p>
+
+  <hr style="border-color:#333;margin:24px 0;">
+  <p style="font-size:13px;color:#bbb;">This privacy notice describes practices for the <em>WHAT HAPPENED clicker</em> site. It may be updated occasionally; please check back for changes.</p>
+
+</body>
+</html>

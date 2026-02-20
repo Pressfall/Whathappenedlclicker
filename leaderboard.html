@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Global Leaderboard — What Happened</title>
+  <link rel="icon" type="image/png" href="mainimage/upgradesargoonion.png">
+  <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
+  <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7259344384263515" crossorigin="anonymous"></script>
+  <style>
+    body { background:#0f0f12;color:#eee;font-family:Arial,Helvetica,sans-serif;padding:18px; }
+    .card{background:#15151a;padding:12px;border-radius:8px;max-width:900px;margin:14px auto}
+    h1{margin:0 0 12px 0}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:8px;border-bottom:1px solid #222;text-align:left}
+    .muted{color:#bbb;font-size:13px}
+    .form-row{display:flex;gap:8px;margin-bottom:8px}
+    input,button{padding:8px;border-radius:6px;border:1px solid #333;background:#0f0f12;color:#fff}
+    button{cursor:pointer}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Global Leaderboard</h1>
+    <p class="muted">View and submit top What Happened scores. Submissions are public.</p>
+    <img src = "mainimage/lbicon.png" alt = "Leaderboard Icon" style = "height: 100px; float: center; margin-bottom: 10px;">
+
+    <div style="margin:12px 0;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
+        <div style="flex:1;color:#9cf;align-self:center;">Submissions are only possible from the game — use the in-game "Submit To Leaderboard" button.</div>
+        <div style="display:flex;gap:6px;">
+          <button id="monthlyTab" data-type="monthly" style="padding:8px;border-radius:6px;border:1px solid #345;background:#164;color:#fff">Monthly</button>
+          <button id="alltimeTab" data-type="alltime" style="padding:8px;border-radius:6px;border:1px solid #333;background:transparent;color:#ddd">All Time</button>
+          <button id="loadAllBtn" title="Diagnostic: load all entries without type filter">Reload</button>
+        </div>
+      </div>
+      <div id="status" class="muted"></div>
+    </div>
+
+    <div style="margin-top:12px;overflow:auto;">
+      <table id="board">
+        <thead><tr><th>#</th><th>Name</th><th>Title</th><th>Score</th><th>When</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
+    <div style="margin-top:12px;text-align:right;">
+        <!-- moved to fixed button at top-left -->
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    // Uses same Firebase project settings as index.html
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import { getFirestore, collection, query, orderBy, limit, getDocs, where } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDkrNV4bQgRHzGJ__9XqHzry7xbYuH8IuU",
+      authDomain: "whleaderboard.firebaseapp.com",
+      projectId: "whleaderboard",
+      storageBucket: "whleaderboard.firebasestorage.app",
+      messagingSenderId: "602999414155",
+      appId: "1:602999414155:web:541f51b97db8358be4638e",
+      measurementId: "G-C2FWNR7288"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    // Title rarity map (keep in sync with main.js)
+    const TITLE_RARITIES = {
+      'Indoor Specialist': 'uncommon',
+      'Chronically Online': 'rare',
+      'Permanently Online': 'epic',
+      'Loop Initiater': 'common',
+      'Pattern Recognizer': 'uncommon',
+      'Loop Surviver': 'rare',
+      'Keeper of the Loop': 'legendary',
+      'Manual Operator': 'common',
+      'Nice': 'uncommon',
+      'Button Breaker': 'rare',
+      'One Click Wonder': 'epic',
+      'The Automtor': 'common',
+      'Automation Enjoyer': 'uncommon',
+      'Observer Of Motion.': 'legendary',
+      'landon stream': 'epic',
+      'The Bass': 'epic',
+      'The Strongest': 'rare',
+      'Phonk Enjoyer': 'rare',
+      'Camp Cheif': 'uncommon',
+      'Argoonion': 'uncommon',
+      'partygoer': 'common',
+      'Somali Captain': 'uncommon'
+    };
+    const RARITY_COLORS = {
+      common: '#bfc7c9',
+      uncommon: '#6bd26b',
+      rare: '#4da6ff',
+      epic: '#b86cff',
+      legendary: '#ffb84d'
+    };
+    function rarityColorFor(title){ try{ const r = TITLE_RARITIES[String(title)] || 'common'; return RARITY_COLORS[r] || ''; }catch(e){return ''} }
+
+    const statusEl = document.getElementById('status');
+    const tbody = document.querySelector('#board tbody');
+
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;" })[c]); }
+    function formatNumber(n){ if (typeof n === 'number') return n.toLocaleString(); try{ return Number(n).toLocaleString(); }catch(e){return String(n)} }
+
+    function formatLeaderboardScore(raw) {
+      try {
+        if (window.opener && !window.opener.closed && typeof window.opener.formatNumber === 'function') {
+          try {
+            const out = window.opener.formatNumber(raw);
+            if (out && String(out).length <= 30) return String(out);
+          } catch (e) { /* continue */ }
+        }
+      } catch (e) {}
+      let n;
+      try {
+        if (typeof raw === 'number') n = raw;
+        else if (raw && typeof raw.toNumber === 'function') n = raw.toNumber();
+        else n = Number(raw);
+      } catch (e) { n = NaN; }
+      try {
+        if (Number.isFinite(n)) {
+          if (Math.abs(n) < 1e12) return formatNumber(n);
+          return n.toExponential(3);
+        }
+      } catch (e) {}
+      try { return String(raw); } catch (e) { return '' + raw; }
+    }
+
+    // Helper: check same month/year
+    function isSameMonth(d1, d2){
+      try{ return d1.getUTCFullYear() === d2.getUTCFullYear() && d1.getUTCMonth() === d2.getUTCMonth(); }catch(e){return false}
+    }
+
+    // Load board: supports 'monthly' (default) and 'alltime'
+    async function loadBoard(type = 'monthly'){
+      statusEl.textContent = 'Loading...';
+      try{
+        const col = collection(db,'leaderboard');
+        // Query top scores and filter client-side to avoid composite-index requirements
+        const q = query(col, orderBy('score','desc'), limit(500));
+        const snap = await getDocs(q);
+        tbody.innerHTML = '';
+        const now = new Date();
+        let i=1;
+        snap.forEach(doc => {
+          const d = doc.data();
+          // Monthly: only include entries whose timestamp is in the current month
+          if (type === 'monthly'){
+            let created = null;
+            if (d && d.createdAt && typeof d.createdAt.toDate === 'function') created = d.createdAt.toDate();
+            else if (d && d.createdAt instanceof Date) created = d.createdAt;
+            if (!created || !isSameMonth(created, now)) return;
+          }
+          // For alltime, include everything (no additional filtering)
+          const tr = document.createElement('tr');
+          const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : (d.createdAt || '');
+          const scoreFormatted = formatLeaderboardScore(d.score || 0);
+          const title = d.title || '';
+          const titleEsc = escapeHtml(String(title));
+          const color = rarityColorFor(title);
+          const titleHtml = color ? `<span style="color:${color};font-weight:700">${titleEsc}</span>` : titleEsc;
+          tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(String(d.name||''))}</td><td>${titleHtml}</td><td>${escapeHtml(String(scoreFormatted))}</td><td>${escapeHtml(when)}</td>`;
+          tbody.appendChild(tr);
+        });
+        statusEl.textContent = '';
+      } catch (err) {
+        console.error('loadBoard error', err);
+        statusEl.textContent = 'Error loading leaderboard: ' + (err && err.message ? err.message : String(err));
+      }
+    }
+
+    async function loadBoardAll(){
+      statusEl.textContent = 'Loading all entries...';
+      try{
+        const col = collection(db,'leaderboard');
+        const q = query(col, orderBy('score','desc'), limit(500));
+        const snap = await getDocs(q);
+        tbody.innerHTML = '';
+        let i=1;
+        snap.forEach(doc => {
+          const d = doc.data();
+          const tr = document.createElement('tr');
+          const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : (d.createdAt || '');
+          const scoreFormatted = formatLeaderboardScore(d.score || 0);
+          const title = d.title || '';
+          const titleEsc = escapeHtml(String(title));
+          const color = rarityColorFor(title);
+          const titleHtml = color ? `<span style="color:${color};font-weight:700">${titleEsc}</span>` : titleEsc;
+          tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(String(d.name||''))}</td><td>${titleHtml}</td><td>${escapeHtml(String(scoreFormatted))}</td><td>${escapeHtml(when)}</td>`;
+          tbody.appendChild(tr);
+        });
+        statusEl.textContent = '';
+      } catch (err) {
+        console.error('loadBoardAll error', err);
+        statusEl.textContent = 'Error loading leaderboard: ' + (err && err.message ? err.message : String(err));
+      }
+    }
+
+    // tab handling
+    let activeTab = 'monthly';
+    const monthlyTab = document.getElementById('monthlyTab');
+    const alltimeTab = document.getElementById('alltimeTab');
+    function setActiveTab(t){
+      activeTab = t;
+      if (t === 'monthly'){
+        monthlyTab.style.background = '#164'; monthlyTab.style.color = '#fff'; monthlyTab.style.borderColor = '#345';
+        alltimeTab.style.background = 'transparent'; alltimeTab.style.color = '#ddd'; alltimeTab.style.borderColor = '#333';
+      } else {
+        alltimeTab.style.background = '#164'; alltimeTab.style.color = '#fff'; alltimeTab.style.borderColor = '#345';
+        monthlyTab.style.background = 'transparent'; monthlyTab.style.color = '#ddd'; monthlyTab.style.borderColor = '#333';
+      }
+      loadBoard(t).catch(e=>console.warn('load failed', e));
+    }
+    monthlyTab.addEventListener('click', ()=>setActiveTab('monthly'));
+    alltimeTab.addEventListener('click', ()=>setActiveTab('alltime'));
+    document.getElementById('loadAllBtn').addEventListener('click', ()=>loadBoard(activeTab));
+
+    // initial load: show monthly leaderboard by default
+    setActiveTab('monthly');
+  </script>
+  <!-- Top-left Back to game button -->
+  <button id="backToGameBtn" onclick="window.location.href='index.html'" title="Back to game" style="position:fixed;top:8px;left:8px;z-index:1000;background:#2a6;color:#fff;padding:6px;border-radius:6px;border:none;">Back to game</button>
+</body>
+</html>

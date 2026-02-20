@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="version" content="1.0.1">
+    <title>WHAT HAPPENED clicker</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
+    <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
+    <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7259344384263515" crossorigin="anonymous"></script>
+        <style>
+            /* Hide the Gamble button immediately to avoid UI flicker until JS proves player has prestged */
+            #casinoTopBtn { display: none !important; }
+            #casinoTopBtn.show { display: inline-block !important; }
+        </style>
+</head>
+<body>
+    <div id="loadingOverlay">
+        <div class="loader">
+            <div class="shapes" aria-hidden="true">
+                <div class="shape square"></div>
+                <div class="shape"></div>
+                <div class="shape"></div>
+                <div class="shape"></div>
+                <div class="shape"></div>
+            </div>
+            <div class="loader-text">Loading…</div>
+        </div>
+    </div>
+    <script>
+    // Failsafe: hide loading overlay after 10s to avoid getting stuck during debugging
+    setTimeout(()=>{ try{ const lo=document.getElementById('loadingOverlay'); if(lo) lo.style.display='none'; }catch(e){} }, 10000);
+    </script>
+        
+    <button id="leftBarToggle" aria-label="Open upgrades menu" onclick="toggleLeftBar()">☰</button>
+    <div id="leftBarOverlay" onclick="closeLeftBar()"></div>
+    <aside id="leftBar">
+        <div class="leftBarScroll">
+            <ul>
+        <li>
+            <div style="display:flex;gap:6px;flex-direction:column;padding:8px;">
+                <button id="normalMenuBtn" onclick="showNormalMenu()" style="background:#333;color:#fff;padding:6px;border-radius:4px;">Normal Upgrades</button>
+                <button id="divineMenuBtn" onclick="showDivineMenu()" style="background:#222;color:#ccc;padding:6px;border-radius:4px;display:none;">Divine Upgrades</button>
+            </div>
+        </li>
+        <li>
+            <button id="upgrade1" class="upgrade-full-btn unlocked" onclick="buyUpgrade1()">
+                <span class="upgrade-label">OP mouse (cost: 100)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/OPmouse.png" alt="OP mouse" height = "50" width = "50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade2" class="upgrade-full-btn" onclick="buyUpgrade2()">
+                <span class="upgrade-label">Somalian Pirate (cost: 500)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/somaliflag.png" alt="Somalian Pirate" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade3" class="upgrade-full-btn" onclick="buyUpgrade3()">
+                <span class="upgrade-label">Goonsaw Man (cost: 1000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/GoonsawMan.png" alt="Goonsaw Man" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade4" class="upgrade-full-btn" onclick="buyUpgrade4()">
+                <span class="upgrade-label">Diddy blud (cost: 3000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/diddyblud.png" alt="Diddy blud" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade5" class="upgrade-full-btn" onclick="buyUpgrade5()">
+                <span class="upgrade-label">Argonian Autist (cost: 10000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/argoonion.png" alt="Argonian Autist" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade6" class="upgrade-full-btn" onclick="buyUpgrade6()">
+                <span class="upgrade-label">Grape God (cost: 250000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/GrapeGod.png" alt="Grape God" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade7" class="upgrade-full-btn" onclick="buyUpgrade7()">
+                <span class="upgrade-label">Skippie Toilet (cost: 1,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/skippyToilet.png" alt="Skippie Toilet" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade8" class="upgrade-full-btn" onclick="buyUpgrade8()">
+                <span class="upgrade-label">Mysterious Island (cost: 5,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/island.png" alt="Mysterious Island" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade9" class="upgrade-full-btn" onclick="buyUpgrade9()">
+                <span class="upgrade-label">Tribal Camp (cost: 20,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/tribalcamp.png" alt="Tribal Camp" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade10" class="upgrade-full-btn" onclick="buyUpgrade10()">
+                <span class="upgrade-label">The Phonk Man (cost: 100,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/phonkman.png" alt="The Phonk Man" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade11" class="upgrade-full-btn" onclick="buyUpgrade11()">
+                <span class="upgrade-label">Jonathan (cost: 500,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/jonathan.png" alt="Jonathan" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade12" class="upgrade-full-btn" onclick="buyUpgrade12()">
+                <span class="upgrade-label">CR lurker (cost: 2,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/cr_lurker.png" alt="CR lurker" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade13" class="upgrade-full-btn" onclick="buyUpgrade13()">
+                <span class="upgrade-label">ropingnecurse (cost: 10,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/ropingnecurse.png" alt="ropingnecurse" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade14" class="upgrade-full-btn" onclick="buyUpgrade14()">
+                <span class="upgrade-label">skibbidi scimitar (cost: 25,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/skibbidi.png" alt="skibbidi scimitar" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade15" class="upgrade-full-btn" onclick="buyUpgrade15()" style="display:none;">
+                <span class="upgrade-label">What Happened Beats (cost: 100,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/beats.png" alt="What Happened Beats" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade16" class="upgrade-full-btn" onclick="buyUpgrade16()" style="display:none;">
+                <span class="upgrade-label">ez villager (cost: 250,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/ezvillager.png" alt="ez villager" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade17" class="upgrade-full-btn" onclick="buyUpgrade17()">
+                <span class="upgrade-label">scp wish I knew. (cost: 700,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/scp.png" alt="scp wish I knew" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade18" class="upgrade-full-btn" onclick="buyUpgrade18()" style="display:none;">
+                <span class="upgrade-label">The Goatis (cost: 5,000,000,000,000)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/goatis.png" alt="The Goatis" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade19" class="upgrade-full-btn" onclick="buyUpgrade19()" style="display:none;">
+                <span class="upgrade-label">goatises raw liver (cost: <span id="upgrade19Cost">200,000,000,000,000</span>)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/rawliver.png" alt="goatises raw liver" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade20" class="upgrade-full-btn" onclick="buyUpgrade20()" style="display:none;">
+                <span class="upgrade-label">The Landon Stream (cost: 1Q)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/LandonStream.png" alt="The Landon Stream" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade21" class="upgrade-full-btn" onclick="buyUpgrade21()" style="display:none;">
+                <span class="upgrade-label">The Bass (cost: 200Q)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/Seabass.png" alt="The Bass" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade22" class="upgrade-full-btn" onclick="buyUpgrade22()" style="display:none;">
+                <span class="upgrade-label">Good Noodles (cost: 1000Q)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/goodNoodles.png" alt="Good Noodles" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade23" class="upgrade-full-btn" onclick="buyUpgrade23()" style="display:none;">
+                <span class="upgrade-label">Mobile Man 38 (cost: 5,000Q)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/mobile.png" alt="Mobile Man 38" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade24" class="upgrade-full-btn" onclick="buyUpgrade24()" style="display:none;">
+                <span class="upgrade-label">Easton Bundy (cost: 30,000Q)</span>
+                <img class="upgrade-img" src="mainimage/upgrades/mobile.png" alt="Easton Bundy" height="50" width="50">
+            </button>
+        </li>
+            </ul>
+        </div>
+        <div class="bulk-bar">
+            <div style="display:flex;align-items:center;gap:8px;width:100%;padding:6px 8px;">
+                <div style="font-size:13px;color:#ddd;font-weight:700;padding-left:8px;">Buy<br></div>
+                <div class="bulk-row" style="display:flex;gap:6px;padding:6px 8px;width:100%;">
+                    <button class="bulk-btn" data-value="1" onclick="setBulkPurchase(1)">1</button>
+                    <button class="bulk-btn" data-value="5" onclick="setBulkPurchase(5)">5</button>
+                    <button class="bulk-btn" data-value="10" onclick="setBulkPurchase(10)">10</button>
+                    <button class="bulk-btn" data-value="25" onclick="setBulkPurchase(25)">25</button>
+                    <button class="bulk-btn" data-value="50" onclick="setBulkPurchase(50)">50</button>
+                    <button class="bulk-btn" data-value="100" onclick="setBulkPurchase(100)">100</button>
+                </div>
+            </div>
+        </div>
+    </aside>
+    <!-- Quick buttons placed adjacent to the left upgrades bar -->
+    <div id="leftQuickBtns">
+        <div style="display:flex;gap:6px;">
+            <button id="leaderboardTopBtn" onclick="window.location.href='leaderboard.html'" title="Global Leaderboard" style="background:blue;color:#fff;padding:6px;border-radius:6px;border:none;">Leaderboard</button>
+            <button id="achievementsTopBtn" onclick="window.location.href='achievements.html'" title="Achievements" style="background:blue;color:#fff;padding:6px;border-radius:6px;border:none;">Achievements</button>
+        </div>
+        <button id="prestigeTopBtn" onclick="buyPrestige()" style="background:green;color:#fff;padding:6px;border-radius:6px;display:none;">Prestige (Claim Golden)</button>
+        <button id="casinoTopBtn" onclick="window.location.href='gamba.html'" style="background:#8b0000;color:#fff;padding:6px;border-radius:6px;display:none;margin-left:8px;">Gamble</button>
+    </div>
+    <!-- Floating right-edge button to open Special Upgrades -->
+    <button id="specialMenuBtn" aria-label="Open special upgrades" onclick="toggleSpecialMenu()" title="Special Upgrades">☆</button>
+    <!-- Active buffs panel (appears when buffs are active) -->
+    <div id="buffPanel" style="position:fixed;bottom:12px;right:12px;z-index:2200;display:none;min-width:220px;padding:10px;border-radius:8px;background:rgba(0,0,0,0.45);color:#fff;font-size:13px;">
+        <div style="font-weight:800;margin-bottom:6px;">Active Buffs</div>
+        <div id="buffList">No active buffs</div>
+        <!-- test button removed -->
+    </div>
+    <ul style="display:none;" aria-hidden="true">
+        <!-- placeholder to keep layout consistent -->
+    </ul>
+    <div id="falling-container"></div>
+
+    <!-- Bulk purchase control moved into the upgrades menu (was floating) -->
+
+    <!-- Divine upgrades menu (empty for now) - styled like the leftBar -->
+    <ul id="divineLeftBar" class="left-bar-clone" style="display:none;">
+        <li>
+            <div style="display:flex;gap:6px;flex-direction:column;">
+                <button id="normalMenuBtn_clone" onclick="showNormalMenu()" style="background:#333;color:#fff;padding:6px;border-radius:4px;">Normal Upgrades</button>
+                <button id="divineMenuBtn_clone" onclick="showDivineMenu()" style="background:#222;color:#ccc;padding:6px;border-radius:4px;">Divine Upgrades</button>
+            </div>
+        </li>
+        <li style="color:#fff;padding:8px;">Divine Hero Upgrades - Locked until you have at least 1 Golden What Happened.</li>
+        <li>
+            <button id="divineArgonBtn" onclick="buyDivineArgon()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#2a2a4a;color:#fff;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Argonian</div>
+                    <div class="divine-level">Level: <span id="divineArgonLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineArgonCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineArgonEffect"></div></div>
+            </button>
+        </li>
+        <li>
+            <button id="divineSomalianBtn" onclick="buyDivineSomalian()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#2a2a4a;color:#fff;">
+                <img class="upgrade-img" src="mainimage/DivineSomalian.png" alt="Divine Somalian" height="40" width="40" style="vertical-align:middle;margin-right:8px;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Somalian</div>
+                    <div class="divine-level">Level: <span id="divineSomalianLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineSomalianCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineSomalianEffect"></div></div>
+            </button>
+        </li>
+        <li>
+            <button id="divineAssassinBtn" onclick="buyDivineAssassin()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#2a2a4a;color:#fff;">
+                <img class="upgrade-img" src="mainimage/DivineAssassin.png" alt="Divine Assassin" height="40" width="40" style="vertical-align:middle;margin-right:8px;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Assassin</div>
+                    <div class="divine-level">Level: <span id="divineAssassinLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineAssassinCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineAssassinEffect"></div></div>
+            </button>
+        </li>
+        <li>
+            <button id="divineSpiritBtn" onclick="buyDivineSpirit()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#3a2a5a;color:#fff;">
+                <img class="upgrade-img" src="mainimage/DivineSpirit.png" alt="Divine Spirit" height="40" width="40" style="vertical-align:middle;margin-right:8px;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Spirit of What Happened</div>
+                    <div class="divine-level">Level: <span id="divineSpiritLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineSpiritCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineSpiritEffect"></div></div>
+            </button>
+        </li>
+        <li>
+            <button id="divineCollectorBtn" onclick="buyDivineCollector()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#2a2a4a;color:#fff;">
+                <img class="upgrade-img" src="mainimage/DivineCollector.png" alt="Divine Collector" height="40" width="40" style="vertical-align:middle;margin-right:8px;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Collector</div>
+                    <div class="divine-level">Level: <span id="divineCollectorLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineCollectorCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineCollectorEffect"></div></div>
+            </button>
+        </li>
+        <li>
+            <button id="divineMoneyManBtn" onclick="buyDivineMoneyMan()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#2a2a4a;color:#fff;">
+                <img class="upgrade-img" src="mainimage/moneyman.png" alt="Divine Money Man" height="40" width="40" style="vertical-align:middle;margin-right:8px;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Money Man</div>
+                    <div class="divine-level">Level: <span id="divineMoneyManLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineMoneyManCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineMoneyManEffect"></div></div>
+            </button>
+        </li>
+        <li>
+            <button id="divineSimpleVillagerBtn" onclick="buyDivineSimpleVillager()" style="display:block;margin:8px;padding:8px;border-radius:6px;background:#2a2a4a;color:#fff;">
+                <img class="upgrade-img" src="mainimage/DivineSimpleVillager.png" alt="Divine Simple Villager" height="40" width="40" style="vertical-align:middle;margin-right:8px;">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Simple Villager</div>
+                    <div class="divine-level">Level: <span id="divineSimpleVillagerLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineSimpleVillagerCost">1</span> golden</div>
+                </div>
+                <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineSimpleVillagerEffect"></div></div>
+            </button>
+        </li>
+    </ul>
+
+    <div id="mainContent">
+        <h1 style = "text-align: center;">WHAT HAPPENED!?!?!?!?!?!?!?!?!?!?</h1>
+        <div id="equippedTitleDisplay" style="text-align:center;color:#9cf;margin-top:6px;font-weight:600;"></div>
+        <div class="main-image-wrap" style="text-align:center; margin:20px 0;">
+            <button onclick="increment()" style="background:none;border:none;padding:0;cursor:pointer;">
+                <img src="mainimage/whathappened.jpeg" alt="whathappened" class="main-image">
+            </button>
+            <!-- Counters card centered below the main image -->
+            <div class="info-card" role="region" aria-label="Main counters">
+                <div class="info-row"><span class="info-label">What Happeneds:</span> <span id="goonCount">0</span></div>
+                <div class="info-row"><span class="info-label">CPS:</span> <span id="cps">0</span></div>
+                <div class="info-row"><span class="info-label">Click Power:</span> <span id="clickPower">1</span></div>
+                <div class="info-row info-golden"><span class="info-label">Golden What Happeneds:</span> <span id="goldenCount">0</span></div>
+                <div class="info-actions">
+                    <button onclick="toggleStats()" class="info-btn">Show Stats</button>
+                    <button id="submitLeaderboardBtn" class="info-btn primary">Submit To Leaderboard</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stats panel (modal-like) -->
+    <div id="statsPanel" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:18px;border-radius:10px;z-index:2000;min-width:320px;box-shadow:0 8px 30px rgba(0,0,0,0.7);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <h3 style="margin:0;font-size:16px;">Player Stats</h3>
+            <button onclick="toggleStats()" style="background:transparent;border:none;color:#fff;font-size:18px;">✕</button>
+        </div>
+        <div style="line-height:1.6;font-size:14px;">
+            <div>Prestiges claimed: <strong id="statsPrestigeCount">0</strong></div>
+            <div>Total Golden ever: <strong id="statsTotalGolden">0</strong></div>
+            <div>Potential Golden on next prestige: <strong id="statsNextPrestige">0</strong></div>
+            <hr style="border-color:#333;margin:8px 0;">
+            <div>Total play time: <strong id="statsTotalPlaytime">0</strong></div>
+            <div>Time since last prestige: <strong id="statsSincePrestige">N/A</strong></div>
+            <div>Lifetime clicks: <strong id="statsLifetimeClicks">0</strong></div>
+            <div>Total clicks since last prestige: <strong id="statsClicksSincePrestige">0</strong></div>
+            <hr style="border-color:#333;margin:8px 0;">
+            <div>Critical chance: <strong id="statsCritChance">0%</strong></div>
+            <div>Critical multiplier: <strong id="statsCritMultiplier">x0</strong></div>
+            <!-- Removed CPS and Click Power duplicate stats per request -->
+            <div style="margin-top:8px;text-align:center;"><button onclick="toggleStats(); try{ updateDisplays(); }catch(e){}" style="padding:6px 10px;border-radius:6px;background:#444;color:#fff;border:none;">Refresh</button></div>
+        </div>
+    </div>
+
+    <!-- Welcome Back modal for offline gains -->
+    <div id="welcomeBackModal" style="display:none;position:fixed;left:50%;top:40%;transform:translate(-50%,-40%);background:#000000;color:#fff;padding:18px;border-radius:10px;z-index:2200;min-width:300px;box-shadow:0 8px 30px rgba(0,0,0,0.8);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <h3 id="welcomeBackTitle" style="margin:0;font-size:18px;">Welcome Back!</h3>
+            <button id="welcomeBackClose" style="background:transparent;border:none;color:#fff;font-size:18px;">✕</button>
+        </div>
+        <div style="line-height:1.6;font-size:15px;">
+            <div id="welcomeBackGained">gained: <strong>0</strong></div>
+            <div id="welcomeBackFor">for: <strong>0s</strong></div>
+            <div style="margin-top:10px;text-align:center;"><button id="welcomeBackOk" style="padding:6px 10px;border-radius:6px;background:#444;color:#fff;border:none;">OK</button></div>
+        </div>
+    </div>
+
+    <!-- Shop overlay and menu -->
+    <div id="shopOverlay" class="shop-overlay"></div>
+    <div id="shopMenu" class="shop-menu">
+        <div class="shop-header">
+                <div class="shop-left" style="display:flex;align-items:center;gap:12px;">
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <img src="mainimage/Gem.png" alt="Gem" height="28" width="28" style="vertical-align:middle;">
+                        <div style="font-weight:700;color:black;">Gems: <span id="gemCount">0</span></div>
+                    </div>
+                    <div class="shop-tabs" style="display:flex;align-items:center;gap:8px;">
+                        <button id="shopTabBtnMain" class="shop-tab-btn active" onclick="showShopTab('main')">Main Image Skins</button>
+                        <button id="shopTabBtnBG" class="shop-tab-btn" onclick="showShopTab('bg')">BG Images</button>
+                        <button id="shopTabBtnMusic" class="shop-tab-btn" onclick="showShopTab('music')">Music</button>
+                    </div>
+                </div>
+                <button id="shopClose" onclick="toggleShopMenu()" style="background:transparent;border:none;color:black;font-size:20px;">✕</button>
+            </div>
+            <div class="shop-content">
+                <div id="shopTabMain" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:1;display:block;"></div>
+                <div id="shopTabBG" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:0;display:none;"></div>
+                <div id="shopTabMusic" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:0;display:none;"></div>
+                <!-- Shop items will go into #shopTabMain. #shopTabBG reserved for background images. -->
+            </div>
+    </div>
+
+    <!-- Leaderboard placed below all main info (clear separator and extra space) -->
+    <!-- Banner Ad: replace data-ad-slot with your AdSense ad unit ID -->
+    <div id="adWrapper" style="text-align:center;margin:12px 0;">
+        <ins class="adsbygoogle"
+            style="display:block;max-width:728px;margin:0 auto;"
+            data-ad-slot="1234567890"
+            data-ad-format="auto"
+            data-full-width-responsive="true"></ins>
+        <script>
+            try { (adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* ignore */ }
+        </script>
+        <!-- fallback placeholder shown when AdSense does not load (e.g. local file or unapproved domain) -->
+        <div id="adFallback" style="display:none;max-width:728px;margin:8px auto;padding:12px;border:1px solid #666;background:#222;color:#ddd;border-radius:6px;">Your ad would appear here. (Local fallback)</div>
+        <script>
+            (function(){
+                // If AdSense fails to render an iframe inside the ins.adsbygoogle element within 2.5s, show fallback
+                const ins = document.querySelector('#adWrapper ins.adsbygoogle');
+                const fallback = document.getElementById('adFallback');
+                function check() {
+                    try {
+                        if (!ins) { if (fallback) fallback.style.display = 'block'; return; }
+                        // consider ad rendered if an iframe child exists
+                        const iframe = ins.querySelector('iframe');
+                        if (!iframe) {
+                            if (fallback) fallback.style.display = 'block';
+                        } else {
+                            if (fallback) fallback.style.display = 'none';
+                        }
+                    } catch (e) { if (fallback) fallback.style.display = 'block'; }
+                }
+                // run a couple of times (ads may load slightly delayed)
+                setTimeout(check, 1200);
+                setTimeout(check, 2500);
+            })();
+        </script>
+    </div>
+
+    <!-- Leaderboard removed (replaced by Firebase later) -->
+    
+    <!-- Footer with Privacy link -->
+    <footer style="text-align:center;color:#aaa;margin:18px 0;font-size:13px;">
+        <a href="privacy.html">Privacy Policy</a>
+    </footer>
+
+
+    <!-- Special upgrades menu (right side) -->
+    <div id="specialMenu" class="special-menu" aria-hidden="true">
+        <div class="special-header">
+            <div style="display:flex;align-items:center;gap:8px;color:#111;font-weight:800;padding:6px 8px;">Special Upgrades</div>
+        </div>
+        <div id="specialContent" class="menu-content">
+
+            <div id="opSection" class="section">
+                <button class="section-toggle" id="opToggle" onclick="toggleSection('op')">OP Specials ▾</button>
+                <div id="opContent" class="section-content">
+                    <button id="special1" onclick="buySpecial1()" style="display:none" disabled>
+                        Multiplier: x1.5 click power (cost: <span id="special1Cost">1000</span>)
+                    </button>
+                    <button id="special2" onclick="buySpecial2()" style="display:none" disabled>
+                        x2 click power (unlocks at OP mouse lvl 25) (cost: <span id="special2Cost">5000</span>)
+                    </button>
+                    <button id="special3" onclick="buySpecial3()" style="display:none" disabled>
+                        x2 click power (unlocks at OP mouse lvl 50) (cost: <span id="special3Cost">20000</span>)
+                    </button>
+                    <button id="special4" onclick="buySpecial4()" style="display:none" disabled>
+                        x2.5 click power (unlocks at OP mouse lvl 100) (cost: <span id="special4Cost">100000</span>)
+                    </button>
+                    <button id="special5" onclick="buySpecial5()" style="display:none" disabled>
+                        x3 click power (unlocks at OP mouse lvl 150) (cost: <span id="special5Cost">500000</span>)
+                    </button>
+                    <button id="special6" onclick="buySpecial6()" style="display:none" disabled>
+                        x3.5 click power (unlocks at OP mouse lvl 200) (cost: <span id="special6Cost">2000000</span>)
+                    </button>
+                    <button id="special7" onclick="buySpecial7()" style="display:none" disabled>
+                        x3.5 click power (unlocks at OP mouse lvl 250) (cost: <span id="special7Cost">5000000</span>)
+                    </button>
+                    <button id="special8" onclick="buySpecial8()" style="display:none" disabled>
+                        x4 click power (unlocks at OP mouse lvl 300) (cost: <span id="special8Cost">20000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="pirateSection" class="section">
+                <button class="section-toggle" id="pirateToggle" onclick="toggleSection('pirate')">Pirate Specials ▾</button>
+                <div id="pirateContent" class="section-content">
+                    <button id="pirate1" onclick="buyPirate1()" style="display:none" disabled>
+                        Pirate cps x1.5 (unlocks at Pirate lvl 10) (cost: <span id="pirate1Cost">1500</span>)
+                    </button>
+                    <button id="pirate2" onclick="buyPirate2()" style="display:none" disabled>
+                        Pirate cps x1.5 (unlocks at Pirate lvl 25) (cost: <span id="pirate2Cost">6000</span>)
+                    </button>
+                    <button id="pirate3" onclick="buyPirate3()" style="display:none" disabled>
+                        Pirate cps x2 (unlocks at Pirate lvl 50) (cost: <span id="pirate3Cost">25000</span>)
+                    </button>
+                    <button id="pirate4" onclick="buyPirate4()" style="display:none" disabled>
+                        Pirate cps x1.25 (unlocks at Pirate lvl 100) (cost: <span id="pirate4Cost">100000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="goonSection" class="section">
+                <button class="section-toggle" id="goonToggle" onclick="toggleSection('goon')">Goonsaw Specials ▾</button>
+                <div id="goonContent" class="section-content">
+                    <button id="goon1" onclick="buyGoon1()" style="display:none" disabled>
+                        Goonsaw cps x2 (unlocks at Goonsaw lvl 10) (cost: <span id="goon1Cost">2000</span>)
+                    </button>
+                    <button id="goon2" onclick="buyGoon2()" style="display:none" disabled>
+                        Goonsaw cps x2 (unlocks at Goonsaw lvl 25) (cost: <span id="goon2Cost">8000</span>)
+                    </button>
+                    <button id="goon3" onclick="buyGoon3()" style="display:none" disabled>
+                        Goonsaw cps x1.5 (unlocks at Goonsaw lvl 50) (cost: <span id="goon3Cost">30000</span>)
+                    </button>
+                    <button id="goon4" onclick="buyGoon4()" style="display:none" disabled>
+                        Goonsaw cps x2.5 (unlocks at Goonsaw lvl 100) (cost: <span id="goon4Cost">150000</span>)
+                    </button>
+                </div>
+            </div>
+
+            
+
+            <div id="diddySection" class="section">
+                <button class="section-toggle" id="diddyToggle" onclick="toggleSection('diddy')">Diddy Blud Specials ▾</button>
+                <div id="diddyContent" class="section-content">
+                    <button id="diddy1" onclick="buyDiddy1()" style="display:none" disabled>
+                        Diddy: +50 cps (unlocks at Diddy lvl 10) (cost: <span id="diddy1Cost">5000</span>)
+                    </button>
+                    <button id="diddy2" onclick="buyDiddy2()" style="display:none" disabled>
+                        Diddy: x2 other cps (unlocks at Diddy lvl 25) (cost: <span id="diddy2Cost">20000</span>)
+                    </button>
+                    <button id="diddy3" onclick="buyDiddy3()" style="display:none" disabled>
+                        Diddy: x1.5 click power (unlocks at Diddy lvl 50) (cost: <span id="diddy3Cost">50000</span>)
+                    </button>
+                    <button id="diddy4" onclick="buyDiddy4()" style="display:none" disabled>
+                        Diddy: x1.25 total cps (unlocks at Diddy lvl 100) (cost: <span id="diddy4Cost">200000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="argonSection" class="section">
+                <button class="section-toggle" id="argonToggle" onclick="toggleSection('argon')">Argonian Specials ▾</button>
+                <div id="argonContent" class="section-content">
+                    <button id="argon1" onclick="buyArgon1()" style="display:none" disabled>
+                        Argonian: click power x1.5 (unlocks at Argonian lvl 10) (cost: <span id="argon1Cost">10000</span>)
+                    </button>
+                    <button id="argon2" onclick="buyArgon2()" style="display:none" disabled>
+                        Argonian: other cps x2 (unlocks at Argonian lvl 25) (cost: <span id="argon2Cost">40000</span>)
+                    </button>
+                    <button id="argon3" onclick="buyArgon3()" style="display:none" disabled>
+                        Argonian: click power x2 (unlocks at Argonian lvl 50) (cost: <span id="argon3Cost">150000</span>)
+                    </button>
+                    <button id="argon4" onclick="buyArgon4()" style="display:none" disabled>
+                        Argonian: total cps x1.5 (unlocks at Argonian lvl 100) (cost: <span id="argon4Cost">500000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="grapeSection" class="section">
+                <button class="section-toggle" id="grapeToggle" onclick="toggleSection('grape')">Grape God Specials ▾</button>
+                <div id="grapeContent" class="section-content">
+                    <button id="grape1" onclick="buyGrape1()" style="display:none" disabled>
+                        Grape: +1000 other cps (unlocks at Grape lvl 10) (cost: <span id="grape1Cost">250000</span>)
+                    </button>
+                    <button id="grape2" onclick="buyGrape2()" style="display:none" disabled>
+                        Grape: other cps x2 (unlocks at Grape lvl 25) (cost: <span id="grape2Cost">1000000</span>)
+                    </button>
+                    <button id="grape3" onclick="buyGrape3()" style="display:none" disabled>
+                        Grape: click power x2 (unlocks at Grape lvl 50) (cost: <span id="grape3Cost">5000000</span>)
+                    </button>
+                    <button id="grape4" onclick="buyGrape4()" style="display:none" disabled>
+                        Grape: total cps x2 (unlocks at Grape lvl 100) (cost: <span id="grape4Cost">20000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="skippieSection" class="section">
+                <button class="section-toggle" id="skippieToggle" onclick="toggleSection('skippie')">Skippie Toilet Specials ▾</button>
+                <div id="skippieContent" class="section-content">
+                    <button id="skippie1" onclick="buySkippie1()" style="display:none" disabled>
+                        Skippie: +5000 other cps (unlocks at Skippie lvl 10) (cost: <span id="skippie1Cost">500000</span>)
+                    </button>
+                    <button id="skippie2" onclick="buySkippie2()" style="display:none" disabled>
+                        Skippie: other cps x2 (unlocks at Skippie lvl 25) (cost: <span id="skippie2Cost">2000000</span>)
+                    </button>
+                    <button id="skippie3" onclick="buySkippie3()" style="display:none" disabled>
+                        Skippie: click power x2 (unlocks at Skippie lvl 50) (cost: <span id="skippie3Cost">10000000</span>)
+                    </button>
+                    <button id="skippie4" onclick="buySkippie4()" style="display:none" disabled>
+                        Skippie: total cps x2 (unlocks at Skippie lvl 100) (cost: <span id="skippie4Cost">50000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="islandSection" class="section">
+                <button class="section-toggle" id="islandToggle" onclick="toggleSection('island')">Mysterious Island Specials ▾</button>
+                <div id="islandContent" class="section-content">
+                    <button id="island1" onclick="buyIsland1()" style="display:none" disabled>
+                        Island: +50000 other cps (unlocks at Island lvl 10) (cost: <span id="island1Cost">2000000</span>)
+                    </button>
+                    <button id="island2" onclick="buyIsland2()" style="display:none" disabled>
+                        Island: other cps x2 (unlocks at Island lvl 25) (cost: <span id="island2Cost">8000000</span>)
+                    </button>
+                    <button id="island3" onclick="buyIsland3()" style="display:none" disabled>
+                        Island: click power x2 (unlocks at Island lvl 50) (cost: <span id="island3Cost">40000000</span>)
+                    </button>
+                    <button id="island4" onclick="buyIsland4()" style="display:none" disabled>
+                        Island: total cps x2 (unlocks at Island lvl 100) (cost: <span id="island4Cost">200000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="tribalSection" class="section">
+                <button class="section-toggle" id="tribalToggle" onclick="toggleSection('tribal')">Tribal Camp Specials ▾</button>
+                <div id="tribalContent" class="section-content">
+                    <button id="tribal1" onclick="buyTribal1()" style="display:none" disabled>
+                        Tribal: +200000 other cps (unlocks at Tribal lvl 10) (cost: <span id="tribal1Cost">10000000</span>)
+                    </button>
+                    <button id="tribal2" onclick="buyTribal2()" style="display:none" disabled>
+                        Tribal: other cps x2 (unlocks at Tribal lvl 25) (cost: <span id="tribal2Cost">40000000</span>)
+                    </button>
+                    <button id="tribal3" onclick="buyTribal3()" style="display:none" disabled>
+                        Tribal: click power x2 (unlocks at Tribal lvl 50) (cost: <span id="tribal3Cost">200000000</span>)
+                    </button>
+                    <button id="tribal4" onclick="buyTribal4()" style="display:none" disabled>
+                        Tribal: total cps x2 (unlocks at Tribal lvl 100) (cost: <span id="tribal4Cost">1000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <!-- ezSection moved to bottom of specials list -->
+
+            <div id="phonkSection" class="section">
+                <button class="section-toggle" id="phonkToggle" onclick="toggleSection('phonk')">Phonk Man Specials ▾</button>
+                <div id="phonkContent" class="section-content">
+                    <button id="phonk1" onclick="buyPhonk1()" style="display:none" disabled>
+                        Phonk: total cps x1.25 (unlocks at Phonk lvl 10) (cost: <span id="phonk1Cost">10000000</span>)
+                    </button>
+                    <button id="phonk2" onclick="buyPhonk2()" style="display:none" disabled>
+                        Phonk: total cps x1.25 (unlocks at Phonk lvl 25) (cost: <span id="phonk2Cost">40000000</span>)
+                    </button>
+                    <button id="phonk3" onclick="buyPhonk3()" style="display:none" disabled>
+                        Phonk: total cps x1.5 (unlocks at Phonk lvl 50) (cost: <span id="phonk3Cost">200000000</span>)
+                    </button>
+                    <button id="phonk4" onclick="buyPhonk4()" style="display:none" disabled>
+                        Phonk: Phonk cps x2 (unlocks at Phonk lvl 75) (cost: <span id="phonk4Cost">1000000000</span>)
+                    </button>
+                    <button id="phonk5" onclick="buyPhonk5()" style="display:none" disabled>
+                        Phonk: total cps x2 (unlocks at Phonk lvl 100) (cost: <span id="phonk5Cost">5000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <!-- Easton Bundy section moved to bottom of specials list -->
+
+            <div id="jonathanSection" class="section">
+                <button class="section-toggle" id="jonathanToggle" onclick="toggleSection('jonathan')">Jonathan Specials ▾</button>
+                <div id="jonathanContent" class="section-content">
+                    <button id="jonathan1" onclick="buyJonathan1()" style="display:none" disabled>
+                        Jonathan: Jonathan cps x1.5 (unlocks at Jonathan lvl 10) (cost: <span id="jonathan1Cost">100000000</span>)
+                    </button>
+                    <button id="jonathan2" onclick="buyJonathan2()" style="display:none" disabled>
+                        Jonathan: Jonathan cps x1.5 (unlocks at Jonathan lvl 25) (cost: <span id="jonathan2Cost">400000000</span>)
+                    </button>
+                    <button id="jonathan3" onclick="buyJonathan3()" style="display:none" disabled>
+                        Jonathan: click power x4 (unlocks at Jonathan lvl 50) (cost: <span id="jonathan3Cost">2000000000</span>)
+                    </button>
+                    <button id="jonathan4" onclick="buyJonathan4()" style="display:none" disabled>
+                        Jonathan: Jonathan cps x2 (unlocks at Jonathan lvl 75) (cost: <span id="jonathan4Cost">10000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="crSection" class="section">
+                <button class="section-toggle" id="crToggle" onclick="toggleSection('cr')">CR Lurker Specials ▾</button>
+                <div id="crContent" class="section-content">
+                    <button id="cr1" onclick="buyCr1()" style="display:none" disabled>
+                        CR: CR cps x1.5 (unlocks at CR lvl 10) (cost: <span id="cr1Cost">200000000</span>)
+                    </button>
+                    <button id="cr2" onclick="buyCr2()" style="display:none" disabled>
+                        CR: CR cps x1.5 (unlocks at CR lvl 25) (cost: <span id="cr2Cost">800000000</span>)
+                    </button>
+                    <button id="cr3" onclick="buyCr3()" style="display:none" disabled>
+                        CR: click power x3 (unlocks at CR lvl 50) (cost: <span id="cr3Cost">3000000000</span>)
+                    </button>
+                    <button id="cr4" onclick="buyCr4()" style="display:none" disabled>
+                        CR: CR cps x2 (unlocks at CR lvl 75) (cost: <span id="cr4Cost">10000000000</span>)
+                    </button>
+                    <button id="cr5" onclick="buyCr5()" style="display:none" disabled>
+                        CR: total cps x2 (unlocks at CR lvl 100) (cost: <span id="cr5Cost">30000000000</span>)
+                    </button>
+                    <button id="prestigeBtnCr" onclick="buyPrestige()" style="display:none;margin-top:8px;" disabled>
+                        Prestige (Claim Golden)
+                    </button>
+                </div>
+            </div>
+
+            <div id="ropingSection" class="section">
+                <button class="section-toggle" id="ropingToggle" onclick="toggleSection('roping')">Ropingnecurse Specials ▾</button>
+                <div id="ropingContent" class="section-content">
+                    <button id="roping1" onclick="buyRoping1()" style="display:none" disabled>
+                        x1.5 cps (unlocks at ropingnecurse lvl 10) (cost: <span id="roping1Cost">50000000000</span>)
+                    </button>
+                    <button id="roping2" onclick="buyRoping2()" style="display:none" disabled>
+                        x2 cps (unlocks at ropingnecurse lvl 25) (cost: <span id="roping2Cost">200000000000</span>)
+                    </button>
+                    <button id="roping3" onclick="buyRoping3()" style="display:none" disabled>
+                        x2 cps (unlocks at ropingnecurse lvl 50) (cost: <span id="roping3Cost">1000000000000</span>)
+                    </button>
+                    <button id="roping4" onclick="buyRoping4()" style="display:none" disabled>
+                        x2.25 cps (unlocks at ropingnecurse lvl 75) (cost: <span id="roping4Cost">5000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="skibbidiSection" class="section">
+                <button class="section-toggle" id="skibbidiToggle" onclick="toggleSection('skibbidi')">Skibbidi Scimitar Specials ▾</button>
+                <div id="skibbidiContent" class="section-content">
+                    <button id="skibidi1" onclick="buySkibidi1()" style="display:none" disabled>
+                        x1.5 scimitar cps (unlocks at skibbidi scimitar lvl 10) (cost: <span id="skibidi1Cost">60000000000</span>)
+                    </button>
+                    <button id="skibidi2" onclick="buySkibidi2()" style="display:none" disabled>
+                        x2 scimitar cps (unlocks at skibbidi scimitar lvl 25) (cost: <span id="skibidi2Cost">240000000000</span>)
+                    </button>
+                    <button id="skibidi3" onclick="buySkibidi3()" style="display:none" disabled>
+                        x2 scimitar cps (unlocks at skibbidi scimitar lvl 50) (cost: <span id="skibidi3Cost">1200000000000</span>)
+                    </button>
+                    <button id="skibidi4" onclick="buySkibidi4()" style="display:none" disabled>
+                        x2.25 scimitar cps (unlocks at skibbidi scimitar lvl 75) (cost: <span id="skibidi4Cost">6000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+
+            <div id="beatsSection" class="section">
+                <button class="section-toggle" id="beatsToggle" onclick="toggleSection('beats')">What Happened Beats Specials ▾</button>
+                <div id="beatsContent" class="section-content">
+                    <button id="beats1" onclick="buyBeats1()" style="display:none" disabled>
+                        x1.5 beats cps (unlocks at Beats lvl 10) (cost: <span id="beats1Cost">80000000000</span>)
+                    </button>
+                    <button id="beats2" onclick="buyBeats2()" style="display:none" disabled>
+                        x2 beats cps (unlocks at Beats lvl 25) (cost: <span id="beats2Cost">300000000000</span>)
+                    </button>
+                    <button id="beats3" onclick="buyBeats3()" style="display:none" disabled>
+                        x2.5 beats cps (unlocks at Beats lvl 50) (cost: <span id="beats3Cost">1000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="ezSection" class="section">
+                <button class="section-toggle" id="ezToggle" onclick="toggleSection('ez')">ez Villager Specials ▾</button>
+                <div id="ezContent" class="section-content">
+                    <button id="ez1" onclick="buyEz1()" style="display:none" disabled>
+                        ez Villager: other cps x1.5 (unlocks at ez lvl 10) (cost: <span id="ez1Cost">1000000000000</span>)
+                    </button>
+                    <button id="ez2" onclick="buyEz2()" style="display:none" disabled>
+                        ez Villager: other cps x2 (unlocks at ez lvl 25) (cost: <span id="ez2Cost">4000000000000</span>)
+                    </button>
+                    <button id="ez3" onclick="buyEz3()" style="display:none" disabled>
+                        ez Villager: click power x2 (unlocks at ez lvl 50) (cost: <span id="ez3Cost">20000000000000</span>)
+                    </button>
+                    <button id="ez4" onclick="buyEz4()" style="display:none" disabled>
+                        ez Villager: total cps x2 (unlocks at ez lvl 100) (cost: <span id="ez4Cost">100000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="scpSection" class="section">
+                <button class="section-toggle" id="scpToggle" onclick="toggleSection('scp')">SCP Specials ▾</button>
+                <div id="scpContent" class="section-content">
+                    <button id="scp1" onclick="buyScp1()" style="display:none" disabled>
+                        SCP: other cps x2 (unlocks at SCP lvl 10) (cost: <span id="scp1Cost">500000000000</span>)
+                    </button>
+                    <button id="scp2" onclick="buyScp2()" style="display:none" disabled>
+                        SCP: other cps x2 (unlocks at SCP lvl 25) (cost: <span id="scp2Cost">2000000000000</span>)
+                    </button>
+                    <button id="scp3" onclick="buyScp3()" style="display:none" disabled>
+                        SCP: other cps x2 (unlocks at SCP lvl 50) (cost: <span id="scp3Cost">10000000000000</span>)
+                    </button>
+                    <button id="scp4" onclick="buyScp4()" style="display:none" disabled>
+                        SCP: total cps x2 (unlocks at SCP lvl 75) (cost: <span id="scp4Cost">50000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="goatisSection" class="section">
+                <button class="section-toggle" id="goatisToggle" onclick="toggleSection('goatis')">The Goatis Specials ▾</button>
+                <div id="goatisContent" class="section-content">
+                    <button id="goatis1" onclick="buyGoatis1()" style="display:none" disabled>
+                        The Goatis cps x1.5 (unlocks at The Goatis lvl 10) (cost: <span id="goatis1Cost">50000000000</span>)
+                    </button>
+                    <button id="goatis2" onclick="buyGoatis2()" style="display:none" disabled>
+                        The Goatis cps x2 (unlocks at The Goatis lvl 25) (cost: <span id="goatis2Cost">200000000000</span>)
+                    </button>
+                    <button id="goatis3" onclick="buyGoatis3()" style="display:none" disabled>
+                        The Goatis cps x2 (unlocks at The Goatis lvl 50) (cost: <span id="goatis3Cost">1000000000000</span>)
+                    </button>
+                    <button id="goatis4" onclick="buyGoatis4()" style="display:none" disabled>
+                        The Goatis cps x2.25 (unlocks at The Goatis lvl 100) (cost: <span id="goatis4Cost">5000000000000</span>)
+                    </button>
+                </div>
+            </div>
+            
+
+            <div id="rawSection" class="section">
+                <button class="section-toggle" id="rawToggle" onclick="toggleSection('raw')">Goatises Raw Liver Specials ▾</button>
+                <div id="rawContent" class="section-content">
+                    <button id="raw1" onclick="buyRaw1()" style="display:none" disabled>
+                        Raw Liver cps x1.5 (unlocks at goatises raw liver lvl 10) (cost: <span id="raw1Cost">50000000000</span>)
+                    </button>
+                    <button id="raw2" onclick="buyRaw2()" style="display:none" disabled>
+                        Raw Liver cps x2 (unlocks at goatises raw liver lvl 25) (cost: <span id="raw2Cost">200000000000</span>)
+                    </button>
+                    <button id="raw3" onclick="buyRaw3()" style="display:none" disabled>
+                        Raw Liver cps x2 (unlocks at goatises raw liver lvl 50) (cost: <span id="raw3Cost">1000000000000</span>)
+                    </button>
+                    <button id="raw4" onclick="buyRaw4()" style="display:none" disabled>
+                        Raw Liver cps x2.25 (unlocks at goatises raw liver lvl 100) (cost: <span id="raw4Cost">5000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="landonSection" class="section">
+                <button class="section-toggle" id="landonToggle" onclick="toggleSection('landon')">The Landon Stream Specials ▾</button>
+                <div id="landonContent" class="section-content">
+                    <button id="landon1" onclick="buyLandon1()" style="display:none" disabled>
+                        The Landon Stream cps x1.5 (unlocks at The Landon Stream lvl 10) (cost: <span id="landon1Cost">50000000000000</span>)
+                    </button>
+                    <button id="landon2" onclick="buyLandon2()" style="display:none" disabled>
+                        The Landon Stream cps x2 (unlocks at The Landon Stream lvl 25) (cost: <span id="landon2Cost">200000000000000</span>)
+                    </button>
+                    <button id="landon3" onclick="buyLandon3()" style="display:none" disabled>
+                        The Landon Stream cps x2 (unlocks at The Landon Stream lvl 50) (cost: <span id="landon3Cost">1000000000000000</span>)
+                    </button>
+                    <button id="landon4" onclick="buyLandon4()" style="display:none" disabled>
+                        The Landon Stream cps x2.25 (unlocks at The Landon Stream lvl 100) (cost: <span id="landon4Cost">5000000000000000</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="theBassSection" class="section">
+                <button class="section-toggle" id="theBassToggle" onclick="toggleSection('theBass')">The Bass Specials ▾</button>
+                <div id="theBassContent" class="section-content">
+                    <button id="theBass1" onclick="buyTheBass1()" style="display:none" disabled>
+                        The Bass cps x1.5 (unlocks at The Bass lvl 10) (cost: <span id="theBass1Cost">A</span>)
+                    </button>
+                    <button id="theBass2" onclick="buyTheBass2()" style="display:none" disabled>
+                        The Bass cps x2 (unlocks at The Bass lvl 25) (cost: <span id="theBass2Cost">B</span>)
+                    </button>
+                    <button id="theBass3" onclick="buyTheBass3()" style="display:none" disabled>
+                        The Bass cps x2 (unlocks at The Bass lvl 50) (cost: <span id="theBass3Cost">C</span>)
+                    </button>
+                    <button id="theBass4" onclick="buyTheBass4()" style="display:none" disabled>
+                        The Bass cps x2.25 (unlocks at The Bass lvl 100) (cost: <span id="theBass4Cost">D</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="goodNoodlesSection" class="section">
+                <button class="section-toggle" id="goodNoodlesToggle" onclick="toggleSection('goodNoodles')">Good Noodles Specials ▾</button>
+                <div id="goodNoodlesContent" class="section-content">
+                    <button id="goodNoodles1" onclick="buyGoodNoodles1()" style="display:none" disabled>
+                        Good Noodles: X1.5 noodles cps (unlocks at Good Noodles lvl 10) (cost: <span id="goodNoodles1Cost">2,000Q</span>)
+                    </button>
+                    <button id="goodNoodles2" onclick="buyGoodNoodles2()" style="display:none" disabled>
+                        Good Noodles: x2 noodles cps (unlocks at Good Noodles lvl 25) (cost: <span id="goodNoodles2Cost">8,000Q</span>)
+                    </button>
+                    <button id="goodNoodles3" onclick="buyGoodNoodles3()" style="display:none" disabled>
+                        Good Noodles: x2.5 noodles cps (unlocks at Good Noodles lvl 50) (cost: <span id="goodNoodles3Cost">30,000Q</span>)
+                    </button>
+                    <button id="goodNoodles4" onclick="buyGoodNoodles4()" style="display:none" disabled>
+                        Good Noodles: x3 noodles cps (unlocks at Good Noodles lvl 100) (cost: <span id="goodNoodles4Cost">100,000Q</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="mobileMan38Section" class="section">
+                <button class="section-toggle" id="mobileMan38Toggle" onclick="toggleSection('mobileMan38')">Mobile Man 38 Specials ▾</button>
+                <div id="mobileMan38Content" class="section-content">
+                    <button id="mobileMan381" onclick="buyMobileMan381()" style="display:none" disabled>
+                        Mobile Man 38: X1.5 mobile cps (unlocks at Mobile Man 38 lvl 10) (cost: <span id="mobileMan381Cost">10,000Q</span>)
+                    </button>
+                    <button id="mobileMan382" onclick="buyMobileMan382()" style="display:none" disabled>
+                        Mobile Man 38: x2 mobile cps (unlocks at Mobile Man 38 lvl 25) (cost: <span id="mobileMan382Cost">40,000Q</span>)
+                    </button>
+                    <button id="mobileMan383" onclick="buyMobileMan383()" style="display:none" disabled>
+                        Mobile Man 38: x2.5 mobile cps (unlocks at Mobile Man 38 lvl 50) (cost: <span id="mobileMan383Cost">150,000Q</span>)
+                    </button>
+                    <button id="mobileMan384" onclick="buyMobileMan384()" style="display:none" disabled>
+                        Mobile Man 38: x3 mobile cps (unlocks at Mobile Man 38 lvl 100) (cost: <span id="mobileMan384Cost">600,000Q</span>)
+                    </button>
+                </div>
+            </div>
+
+            <div id="eastonSection" class="section">
+                <button class="section-toggle" id="eastonToggle" onclick="toggleSection('easton')">Easton Bundy Specials ▾</button>
+                <div id="eastonContent" class="section-content">
+                    <button id="eastonBundy1" onclick="buyEastonBundy1()" style="display:none" disabled>
+                        x1.5 CPS (unlocks at Easton Bundy lvl 10) (cost: <span id="eastonBundy1Cost">60,000Q</span>)
+                    </button>
+                    <button id="eastonBundy2" onclick="buyEastonBundy2()" style="display:none" disabled>
+                        x2 CPS (unlocks at Easton Bundy lvl 25) (cost: <span id="eastonBundy2Cost">240,000Q</span>)
+                    </button>
+                    <button id="eastonBundy3" onclick="buyEastonBundy3()" style="display:none" disabled>
+                        x2.5 CPS (unlocks at Easton Bundy lvl 50) (cost: <span id="eastonBundy3Cost">900,000Q</span>)
+                    </button>
+                    <button id="eastonBundy4" onclick="buyEastonBundy4()" style="display:none" disabled>
+                        x3 CPS (unlocks at Easton Bundy lvl 100) (cost: <span id="eastonBundy4Cost">3,600,000Q</span>)
+                    </button>
+                </div>
+            </div>
+
+        </div>
+        </div>
+    </div>
+            <!-- overlay used when settings modal is open -->
+            <div id="settingsOverlay" class="settings-overlay"></div>
+
+    <!-- Settings menu (separate) -->
+    <div id="settingsMenu" class="settings-menu">
+        <div class="settings-header">
+            <button id="settingsClose" onclick="toggleSettingsMenu()">Settings ▾</button>
+        </div>
+        <div id="settingsContent" class="settings-content">
+            <div class="setting-row">
+                <label for="imageSizeSlider">Main image Size: <span id="imageSizeValue">700</span>px</label>
+                <input type="range" id="imageSizeSlider" min="400" max="1400" step="50">
+            </div>
+            <div class="setting-row" style="margin-top:8px;">
+                <label for="musicVolumeSlider">Music: <span id="musicVolumeLabel">50%</span></label>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                    <button id="musicMuteBtn" style="padding:6px;border-radius:4px;">Mute</button>
+                    <input type="range" id="musicVolumeSlider" min="0" max="100" step="1" style="flex:1;">
+                </div>
+            </div>
+                    <div class="setting-row" style="margin-top:8px;">
+                        <label for="sfxVolumeSlider">SFX: <span id="sfxVolumeLabel">80%</span></label>
+                        <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                            <button id="sfxMuteBtn" onclick="toggleSfxMute()" style="padding:6px;border-radius:4px;">Mute SFX</button>
+                            <input type="range" id="sfxVolumeSlider" min="0" max="100" step="1" style="flex:1;">
+                        </div>
+                    </div>
+            <div class="setting-row" style="margin-top:8px;">
+                <label for="secretCodeInput">Codes</label>
+                <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+                    <input id="secretCodeInput" type="text" maxlength="64" placeholder="Enter code" style="flex:1;padding:6px;border-radius:4px;border:1px solid #ccc;">
+                    <button onclick="redeemSecretCode()" style="padding:6px 10px;border-radius:4px;background:#2a6; color:#fff;border:none;">Redeem</button>
+                </div>
+                <div id="secretCodeStatus" style="margin-top:6px;font-size:13px;color:#ffd;min-height:18px;"></div>
+            </div>
+            <div class="setting-row" style="margin-top:8px;">
+                <label for="titleSelect">Title</label>
+                <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
+                    <select id="titleSelect" style="flex:1;padding:6px;border-radius:4px;border:1px solid #ccc;" onchange="setEquippedTitle(this.value)"></select>
+                    <button onclick="setEquippedTitle(document.getElementById('titleSelect').value)" style="padding:6px 10px;border-radius:4px;background:#26a;color:#fff;border:none;">Equip</button>
+                </div>
+                <div id="titleHelp" style="margin-top:6px;font-size:13px;color:#bbb;min-height:18px;">Unlock titles via achievements.</div>
+            </div>
+            <button onclick="resetGame()">Reset Progress</button>
+            <button onclick="window.open('https://discord.gg/Puz4EmbdXS','_blank')" style="background:#5865F2;color:#fff;border:none;padding:8px 10px;border-radius:6px;margin-left:6px;">Join Our Discord</button>
+        </div>
+    </div>
+
+    <!-- Settings toggle (fixed top-right) -->
+    <button id="settingsToggle" class="settings-btn" onclick="toggleSettingsMenu()">Settings ⚙</button>
+    <!-- Chat & Clan quick buttons (moved to bottom-right, smaller) -->
+    <button id="chatToggle" class="settings-btn" style="position:fixed;right:18px;bottom:18px;z-index:1300;width:32px;height:32px;padding:2px;border-radius:8px;font-size:14px;display:flex;align-items:center;justify-content:center;" title="Open Global Chat">💬</button>
+    <button id="clanToggle" class="settings-btn" style="position:fixed;right:18px;bottom:54px;z-index:1300;width:32px;height:24px;padding:2px;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center;" title="Open Clans">Clan</button>
+    <!-- Shop toggle (fixed near settings) -->
+    <button id="shopToggle" class="settings-btn" onclick="toggleShopMenu()" style="position:fixed;top:10px;right:110px;z-index:1300;display:flex;align-items:center;gap:6px;">
+        <img src="mainimage/Shop.png" alt="Shop" height="20" width="20" style="display:inline-block;vertical-align:middle;">
+        Shop
+    </button>
+    <audio id="bgMusic" src="audio/mainTheme.mp3" loop preload="auto"></audio>
+    <audio id="sfxPlayer" preload="auto"></audio>
+
+    <script>
+    function positionLeftBarToggle(){ /* no-op: positioning handled by CSS */ }
+
+    function toggleLeftBar(){
+        // Toggle whichever left-bar is currently visible (divine or normal)
+        const left = document.getElementById('leftBar');
+        const divine = document.getElementById('divineLeftBar');
+        const overlay = document.getElementById('leftBarOverlay');
+        // choose the active element: prefer divine when it's visible
+        let el = left;
+        try {
+            if (divine && window.getComputedStyle(divine).display !== 'none') el = divine;
+        } catch (e) { el = left; }
+        if(!el || !overlay) return;
+        // mobile behavior: use 'open' + overlay
+        if(window.innerWidth <= 700){
+            const isOpen = el.classList.contains('open');
+            if(isOpen){ el.classList.remove('open'); overlay.classList.remove('active'); }
+            else { el.classList.add('open'); overlay.classList.add('active'); }
+            // mark body state (use same classes regardless of which menu is active)
+            if(el.classList.contains('open')){ document.body.classList.add('leftbar-open'); document.body.classList.remove('leftbar-closed'); }
+            else { document.body.classList.remove('leftbar-open'); document.body.classList.add('leftbar-closed'); }
+            return;
+        }
+        // desktop behavior: toggle collapsed state and adjust body class
+        const isCollapsed = el.classList.contains('collapsed');
+        if(isCollapsed){
+            el.classList.remove('collapsed');
+            document.body.classList.add('leftbar-open');
+            document.body.classList.remove('leftbar-closed');
+        } else {
+            el.classList.add('collapsed');
+            document.body.classList.remove('leftbar-open');
+            document.body.classList.add('leftbar-closed');
+        }
+        // if we toggled the divine bar, ensure the normal leftBar mirrors collapsed state so UI stays consistent
+        try {
+            if (el === divine && left) {
+                if (isCollapsed) left.classList.remove('collapsed'); else left.classList.add('collapsed');
+            }
+            if (el === left && divine) {
+                if (isCollapsed) divine.classList.remove('collapsed'); else divine.classList.add('collapsed');
+            }
+        } catch (e) {}
+        // CSS takes care of toggle placement now
+    }
+
+    function closeLeftBar(){
+        const el = document.getElementById('leftBar');
+        const overlay = document.getElementById('leftBarOverlay');
+        if(!el || !overlay) return;
+        el.classList.remove('open'); el.classList.remove('collapsed');
+        overlay.classList.remove('active'); document.body.classList.remove('leftbar-collapsed');
+        positionLeftBarToggle();
+    }
+
+    // keep state consistent on resize and position toggle
+    window.addEventListener('resize', function(){
+        // allow CSS to handle small-screen layout; reposition toggle after layout settles
+        setTimeout(positionLeftBarToggle, 60);
+    });
+    // run at load
+        window.addEventListener('load', function(){
+            // ensure body class reflects leftBar initial state so toggle sits correctly
+            var left = document.getElementById('leftBar');
+            if (left) {
+                if (left.classList.contains('collapsed')) {
+                    document.body.classList.remove('leftbar-open');
+                    document.body.classList.add('leftbar-closed');
+                } else {
+                    document.body.classList.remove('leftbar-closed');
+                    document.body.classList.add('leftbar-open');
+                }
+            }
+            positionLeftBarToggle();
+
+            // Close shop/settings when clicking their overlays or clicking outside the menus
+            try {
+                const shopOverlay = document.getElementById('shopOverlay');
+                const shopMenu = document.getElementById('shopMenu');
+                if (shopOverlay && shopMenu) {
+                    shopOverlay.addEventListener('click', function(e){
+                        if (shopMenu.classList.contains('open')) toggleShopMenu();
+                    });
+                }
+            } catch (e) {}
+            try {
+                const settingsOverlay = document.getElementById('settingsOverlay');
+                const settingsMenu = document.getElementById('settingsMenu');
+                if (settingsOverlay && settingsMenu) {
+                    settingsOverlay.addEventListener('click', function(e){
+                        if (settingsMenu.classList.contains('open')) toggleSettingsMenu();
+                    });
+                }
+            } catch (e) {}
+
+            // Fallback: click outside the menu (not on toggle/button) closes them
+            document.addEventListener('click', function(e){
+                try {
+                    const shopMenu = document.getElementById('shopMenu');
+                    const shopToggle = document.getElementById('shopToggle');
+                    if (shopMenu && shopMenu.classList.contains('open')) {
+                        if (!shopMenu.contains(e.target) && !shopToggle.contains(e.target)) toggleShopMenu();
+                    }
+                } catch (e) {}
+                try {
+                    const settingsMenu = document.getElementById('settingsMenu');
+                    const settingsToggle = document.getElementById('settingsToggle');
+                    if (settingsMenu && settingsMenu.classList.contains('open')) {
+                        if (!settingsMenu.contains(e.target) && !settingsToggle.contains(e.target)) toggleSettingsMenu();
+                    }
+                } catch (e) {}
+            }, { capture: true });
+        });
+    </script>
+
+    </body>
+    <!--firebase database-->
+    <script type="module">
+  // Import the functions you need from the SDKs you need
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteDoc, where } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+    // TODO: Add SDKs for Firebase products that you want to use
+    // https://firebase.google.com/docs/web/setup#available-libraries
+
+  // Your web app's Firebase configuration
+  // For Firebase JS SDK v7.20.0 and later, measurementId is optional
+  const firebaseConfig = {
+    apiKey: "AIzaSyDkrNV4bQgRHzGJ__9XqHzry7xbYuH8IuU",
+    authDomain: "whleaderboard.firebaseapp.com",
+    projectId: "whleaderboard",
+    storageBucket: "whleaderboard.firebasestorage.app",
+    messagingSenderId: "602999414155",
+    appId: "1:602999414155:web:541f51b97db8358be4638e",
+    measurementId: "G-C2FWNR7288"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+    // Firestore instance used for leaderboard submissions from the game
+    try {
+        const db = getFirestore(app);
+        // Ensure player has a local username for chat/clan participation
+        function ensureUsername(){
+            try{
+                let u = localStorage.getItem('player_username') || '';
+                u = (u || '').trim().slice(0,32);
+                if (!u) {
+                    u = (prompt('Choose a username (max 32 chars) to use for global chat and clans:', '')||'').trim().slice(0,32);
+                    if (!u) return null;
+                    localStorage.setItem('player_username', u);
+                }
+                return u;
+            }catch(e){return null}
+        }
+
+        // small helper to escape HTML for chat display
+        function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
+
+        // Golden currency helpers: read/update safely from Decimal or localStorage
+        function getGoldenCountNumber(){
+            try{
+                if (typeof goldenWhat !== 'undefined'){
+                    if (goldenWhat && typeof goldenWhat.toNumber === 'function') return Number(goldenWhat.toNumber());
+                    return Number(goldenWhat||0);
+                }
+            }catch(e){}
+            try{
+                const el = document.getElementById('goldenCount');
+                if (el && el.textContent) {
+                    const n = Number(String(el.textContent).replace(/[^0-9.-]/g,'')); if (!Number.isFinite(n)) return 0; return n;
+                }
+            }catch(e){}
+            try{ return Number(localStorage.getItem('whathappened_golden')||0); }catch(e){return 0}
+        }
+
+        function setGoldenCountNumber(n){
+            try{
+                const num = Number(n)||0;
+                if (typeof goldenWhat !== 'undefined'){
+                    try{ if (goldenWhat && typeof goldenWhat.plus === 'function') goldenWhat = goldenWhat.plus ? goldenWhat.plus(num) : num; else goldenWhat = num; }catch(e){ goldenWhat = num; }
+                }
+                try{ localStorage.setItem('whathappened_golden', String(num)); }catch(e){}
+                try{ const el = document.getElementById('goldenCount'); if(el) el.textContent = String(num); }catch(e){}
+            }catch(e){}
+        }
+
+        // Quick chat panel (in-page)
+        let chatPanel = null;
+        let globalChatQuickUnsub = null;
+        function stopGlobalQuickListener(){ try{ if(globalChatQuickUnsub){ globalChatQuickUnsub(); globalChatQuickUnsub = null; } }catch(e){} }
+        function startGlobalQuickListener(){
+            try{
+                stopGlobalQuickListener();
+                const messagesEl = document.getElementById('chatMessages');
+                if(!messagesEl) return;
+                const col = collection(db,'global_chat');
+                const q = query(col, orderBy('createdAt','asc'), limit(100));
+                globalChatQuickUnsub = onSnapshot(q, snap => {
+                    try {
+                        const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
+                        const prevScrollTop = messagesEl.scrollTop;
+                        messagesEl.innerHTML = '';
+                        let lastData = null;
+                        snap.forEach(docSnap => {
+                            const d = docSnap.data(); lastData = d;
+                            const name = escapeHtml(String(d.name||'Anon'));
+                            const msg = escapeHtml(String(d.message||''));
+                            const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                            const row = document.createElement('div'); row.style.padding='4px 0';
+                            row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                            messagesEl.appendChild(row);
+                        });
+                        if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                        else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                        else messagesEl.scrollTop = Math.min(prevScrollTop, Math.max(0, messagesEl.scrollHeight - messagesEl.clientHeight));
+                    } catch (e) { console.warn('global quick onSnapshot render failed', e); }
+                }, err=>{ console.warn('global quick onSnapshot', err); });
+            }catch(e){ console.warn('startGlobalQuickListener failed', e); }
+        }
+
+        async function openChatPanel(){
+            if (!chatPanel){
+                chatPanel = document.createElement('div');
+                chatPanel.id = 'quickChatPanel';
+                chatPanel.style.position = 'fixed';
+                chatPanel.style.right = '12px';
+                chatPanel.style.bottom = '12px';
+                chatPanel.style.width = '360px';
+                chatPanel.style.maxHeight = '420px';
+                chatPanel.style.background = '#101218';
+                chatPanel.style.border = '1px solid #222';
+                chatPanel.style.borderRadius = '8px';
+                chatPanel.style.padding = '8px';
+                chatPanel.style.zIndex = 2000;
+                chatPanel.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong style="color:#9cf">Global Chat</strong><button id="closeChatQuick" style="background:transparent;border:none;color:#ddd">✕</button></div>
+                    <div id="chatMessages" style="height:300px;overflow:auto;background:#0c0c0f;padding:8px;border-radius:6px;border:1px solid #111;color:#ddd;font-size:13px"></div>
+                    <div style="display:flex;gap:6px;margin-top:8px;"><input id="chatInput" placeholder="Type message..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #333;background:#08080a;color:#fff"><button id="chatSendBtn" style="padding:8px;border-radius:6px;background:#2a6;color:#fff;border:none">Send</button></div>
+                `;
+                document.body.appendChild(chatPanel);
+                document.getElementById('closeChatQuick').addEventListener('click', ()=>{ chatPanel.style.display='none'; stopGlobalQuickListener(); });
+                document.getElementById('chatSendBtn').addEventListener('click', sendChatMessage);
+                document.getElementById('chatInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sendChatMessage(); });
+            }
+            chatPanel.style.display = 'block';
+            startGlobalQuickListener();
+        }
+
+        async function loadChatMessages(){
+            try{
+                const messagesEl = document.getElementById('chatMessages');
+                if (!messagesEl) return;
+                const col = collection(db,'global_chat');
+                const q = query(col, orderBy('createdAt','asc'), limit(200));
+                const snap = await getDocs(q);
+                try {
+                    const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
+                    const prevScrollTop = messagesEl.scrollTop;
+                    messagesEl.innerHTML = '';
+                    let lastData = null;
+                    snap.forEach(doc => {
+                        const d = doc.data(); lastData = d;
+                        const name = escapeHtml(String(d.name||'Anon'));
+                        const msg = escapeHtml(String(d.message||''));
+                        const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                        const row = document.createElement('div');
+                        row.style.padding='4px 0';
+                        row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        messagesEl.appendChild(row);
+                    });
+                    if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else messagesEl.scrollTop = Math.min(prevScrollTop, Math.max(0, messagesEl.scrollHeight - messagesEl.clientHeight));
+                } catch (e) { console.warn('loadChatMessages render failed', e); }
+            }catch(e){ console.warn('loadChatMessages failed', e); }
+        }
+
+        async function sendChatMessage(){
+            try{
+                const username = ensureUsername();
+                if (!username) { alert('You must choose a username to chat.'); return; }
+                const input = document.getElementById('chatInput');
+                if (!input) return;
+                const txt = (input.value||'').trim();
+                if (!txt) return;
+                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                input.value = '';
+                try{ await trimCollection('global_chat', 100); }catch(e){}
+                // ensure sender sees latest immediately
+                try { const messagesEl = document.getElementById('chatMessages'); if (messagesEl) messagesEl.scrollTop = messagesEl.scrollHeight; } catch (e) {}
+                await loadChatMessages();
+            }catch(e){ console.error('sendChatMessage failed', e); alert('Send failed'); }
+        }
+
+        // Unified sliding side panel (tabs: global chat, clan chat)
+        let sidePanel = null;
+        function createSidePanel(){
+            if (sidePanel) return sidePanel;
+            sidePanel = document.createElement('div');
+            sidePanel.id = 'sidePanel';
+            Object.assign(sidePanel.style, {
+                position: 'fixed', right: '0', top: '0', height: '100%', width: '380px', maxWidth: '95vw', background: '#0f1114', boxShadow: '-12px 0 30px rgba(0,0,0,0.6)', transform: 'translateX(100%)', transition: 'transform 260ms ease', zIndex: 1400, padding: '12px', overflow: 'hidden'
+            });
+            sidePanel.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <button id="sideTabGlobal" style="padding:6px 10px;border-radius:6px;border:1px solid #333;background:#164;color:#fff">Global</button>
+                        <button id="sideTabClan" style="padding:6px 10px;border-radius:6px;border:1px solid #333;background:transparent;color:#ddd">Clan</button>
+                    </div>
+                    <div><button id="sidePanelClose" style="background:transparent;border:none;color:#ddd;font-size:18px">✕</button></div>
+                </div>
+                <div id="sidePanelBody" style="height:calc(100% - 64px);overflow:auto;padding-right:6px">
+                    <div id="sideGlobalArea" style="display:none">
+                        <div id="sideGlobalMessages" style="height:60vh;overflow:auto;background:#0c0c0f;padding:8px;border-radius:6px;border:1px solid #111;color:#ddd;font-size:13px"></div>
+                        <div style="display:flex;gap:6px;margin-top:8px"><input id="sideGlobalInput" placeholder="Type message..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #333;background:#08080a;color:#fff"><button id="sideGlobalSend" style="padding:8px;border-radius:6px;background:#2a6;color:#fff;border:none">Send</button></div>
+                    </div>
+                    <div id="sideClanArea" style="display:none">
+                        <div id="sideClanMessages" style="height:50vh;overflow:auto;background:#0c0c0f;padding:8px;border-radius:6px;border:1px solid #111;color:#ddd;font-size:13px"></div>
+                        <div style="display:flex;gap:6px;margin-top:8px"><input id="sideClanInput" placeholder="Clan message..." style="flex:1;padding:8px;border-radius:6px;border:1px solid #333;background:#08080a;color:#fff"><button id="sideClanSend" style="padding:8px;border-radius:6px;background:#2a6;color:#fff;border:none">Send</button></div>
+                        <div id="sideClanInfo" style="margin-top:8px;color:#bbb;font-size:13px"></div>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(sidePanel);
+            document.getElementById('sidePanelClose').addEventListener('click', closeSidePanel);
+            document.getElementById('sideTabGlobal').addEventListener('click', ()=>setSideTab('global'));
+            document.getElementById('sideTabClan').addEventListener('click', ()=>setSideTab('clan'));
+            document.getElementById('sideGlobalSend').addEventListener('click', async ()=>{ await sideSendGlobal(); });
+            document.getElementById('sideGlobalInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sideSendGlobal(); });
+            document.getElementById('sideClanSend').addEventListener('click', async ()=>{ await sideSendClan(); });
+            document.getElementById('sideClanInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sideSendClan(); });
+            return sidePanel;
+        }
+
+        function openSidePanel(tab='global'){
+            try{
+                ensureUsername();
+                const sp = createSidePanel();
+                requestAnimationFrame(()=>{ sp.style.transform = 'translateX(0)'; });
+                setSideTab(tab);
+            }catch(e){console.warn(e)}
+        }
+
+        function closeSidePanel(){ if(!sidePanel) return; sidePanel.style.transform = 'translateX(100%)'; stopGlobalListener(); stopClanListener(); }
+
+        async function setSideTab(tab){
+            createSidePanel();
+            const g = document.getElementById('sideGlobalArea');
+            const c = document.getElementById('sideClanArea');
+            document.getElementById('sideTabGlobal').style.background = tab==='global' ? '#164' : 'transparent';
+            document.getElementById('sideTabGlobal').style.color = tab==='global' ? '#fff' : '#ddd';
+            document.getElementById('sideTabClan').style.background = tab==='clan' ? '#164' : 'transparent';
+            document.getElementById('sideTabClan').style.color = tab==='clan' ? '#fff' : '#ddd';
+            if(tab==='global'){ g.style.display='block'; c.style.display='none'; startGlobalListener('sideGlobalMessages'); stopClanListener(); }
+            else { g.style.display='none'; c.style.display='block'; stopGlobalListener(); startClanListener('sideClanMessages'); }
+        }
+
+        async function loadGlobalInto(containerId){
+            try{
+                const messagesEl = document.getElementById(containerId);
+                if (!messagesEl) return;
+                const col = collection(db,'global_chat');
+                const q = query(col, orderBy('createdAt','asc'), limit(200));
+                const snap = await getDocs(q);
+                try {
+                    const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && messagesEl.offsetParent !== null && messagesEl.clientHeight > 0);
+                    const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
+                    const prevScrollTop = messagesEl.scrollTop;
+                    messagesEl.innerHTML = '';
+                    let lastData = null;
+                    snap.forEach(doc => {
+                        const d = doc.data(); lastData = d;
+                        const name = escapeHtml(String(d.name||'Anon'));
+                        const msg = escapeHtml(String(d.message||''));
+                        const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                        const row = document.createElement('div'); row.style.padding='4px 0';
+                        row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        messagesEl.appendChild(row);
+                    });
+                    if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else messagesEl.scrollTop = Math.min(prevScrollTop, Math.max(0, messagesEl.scrollHeight - messagesEl.clientHeight));
+                } catch (e) { console.warn('loadGlobalInto render failed', e); }
+            }catch(e){ console.warn('loadGlobalInto failed', e); }
+        }
+
+        // Live listeners and trimming helpers
+        let globalChatUnsub = null;
+        let clanChatUnsub = null;
+
+        function stopGlobalListener(){ try{ if(globalChatUnsub){ globalChatUnsub(); globalChatUnsub = null; } }catch(e){}
+        }
+        function stopClanListener(){ try{ if(clanChatUnsub){ clanChatUnsub(); clanChatUnsub = null; } }catch(e){}
+        }
+
+        function startGlobalListener(containerId){
+            try{
+                stopGlobalListener();
+                const messagesEl = document.getElementById(containerId);
+                if(!messagesEl) return;
+                const col = collection(db,'global_chat');
+                const q = query(col, orderBy('createdAt','asc'), limit(100));
+                globalChatUnsub = onSnapshot(q, snap => {
+                    try {
+                        const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && messagesEl.offsetParent !== null && messagesEl.clientHeight > 0);
+                        const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
+                        const prevScrollTop = messagesEl.scrollTop;
+                        messagesEl.innerHTML = '';
+                        let lastData = null;
+                        snap.forEach(docSnap => {
+                            const d = docSnap.data(); lastData = d;
+                            const name = escapeHtml(String(d.name||'Anon'));
+                            const msg = escapeHtml(String(d.message||''));
+                            const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                            const row = document.createElement('div'); row.style.padding='4px 0';
+                            row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                            messagesEl.appendChild(row);
+                        });
+                        if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
+                        else if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                        else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                        else messagesEl.scrollTop = Math.min(prevScrollTop, Math.max(0, messagesEl.scrollHeight - messagesEl.clientHeight));
+                    } catch (e) { console.warn('global onSnapshot render failed', e); }
+                }, err => { console.warn('global onSnapshot error', err); });
+            }catch(e){ console.warn('startGlobalListener failed', e); }
+        }
+
+        function startClanListener(containerId){
+            try{
+                stopClanListener();
+                const messagesEl = document.getElementById(containerId);
+                if(!messagesEl) return;
+                const clanId = localStorage.getItem('player_clanId') || null;
+                if(!clanId){ messagesEl.innerHTML = '<div class="muted">You are not in a clan.</div>'; document.getElementById('sideClanInfo').textContent=''; return; }
+                document.getElementById('sideClanInfo').textContent = 'Clan ID: ' + clanId;
+                                const col = collection(db,'clan_chat');
+                                const q = query(col, where('clanId','==',clanId), limit(200));
+                                clanChatUnsub = onSnapshot(q, snap => {
+                                        try{
+                                            const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && messagesEl.offsetParent !== null && messagesEl.clientHeight > 0);
+                                            const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
+                                            const prevScrollTop = messagesEl.scrollTop;
+                                            messagesEl.innerHTML = '';
+                                            const msgs = [];
+                                            snap.forEach(docSnap => msgs.push(docSnap.data()));
+                                            msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
+                                            msgs.forEach(d => {
+                                                const name = escapeHtml(String(d.name||'Anon'));
+                                                const msg = escapeHtml(String(d.message||''));
+                                                const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                                                const row = document.createElement('div'); row.style.padding='4px 0';
+                                                row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                                                messagesEl.appendChild(row);
+                                            });
+                                            const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+                                            if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
+                                            else if (lastMsg && lastMsg.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                                            else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                                            else messagesEl.scrollTop = Math.min(prevScrollTop, Math.max(0, messagesEl.scrollHeight - messagesEl.clientHeight));
+                                        }catch(e){ console.warn('clan snapshot render failed', e); }
+                                }, err=>{ console.warn('clan onSnapshot error', err); });
+            }catch(e){ console.warn('startClanListener failed', e); }
+        }
+
+        async function trimCollection(collectionName, maxMessages){
+            try{
+                const colRef = collection(db, collectionName);
+                const qAll = query(colRef, orderBy('createdAt','asc'));
+                const snap = await getDocs(qAll);
+                if (!snap || snap.size <= maxMessages) return;
+                const toDelete = snap.size - maxMessages;
+                let i = 0; const ops = [];
+                snap.forEach(docSnap => { if(i < toDelete){ ops.push(deleteDoc(doc(db, collectionName, docSnap.id))); } i++; });
+                if(ops.length) await Promise.all(ops);
+            }catch(e){ console.warn('trimCollection failed', e); }
+        }
+
+        async function trimClanMessages(clanId, maxMessages){
+            try{
+                if(!clanId) return;
+                const colRef = collection(db, 'clan_chat');
+                const qAll = query(colRef, where('clanId','==',clanId), orderBy('createdAt','asc'));
+                const snap = await getDocs(qAll);
+                if (!snap || snap.size <= maxMessages) return;
+                const toDelete = snap.size - maxMessages;
+                let i = 0; const ops = [];
+                snap.forEach(docSnap => { if(i < toDelete){ ops.push(deleteDoc(doc(db, 'clan_chat', docSnap.id))); } i++; });
+                if(ops.length) await Promise.all(ops);
+            }catch(e){ console.warn('trimClanMessages failed', e); }
+        }
+
+        async function sideSendGlobal(){
+            try{
+                const username = ensureUsername(); if(!username) { alert('Set username'); return; }
+                const input = document.getElementById('sideGlobalInput'); const txt = (input.value||'').trim(); if(!txt) return;
+                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                input.value = '';
+                try{ await trimCollection('global_chat', 100); }catch(e){}
+                // live listener will update; ensure immediate refresh as fallback
+                try { const m = document.getElementById('sideGlobalMessages'); if (m) m.scrollTop = m.scrollHeight; } catch (e) {}
+                try { if (!globalChatUnsub) await loadGlobalInto('sideGlobalMessages'); } catch (e) {}
+            }catch(e){ console.warn(e); alert('Send failed'); }
+        }
+
+        async function loadClanInto(containerId){
+            try{
+                const messagesEl = document.getElementById(containerId);
+                if (!messagesEl) return;
+                const clanId = localStorage.getItem('player_clanId') || null;
+                if(!clanId){ messagesEl.innerHTML = '<div class="muted">You are not in a clan.</div>'; document.getElementById('sideClanInfo').textContent=''; return; }
+                // show info
+                document.getElementById('sideClanInfo').textContent = 'Clan ID: ' + clanId;
+                const col = collection(db,'clan_chat');
+                const q = query(col, where('clanId','==',clanId), limit(200));
+                const snap = await getDocs(q);
+                    try {
+                    const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && messagesEl.offsetParent !== null && messagesEl.clientHeight > 0);
+                    const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
+                    const prevScrollTop = messagesEl.scrollTop;
+                    messagesEl.innerHTML = '';
+                    const msgs = [];
+                    snap.forEach(doc => msgs.push(doc.data()));
+                    msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
+                    msgs.forEach(d => {
+                        const name = escapeHtml(String(d.name||'Anon'));
+                        const msg = escapeHtml(String(d.message||''));
+                        const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                        const row = document.createElement('div'); row.style.padding='4px 0';
+                        row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        messagesEl.appendChild(row);
+                    });
+                    const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+                    if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else if (lastMsg && lastMsg.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+                    else messagesEl.scrollTop = Math.min(prevScrollTop, Math.max(0, messagesEl.scrollHeight - messagesEl.clientHeight));
+                } catch (e) { console.warn('loadClanInto render failed', e); }
+            }catch(e){ console.warn('loadClanInto failed', e); }
+        }
+
+        async function sideSendClan(){
+            try{
+                const username = ensureUsername(); if(!username) { alert('Set username'); return; }
+                const clanId = localStorage.getItem('player_clanId') || null; if(!clanId){ alert('You are not in a clan'); return; }
+                const input = document.getElementById('sideClanInput'); const txt = (input.value||'').trim(); if(!txt) return;
+                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                input.value = '';
+                try{ await trimClanMessages(clanId, 100); }catch(e){}
+                try { const m = document.getElementById('sideClanMessages'); if (m) m.scrollTop = m.scrollHeight; } catch (e) {}
+                try { if (!clanChatUnsub) await loadClanInto('sideClanMessages'); } catch (e) {}
+            }catch(e){ console.warn(e); alert('Send failed'); }
+        }
+
+        // Developer code support: grant golden via secret code
+        const DEV_GOLD_CODE = 'GIVEGOLD1000-2026';
+        window.applyDevCode = function(code){
+            try{
+                if(String(code).trim() !== DEV_GOLD_CODE) return false;
+                const amount = 1000;
+                try{
+                    if (typeof goldenWhat !== 'undefined'){
+                        try{
+                            if (goldenWhat && typeof goldenWhat.plus === 'function'){
+                                goldenWhat = goldenWhat.plus ? goldenWhat.plus(amount) : (Number(goldenWhat||0) + amount);
+                            } else {
+                                goldenWhat = Number(goldenWhat||0) + amount;
+                            }
+                        }catch(e){ goldenWhat = Number(goldenWhat||0) + amount; }
+                        const el = document.getElementById('goldenCount'); if(el) el.textContent = String(goldenWhat);
+                    } else {
+                        const cur = Number(localStorage.getItem('whathappened_golden')||0);
+                        localStorage.setItem('whathappened_golden', String(cur + amount));
+                        const el = document.getElementById('goldenCount'); if(el) el.textContent = String(cur + amount);
+                    }
+                    try{ if (typeof saveGame === 'function') saveGame(); }catch(e){}
+                }catch(e){ console.warn('grant failed', e); }
+                return true;
+            }catch(e){return false}
+        };
+        // Keyboard shortcut to enter code (Ctrl+Alt+G)
+        window.addEventListener('keydown', (e)=>{
+            try{
+                if (e.ctrlKey && e.altKey && (e.key === 'g' || e.key === 'G')){
+                    const c = prompt('Enter dev code:',''); if(!c) return; const ok = window.applyDevCode(c); if(ok) alert('Granted 1000 Golden What Happeneds'); else alert('Invalid code');
+                }
+            }catch(er){}
+        });
+
+        // open side panel with Global Chat tab
+        document.getElementById('chatToggle').addEventListener('click', ()=>{ ensureUsername(); openSidePanel('global'); });
+
+        // Quick clan preview panel (small list + link to full page)
+        let clanPanel = null;
+        function openClanPanel(){
+            try{
+                if (!clanPanel){
+                    clanPanel = document.createElement('div');
+                    clanPanel.id = 'quickClanPanel';
+                    clanPanel.style.position='fixed'; clanPanel.style.right='12px'; clanPanel.style.bottom='460px'; clanPanel.style.width='320px'; clanPanel.style.background='#101218'; clanPanel.style.border='1px solid #222'; clanPanel.style.borderRadius='8px'; clanPanel.style.padding='8px'; clanPanel.style.zIndex=2000;
+                    clanPanel.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;"><strong style="color:#9cf">Clans</strong><button id="closeClanQuick" style="background:transparent;border:none;color:#ddd">✕</button></div>
+                                        <div id="clanQuickList" style="max-height:160px;overflow:auto;background:#0c0c0f;padding:6px;border-radius:6px;border:1px solid #111;color:#ddd;font-size:13px"></div>
+                                                <div style="margin-top:8px;display:flex;gap:6px;">
+                                                    <input id="createClanName" placeholder="New clan name" style="flex:1;padding:8px;border-radius:6px;border:1px solid #333;background:#08080a;color:#fff">
+                                                    <button id="createClanBtn" style="padding:8px;border-radius:6px;background:#f49a1a;color:#fff;border:none">Create</button>
+                                                </div>
+                                                <div style="display:flex;gap:6px;margin-top:8px;"><button id="openClansPage" style="padding:8px;border-radius:6px;background:#2a6;color:#fff;border:none;flex:1">Open Clans Page</button></div>`;
+                    document.body.appendChild(clanPanel);
+                    document.getElementById('closeClanQuick').addEventListener('click', ()=>{ clanPanel.style.display='none'; });
+                    document.getElementById('openClansPage').addEventListener('click', ()=>{ window.location.href='clan.html'; });
+                        document.getElementById('createClanBtn').addEventListener('click', createClanFromQuick);
+                }
+                clanPanel.style.display='block';
+                refreshClanQuickList();
+            }catch(e){console.warn(e)}
+        }
+
+            async function createClanFromQuick(){
+                try{
+                    const username = ensureUsername(); if(!username) { alert('You must set a username.'); return; }
+                    // require at least 1 prestige
+                    const p = Number(localStorage.getItem('whathappened_prestige_times') || prestigeTimes || 0) || 0;
+                    if (p < 1) { alert('Clans unlock after you prestige once.'); return; }
+                    // check golden cost 10
+                    const have = getGoldenCountNumber();
+                    if (Number(have) < 10) { alert('You need 10 Golden What Happeneds to start a clan.'); return; }
+                    const nameInp = document.getElementById('createClanName');
+                    if (!nameInp) return; const cname = (nameInp.value||'').trim().slice(0,64);
+                    if (!cname) { alert('Enter a clan name.'); return; }
+                    if(!confirm(`Create clan "${cname}" for 10 Golden What Happend?`)) return;
+                    // deduct golden locally (best-effort; main.js save will persist)
+                    try{
+                        const newVal = Math.max(0, getGoldenCountNumber() - 10);
+                        setGoldenCountNumber(newVal);
+                    }catch(e){}
+                    // create clan doc
+                    const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], createdAt: serverTimestamp(), maxMembers: 30 });
+                    localStorage.setItem('player_clanId', docRef.id);
+                    // update profile with clanId
+                    try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname }, { merge: true }); }catch(e){}
+                    alert('Clan created.');
+                    nameInp.value = '';
+                    refreshClanQuickList();
+                }catch(e){ console.error('createClanFromQuick failed', e); alert('Create failed'); }
+            }
+
+        async function refreshClanQuickList(){
+            try{
+                const listEl = document.getElementById('clanQuickList');
+                if (!listEl) return;
+                listEl.innerHTML = '';
+                const col = collection(db,'clans');
+                const q = query(col, orderBy('createdAt','desc'), limit(10));
+                const snap = await getDocs(q);
+                snap.forEach(doc => {
+                    const d = doc.data();
+                    const name = escapeHtml(String(d.name||'Unnamed'));
+                    const members = Array.isArray(d.members) ? d.members.length : 0;
+                    const el = document.createElement('div');
+                    el.style.padding='6px 0';
+                    el.innerHTML = `<div style="display:flex;justify-content:space-between"><strong style="color:#9cf">${name}</strong><span style="color:#ddd">${members} members</span></div>`;
+                    listEl.appendChild(el);
+                });
+            }catch(e){ console.warn('refreshClanQuickList failed', e); }
+        }
+
+        document.getElementById('clanToggle').addEventListener('click', ()=>{ if (!ensureUsername()) { alert('You must choose a username to use clans.'); return; } window.location.href = 'clan.html'; });
+
+        // Periodically write/update this player's profile document (hourly)
+        async function writeProfile(){
+            try{
+                const username = localStorage.getItem('player_username') || '';
+                if (!username) return;
+                const title = (localStorage.getItem('equipped_title')||'').slice(0,64);
+                let score = 0;
+                try { if (typeof count !== 'undefined') score = (count && typeof count.toNumber === 'function') ? count.toNumber() : Number(count||0); } catch(e){ score = 0; }
+                const golden = (typeof goldenWhat !== 'undefined') ? (goldenWhat && typeof goldenWhat.toNumber === 'function' ? goldenWhat.toNumber() : Number(goldenWhat||0)) : 0;
+                await setDoc(doc(db,'profiles',username), { username, title, score, golden, updatedAt: serverTimestamp(), clanId: (localStorage.getItem('player_clanId')||null) }, { merge: true });
+            }catch(e){ console.warn('writeProfile failed', e); }
+        }
+        // write immediately and then hourly
+        writeProfile().catch(()=>{});
+        setInterval(()=>{ writeProfile().catch(()=>{}); }, 60*60*1000);
+        // expose a helper on window to submit the current game 'normal' score (count) to the leaderboard
+        window.submitLeaderboardFromGame = async function() {
+            try {
+                const name = (prompt('Enter name for leaderboard (max 32):', '') || '').trim().slice(0,32);
+                if (!name) { alert('Submission cancelled — name required.'); return; }
+                let score = 0;
+                try {
+                    // try direct identifier first (covers top-level `let count`), then window.count
+                    let ct;
+                    try { ct = (typeof count !== 'undefined') ? count : undefined; } catch (e) { ct = undefined; }
+                    if (typeof ct === 'undefined') {
+                        try { ct = (typeof window !== 'undefined' ? window.count : undefined); } catch (e) { ct = undefined; }
+                    }
+                    // convert Decimal-like objects safely
+                    if (typeof ct === 'number') score = ct;
+                    else if (ct && typeof ct.toNumber === 'function') score = ct.toNumber();
+                    else score = Number(ct || 0);
+                } catch (e) { score = 0; }
+                if (!Number.isFinite(score) || score < 0) score = 0;
+                // include equipped title at submission time (if any)
+                let title = '';
+                try { title = (localStorage.getItem('equipped_title') || '').trim().slice(0,64); } catch (e) { title = ''; }
+                                // Submit to both all-time and monthly leaderboards. Monthly viewing is filtered by timestamp on the client.
+                                await Promise.all([
+                                    addDoc(collection(db,'leaderboard'), { name, title, score, type: 'alltime', createdAt: serverTimestamp() }),
+                                    addDoc(collection(db,'leaderboard'), { name, title, score, type: 'monthly', createdAt: serverTimestamp() })
+                                ]);
+                alert('Submitted to leaderboard.');
+            } catch (e) {
+                console.error('Leaderboard submit failed', e);
+                alert('Submit failed — see console for details.');
+            }
+        };
+        // wire the button if present
+        try {
+            const btn = document.getElementById('submitLeaderboardBtn');
+            if (btn) btn.addEventListener('click', ()=>{ window.submitLeaderboardFromGame(); });
+        } catch (e) {}
+    } catch (e) { console.warn('Firestore not available', e); }
+</script>
+    <!-- Break_Infinity: try this big-number library first (falls back to decimal.js if unavailable) -->
+    <!-- Temporarily disabled external CDN to diagnose cross-origin Script error -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/break_infinity.js" crossorigin="anonymous"></script> -->
+        <script>
+        // Loading overlay shape motion: randomly move/rotate non-square shapes
+        (function(){
+            function rand(min,max){ return Math.random() * (max - min) + min; }
+            function animateShapes(){
+                try{
+                    document.querySelectorAll('#loadingOverlay .shape:not(.square)').forEach(el=>{
+                        const x = Math.round(rand(-100,100));
+                        const y = Math.round(rand(-40,40));
+                        const r = Math.round(rand(-180,180));
+                        const dur = Math.round(rand(500,1100));
+                        el.style.transition = 'transform ' + dur + 'ms cubic-bezier(.19,1,.22,1)';
+                        el.style.transform = 'translate(' + x + 'px,' + y + 'px) rotate(' + r + 'deg)';
+                    });
+                }catch(e){}
+            }
+            // start periodic random movement while overlay visible
+            const shapeInterval = setInterval(()=>{
+                animateShapes();
+                // stop trying if overlay removed
+                if (!document.getElementById('loadingOverlay') || document.getElementById('loadingOverlay').style.display === 'none') {
+                    clearInterval(shapeInterval);
+                }
+            }, 520);
+            // initial kick
+            requestAnimationFrame(animateShapes);
+        })();
+        </script>
+
+        <script src="main.js"></script>
+
+        <script>
+        // initialize bulk button active state from localStorage (safe fallback)
+        (function(){
+            try{
+                const bv = Number(localStorage.getItem('whathappened_bulk') || 1);
+                const btns = document.querySelectorAll('.bulk-btn');
+                btns.forEach(b=>{ try{ b.classList.toggle('active', Number(b.dataset.value) === bv); }catch(e){} });
+            }catch(e){}
+        })();
+        </script>
+
+    <script>
+    // Buff panel: shows active casino buffs and provides a test button for the mystery buff
+    (function(){
+        const SAVE_KEY = 'whathappened_save';
+        const SAVE_KEY_LEGACY = 'whathappened_save_v1';
+
+        function readSave(){
+            try{
+                let raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY);
+                if(!raw) return null;
+                return JSON.parse(raw);
+            }catch(e){return null;}
+        }
+
+        function formatRemaining(ts){
+            if(!ts) return '';
+            const sec = Math.max(0, Math.floor((ts - Date.now())/1000));
+            const m = Math.floor(sec/60); const s = sec % 60;
+            return `${m}m ${s}s`;
+        }
+
+        function refreshBuffPanel(){
+            try{
+                const list = document.getElementById('buffList'); if(!list) return;
+                const panel = document.getElementById('buffPanel');
+                const s = readSave();
+                const lines = [];
+                // prefer runtime flags when present
+                if(window.casinoCritExpires && window.casinoCritExpires > Date.now()){
+                    const bonus = window.casinoCritBonus? Math.round(window.casinoCritBonus*100) : 15;
+                    lines.push(`Crit +${bonus}% — ${formatRemaining(window.casinoCritExpires)}`);
+                }
+                if(s && s.casinoSpin && s.casinoSpin.buff && s.casinoSpin.buff.expiresAt && s.casinoSpin.buff.expiresAt > Date.now()){
+                    const b = s.casinoSpin.buff;
+                    const label = (b.type === 'crit') ? `Crit +${Math.round((b.value||0.15)*100)}%` : (b.type === 'clickBoost') ? `Click x${b.mult}` : (b.type === 'cpsBoost') ? `CPS x${b.mult}` : (b.type === 'mystery') ? '???' : 'Buff';
+                    lines.push(`${label} — ${formatRemaining(b.expiresAt)}`);
+                    // If saved buff is a mystery buff, ensure the local mystery effect is active and synced
+                    try{
+                        if(b.type === 'mystery'){
+                            const remainingMs = Math.max(0, Number(b.expiresAt) - Date.now());
+                            if(remainingMs > 500 && !(window._gambaMystery && window._gambaMystery.active)){
+                                try{ applyMysteryLocal(Math.ceil(remainingMs/60000)); }catch(e){}
+                            }
+                        }
+                    }catch(e){}
+                }
+                if(window._gambaMystery && window._gambaMystery.active){
+                    lines.push(`MYSTERY — active`);
+                }
+                if(lines.length === 0) { list.innerText = 'No active buffs'; if(panel) panel.style.display = 'none'; } else { list.innerHTML = lines.map(l => `<div>${l}</div>`).join(''); if(panel) panel.style.display = 'block'; }
+            }catch(e){}
+        }
+
+        // test/mystery local implementation (improved: random CPS ±30%, clickPower ±50%, words display, glitch images)
+        function applyMysteryLocal(durationMin){
+            try{
+                if(window._gambaMystery && window._gambaMystery.active) return;
+                const dur = (durationMin||1) * 60 * 1000;
+                const endAt = Date.now() + dur;
+                window._gambaMystery = { active:true, timers:[] };
+
+                // inject enhanced glitch CSS once
+                const styleId = 'gamba-mystery-style';
+                if(!document.getElementById(styleId)){
+                    const st = document.createElement('style'); st.id = styleId;
+                    st.innerHTML = `@keyframes gamba-glitch{0%{filter:none;transform:none}20%{filter:contrast(2) hue-rotate(20deg) blur(1px);transform:translate(2px,-1px)}40%{filter:invert(.2) hue-rotate(-20deg);transform:translate(-3px,1px)}60%{filter:sepia(.3) hue-rotate(60deg);transform:translate(1px,-2px)}80%{filter:saturate(1.8) hue-rotate(120deg);transform:translate(-1px,2px)}100%{filter:none;transform:none}}.mystery-glitch{animation:gamba-glitch 300ms infinite;} .mystery-flash{background:linear-gradient(90deg, rgba(255,255,255,0.03), rgba(255,0,0,0.02));}`;
+                    document.head.appendChild(st);
+                }
+                document.body.classList.add('mystery-glitch');
+
+                // backup base values
+                try{ window._gambaMystery.baseCps = (typeof window.cps !== 'undefined') ? window.cps : undefined; }catch(e){}
+                try{ window._gambaMystery.baseClick = (typeof window.clickPower !== 'undefined') ? window.clickPower : undefined; }catch(e){}
+
+                // change CPS frequently by random -30%..+30%
+                window._gambaMystery.cpsJitter = setInterval(()=>{
+                    try{
+                        if(window._gambaMystery.baseCps === undefined) return;
+                        const pct = (Math.random()*0.6) - 0.3; // -0.3 .. +0.3
+                        const mult = 1 + pct;
+                        const base = window._gambaMystery.baseCps;
+                        const newVal = (typeof base === 'number') ? base * mult : base;
+                        if (typeof setGlobalCps === 'function') setGlobalCps(newVal); else window.cps = newVal;
+                    }catch(e){}
+                }, 1200 + Math.floor(Math.random()*1000));
+                window._gambaMystery.timers.push(window._gambaMystery.cpsJitter);
+
+                // change click power occasionally by -50%..+50%
+                window._gambaMystery.clickJitter = setInterval(()=>{
+                    try{
+                        if(window._gambaMystery.baseClick === undefined) return;
+                        const pct = (Math.random()*1.0) - 0.5; // -0.5 .. +0.5
+                        const mult = 1 + pct;
+                        const base = window._gambaMystery.baseClick;
+                        const newVal = (typeof base === 'number') ? base * mult : base;
+                        if (typeof setGlobalClickPower === 'function') setGlobalClickPower(newVal); else window.clickPower = newVal;
+                        // restore shortly after
+                        const restore = setTimeout(()=>{
+                            try{ if (typeof setGlobalClickPower === 'function') setGlobalClickPower(window._gambaMystery.baseClick); else window.clickPower = window._gambaMystery.baseClick; }catch(e){}
+                        }, 800 + Math.floor(Math.random()*2200));
+                        window._gambaMystery.timers.push(restore);
+                    }catch(e){}
+                }, 1800 + Math.floor(Math.random()*1600));
+                window._gambaMystery.timers.push(window._gambaMystery.clickJitter);
+
+                // temporarily show count in words occasionally
+                function numberToWordsSimple(n){
+                    try{
+                        n = Math.floor(Number(n) || 0);
+                        if (!isFinite(n) || n < 0) return String(n);
+                        const ones = ['zero','one','two','three','four','five','six','seven','eight','nine','ten','eleven','twelve','thirteen','fourteen','fifteen','sixteen','seventeen','eighteen','nineteen'];
+                        const tens = ['','','twenty','thirty','forty','fifty','sixty','seventy','eighty','ninety'];
+                        if(n < 20) return ones[n];
+                        if(n < 100) return tens[Math.floor(n/10)] + (n%10?'-'+ones[n%10]:'');
+                        if(n < 1000) return ones[Math.floor(n/100)] + ' hundred' + (n%100? ' ' + numberToWordsSimple(n%100): '');
+                        if(n < 1000000) return numberToWordsSimple(Math.floor(n/1000)) + ' thousand' + (n%1000? ' ' + numberToWordsSimple(n%1000): '');
+                        if(n < 1000000000) return numberToWordsSimple(Math.floor(n/1000000)) + ' million' + (n%1000000? ' ' + numberToWordsSimple(n%1000000): '');
+                        return String(n);
+                    }catch(e){ return String(n); }
+                }
+
+                window._gambaMystery.wordInterval = setInterval(()=>{
+                    try{
+                        if(Math.random() > 0.45) return;
+                        const el = document.getElementById('goonCount'); if(!el) return;
+                        const raw = el.innerText || el.textContent || '0';
+                        // try to read numeric count from global `count` if available
+                        let val = undefined;
+                        try{ if(typeof count !== 'undefined') val = count; else if(typeof window.count !== 'undefined') val = window.count; else val = Number((raw||'0').replace(/[^0-9\-\.]/g,''))||0; }catch(e){ val = 0; }
+                        const word = numberToWordsSimple(val);
+                        const prev = el.innerText;
+                        el.innerText = word;
+                        const restore = setTimeout(()=>{ try{ el.innerText = prev; }catch(e){} }, 1100 + Math.floor(Math.random()*1900));
+                        window._gambaMystery.timers.push(restore);
+                    }catch(e){}
+                }, 3000 + Math.floor(Math.random()*3000));
+                window._gambaMystery.timers.push(window._gambaMystery.wordInterval);
+
+                // show occasional glitch images from mainimage/glitchUI
+                function spawnGlitchImage(){
+                    try{
+                        const imgs = ['mainimage/glitchUI/glitch1.jpg','mainimage/glitchUI/glitchArea.png','mainimage/glitchUI/glitchSmiley.png'];
+                        const src = imgs[Math.floor(Math.random()*imgs.length)];
+                        const img = document.createElement('img'); img.src = src; img.className = 'mystery-glitch-img';
+                        img.style.position = 'fixed'; img.style.zIndex = 9999; img.style.pointerEvents = 'none';
+                        const size = 80 + Math.floor(Math.random()*220);
+                        img.style.width = size + 'px';
+                        img.style.opacity = '0.95';
+                        img.style.left = Math.floor(Math.random()*(window.innerWidth - size)) + 'px';
+                        img.style.top = Math.floor(Math.random()*(window.innerHeight - size)) + 'px';
+                        document.body.appendChild(img);
+                        setTimeout(()=>{ try{ img.style.transition = 'opacity 700ms ease, transform 900ms ease'; img.style.opacity='0'; img.style.transform = 'scale(1.4) rotate(' + (Math.random()*40-20) + 'deg)'; }catch(e){} }, 150 + Math.floor(Math.random()*300));
+                        setTimeout(()=>{ try{ img.remove(); }catch(e){} }, 1200 + Math.floor(Math.random()*1800));
+                    }catch(e){}
+                }
+                window._gambaMystery.glitchInterval = setInterval(()=>{
+                    try{ if(Math.random() > 0.55) return; spawnGlitchImage(); }catch(e){}
+                }, 900 + Math.floor(Math.random()*1400));
+                window._gambaMystery.timers.push(window._gambaMystery.glitchInterval);
+
+                // click-repeat handler (keeps tactile misclick behavior)
+                window._gambaMystery.clickHandler = function(ev){ try{ if(ev && ev.isTrusted === false) return; if(Math.random() > 0.30) return; const repeats = 2 + Math.floor(Math.random()*4); for(let i=0;i<repeats;i++){ setTimeout(()=>{ try{ ev.target.click(); }catch(e){} }, 30*(i+1)); } }catch(e){} };
+                document.addEventListener('click', window._gambaMystery.clickHandler, true);
+                window._gambaMystery.timers.push(window._gambaMystery.clickHandler);
+
+                // schedule stop
+                window._gambaMystery.stopTimeout = setTimeout(()=>{ stopMysteryLocal(); }, dur + 500);
+                window._gambaMystery.timers.push(window._gambaMystery.stopTimeout);
+
+                refreshBuffPanel();
+            }catch(e){console.error('applyMysteryLocal failed',e);}        
+        }
+
+        function stopMysteryLocal(){
+            try{
+                if(!window._gambaMystery) return;
+                try{ if(window._gambaMystery.cpsJitter) clearInterval(window._gambaMystery.cpsJitter); }catch(e){}
+                try{ if(window._gambaMystery.clickJitter) clearInterval(window._gambaMystery.clickJitter); }catch(e){}
+                try{ if(window._gambaMystery.wordInterval) clearInterval(window._gambaMystery.wordInterval); }catch(e){}
+                try{ if(window._gambaMystery.glitchInterval) clearInterval(window._gambaMystery.glitchInterval); }catch(e){}
+                try{ if(Array.isArray(window._gambaMystery.timers)){
+                    window._gambaMystery.timers.forEach(t=>{ try{ clearInterval(t); }catch(e){} try{ clearTimeout(t); }catch(e){} });
+                } }catch(e){}
+                try{ if(window._gambaMystery.clickHandler) document.removeEventListener('click', window._gambaMystery.clickHandler, true); }catch(e){}
+                try{ if(window._gambaMystery.baseCps !== undefined) { if (typeof setGlobalCps === 'function') setGlobalCps(window._gambaMystery.baseCps); else window.cps = window._gambaMystery.baseCps; } }catch(e){}
+                try{ if(window._gambaMystery.baseClick !== undefined) { if (typeof setGlobalClickPower === 'function') setGlobalClickPower(window._gambaMystery.baseClick); else window.clickPower = window._gambaMystery.baseClick; } }catch(e){}
+                document.body.classList.remove('mystery-glitch');
+                window._gambaMystery = null;
+                refreshBuffPanel();
+            }catch(e){console.error('stopMysteryLocal failed',e);}        
+        }
+
+        // refresh every second
+        setInterval(refreshBuffPanel, 1000);
+
+        // show Gamble button — always enable it (user requested always active)
+        function refreshPrestigeButtons(){
+            try{
+                const casinoBtn = document.getElementById('casinoTopBtn'); if(!casinoBtn) return;
+                // Always show the Gamble button so users can visit gamba.html anytime.
+                casinoBtn.classList.add('show');
+            }catch(e){ }
+        }
+        refreshPrestigeButtons();
+        setInterval(refreshPrestigeButtons, 3000);
+        // update immediately if another tab changes the save (e.g., prestige)
+        window.addEventListener('storage', (ev)=>{ try{ if(ev.key && ev.key.indexOf('whathappened_save')>=0) refreshPrestigeButtons(); }catch(e){} });
+
+    })();
+    </script>
+
+    <script>
+    // Reformat upgrade list items into a left info column and right action button.
+    (function(){
+        function parseLabelToLines(text){
+            if(!text) return [];
+            // split on em-dash or ' - ' or ' — '
+            let parts = text.split('—').map(s=>s.trim()).filter(Boolean);
+            if(parts.length===1){
+                // try parentheses split e.g. "Name (cost: 100)"
+                const t = parts[0];
+                const m = t.match(/^([^\(]+)\((.*)\)$/);
+                if(m){ parts = [m[1].trim(), m[2].trim()]; }
+            }
+            // normalize level wording
+            parts = parts.map(p=>p.replace(/lvl\b/ig,'LV:').replace(/^lv\s*/ig,'LV: '));
+            return parts;
+        }
+
+        function ensureUpgradeLayout(){
+            const lists = Array.from(document.querySelectorAll('#leftBar li, #divineLeftBar li'));
+            lists.forEach(li=>{
+                const btn = li.querySelector('button');
+                if(!btn) return;
+                // skip header/menu rows and multi-button list items (they are already laid out)
+                const multiBtns = li.querySelectorAll('button').length;
+                const skipIds = new Set(['normalMenuBtn','normalMenuBtn_clone','divineMenuBtn','divineMenuBtn_clone']);
+                if (multiBtns > 1 || skipIds.has(btn.id)) {
+                    // mark as processed to avoid re-handling
+                    li.dataset.upgradeProcessed = '1';
+                    return;
+                }
+
+                // (visibility is managed centrally by `manageUpgradeVisibility()` in main.js)
+
+                // If already processed, just update info lines
+                if(li.dataset.upgradeProcessed){
+                    const info = li.querySelector('.upgrade-info');
+                    const label = li.querySelector('.upgrade-label');
+                    if(info && label){
+                        const lines = parseLabelToLines(label.innerText || label.textContent || '');
+                        info.innerHTML = '';
+                        lines.forEach(l=>{ const d = document.createElement('div'); d.className='upgrade-info-line'; d.textContent = l; info.appendChild(d); });
+                    }
+                    // skipped already-processed li (logging removed to avoid console spam)
+                    return;
+                }
+
+                // Build info column from the button's label text
+                const labelEl = btn.querySelector('.upgrade-label');
+                let labelText = '';
+                if(labelEl){ labelText = labelEl.innerText || labelEl.textContent || ''; }
+                else { labelText = btn.textContent || ''; }
+                const info = document.createElement('div'); info.className = 'upgrade-info';
+                const lines = parseLabelToLines(labelText);
+                lines.forEach(l=>{ const d = document.createElement('div'); d.className='upgrade-info-line'; d.textContent = l; info.appendChild(d); });
+
+                // For all upgrade buttons, rebuild as a single button containing visible label and image (like OP mouse)
+                {
+                    const img = btn.querySelector('img.upgrade-img');
+                    let imgSrc = null;
+                    if(img){ imgSrc = img.getAttribute('src'); try{ img.remove(); }catch(e){} }
+
+                    // clear current button contents
+                    while(btn.firstChild) btn.removeChild(btn.firstChild);
+
+                    // Visible label (so setLabel can still find/update `.upgrade-label` if needed)
+                    const visibleLabel = document.createElement('span');
+                    visibleLabel.className = 'upgrade-label';
+                    visibleLabel.style.display = '';
+                    visibleLabel.innerText = labelText;
+                    btn.appendChild(visibleLabel);
+
+                    if (imgSrc) {
+                        const newImg = document.createElement('img');
+                        newImg.className = 'upgrade-img';
+                        newImg.src = imgSrc;
+                        newImg.style.display = 'inline-block';
+                        newImg.style.width = '56px';
+                        newImg.style.height = '56px';
+                        newImg.style.objectFit = 'cover';
+                        newImg.style.marginLeft = '8px';
+                        btn.appendChild(newImg);
+                    }
+
+                    btn.classList.add('upgrade-full-btn');
+                    li.appendChild(btn);
+                }
+
+                li.dataset.upgradeProcessed = '1';
+            });
+        }
+
+        // run on load and periodically to catch dynamic updates
+        document.addEventListener('DOMContentLoaded', ensureUpgradeLayout);
+        ensureUpgradeLayout();
+        setInterval(ensureUpgradeLayout, 900);
+        // also update when save changes
+        window.addEventListener('storage', ensureUpgradeLayout);
+    })();
+    </script>
+
+    <!-- Cookie consent banner -->
+    <div id="cookie-consent-banner" style="display:none"> 
+        <div class="cookie-consent-inner">
+            <div class="cookie-consent-text">
+                This site uses localStorage to save your game and may load third-party ads. By clicking "Accept" you consent to the use of local storage and third-party cookies as described in our <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.
+            </div>
+            <div class="cookie-consent-actions">
+                <button id="cookie-accept-btn" class="btn">Accept</button>
+                <a href="privacy.html" class="btn btn-link" target="_blank" rel="noopener">Manage</a>
+            </div>
+        </div>
+
+    </div>
+    </html>

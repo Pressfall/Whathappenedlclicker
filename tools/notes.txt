@@ -1,0 +1,12 @@
+This code uses firebase database for all of the database
+functions, including chat, clans, leaderboard, etc.
+
+Make sure to go back and add rules, to stop the page from getting hacked eventually.
+It is fine for now, as long as I change it eventualy.
+
+
+-----------------------------------------------------------
+TO DOS:
+-----------------------------------------------------------
+    - Make sure buffs from daily spins work
+    - Make clans work, and add clan events

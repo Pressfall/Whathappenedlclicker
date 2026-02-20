@@ -1,0 +1,614 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Clans — What Happened</title>
+  <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
+  <link rel="stylesheet" href="clans.css">
+</head>
+<body>
+  <div class="card">
+    <h1>Clans</h1>
+    <p class="muted">Create or join clans, view members and clan chat. Clans unlock after your first prestige.</p>
+
+    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
+      <div id="createArea" style="flex:1;min-width:320px">
+        <div style="margin-bottom:8px"><strong>Your account</strong> <span id="meName" class="muted"></span></div>
+        <div id="playerClanStatus" class="muted" style="margin-bottom:8px"></div>
+        <div style="display:flex;gap:6px;margin-bottom:8px"><button id="ensureNameBtn" class="btn">Set/Check Username</button><button id="openQuickChat" class="btn">Open Global Chat</button><button id="openQuickClan" class="btn">Open Clan Quick</button></div>
+        <div style="margin-top:6px;padding:8px;background:#0c0c0f;border-radius:6px;border:1px solid #111">
+          <div style="margin-bottom:6px"><strong>Create Clan</strong></div>
+          <div style="display:flex;gap:6px"><input id="newClanName" placeholder="Clan name" style="flex:1"><button id="createClan" class="btn orange">Create (10 Golden)</button></div>
+          <div class="muted" style="margin-top:6px">You must have prestiged at least once and pay 10 Golden What Happeneds to create a clan.</div>
+        </div>
+      </div>
+
+      <div id="findArea" style="flex:1;min-width:320px">
+        <div style="margin-bottom:8px"><strong>Find clans</strong></div>
+        <div style="display:flex;gap:6px;margin-bottom:8px"><input id="searchClanName" placeholder="Search name"><button id="searchClanBtn" class="btn">Search</button></div>
+        <div id="searchResults" style="max-height:320px;overflow:auto;background:#0c0c0f;padding:8px;border-radius:6px;border:1px solid #111"></div>
+      </div>
+    </div>
+
+    <hr style="border:none;border-top:1px solid #222;margin:12px 0">
+
+    <div id="clanDetailArea">
+      <!-- Filled dynamically -->
+    </div>
+
+    <div style="margin-top:12px;text-align:right"><button onclick="window.location.href='index.html'" class="btn">Back to game</button></div>
+  </div>
+
+  <script type="module">
+  import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDkrNV4bQgRHzGJ__9XqHzry7xbYuH8IuU",
+    authDomain: "whleaderboard.firebaseapp.com",
+    projectId: "whleaderboard",
+    storageBucket: "whleaderboard.firebasestorage.app",
+    messagingSenderId: "602999414155",
+    appId: "1:602999414155:web:541f51b97db8358be4638e",
+    measurementId: "G-C2FWNR7288"
+  };
+  try{ if(!getApps().length) initializeApp(firebaseConfig); }catch(e){}
+  const db = getFirestore();
+  // Local helper: escape HTML to prevent XSS and ensure availability in this module
+  function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
+  window.currentChatUnsub = null;
+  let currentClanUnsub = null;
+  async function fetchProfileByName(uname){
+    try{ if(!uname) return {}; const ref = doc(db,'profiles',uname); const s = await getDoc(ref); if(!s.exists()) return {}; return s.data(); }catch(e){ return {}; }
+  }
+  async function kickMember(clanId, uname, reason){
+    try{
+      const me = localStorage.getItem('player_username')||'';
+      if(!me) return alert('You must be signed in');
+      const cRef = doc(db,'clans',clanId);
+      await updateDoc(cRef, { members: arrayRemove(uname), leaders: arrayRemove(uname) });
+      // write kicked message to profile so the kicked client can see it
+      try{
+        await setDoc(doc(db,'profiles',uname), { clanId: null, clanName: null, clanRole: null, kickedMessage: (reason||null), kickedAt: serverTimestamp() }, { merge: true });
+      }catch(e){
+        await setDoc(doc(db,'profiles',uname), { clanId: null, clanName: null, clanRole: null }, { merge: true });
+      }
+      if(uname === me){ localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole'); try{ updatePlayerClanStatus(); }catch(e){} }
+      alert('Member kicked.');
+      loadClanDetail(clanId);
+    }catch(e){ console.error('kick failed', e); alert('Kick failed'); }
+  }
+
+  let currentProfileUnsub = null;
+  function normalizeNumericField(v){ try{ if(v==null) return 0; if(typeof v === 'object'){ if(typeof v.toNumber === 'function') return Number(v.toNumber()); if(typeof v.toString === 'function') return Number(v.toString()); return 0; } return Number(v) || 0; }catch(e){return 0} }
+  function formatScientific(n){ try{ const num = normalizeNumericField(n); if(!isFinite(num) || num === 0) return '0'; return Number(num).toExponential(2); }catch(e){ return String(n||0); } }
+  // Helper to read numeric fields from profile documents where different keys may be used
+  function profileNumeric(p, keys){
+    try{ for(const k of keys){ if(p && typeof p[k] !== 'undefined' && p[k] !== null) return normalizeNumericField(p[k]); } }catch(e){}
+    return 0;
+  }
+  function watchMyProfile() {
+    try {
+      const username = localStorage.getItem('player_username') || '';
+      if (!username) return;
+      try { if (currentProfileUnsub) { currentProfileUnsub(); currentProfileUnsub = null; } } catch (e) {}
+      const ref = doc(db, 'profiles', username);
+      currentProfileUnsub = onSnapshot(ref, snap => {
+        try {
+          if (!snap.exists()) {
+            localStorage.removeItem('player_clanId');
+            localStorage.removeItem('player_clanName');
+            localStorage.removeItem('player_clanRole');
+            updatePlayerClanStatus();
+            const area = document.getElementById('clanDetailArea');
+            if (area) area.innerHTML = 'You are not in a clan.';
+            return;
+          }
+          const data = snap.data();
+          const cid = data.clanId || null;
+          if (!cid) {
+            let msg = '';
+            try {
+              msg = (data.kickedMessage || '') + '';
+              if (msg && msg.trim()) {
+                try { alert('You were kicked from your clan!\n' + msg); } catch (e) {}
+                try { updateDoc(doc(db, 'profiles', username), { kickedMessage: null, kickedAt: null }); } catch (e) {}
+              }
+            } catch (e) {}
+            localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
+            updatePlayerClanStatus();
+            const area = document.getElementById('clanDetailArea');
+            if (area) area.innerHTML = (msg && msg.trim()) ? 'You were kicked from the clan.' : 'You were removed from the clan.';
+          } else {
+            localStorage.setItem('player_clanId', cid);
+            if (typeof data.clanName !== 'undefined') localStorage.setItem('player_clanName', data.clanName || '');
+            if (typeof data.clanRole !== 'undefined') localStorage.setItem('player_clanRole', data.clanRole || '');
+            updatePlayerClanStatus();
+          }
+        } catch (e) { console.warn('profile snapshot error', e); }
+      }, err => { console.warn('profile snapshot failed', err); });
+    } catch (e) {}
+  }
+
+  function parseNumberString(s){
+    try{
+      if(s==null) return 0;
+      if(typeof s !== 'string') s = String(s);
+      const cleaned = s.replace(/[,\s]/g,'').replace(/[^0-9eE.+-]/g,'');
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    }catch(e){ return 0; }
+  }
+
+  function readGoldenCount(){
+    try{ if(typeof window.getGoldenCountNumber === 'function'){ const v=Number(window.getGoldenCountNumber()); if(Number.isFinite(v)) return v; } }catch(e){}
+    try{ const raw = localStorage.getItem('whathappened_golden'); const v = parseNumberString(raw); if(v>0) return v; }catch(e){}
+    try{ const el = document.getElementById('goldenCount'); if(el && el.textContent){ const v = parseNumberString(el.textContent); if(v>0) return v; } }catch(e){}
+    try{ if(window.opener && window.opener.document){ const el2 = window.opener.document.getElementById('goldenCount'); if(el2 && el2.textContent){ const v = parseNumberString(el2.textContent); if(v>0) return v; } } }catch(e){}
+    try{
+      const rawSave = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(rawSave){
+        try{
+          const s = JSON.parse(rawSave || '{}');
+          const g1 = (typeof s.goldenWhat !== 'undefined') ? parseNumberString(s.goldenWhat) : 0;
+          const g2 = (typeof s.totalGoldenEver !== 'undefined') ? parseNumberString(s.totalGoldenEver) : 0;
+          const best = Math.max(g1, g2 || 0);
+          if(best > 0) return best;
+        }catch(e){}
+      }
+    }catch(e){}
+    return 0;
+  }
+
+  function ensureUsername(){
+    try{
+      let u = localStorage.getItem('player_username') || '';
+      u = (u || '').trim().slice(0,32);
+      if (!u) {
+        u = (prompt('Choose a username (max 32):','')||'').trim().slice(0,32);
+        if (!u) return null;
+        localStorage.setItem('player_username', u);
+      }
+      const el = document.getElementById('meName'); if(el) el.textContent = u ? (' — ' + u) : '';
+      return u;
+    }catch(e){return null}
+  }
+
+  function updatePlayerClanStatus(){
+    try{
+      const status = document.getElementById('playerClanStatus');
+      const me = localStorage.getItem('player_username') || '';
+      const cid = localStorage.getItem('player_clanId');
+      const cname = localStorage.getItem('player_clanName') || '';
+      const role = localStorage.getItem('player_clanRole') || '';
+      if(!status) return;
+      if(!me){ status.textContent = 'No username set.'; return; }
+      if(cid){
+        const label = role ? (role.charAt(0).toUpperCase() + role.slice(1)) : 'Member';
+        status.innerHTML = `In clan: <strong style="color:#9cf">${escapeHtml(cname||cid)}</strong> — ${escapeHtml(label)}`;
+      } else {
+        status.textContent = 'Not in a clan.';
+      }
+      // hide create/find UI when in a clan
+      try{ const ca = document.getElementById('createArea'); if(ca) ca.style.display = cid ? 'none' : ''; const fa = document.getElementById('findArea'); if(fa) fa.style.display = cid ? 'none' : ''; }catch(e){}
+    }catch(e){ }
+  }
+
+  async function createClan(){
+    try{
+      const username = ensureUsername(); if(!username){ alert('You must set a username.'); return; }
+      const p = Number(localStorage.getItem('whathappened_prestige_times') || 0) || 0;
+      if (p < 1) { alert('Clans unlock after you prestige once.'); return; }
+      const have = readGoldenCount();
+      if (Number(have) < 10) { alert('You need 10 Golden What Happeneds to start a clan.'); return; }
+      const nameInp = document.getElementById('newClanName'); if(!nameInp) return; const cname = (nameInp.value||'').trim().slice(0,64);
+      if (!cname) { alert('Enter a clan name.'); return; }
+      if(!confirm(`Create clan "${cname}" for 10 Golden What Happend?`)) return;
+      try{ const newVal = Math.max(0, readGoldenCount() - 10); try{ localStorage.setItem('whathappened_golden', String(newVal)); }catch(e){} try{ const el = document.getElementById('goldenCount'); if(el) el.textContent = String(newVal); }catch(e){} }catch(e){}
+      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], createdAt: serverTimestamp(), maxMembers: 30 });
+      localStorage.setItem('player_clanId', docRef.id);
+      try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname }, { merge: true }); }catch(e){}
+      alert('Clan created.');
+      nameInp.value = '';
+      loadClanDetail(docRef.id);
+    }catch(e){ console.error('createClan failed', e); alert('Create failed'); }
+  }
+
+  async function joinClan(clanId){
+    try{
+      const username = ensureUsername(); if(!username) return alert('Set username first');
+      const p = Number(localStorage.getItem('whathappened_prestige_times') || 0) || 0;
+      if (p < 1) { alert('Clans unlock after you prestige once.'); return; }
+      const clanRef = doc(db,'clans',clanId);
+      const snap = await getDoc(clanRef);
+      if(!snap.exists()) { alert('Clan not found'); return; }
+      const data = snap.data();
+      const members = Array.isArray(data.members) ? data.members : [];
+      if(members.includes(username)) { alert('You are already a member.'); return; }
+      if(members.length >= (data.maxMembers || 30)) { alert('Clan is full.'); return; }
+      await updateDoc(clanRef, { members: arrayUnion(username) });
+      try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${username} joined the clan!`, createdAt: serverTimestamp(), system: true, color: 'green', scrollToBottom: true }); }catch(e){}
+      await setDoc(doc(db,'profiles',username), { clanId: clanId, clanName: data.name, clanRole: 'member' }, { merge: true });
+      localStorage.setItem('player_clanId', clanId);
+      localStorage.setItem('player_clanName', data.name || '');
+      localStorage.setItem('player_clanRole', 'member');
+      try{ updatePlayerClanStatus(); }catch(e){}
+      alert('Joined clan.');
+      loadClanDetail(clanId);
+    }catch(e){ console.error('join failed', e); alert('Join failed'); }
+  }
+
+  // Attach UI listeners; handle case where script loads after DOMContentLoaded
+  function initClanUI(){
+    try{
+      const ensureBtn = document.getElementById('ensureNameBtn'); if(ensureBtn) ensureBtn.addEventListener('click', ()=>{ ensureUsername(); });
+      const openQuickChat = document.getElementById('openQuickChat'); if(openQuickChat) openQuickChat.addEventListener('click', ()=>{ try{ window.open('index.html','_self'); setTimeout(()=>{ const el = document.getElementById('chatToggle'); if(el) el.click(); },200); }catch(e){} });
+      const openQuickClan = document.getElementById('openQuickClan'); if(openQuickClan) openQuickClan.addEventListener('click', ()=>{ try{ window.open('index.html','_self'); setTimeout(()=>{ const el = document.getElementById('clanToggle'); if(el) el.click(); },200); }catch(e){} });
+      const createBtn = document.getElementById('createClan'); if(createBtn) createBtn.addEventListener('click', createClan);
+      const searchBtn = document.getElementById('searchClanBtn'); if(searchBtn) searchBtn.addEventListener('click', searchClans);
+      // show recommended clans on load
+      try{ showRecommendedClans(); }catch(e){}
+    }catch(e){ console.warn('clans init listeners failed', e); }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initClanUI);
+  else initClanUI();
+  // Apply equipped background (match index.html behavior)
+  (function(){
+    try{
+      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(!raw) return;
+      const s = JSON.parse(raw || '{}');
+      let bg = (typeof s.equippedBgImage === 'string') ? s.equippedBgImage : null;
+      if(!bg) return;
+      try{
+        if(bg && typeof bg === 'string' && bg.indexOf('/') === -1){
+          if(bg.toLowerCase() === 'mainbg.png') bg = 'mainimage/Mainbg.png';
+          else if(bg.toLowerCase() === 'vrillbg.png') bg = 'mainimage/Vrillbg.png';
+          else bg = 'bgimages/' + bg;
+        }
+      }catch(e){}
+      try{ document.body.style.backgroundImage = "url('" + bg + "')"; }catch(e){}
+    }catch(e){}
+  })();
+  async function loadClanDetail(clanId){
+    try{
+      const area = document.getElementById('clanDetailArea'); if(area) area.innerHTML = 'Loading...';
+      // unsubscribe previous
+      try{ if(currentClanUnsub){ currentClanUnsub(); currentClanUnsub = null; } }catch(e){}
+      const ref = doc(db,'clans',clanId);
+      currentClanUnsub = onSnapshot(ref, async snapLive => {
+        try{
+          if(!snapLive.exists()){ if(area) area.innerHTML = 'Clan not found.'; return; }
+          const c = snapLive.data();
+          const owner = c.owner || '';
+          const name = c.name || '';
+          const members = Array.isArray(c.members) ? c.members.slice(0,100) : [];
+          let html = `<div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">${escapeHtml(name)}</h2><div class=\"muted\">Owner: ${escapeHtml(owner)}</div></div>`;
+          const me = (localStorage.getItem('player_username')||'');
+          if(members.includes(me)) html += `<div id=\"clanHeaderActions\"><button id=\"leaveClanBtn\" class=\"btn\">Leave Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
+          else html += `<div id=\"clanHeaderActions\"><button id=\"joinClanBtn\" class=\"btn green\">Join Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
+          html += `</div><div style="margin-top:12px;display:flex;flex-direction:column"><div style="display:flex;justify-content:space-between;align-items:center"><strong>Members (${members.length})</strong><button id=\"toggleMembersBtn\" class=\"btn\">Toggle</button></div><div id=\"membersList\" style=\"margin-top:8px;max-height:360px;overflow:auto;background:#0c0c0f;padding:8px;border-radius:6px;border:1px solid #111\"></div></div>`;
+          // clan chat: only visible to members
+          if (members.includes(me)) {
+            html += `<div style=\"margin-top:12px\"><strong>Clan Chat</strong><div id=\"clanChatBox\" style=\"height:220px;overflow:auto;background:#0c0c0f;padding:8px;border-radius:6px;border:1px solid #111;margin-top:6px\"></div><div style=\"display:flex;gap:6px;margin-top:6px\"><input id=\"clanChatInput\" placeholder=\"Message...\" style=\"flex:1\"><button id=\"clanChatSend\" class=\"btn green\">Send</button></div></div>`;
+          } else {
+            html += `<div style=\"margin-top:12px\"><strong>Clan Chat</strong><div class=\"muted\">Join the clan to view and send clan messages.</div></div>`;
+          }
+          if(area) area.innerHTML = html;
+          if(members.includes(me)){
+            const el = document.getElementById('leaveClanBtn'); if(el) el.addEventListener('click', ()=>leaveClan(clanId));
+            const delEl = document.getElementById('deleteClanBtn'); if(delEl) delEl.addEventListener('click', ()=>{ if(confirm('Delete this clan? This cannot be undone.')) deleteClan(clanId); });
+          } else {
+            const el = document.getElementById('joinClanBtn'); if(el) el.addEventListener('click', ()=>joinClan(clanId));
+            const delEl = document.getElementById('deleteClanBtn'); if(delEl) delEl.addEventListener('click', ()=>{ if(confirm('Delete this clan? This cannot be undone.')) deleteClan(clanId); });
+          }
+
+          // load profiles and render
+          const profilesCol = collection(db,'profiles');
+          const q = query(profilesCol, where('clanId','==',clanId), limit(200));
+          const snap = await getDocs(q);
+          const listEl = document.getElementById('membersList'); if(listEl) listEl.innerHTML = '';
+          const rows = [];
+          snap.forEach(ps => { const p = ps.data(); rows.push(p); });
+          rows.sort((a,b)=>{ const na = Number(a.score||0)||0; const nb = Number(b.score||0)||0; return nb - na; });
+          rows.sort((a,b)=>{ const na = profileNumeric(a,['score','points','totalScore']); const nb = profileNumeric(b,['score','points','totalScore']); return nb - na; });
+          rows.forEach(p => {
+            const uname = p.username || '';
+            const title = p.title || '';
+            let score = profileNumeric(p, ['score','points','totalScore']);
+            let golden = profileNumeric(p, ['golden','goldenWhat','totalGoldenEver','totalGolden']);
+            const isOwner = (uname === owner);
+            const profileRole = (p.clanRole || '').toLowerCase();
+            let roleLabel = isOwner ? 'Owner' : (profileRole === 'co-leader' ? 'Co-leader' : (profileRole === 'elder' ? 'Elder' : (profileRole === 'eleite member' ? 'Eleite member' : 'Member')));
+            if(uname === me) roleLabel += ' (You)';
+            const row = document.createElement('div'); row.style.padding='6px 0';
+            row.style.display = 'flex'; row.style.justifyContent = 'space-between';
+            const left = document.createElement('div'); left.innerHTML = `<strong style="color:#9cf">${escapeHtml(uname)}</strong> <span class=\"muted\">${escapeHtml(title)}</span> <span class=\"muted\">— ${escapeHtml(roleLabel)}</span>`;
+            const right = document.createElement('div'); right.style.textAlign = 'right'; right.innerHTML = `<div class=\"scoreVal\">${formatScientific(score)}</div><div class=\"muted goldenVal\">G: ${formatScientific(golden)}</div>`;
+            try{
+              const meIsLeader = Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1;
+              if((meIsLeader || me === owner) && !isOwner && uname !== me){
+                const btn = document.createElement('button'); btn.textContent = 'Kick'; btn.className='btn red'; btn.style.marginLeft='8px';
+                btn.addEventListener('click', ()=>{
+                  try{
+                    const reason = (prompt(`Reason for kicking ${uname} (optional):`, '')||'').trim();
+                    if(!confirm(`Kick ${uname} from clan?${reason?('\nReason: '+reason):''}`)) return;
+                    kickMember(clanId, uname, reason);
+                  }catch(e){ kickMember(clanId, uname); }
+                });
+                right.appendChild(btn);
+                try{ const sel = document.createElement('select'); sel.style.marginLeft='8px'; const ranks = ['member','eleite member','elder','co-leader']; const currentRole = (p.clanRole || 'member'); ranks.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; if(r === currentRole) o.selected = true; sel.appendChild(o); }); sel.addEventListener('change', ()=>{ try{ promoteMember(clanId, uname, sel.value); }catch(e){} }); right.appendChild(sel); }catch(e){}
+              }
+            }catch(e){}
+            row.appendChild(left); row.appendChild(right);
+            if(listEl) listEl.appendChild(row);
+            if((!score || !golden) && uname){ fetchProfileByName(uname).then(full => { try{ if(full){ const sc = profileNumeric(full,['score','points','totalScore']); const go = profileNumeric(full,['golden','goldenWhat','totalGoldenEver','totalGolden']); const sv = row.querySelector('.scoreVal'); if(sv) sv.textContent = formatScientific(sc); const gv = row.querySelector('.goldenVal'); if(gv) gv.textContent = 'G: ' + formatScientific(go); } }catch(e){} }).catch(()=>{}); }
+          });
+
+          // Attach members toggle, chat send handler and start live chat updates
+          try{
+            const toggleBtn = document.getElementById('toggleMembersBtn');
+            const membersListEl = document.getElementById('membersList');
+            try{
+              if(toggleBtn && membersListEl){
+                const isShown = membersListEl.style.display !== 'none';
+                toggleBtn.textContent = isShown ? '▴' : '▾';
+                toggleBtn.addEventListener('click', ()=>{
+                  try{
+                    const currentlyShown = membersListEl.style.display !== 'none';
+                    if(currentlyShown){ membersListEl.style.display = 'none'; toggleBtn.textContent = '▾'; }
+                    else { membersListEl.style.display = ''; toggleBtn.textContent = '▴'; }
+                  }catch(e){ console.warn('toggle members failed', e); }
+                });
+              }
+            }catch(e){ console.warn('init toggle failed', e); }
+
+            const sendBtn = document.getElementById('clanChatSend');
+            const inputEl = document.getElementById('clanChatInput');
+            if(sendBtn) sendBtn.addEventListener('click', async ()=>{
+              try{
+                const txt = (inputEl && inputEl.value ? inputEl.value : '').trim();
+                console.debug('clan: send clicked', { clanId, txt });
+                if(!txt) return;
+                const username = ensureUsername(); if(!username){ alert('Set username first'); return; }
+                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                if(inputEl) inputEl.value = '';
+                try { const boxNow = document.getElementById('clanChatBox'); if (boxNow) boxNow.scrollTop = boxNow.scrollHeight; } catch (e) {}
+                // allow Enter key to send (handled on input keydown below)
+                try{
+                  const colRef = collection(db,'clan_chat');
+                  const qAll = query(colRef, where('clanId','==',clanId));
+                  const snapAll = await getDocs(qAll);
+                  if(snapAll && snapAll.size > 100){
+                    const msgs = [];
+                    snapAll.forEach(s=> msgs.push({ id: s.id, data: s.data() }));
+                    msgs.sort((a,b)=>{ const ta = (a.data.createdAt && a.data.createdAt.toDate) ? a.data.createdAt.toDate().getTime() : 0; const tb = (b.data.createdAt && b.data.createdAt.toDate) ? b.data.createdAt.toDate().getTime() : 0; return ta - tb; });
+                    const toDelete = msgs.length - 100; const ops = [];
+                    for(let i=0;i<toDelete;i++) ops.push(deleteDoc(doc(db,'clan_chat', msgs[i].id)));
+                    if(ops.length) await Promise.all(ops);
+                  }
+                }catch(e){ console.warn('trim clan messages failed', e); }
+                try { if (!window.currentChatUnsub) loadClanChat(clanId); } catch (e) {}
+              }catch(e){ console.warn('clan send failed', e); alert('Send failed'); }
+            });
+            // start listening (only for members)
+            try{ if (members.includes(me)) loadClanChat(clanId); else { try{ if(typeof window.currentChatUnsub === 'function'){ try{ window.currentChatUnsub(); }catch(e){} window.currentChatUnsub = null; } }catch(e){} } }catch(e){ }
+
+            // Enter-to-send binding
+            try{
+              if(inputEl && sendBtn){
+                inputEl.addEventListener('keydown', e=>{
+                  try{ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendBtn.click(); } }catch(er){}
+                });
+              }
+            }catch(e){ console.warn('enter-to-send bind failed', e); }
+          }catch(e){ console.warn('attach chat handlers failed', e); }
+
+        }catch(e){ console.error('clan snapshot render failed', e); }
+      });
+    }catch(e){ console.error('loadClanDetail failed', e); const area=document.getElementById('clanDetailArea'); if(area) area.textContent = 'Load failed'; }
+  }
+
+  // Render a list of clan objects into a container element
+  function renderClanResults(list, container){
+    try{
+      if(!container) return;
+      container.innerHTML = '';
+      if(!list || list.length === 0){ container.innerHTML = '<div class="muted">No clans found.</div>'; return; }
+      list.forEach(c => {
+        try{
+          const id = c.id || c._id || '';
+          const name = c.name || id;
+          const owner = c.owner || '';
+          const row = document.createElement('div');
+          row.style.padding = '8px';
+          row.style.borderBottom = '1px solid #111';
+          row.style.cursor = 'pointer';
+          row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="color:#9cf">${escapeHtml(name)}</strong><div class="muted">Owner: ${escapeHtml(owner)}</div></div><div class="muted">Members: ${Array.isArray(c.members)?c.members.length:0}</div></div>`;
+          row.addEventListener('click', ()=>{ if(id) loadClanDetail(id); });
+          container.appendChild(row);
+        }catch(e){}
+      });
+    }catch(e){ console.warn('renderClanResults failed', e); }
+  }
+
+  // Search clans by name (client-side filter over first N clans)
+  async function searchClans(){
+    try{
+      const qInput = (document.getElementById('searchClanName') && document.getElementById('searchClanName').value) || '';
+      const term = (qInput||'').trim().toLowerCase();
+      const resultsEl = document.getElementById('searchResults'); if(!resultsEl) return;
+      resultsEl.innerHTML = 'Searching...';
+      const col = collection(db, 'clans');
+      const snap = await getDocs(query(col, limit(200)));
+      const arr = [];
+      snap.forEach(s => { const d = s.data(); d.id = s.id; arr.push(d); });
+      let filtered = arr;
+      if(term) filtered = arr.filter(c => (c.name||'').toLowerCase().includes(term));
+      // if empty search, fallback to recommended
+      if(!term){ showRecommendedClans(); return; }
+      renderClanResults(filtered, resultsEl);
+    }catch(e){ console.warn('searchClans failed', e); const resultsEl = document.getElementById('searchResults'); if(resultsEl) resultsEl.innerHTML = 'Search failed'; }
+  }
+
+  // Show a small list of random recommended clans
+  async function showRecommendedClans(){
+    try{
+      const resultsEl = document.getElementById('searchResults'); if(!resultsEl) return;
+      resultsEl.innerHTML = '<div class="muted">Loading recommended clans...</div>';
+      const col = collection(db, 'clans');
+      const snap = await getDocs(query(col, limit(200)));
+      const arr = [];
+      snap.forEach(s => { const d = s.data(); d.id = s.id; arr.push(d); });
+      if(arr.length === 0){ resultsEl.innerHTML = '<div class="muted">No clans available.</div>'; return; }
+      // shuffle and pick up to 5
+      for(let i = arr.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
+      const pick = arr.slice(0, Math.min(5, arr.length));
+      // add header
+      resultsEl.innerHTML = '<div style="margin-bottom:8px"><strong>Recommended clans</strong></div>';
+      renderClanResults(pick, resultsEl);
+    }catch(e){ console.warn('showRecommendedClans failed', e); const resultsEl = document.getElementById('searchResults'); if(resultsEl) resultsEl.innerHTML = 'Failed to load recommendations'; }
+  }
+
+  async function leaveClan(clanId){
+    try{
+      const username = ensureUsername(); if(!username) return;
+      // if the leaving user is the owner, transfer leadership before removing them
+      const clanRef = doc(db,'clans',clanId);
+      const snap = await getDoc(clanRef);
+      if(!snap.exists()) { alert('Clan not found'); return; }
+      const data = snap.data();
+      const owner = data.owner || '';
+      // If owner is leaving, try to transfer leadership (or delete if no members remain)
+      if(username === owner){
+        const remaining = Array.isArray(data.members) ? data.members.filter(m=>m!==username) : [];
+        if(!remaining || remaining.length === 0){
+          await deleteClan(clanId);
+          await setDoc(doc(db,'profiles',username), { clanId: null, clanName: null, clanRole: null }, { merge: true });
+          localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
+          try{ updatePlayerClanStatus(); }catch(e){}
+          alert('You left and the clan was deleted (no members).');
+          const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+          return;
+        } else {
+          await transferLeadershipToBestCandidate(clanId, remaining);
+        }
+      }
+
+      await updateDoc(clanRef, { members: arrayRemove(username), leaders: arrayRemove(username) });
+      try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${username} left the clan.`, createdAt: serverTimestamp(), system: true, color: 'red', scrollToBottom: true }); }catch(e){}
+      await setDoc(doc(db,'profiles',username), { clanId: null, clanName: null, clanRole: null }, { merge: true });
+      localStorage.removeItem('player_clanId');
+      localStorage.removeItem('player_clanName');
+      localStorage.removeItem('player_clanRole');
+      try{ updatePlayerClanStatus(); }catch(e){}
+      alert('Left clan.');
+      const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+    }catch(e){ console.error('leave failed', e); alert('Leave failed'); }
+  }
+
+  // promotion ranks priority (higher wins)
+  const RANK_PRIORITY = { 'co-leader':4, 'elder':3, 'eleite member':2, 'member':1 };
+
+  async function promoteMember(clanId, uname, newRole){
+    try{
+      const me = localStorage.getItem('player_username')||'';
+      if(!me) return alert('You must be signed in');
+      const cRef = doc(db,'clans',clanId);
+      const cSnap = await getDoc(cRef);
+      if(!cSnap.exists()) return alert('Clan not found');
+      const c = cSnap.data();
+      const meIsLeader = Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1;
+      if(!(meIsLeader || me === c.owner)) return alert('Only leaders or owner can promote members');
+      await setDoc(doc(db,'profiles',uname), { clanRole: newRole }, { merge: true });
+      try{ if(newRole === 'co-leader') await updateDoc(cRef, { leaders: arrayUnion(uname) }); else await updateDoc(cRef, { leaders: arrayRemove(uname) }); }catch(e){}
+      alert('Promotion updated.');
+      loadClanDetail(clanId);
+    }catch(e){ console.error('promote failed', e); alert('Promote failed'); }
+  }
+
+  async function deleteClan(clanId){
+    try{
+      const cRef = doc(db,'clans',clanId);
+      const cSnap = await getDoc(cRef);
+      if(!cSnap.exists()) return alert('Clan not found');
+      const c = cSnap.data();
+      const members = Array.isArray(c.members) ? c.members.slice() : [];
+      const ops = members.map(m => setDoc(doc(db,'profiles',m), { clanId: null, clanName: null, clanRole: null }, { merge: true }));
+      await Promise.all(ops);
+      await deleteDoc(cRef);
+      try{ const col = collection(db,'clan_chat'); const q = query(col, where('clanId','==',clanId)); const snap = await getDocs(q); const dels=[]; snap.forEach(s=> dels.push(deleteDoc(doc(db,'clan_chat', s.id)))); if(dels.length) await Promise.all(dels); }catch(e){}
+      alert('Clan deleted.');
+      const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+    }catch(e){ console.error('deleteClan failed', e); alert('Delete failed'); }
+  }
+
+  async function transferLeadershipToBestCandidate(clanId, candidateUsernames){
+    try{
+      if(!candidateUsernames || candidateUsernames.length===0) return;
+      const infos = [];
+      for(const u of candidateUsernames){ try{ const s = await getDoc(doc(db,'profiles',u)); if(s.exists()) infos.push({ username: u, role: (s.data() && s.data().clanRole) || 'member' }); else infos.push({ username: u, role: 'member' }); }catch(e){ infos.push({ username: u, role: 'member' }); } }
+      let bestPriority = -1; infos.forEach(i => { const p = RANK_PRIORITY[(i.role||'member')] || 1; if(p > bestPriority) bestPriority = p; });
+      const topCandidates = infos.filter(i => (RANK_PRIORITY[(i.role||'member')]||1) === bestPriority).map(i=>i.username);
+      const chosen = topCandidates[Math.floor(Math.random() * topCandidates.length)]; if(!chosen) return;
+      const cRef = doc(db,'clans',clanId); await updateDoc(cRef, { owner: chosen, leaders: arrayUnion(chosen) }); await setDoc(doc(db,'profiles',chosen), { clanRole: 'leader' }, { merge: true });
+    }catch(e){ console.error('transfer leadership failed', e); }
+  }
+
+  
+
+  async function loadClanChat(clanId){
+    try{
+      const box = document.getElementById('clanChatBox'); if(!box) return; box.innerHTML = 'Loading...';
+      // only allow viewing chat of the clan you belong to
+      try{ const myCid = localStorage.getItem('player_clanId') || null; if(String(myCid) !== String(clanId)){ box.innerHTML = '<div class="muted">Join the clan to view messages.</div>'; return; } }catch(e){}
+      try{ if(typeof window.currentChatUnsub === 'function'){ try{ window.currentChatUnsub(); }catch(e){} window.currentChatUnsub = null; } }catch(e){}
+      const col = collection(db,'clan_chat');
+      const q = query(col, where('clanId','==',clanId), limit(200));
+      // use global onSnapshot subscription to update in real time
+      window.currentChatUnsub = onSnapshot(q, snap => {
+        try{
+          // determine if the user is actively viewing this chat pane
+          const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && box.offsetParent !== null && box.clientHeight > 0);
+          const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) <= 50;
+          const prevScrollTop = box.scrollTop;
+          box.innerHTML = '';
+          const msgs = [];
+          snap.forEach(s => msgs.push(s.data()));
+          msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
+          msgs.forEach(m => {
+            const when = m.createdAt && m.createdAt.toDate ? m.createdAt.toDate().toLocaleString() : '';
+            const el = document.createElement('div'); el.style.padding='6px 0';
+            try{
+              if(m && m.system){
+                const color = m.color || 'green';
+                el.innerHTML = `<div style=\"color:${escapeHtml(color)};font-weight:600\">${escapeHtml(m.message||'')}</div><div class=\"muted\" style=\"font-size:12px\">${escapeHtml(when)}</div>`;
+              } else {
+                el.innerHTML = `<strong style=\"color:#9cf\">${escapeHtml(m.name||'')}</strong>: ${escapeHtml(m.message||'')} <div class=\"muted\" style=\"font-size:12px\">${escapeHtml(when)}</div>`;
+              }
+            }catch(e){ el.textContent = String(m.message||''); }
+            box.appendChild(el);
+          });
+          // if user is actively viewing the chat, always scroll to bottom on updates
+          const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+          if (isViewing) box.scrollTop = box.scrollHeight;
+          else if (lastMsg && lastMsg.scrollToBottom) box.scrollTop = box.scrollHeight;
+          else if (wasNearBottom) box.scrollTop = box.scrollHeight;
+          else box.scrollTop = Math.min(prevScrollTop, Math.max(0, box.scrollHeight - box.clientHeight));
+        }catch(e){ console.warn('chat snapshot render failed', e); }
+      }, err=>{ console.warn('chat snapshot error', err); });
+    }catch(e){ console.warn('load clan chat failed', e); }
+  }
+
+  function formatNumber(n){ if(typeof n==='number') return n.toLocaleString(); try{ return Number(n).toLocaleString(); }catch(e){return String(n)} }
+
+  // on load: show current player's clan if any
+  (function(){ try{ const me = localStorage.getItem('player_username')||''; if(me){ const el=document.getElementById('meName'); if(el) el.textContent = ' — ' + me; } const cid = localStorage.getItem('player_clanId'); if(cid) loadClanDetail(cid); updatePlayerClanStatus(); try{ watchMyProfile(); }catch(e){} }catch(e){} })();
+
+  // keep status updated when username or clan changes elsewhere
+  window.addEventListener('storage', function(e){ if(e.key && (e.key.indexOf('player_clan')===0 || e.key==='player_username')) try{ updatePlayerClanStatus(); }catch(ex){} });
+  </script>
+
+    </body>
+    </html>
