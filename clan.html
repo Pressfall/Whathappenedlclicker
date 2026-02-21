@@ -18,20 +18,7 @@
       <div><a href = "index.html"><button id="backToGameBtn" class="btn">Back to game</button></a></div>
     </div>
     <p class="muted">Create or join clans, view members and clan chat. Clans unlock after your first prestige.</p>
-
-    <div id="tabClans" style="display:block">
-    <div style="display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap">
-      <div id="createArea" style="flex:1;min-width:320px">
-        <div style="margin-bottom:8px"><strong>Your account</strong> <span id="meName" class="muted"></span></div>
-        <div id="playerClanStatus" class="muted" style="margin-bottom:8px"></div>
-        <div style="display:flex;gap:6px;margin-bottom:8px"><button id="ensureNameBtn" class="btn">Set/Check Username</button><button id="openQuickChat" class="btn">Open Global Chat</button><button id="openQuickClan" class="btn">Open Clan Quick</button></div>
-        <div style="margin-top:6px;padding:8px;background:#0c0c0f;border-radius:6px;border:1px solid #111">
-          <div style="margin-bottom:6px"><strong>Create Clan</strong></div>
-          <div style="display:flex;gap:6px"><input id="newClanName" placeholder="Clan name" style="flex:1"><button id="createClan" class="btn orange">Create (10 Golden)</button></div>
-          <div class="muted" style="margin-top:6px">You must have prestiged at least once and pay 10 Golden What Happeneds to create a clan.</div>
-        </div>
-      </div>
-
+                          
       <div id="findArea" style="flex:1;min-width:320px">
         <div style="margin-bottom:8px"><strong>Find clans</strong></div>
         <div style="display:flex;gap:6px;margin-bottom:8px"><input id="searchClanName" placeholder="Search name"><button id="searchClanBtn" class="btn">Search</button></div>
@@ -92,51 +79,7 @@
   }catch(e){}
   // Local helper: escape HTML to prevent XSS and ensure availability in this module
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
-                if(evType === 'clan_v_clan' && pairingComputed){
-                  (async ()=>{
-                    try{
-                      if(typeof runTransaction === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined'){
-                        const payload = {
-                          updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
-                          eventName: current.name || '',
-                          eventStart: current.start || Date.now(),
-                          type: 'clan_v_clan',
-                          pairs: (pairing.pairs || []).map(p => {
-                            const a = Array.isArray(p) ? p[0] : (p && (p.a || p[0]));
-                            const b = Array.isArray(p) ? p[1] : (p && (p.b || p[1]));
-                            return [ (a && a.id) ? { id: a.id, name: a.name || a.id } : a, (b && b.id) ? { id: b.id, name: b.name || b.id } : b ];
-                          }),
-                          unmatched: (pairing.unmatched || []).map(u => (u && u.id) ? { id: u.id, name: u.name || u.id } : u),
-                          totals: {}
-                        };
-                        try{
-                          const allClanIds = new Set();
-                          for(const pr of (payload.pairs || [])){ if(Array.isArray(pr)){ if(pr[0] && pr[0].id) allClanIds.add(pr[0].id); if(pr[1] && pr[1].id) allClanIds.add(pr[1].id); } }
-                          for(const u of (payload.unmatched || [])) if(u && u.id) allClanIds.add(u.id);
-                          for(const cid of allClanIds){ try{ payload.totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
-                          let persisted = false;
-                          try{
-                            const written = await runTransaction(db, async tx => {
-                              const snap = await tx.get(EVENT_PAIRINGS_DOC);
-                              const existing = snap && snap.exists() ? snap.data() : null;
-                              const last = existing && existing.last ? existing.last : null;
-                              // normalize existing eventStart
-                              let lastStart = 0;
-                              try{ if(last && typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last && last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = Number(last.eventStart.toMillis()); else if(last) lastStart = Number(last.eventStart || 0); }catch(e){ lastStart = Number((last && last.eventStart) || 0); }
-                              if(last && Number(lastStart) === Number(payload.eventStart) && last.type === payload.type){ return false; }
-                              tx.set(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
-                              return true;
-                            });
-                            persisted = !!written;
-                          }catch(e){ console.warn('persist v_vs_v pairings transaction failed', e); }
-                          if(persisted){
-                            try{ for(const cid of allClanIds){ try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap && Array.isArray(memSnap.docs)){ for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); if(typeof updateDoc === 'function'){ await updateDoc(memberRef, { mainClicks: 0 }); } else if(typeof setDoc === 'function'){ await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); } }catch(e){} } } }catch(e){ console.warn('clear mainClicks for clan failed', cid, e); } } }catch(e){ console.warn('clear mainClicks after persist failed', e); }
-                          }
-                        }catch(e){ console.warn('prepare v_vs_v payload failed', e); }
-                      }
-                    }catch(e){ console.warn('persist v_vs_v pairings outer failed', e); }
-                  })();
-                }
+
   window.currentChatUnsub = null;
   let currentClanUnsub = null;
   async function fetchProfileByName(uname){
@@ -354,8 +297,8 @@
       const createBtn = document.getElementById('createClan'); if(createBtn) createBtn.addEventListener('click', createClan);
       const searchBtn = document.getElementById('searchClanBtn'); if(searchBtn) searchBtn.addEventListener('click', searchClans);
       // tab buttons
-      try{ const tabClansBtn = document.getElementById('tabClansBtn'); const tabEventsBtn = document.getElementById('tabEventsBtn'); const tabShopBtn = document.getElementById('tabShopBtn'); const tabClans = document.getElementById('tabClans'); const tabEvents = document.getElementById('tabEvents'); const tabShop = document.getElementById('tabShop');
-        function showTab(which){ if(!tabClans || !tabEvents || !tabShop) return; const inClan = !!(localStorage.getItem('player_clanId')); tabClans.style.display = which === 'clans' ? 'block' : 'none'; tabEvents.style.display = which === 'events' ? 'block' : 'none'; tabShop.style.display = which === 'shop' ? 'block' : 'none'; try{ tabClansBtn.style.background = which === 'clans' ? '#164' : ''; tabEventsBtn.style.background = which === 'events' ? '#164' : ''; tabShopBtn.style.background = which === 'shop' ? '#164' : ''; }catch(e){}
+      try{ const tabClansBtn = document.getElementById('tabClansBtn'); const tabEventsBtn = document.getElementById('tabEventsBtn'); const tabShopBtn = document.getElementById('tabShopBtn'); const tabClans = document.getElementById('tabClans') || document.getElementById('clanDetailArea'); const tabEvents = document.getElementById('tabEvents'); const tabShop = document.getElementById('tabShop');
+        function showTab(which){ if(!tabClans || !tabEvents || !tabShop) return; const inClan = !!(localStorage.getItem('player_clanId')); tabClans.style.display = which === 'clans' ? 'block' : 'none'; tabEvents.style.display = which === 'events' ? 'block' : 'none'; tabShop.style.display = which === 'shop' ? 'block' : 'none'; try{ if(tabClansBtn) tabClansBtn.style.background = which === 'clans' ? '#164' : ''; if(tabEventsBtn) tabEventsBtn.style.background = which === 'events' ? '#164' : ''; if(tabShopBtn) tabShopBtn.style.background = which === 'shop' ? '#164' : ''; }catch(e){}
           // if viewer isn't in a clan, show locked message for events/shop
           if(which === 'events' && !inClan){ try{ tabEvents.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
           if(which === 'shop' && !inClan){ try{ tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
@@ -365,8 +308,8 @@
         if(tabShopBtn) tabShopBtn.addEventListener('click', ()=> showTab('shop'));
         showTab('clans');
       }catch(e){}
-      // show recommended clans on load
-      try{ showRecommendedClans(); }catch(e){}
+      // show recommended clans on load (only if viewer not in a clan)
+      try{ if(!localStorage.getItem('player_clanId')) showRecommendedClans(); }catch(e){}
     }catch(e){ console.warn('clans init listeners failed', e); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initClanUI);
@@ -639,6 +582,8 @@
       const term = (qInput||'').trim().toLowerCase();
       const resultsEl = document.getElementById('searchResults'); if(!resultsEl) return;
       resultsEl.innerHTML = 'Searching...';
+      const inClan = !!(localStorage.getItem('player_clanId'));
+      if(!term && inClan){ resultsEl.innerHTML = '<div class="muted">You are already in a clan.</div>'; return; }
       const col = collection(db, 'clans');
       const snap = await getDocs(query(col, limit(200)));
       const arr = [];
@@ -655,6 +600,8 @@
   async function showRecommendedClans(){
     try{
       const resultsEl = document.getElementById('searchResults'); if(!resultsEl) return;
+      const inClan = !!(localStorage.getItem('player_clanId'));
+      if(inClan){ resultsEl.innerHTML = '<div class="muted">You are already in a clan.</div>'; return; }
       resultsEl.innerHTML = '<div class="muted">Loading recommended clans...</div>';
       const col = collection(db, 'clans');
       const snap = await getDocs(query(col, limit(200)));
@@ -696,6 +643,23 @@
       }
 
       await updateDoc(clanRef, { members: arrayRemove(username), leaders: arrayRemove(username) });
+      // After removing, check whether clan has any members left; if empty, delete the clan to avoid orphans
+      try{
+        const fresh = await getDoc(clanRef);
+        if(fresh && fresh.exists()){
+          const fd = fresh.data() || {};
+          const rem = Array.isArray(fd.members) ? fd.members.filter(m => m) : [];
+          if(!rem || rem.length === 0){
+            try{ await deleteClan(clanId); }catch(e){ console.warn('auto-delete empty clan failed', e); }
+            await setDoc(doc(db,'profiles',username), { clanId: null, clanName: null, clanRole: null }, { merge: true });
+            localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
+            try{ updatePlayerClanStatus(); }catch(e){}
+            alert('You left and the clan was deleted (no members).');
+            const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+            return;
+          }
+        }
+      }catch(e){ console.warn('post-leave clan check failed', e); }
       try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${username} left the clan.`, createdAt: serverTimestamp(), system: true, color: 'red', scrollToBottom: true }); }catch(e){}
       await setDoc(doc(db,'profiles',username), { clanId: null, clanName: null, clanRole: null }, { merge: true });
       localStorage.removeItem('player_clanId');
@@ -924,6 +888,21 @@
   // on load: show current player's clan if any
   (function(){ try{ const me = localStorage.getItem('player_username')||''; if(me){ const el=document.getElementById('meName'); if(el) el.textContent = ' — ' + me; } const cid = localStorage.getItem('player_clanId'); if(cid) loadClanDetail(cid); updatePlayerClanStatus(); try{ watchMyProfile(); }catch(e){} }catch(e){} })();
 
+  // ensure find/create areas are hidden on load when in a clan and rebind tabs (defensive)
+  (function(){
+    try{
+      const cid = localStorage.getItem('player_clanId');
+      try{ const ca = document.getElementById('createArea'); if(ca) ca.style.display = cid ? 'none' : ''; const fa = document.getElementById('findArea'); if(fa) fa.style.display = cid ? 'none' : ''; const sr = document.getElementById('searchResults'); if(sr) sr.style.display = cid ? 'none' : ''; }catch(e){}
+      try{
+        const tabClansBtn = document.getElementById('tabClansBtn'); const tabEventsBtn = document.getElementById('tabEventsBtn'); const tabShopBtn = document.getElementById('tabShopBtn');
+        const tabClans = document.getElementById('tabClans') || document.getElementById('clanDetailArea'); const tabEvents = document.getElementById('tabEvents'); const tabShop = document.getElementById('tabShop');
+        if(tabClansBtn) tabClansBtn.addEventListener('click', ()=>{ try{ if(tabClans) tabClans.style.display = 'block'; if(tabEvents) tabEvents.style.display = 'none'; if(tabShop) tabShop.style.display = 'none'; tabClansBtn.style.background='#164'; if(tabEventsBtn) tabEventsBtn.style.background=''; if(tabShopBtn) tabShopBtn.style.background=''; }catch(e){} });
+        if(tabEventsBtn) tabEventsBtn.addEventListener('click', ()=>{ try{ if(tabClans) tabClans.style.display = 'none'; if(tabEvents) tabEvents.style.display = 'block'; if(tabShop) tabShop.style.display = 'none'; if(tabClansBtn) tabClansBtn.style.background=''; tabEventsBtn.style.background='#164'; if(tabShopBtn) tabShopBtn.style.background=''; }catch(e){} });
+        if(tabShopBtn) tabShopBtn.addEventListener('click', ()=>{ try{ if(tabClans) tabClans.style.display = 'none'; if(tabEvents) tabEvents.style.display = 'none'; if(tabShop) tabShop.style.display = 'block'; if(tabClansBtn) tabClansBtn.style.background=''; if(tabEventsBtn) tabEventsBtn.style.background=''; tabShopBtn.style.background='#164'; }catch(e){} });
+      }catch(e){}
+    }catch(e){}
+  })();
+
   // keep status updated when username or clan changes elsewhere
   window.addEventListener('storage', function(e){ if(e.key && (e.key.indexOf('player_clan')===0 || e.key==='player_username')) try{ updatePlayerClanStatus(); }catch(ex){} });
 
@@ -1100,11 +1079,12 @@
                   const s = await getDoc(EVENT_PAIRINGS_DOC);
                   const data = s && s.exists() ? s.data() : null;
                   const last = data && data.last ? data.last : null;
+                  console.debug('pairings: read persisted', { last, currentStart: current && current.start, evType });
                   if(last){
                     // normalize eventStart which may be a number or Firestore Timestamp
                     let lastStart = 0;
                     try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = Number(last.eventStart.toMillis()); else lastStart = Number(last.eventStart || 0); }catch(e){ lastStart = Number(last.eventStart || 0); }
-                    if(Number(lastStart) === Number(current.start) && last.type === evType){ pairing = last; }
+                    if(Number(lastStart) === Number(current.start) && last.type === evType){ pairing = last; console.debug('pairings: using persisted pairing for current event', { lastStart, currentStart: current.start, evType }); }
                   }
                 }
               }catch(e){ console.warn('read pairings failed', e); }
@@ -1112,6 +1092,20 @@
               if(!pairing){
                 pairing = (evType === 'clan_v_clan') ? await computePairingsForClanVsClan() : await computePairingsForClanRace();
                 pairingComputed = true;
+                console.debug('pairings: computed locally', { evType, pairing });
+                // another client may have persisted pairings while we computed; prefer persisted if present
+                try{
+                  if(typeof getDoc === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined'){
+                    const s2 = await getDoc(EVENT_PAIRINGS_DOC);
+                    const d2 = s2 && s2.exists() ? s2.data() : null;
+                    const last2 = d2 && d2.last ? d2.last : null;
+                    if(last2){
+                      let lastStart2 = 0;
+                      try{ if(typeof last2.eventStart === 'number') lastStart2 = Number(last2.eventStart); else if(last2.eventStart && typeof last2.eventStart.toMillis === 'function') lastStart2 = Number(last2.eventStart.toMillis()); else lastStart2 = Number(last2.eventStart || 0); }catch(e){ lastStart2 = Number(last2.eventStart || 0); }
+                      if(Number(lastStart2) === Number(current.start) && last2.type === evType){ pairing = last2; pairingComputed = false; console.debug('pairings: another client persisted while we computed — using persisted', { lastStart2, currentStart: current.start }); }
+                    }
+                  }
+                }catch(e){}
               }
 
               html += '<div style="padding:8px;margin-top:6px">';
@@ -1237,12 +1231,23 @@
                             });
                             persisted = !!written;
                           }catch(e){ console.warn('persist race pairings transaction failed', e); }
+                          console.debug('pairings: transaction write result for race', { persisted });
                           if(persisted){
                             try{
                               for(const cid of allClanIds){ try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap && Array.isArray(memSnap.docs)){ for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); if(typeof updateDoc === 'function'){ await updateDoc(memberRef, { mainClicks: 0 }); } else if(typeof setDoc === 'function'){ await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); } }catch(e){} } } }catch(e){ console.warn('clear mainClicks for clan failed', cid, e); } }
                             }catch(e){ console.warn('clear mainClicks failed', e); }
                           } else {
-                            // someone else persisted; we'll rely on their payload
+                            // someone else persisted; re-read and use their payload so matchups stay consistent
+                            try{
+                              const s3 = await getDoc(EVENT_PAIRINGS_DOC);
+                              const d3 = s3 && s3.exists() ? s3.data() : null;
+                              const last3 = d3 && d3.last ? d3.last : null;
+                              if(last3){
+                                let lastStart3 = 0;
+                                try{ if(typeof last3.eventStart === 'number') lastStart3 = Number(last3.eventStart); else if(last3.eventStart && typeof last3.eventStart.toMillis === 'function') lastStart3 = Number(last3.eventStart.toMillis()); else lastStart3 = Number(last3.eventStart || 0); }catch(e){ lastStart3 = Number(last3.eventStart || 0); }
+                                if(Number(lastStart3) === Number(payload.eventStart) && last3.type === payload.type){ pairing = last3; pairingComputed = false; }
+                              }
+                            }catch(e){}
                           }
                         } catch (e) { console.warn('prepare race payload failed', e); }
                       }
@@ -1405,7 +1410,8 @@
     try{
       const clans = await fetchActiveClans();
       if(!clans || !clans.length) return { pairs: [], unmatched: [] };
-      const list = shuffleArray(clans.slice());
+      // Deterministic pairing: sort by id then pair adjacent entries.
+      const list = clans.slice().sort((x,y)=>{ try{ return String(x.id).localeCompare(String(y.id)); }catch(e){ return 0; } });
       const pairs = [];
       const unmatched = [];
       for(let i=0;i<list.length;i+=2){ const a = list[i]; const b = list[i+1]; if(b) pairs.push([a,b]); else unmatched.push(a); }
@@ -1418,16 +1424,17 @@
     try{
       const clans = await fetchActiveClans();
       if(!clans || !clans.length) return { groups: [], unmatched: [] };
-      const list = shuffleArray(clans.slice());
+      // Deterministic grouping: sort by id then create groups of size 4 where possible, avoid groups smaller than 3
+      const list = clans.slice().sort((x,y)=>{ try{ return String(x.id).localeCompare(String(y.id)); }catch(e){ return 0; } });
       const groups = [];
       const unmatched = [];
       let i = 0;
       while(i < list.length){
         const remaining = list.length - i;
         if(remaining < 3){ for(let k=i;k<list.length;k++) unmatched.push(list[k]); break; }
-        // choose group size 3..5 but do not exceed remaining
-        let size = 3 + Math.floor(Math.random() * 3); if(size > 5) size = 5; if(size > remaining) size = remaining;
-        // if remaining would leave a tail of size 1 or 2, prefer to distribute to make groups >=3
+        // prefer group size 4, but ensure tail not < 3
+        let size = 4;
+        if(size > remaining) size = remaining;
         if(remaining - size > 0 && remaining - size < 3){ size = remaining; }
         const grp = list.slice(i, i + size);
         if(grp.length >= 3) groups.push(grp); else for(const g of grp) unmatched.push(g);

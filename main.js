@@ -2026,7 +2026,7 @@ let bgMusicElement = null;
 // currently-playing preview audio (separate from bgMusicElement)
 let previewAudio = null;
 // Music shop state
-let musicOwned = { mainTheme: true, BassInsanity: false, MaximumAgro: false, MetalSlam: false, UltraTwang: false, ThroatSing: false, SimpleAndEasy: false };
+let musicOwned = { mainTheme: true, BassInsanity: false, MaximumAgro: false, MetalSlam: false, UltraTwang: false, ThroatSing: false, Hardstyle_whathappened: false, EDMWhatHappened: false, SimpleAndEasy: false };
 let currentMusicTrack = 'mainTheme';
 // backup to restore volume after muting via button
 let musicVolumeBackup = null;
@@ -8329,6 +8329,7 @@ function updateShopUI() {
             const musicContainer = document.getElementById('shopTabMusic');
             if (musicContainer) {
                 let mhtml = '<div class="shop-items-row">';
+                // defines the tracks available in the shop
                 const tracks = [
                     {id: 'mainTheme', name: 'Default Theme', cost: 0, file: 'mainTheme.mp3'},
                     {id: 'BassInsanity', name: 'Bass Insanity', cost: 20, file: 'BassInsanity.mp3'},
@@ -8336,6 +8337,8 @@ function updateShopUI() {
                     {id: 'MetalSlam', name: 'Metal Slam', cost: 20, file: 'MetalSlam.mp3'},
                     {id: 'UltraTwang', name: 'Ultra Twang', cost: 20, file: 'UltraTwang.mp3'},
                     {id: 'ThroatSing', name: 'Throat Sing', cost: 20, file: 'ThroatSing.mp3'},
+                    {id: 'Hardstyle_whathappened', name: 'Hardstyle — What Happened', cost: 20, file: 'HardstyleWhat Happened.mp3'},
+                    {id: 'EDMWhatHappened', name: 'EDM — What Happened', cost: 20, file: 'EDMWhatHappened.mp3'},
                     {id: 'SimpleAndEasy', name: 'Simple and Easy', cost: 50, file: 'Simple and Easy.mp3'}
                 ];
                 tracks.forEach(t => {
