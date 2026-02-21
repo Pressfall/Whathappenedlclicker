@@ -577,6 +577,7 @@ function setEquippedTitle(title) {
     try { populateTitleSelect(); } catch (e) {}
     try { updateDisplays(); } catch (e) {}
     try { refreshEquippedTitleDisplay(); } catch (e) {}
+    try{ try{ window.dispatchEvent(new Event('equippedTitleChanged')); }catch(e){} }catch(e){}
 }
 
 function populateTitleSelect() {
@@ -4383,6 +4384,53 @@ function increment() {
         since = since + 1;
         try { localStorage.setItem('whathappened_clicks_since_prestige', String(since)); } catch (e) {}
     } catch (e) {}
+
+    // Firestore: increment per-user main image clicks for clan events
+    try{
+        (async ()=>{
+            try{
+                const clanId = localStorage.getItem('player_clanId');
+                const username = localStorage.getItem('player_username');
+                if(!clanId || !username) return;
+                if(typeof doc === 'function' && typeof db !== 'undefined'){
+                    const memberRef = doc(db,'clans', String(clanId), 'members', String(username));
+                    try{
+                        // Prefer Firestore atomic increment when available. Ensure the
+                        // `increment` symbol looks like Firestore's helper (accepts an
+                        // argument) so we don't confuse it with the local `increment()`
+                        // click function defined elsewhere in this file.
+                        if (typeof window !== 'undefined' && typeof window.firestoreIncrement === 'function' && window.firestoreIncrement.length >= 1 && typeof updateDoc === 'function'){
+                            try{
+                                await updateDoc(memberRef, { mainClicks: window.firestoreIncrement(1) });
+                            }catch(e){
+                                // fallback to read-modify-write if atomic update failed
+                                try{
+                                    const s = await getDoc(memberRef);
+                                    const cur = (s && s.exists() && s.data() && Number(s.data().mainClicks||0)) ? Number(s.data().mainClicks||0) : 0;
+                                    if(typeof setDoc === 'function'){
+                                        await setDoc(memberRef, { mainClicks: cur + 1 }, { merge: true });
+                                    } else if(typeof updateDoc === 'function'){
+                                        await updateDoc(memberRef, { mainClicks: cur + 1 });
+                                    }
+                                }catch(err){ console.warn('increment mainClicks fallback failed', err); }
+                            }
+                        } else {
+                            // atomic increment not available — best-effort read-modify-write
+                            try{
+                                const s = await getDoc(memberRef);
+                                const cur = (s && s.exists() && s.data() && Number(s.data().mainClicks||0)) ? Number(s.data().mainClicks||0) : 0;
+                                if(typeof setDoc === 'function'){
+                                    await setDoc(memberRef, { mainClicks: cur + 1 }, { merge: true });
+                                } else if(typeof updateDoc === 'function'){
+                                    await updateDoc(memberRef, { mainClicks: cur + 1 });
+                                }
+                            }catch(err){ console.warn('increment mainClicks failed', err); }
+                        }
+                    }catch(e){ console.warn('update member mainClicks failed', e); }
+                }
+            }catch(e){}
+        })();
+    }catch(e){}
 }
 
 // create a falling image from a random x at the top to the bottom, then remove it

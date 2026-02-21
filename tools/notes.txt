@@ -9,12 +9,15 @@ It is fine for now, as long as I change it eventualy.
 TO DOS:
 -----------------------------------------------------------
     - Make sure buffs from daily spins work
+    -add hardstyle and edm soundtrack ----- ADDED FILES, NOT IN ACTUAL PROJECT YET
     - Make clans work, and add clan events
     -clan shop
     - MAKE THE CLAN EVENTS 
     -- Bossfight
-    --clanVclan clicks
-    --clan race
+    --clanVclan clicks  --------------IN PROGRESS
+    --clan race -----------------IN PROGRESS
     --prestige party
     --construction event
     --endless boss
+
+    CHECK THAT CLAN MATCHUPS WORK RIGHT!!!!

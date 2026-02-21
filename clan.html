@@ -60,7 +60,7 @@
 
   <script type="module">
   import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+  import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot, runTransaction, increment } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDkrNV4bQgRHzGJ__9XqHzry7xbYuH8IuU",
@@ -88,9 +88,55 @@
     window.arrayUnion = arrayUnion;
     window.arrayRemove = arrayRemove;
     window.serverTimestamp = serverTimestamp;
+    window.firestoreIncrement = increment;
   }catch(e){}
   // Local helper: escape HTML to prevent XSS and ensure availability in this module
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
+                if(evType === 'clan_v_clan' && pairingComputed){
+                  (async ()=>{
+                    try{
+                      if(typeof runTransaction === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined'){
+                        const payload = {
+                          updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
+                          eventName: current.name || '',
+                          eventStart: current.start || Date.now(),
+                          type: 'clan_v_clan',
+                          pairs: (pairing.pairs || []).map(p => {
+                            const a = Array.isArray(p) ? p[0] : (p && (p.a || p[0]));
+                            const b = Array.isArray(p) ? p[1] : (p && (p.b || p[1]));
+                            return [ (a && a.id) ? { id: a.id, name: a.name || a.id } : a, (b && b.id) ? { id: b.id, name: b.name || b.id } : b ];
+                          }),
+                          unmatched: (pairing.unmatched || []).map(u => (u && u.id) ? { id: u.id, name: u.name || u.id } : u),
+                          totals: {}
+                        };
+                        try{
+                          const allClanIds = new Set();
+                          for(const pr of (payload.pairs || [])){ if(Array.isArray(pr)){ if(pr[0] && pr[0].id) allClanIds.add(pr[0].id); if(pr[1] && pr[1].id) allClanIds.add(pr[1].id); } }
+                          for(const u of (payload.unmatched || [])) if(u && u.id) allClanIds.add(u.id);
+                          for(const cid of allClanIds){ try{ payload.totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
+                          let persisted = false;
+                          try{
+                            const written = await runTransaction(db, async tx => {
+                              const snap = await tx.get(EVENT_PAIRINGS_DOC);
+                              const existing = snap && snap.exists() ? snap.data() : null;
+                              const last = existing && existing.last ? existing.last : null;
+                              // normalize existing eventStart
+                              let lastStart = 0;
+                              try{ if(last && typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last && last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = Number(last.eventStart.toMillis()); else if(last) lastStart = Number(last.eventStart || 0); }catch(e){ lastStart = Number((last && last.eventStart) || 0); }
+                              if(last && Number(lastStart) === Number(payload.eventStart) && last.type === payload.type){ return false; }
+                              tx.set(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
+                              return true;
+                            });
+                            persisted = !!written;
+                          }catch(e){ console.warn('persist v_vs_v pairings transaction failed', e); }
+                          if(persisted){
+                            try{ for(const cid of allClanIds){ try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap && Array.isArray(memSnap.docs)){ for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); if(typeof updateDoc === 'function'){ await updateDoc(memberRef, { mainClicks: 0 }); } else if(typeof setDoc === 'function'){ await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); } }catch(e){} } } }catch(e){ console.warn('clear mainClicks for clan failed', cid, e); } } }catch(e){ console.warn('clear mainClicks after persist failed', e); }
+                          }
+                        }catch(e){ console.warn('prepare v_vs_v payload failed', e); }
+                      }
+                    }catch(e){ console.warn('persist v_vs_v pairings outer failed', e); }
+                  })();
+                }
   window.currentChatUnsub = null;
   let currentClanUnsub = null;
   async function fetchProfileByName(uname){
@@ -171,7 +217,7 @@
     try{
       const out = {};
       const toFetch = [];
-      for(const n of (names||[])){
+        for (const n of (names || [])) {
         const raw = String(n||'');
         const key = raw.toLowerCase();
         if(_clanProfileTitleCache.hasOwnProperty(key)) out[key] = _clanProfileTitleCache[key] || '';
@@ -309,7 +355,11 @@
       const searchBtn = document.getElementById('searchClanBtn'); if(searchBtn) searchBtn.addEventListener('click', searchClans);
       // tab buttons
       try{ const tabClansBtn = document.getElementById('tabClansBtn'); const tabEventsBtn = document.getElementById('tabEventsBtn'); const tabShopBtn = document.getElementById('tabShopBtn'); const tabClans = document.getElementById('tabClans'); const tabEvents = document.getElementById('tabEvents'); const tabShop = document.getElementById('tabShop');
-        function showTab(which){ if(!tabClans || !tabEvents || !tabShop) return; tabClans.style.display = which === 'clans' ? 'block' : 'none'; tabEvents.style.display = which === 'events' ? 'block' : 'none'; tabShop.style.display = which === 'shop' ? 'block' : 'none'; try{ tabClansBtn.style.background = which === 'clans' ? '#164' : ''; tabEventsBtn.style.background = which === 'events' ? '#164' : ''; tabShopBtn.style.background = which === 'shop' ? '#164' : ''; }catch(e){} }
+        function showTab(which){ if(!tabClans || !tabEvents || !tabShop) return; const inClan = !!(localStorage.getItem('player_clanId')); tabClans.style.display = which === 'clans' ? 'block' : 'none'; tabEvents.style.display = which === 'events' ? 'block' : 'none'; tabShop.style.display = which === 'shop' ? 'block' : 'none'; try{ tabClansBtn.style.background = which === 'clans' ? '#164' : ''; tabEventsBtn.style.background = which === 'events' ? '#164' : ''; tabShopBtn.style.background = which === 'shop' ? '#164' : ''; }catch(e){}
+          // if viewer isn't in a clan, show locked message for events/shop
+          if(which === 'events' && !inClan){ try{ tabEvents.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
+          if(which === 'shop' && !inClan){ try{ tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
+        }
         if(tabClansBtn) tabClansBtn.addEventListener('click', ()=> showTab('clans'));
         if(tabEventsBtn) tabEventsBtn.addEventListener('click', ()=> showTab('events'));
         if(tabShopBtn) tabShopBtn.addEventListener('click', ()=> showTab('shop'));
@@ -347,12 +397,38 @@
       const ref = doc(db,'clans',clanId);
       currentClanUnsub = onSnapshot(ref, async snapLive => {
         try{
-          if(!snapLive.exists()){ if(area) area.innerHTML = 'Clan not found.'; return; }
+          if(!snapLive.exists()){
+            try{
+              const me = String(localStorage.getItem('player_username') || '');
+              // If we have a signed-in username, check their profile for a current clanId
+              if(me){
+                try{
+                  const prof = await getDoc(doc(db,'profiles',me));
+                  if(prof && prof.exists()){
+                    const pdata = prof.data() || {};
+                    const profileClan = pdata.clanId || null;
+                    if(profileClan && profileClan !== String(clanId || '')){
+                      // profile indicates a different clan; update localStorage and load that clan
+                      try{ localStorage.setItem('player_clanId', String(profileClan)); if(typeof pdata.clanName !== 'undefined') localStorage.setItem('player_clanName', pdata.clanName || ''); if(typeof pdata.clanRole !== 'undefined') localStorage.setItem('player_clanRole', pdata.clanRole || ''); }catch(e){}
+                      try{ updatePlayerClanStatus(); }catch(e){}
+                      loadClanDetail(profileClan);
+                      return;
+                    }
+                  }
+                }catch(e){ /* ignore profile read errors */ }
+              }
+              // No profile clan or no signed-in user: clear stored clan and show not-in-clan message
+              try{ localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole'); }catch(e){}
+              try{ updatePlayerClanStatus(); }catch(e){}
+              if(area) area.innerHTML = 'You are not in a clan.';
+            }catch(e){ if(area) area.innerHTML = 'Clan not found.'; }
+            return;
+          }
           const c = snapLive.data();
           const owner = c.owner || '';
           const name = c.name || '';
           const members = Array.isArray(c.members) ? c.members.slice(0,100) : [];
-            let descriptionText = c.description || '';
+            let descriptionText = c.description || ''; 
             let html = `<div style="display:flex;justify-content:space-between;align-items:center"><div><h2 style="margin:0">${escapeHtml(name)}</h2><div class="muted">Owner: ${escapeHtml(owner)}</div><div id="clanDescription" class="muted" style="margin-top:6px">${escapeHtml(descriptionText)}</div></div>`;
           const me = (localStorage.getItem('player_username')||'');
           if(members.includes(me)) html += `<div id=\"clanHeaderActions\"><button id=\"leaveClanBtn\" class=\"btn\">Leave Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
@@ -453,7 +529,7 @@
                 console.debug('clan: send clicked', { clanId, txt });
                 if(!txt) return;
                 const username = ensureUsername(); if(!username){ alert('Set username first'); return; }
-                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
                 if(inputEl) inputEl.value = '';
                 try { const boxNow = document.getElementById('clanChatBox'); if (boxNow) boxNow.scrollTop = boxNow.scrollHeight; } catch (e) {}
                 // allow Enter key to send (handled on input keydown below)
@@ -741,6 +817,13 @@
           const names = new Set();
           msgs.forEach(m=>{ if(m && !m.system) names.add(String(m.name||'Anon')); });
           const titles = await getProfileTitlesForClan(Array.from(names));
+          function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; // exact match
+            let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null;
+            // case-insensitive lookup
+            if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } }
+            // unlocked titles fallback
+            if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} }
+            if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
           for(const m of msgs){
             const when = m.createdAt && m.createdAt.toDate ? m.createdAt.toDate().toLocaleString() : '';
             const el = document.createElement('div'); el.style.padding='6px 0';
@@ -752,9 +835,15 @@
               } else {
                 const nameRaw = String(m.name||'Anon');
                 const lkey = nameRaw.toLowerCase();
-                let title = (titles[lkey] || '');
-                if(!title){ try{ const s = await getDoc(doc(db,'profiles',nameRaw)); if(s && s.exists()) title = String((s.data() && s.data().title) || '') || ''; }catch(e){} }
-                const displayName = title ? (escapeHtml(title) + ' ' + escapeHtml(nameRaw)) : escapeHtml(nameRaw);
+                // prefer title embedded in the message (sender included at send time)
+                let title = '';
+                try{ if(m && m.title) title = String(m.title||''); }catch(e){}
+                // for local viewer, prefer local equipped title for messages from yourself
+                try{ const me = localStorage.getItem('player_username')||''; if(!title && nameRaw === me){ title = localStorage.getItem('equipped_title') || ''; } }catch(e){}
+                if(!title){ try{ title = (titles[lkey] || ''); }catch(e){ title = ''; } }
+                const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
+                const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                const displayName = titleHtml + nameHtml;
                 const pinBtnHtml = `<span class="pinHolder"></span>`;
                 const pinnedByText = m.pinned ? (`Pinned by: ${escapeHtml(m.pinnedBy||'')}`) : '';
                 // inline: left = name + message, right = time and pinnedBy
@@ -815,6 +904,10 @@
               }
             }catch(e){}
           }
+          // listen for local equipped title change to re-render names in this chat (keeps titles current for your past messages)
+          try{ window.removeEventListener('equippedTitleChanged', window._clanEquippedListener); }catch(e){}
+          window._clanEquippedListener = function(){ try{ const cid = localStorage.getItem('player_clanId') || null; if(String(cid) === String(clanId)) { try{ loadClanChat(clanId); }catch(e){} } }catch(e){} };
+          try{ window.addEventListener('equippedTitleChanged', window._clanEquippedListener); }catch(e){}
           // if user is actively viewing the chat, always scroll to bottom on updates
           const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
           if (isViewing) box.scrollTop = box.scrollHeight;
@@ -834,11 +927,60 @@
   // keep status updated when username or clan changes elsewhere
   window.addEventListener('storage', function(e){ if(e.key && (e.key.indexOf('player_clan')===0 || e.key==='player_username')) try{ updatePlayerClanStatus(); }catch(ex){} });
 
+  // re-render clan chat and UI when the equipped title changes in this tab or another tab
+  try{ window.addEventListener('storage', function(e){ try{ if(e.key === 'equipped_title'){ const cid = localStorage.getItem('player_clanId') || null; if(cid) try{ loadClanChat(cid); }catch(err){} try{ refreshEquippedTitleDisplay(); }catch(err){} } }catch(err){} }); }catch(e){}
+
   // --------- Events scheduling (reads from Firestore so you can edit in Firebase Console) ---------
   const EVENT_CONFIG_DOC = doc(db,'events','config');
   const EVENT_STATE_DOC = doc(db,'events','state');
+  const EVENT_PAIRINGS_DOC = doc(db,'events','pairings');
   const EVENT_DURATION = 3 * 24 * 60 * 60 * 1000; // 3 days
   const DOWNTIME_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days
+
+  // Admin unlock for viewing/editing detailed Events UI
+  // Generated password (copy this exact string and keep it safe):
+  const ADMIN_PASSWORD = 'V7k9R2xB4qZ1';
+  const ADMIN_UNLOCKED_KEY = 'wh_events_admin_unlocked_v1';
+  let adminUnlocked = (function(){ try{ return sessionStorage.getItem(ADMIN_UNLOCKED_KEY) === '1'; }catch(e){ return false; } })();
+  // store last seen event state so render can be triggered on unlock
+  window._lastEventState = window._lastEventState || {};
+  async function setAdminUnlocked(val){
+    try{ adminUnlocked = !!val; try{ sessionStorage.setItem(ADMIN_UNLOCKED_KEY, adminUnlocked ? '1' : '0'); }catch(e){} const s = await getDoc(EVENT_STATE_DOC); const data = s && s.exists() ? s.data() : window._lastEventState || {}; renderEventsTab(data); }catch(e){ console.warn('setAdminUnlocked failed', e); }
+  }
+  // Key handler: Ctrl + Alt + G prompts for password to toggle admin view.
+  // If already unlocked, Ctrl+Alt+G will open the admin chooser to set the current active event.
+  async function adminChooseActiveEvent(){
+    try{
+      const s = await getDoc(EVENT_STATE_DOC);
+      const data = s && s.exists() ? s.data() : (window._lastEventState || {});
+      const upcoming = Array.isArray(data.upcoming) ? data.upcoming : [];
+      if(!upcoming.length) return alert('No upcoming events to choose from');
+      const opts = upcoming.map((it,i)=> `${i}: ${it.isDowntime ? 'DOWNTIME' : (it.name||'Event')} — ${new Date(it.start||0).toLocaleString()} to ${new Date(it.end||0).toLocaleString()}`).join('\n');
+      const sel = prompt('Enter the index of the event to start now:\n' + opts, '0');
+      if(sel === null) return;
+      const idx = parseInt(sel+'',10);
+      if(Number.isNaN(idx) || idx < 0 || idx >= upcoming.length) return alert('Invalid selection');
+      const chosen = upcoming[idx];
+      // Rebase schedule starting now with chosen item type
+      let now = Date.now();
+      const newItems = [];
+      let isDowntime = !!chosen.isDowntime;
+      for(let i=0;i<8;i++){
+        if(isDowntime){ const start = now; const end = start + DOWNTIME_DURATION; newItems.push({ name: 'DOWNTIME', start, end, isDowntime: true }); now = end; }
+        else {
+          const name = (i===0 && chosen && chosen.name) ? chosen.name : (await (async ()=>{ const cfg = await getDoc(EVENT_CONFIG_DOC); const types = (cfg && cfg.exists() && cfg.data() && Array.isArray(cfg.data().types)) ? cfg.data().types : ['Bossfight']; return pickRandomEvent(types); })());
+          const start = (newItems.length===0) ? Date.now() : now; const end = start + EVENT_DURATION;
+          newItems.push({ name, start, end, isDowntime: false }); now = end;
+        }
+        isDowntime = !isDowntime;
+      }
+      await setDoc(EVENT_STATE_DOC, { upcoming: newItems, updatedAt: serverTimestamp() }, { merge: true });
+      alert('Active event set and schedule rebased.');
+    }catch(e){ console.warn('adminChooseActiveEvent failed', e); alert('Failed to set active event'); }
+  }
+
+  (function(){ try{ window.addEventListener('keydown', function(ev){ try{ if(ev && ev.ctrlKey && ev.altKey && String(ev.key||'').toLowerCase() === 'g'){ if(!adminUnlocked){ const attempt = prompt('Enter admin password to toggle Events admin view:',''); if(attempt === null) return; if(attempt === ADMIN_PASSWORD){ setAdminUnlocked(true); alert('Events admin view unlocked'); } else { setAdminUnlocked(false); alert('Incorrect password — admin view locked'); } } else { // already unlocked: open chooser to pick active event
+                adminChooseActiveEvent(); } } }catch(e){} }); }catch(e){} })();
 
   async function ensureEventConfig(){
     try{
@@ -919,9 +1061,11 @@
     }catch(e){ return '0s'; }
   }
 
-  function renderEventsTab(state){
+  async function renderEventsTab(state){
     try{
       const area = document.getElementById('tabEvents'); if(!area) return;
+      // locked if not in a clan
+      try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div>'; return; } }catch(e){}
       const upcoming = (state && Array.isArray(state.upcoming)) ? state.upcoming : [];
       const now = Date.now();
       // find currently active item
@@ -941,36 +1085,430 @@
         } else {
           // an event is active now
           const leftMs = Math.max(0, (current.end || 0) - now);
-          html += `<div><strong>Current event:</strong> ${escapeHtml(current.name||'Event')} — ends in <strong>${escapeHtml(fmtTimeRemaining(leftMs))}</strong></div>`;
+          // large box showing current event
+          html += `<div style="display:flex;justify-content:center;margin:12px 0"><div style=\"background:rgba(255,255,255,0.02);border:1px solid #222;padding:18px 24px;border-radius:8px;min-width:320px;text-align:center\"><div style=\"font-size:20px;font-weight:800;margin-bottom:6px\">${escapeHtml(current.name||'Event')}</div><div class=\"muted\">Ends in <strong id=\"event-time-remaining\" data-end=\"${Number(current.end||0)}\">${escapeHtml(fmtTimeRemaining(leftMs))}</strong></div></div></div>`;
+          // if this is a competitive event, compute pairings and display them
+          try{
+            const nameLow = String(current.name||'').toLowerCase();
+            const evType = current.type || (nameLow.includes('race') ? 'clan_race' : (nameLow.includes('clan') && nameLow.includes('click') ? 'clan_v_clan' : ''));
+            if(evType === 'clan_v_clan' || evType === 'clan_race'){
+              // Attempt to reuse persisted pairings for this event instance; compute if missing
+              let pairing = null;
+              let pairingComputed = false;
+              try{
+                if(typeof getDoc === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined'){
+                  const s = await getDoc(EVENT_PAIRINGS_DOC);
+                  const data = s && s.exists() ? s.data() : null;
+                  const last = data && data.last ? data.last : null;
+                  if(last){
+                    // normalize eventStart which may be a number or Firestore Timestamp
+                    let lastStart = 0;
+                    try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = Number(last.eventStart.toMillis()); else lastStart = Number(last.eventStart || 0); }catch(e){ lastStart = Number(last.eventStart || 0); }
+                    if(Number(lastStart) === Number(current.start) && last.type === evType){ pairing = last; }
+                  }
+                }
+              }catch(e){ console.warn('read pairings failed', e); }
+
+              if(!pairing){
+                pairing = (evType === 'clan_v_clan') ? await computePairingsForClanVsClan() : await computePairingsForClanRace();
+                pairingComputed = true;
+              }
+
+              html += '<div style="padding:8px;margin-top:6px">';
+
+              if(evType === 'clan_v_clan'){
+                // show only the pair that contains the player's clan
+                const playerClanId = String(localStorage.getItem('player_clanId') || '');
+                const visiblePairs = (pairing.pairs || []).filter(p => {
+                  const a = Array.isArray(p) ? p[0] : (p.a || p[0]);
+                  const b = Array.isArray(p) ? p[1] : (p.b || p[1]);
+                  return (a && String(a.id) === playerClanId) || (b && String(b.id) === playerClanId);
+                });
+                const isUnmatched = (pairing.unmatched || []).some(u => u && String(u.id) === playerClanId);
+
+                if(!visiblePairs.length && !isUnmatched){
+                  html += '<div class="muted">Your clan is not participating in the current pairings.</div>';
+                } else {
+                  try{ if(window._eventMemberUnsubs && Array.isArray(window._eventMemberUnsubs)){ window._eventMemberUnsubs.forEach(fn=>{ try{ fn(); }catch(e){} }); } }catch(e){}
+                  window._eventMemberUnsubs = [];
+                  for(const p of visiblePairs){
+                    const a = Array.isArray(p) ? p[0] : (p.a || p[0]);
+                    const b = Array.isArray(p) ? p[1] : (p.b || p[1]);
+                    const pairKey = `${a.id}__${b.id}`;
+                    const membersLeftId = `event-clan-members-${a.id}`;
+                    const membersRightId = `event-clan-members-${b.id}`;
+                    const aTot = await computeClanTotalClicks(a.id);
+                    const bTot = await computeClanTotalClicks(b.id);
+                    html += `<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">`;
+                    html += `<div style="flex:1;min-width:260px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid #222;border-radius:8px"><div style="font-size:20px;font-weight:800">${escapeHtml(a.name||a.id)}</div><div id="clan-desc-${a.id}" class="muted" style="margin:6px 0;font-size:13px">Loading description...</div><div style="font-size:28px;font-weight:800;margin:8px 0" id="event-clan-total-${a.id}">${aTot.toLocaleString()}</div><div id="${membersLeftId}">Loading members...</div></div>`;
+                    html += `<div style="flex:1;min-width:260px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid #222;border-radius:8px"><div style="font-size:20px;font-weight:800">${escapeHtml(b.name||b.id)}</div><div id="clan-desc-${b.id}" class="muted" style="margin:6px 0;font-size:13px">Loading description...</div><div style="font-size:28px;font-weight:800;margin:8px 0" id="event-clan-total-${b.id}">${bTot.toLocaleString()}</div><div id="${membersRightId}">Loading members...</div></div>`;
+                    html += `</div>`;
+
+                    // attach lightweight listeners safely
+                    (async ()=>{
+                      try{ if(typeof getDoc==='function'){ const ca = await getDoc(doc(db,'clans',a.id)); if(ca && ca.exists()){ const d = ca.data() && ca.data().description ? ca.data().description : ''; const el = document.getElementById('clan-desc-'+a.id); if(el) el.textContent = d; } } }catch(e){}
+                      try{ if(typeof getDoc==='function'){ const cb = await getDoc(doc(db,'clans',b.id)); if(cb && cb.exists()){ const d2 = cb.data() && cb.data().description ? cb.data().description : ''; const el2 = document.getElementById('clan-desc-'+b.id); if(el2) el2.textContent = d2; } } }catch(e){}
+                      try{
+                        if(typeof onSnapshot==='function' && typeof collection==='function'){
+                          try{
+                            const memColA = collection(db,'clans',a.id,'members');
+                            const unsubA = onSnapshot(memColA, snap=>{
+                              try{ let tot=0, rows=''; if(snap && Array.isArray(snap.docs)){ const docs=snap.docs.slice(); docs.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const role=data.clanRole||data.role||'member'; const contrib=Number(data.mainClicks||0)||0; tot+=contrib; rows+=`<div style="display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #111"><div><strong>${escapeHtml(uname)}</strong> <span class=\"muted\">${escapeHtml(role)}</span></div><div>${contrib.toLocaleString()}</div></div>`;}catch(e){} }); }
+                                  const elTotal=document.getElementById('event-clan-total-'+a.id); if(elTotal) elTotal.textContent=tot.toLocaleString(); const elRows=document.getElementById(membersLeftId); if(elRows) elRows.innerHTML = rows || '<div class="muted">No members</div>';
+                              }catch(e){ console.warn('member snapshot left failed', e); }
+                            }, err=>{});
+                            window._eventMemberUnsubs.push(unsubA);
+                          }catch(e){}
+                          try{
+                            const memColB = collection(db,'clans',b.id,'members');
+                            const unsubB = onSnapshot(memColB, snap=>{
+                              try{ let tot2=0, rows2=''; if(snap && Array.isArray(snap.docs)){ const docs2=snap.docs.slice(); docs2.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs2.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const role=data.clanRole||data.role||'member'; const contrib=Number(data.mainClicks||0)||0; tot2+=contrib; rows2+=`<div style="display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #111"><div><strong>${escapeHtml(uname)}</strong> <span class=\"muted\">${escapeHtml(role)}</span></div><div>${contrib.toLocaleString()}</div></div>`;}catch(e){} }); }
+                                    const elTotal2=document.getElementById('event-clan-total-'+b.id); if(elTotal2) elTotal2.textContent=tot2.toLocaleString(); const elRows2=document.getElementById(membersRightId); if(elRows2) elRows2.innerHTML = rows2 || '<div class="muted">No members</div>';
+                              }catch(e){ console.warn('member snapshot right failed', e); }
+                            }, err=>{});
+                            window._eventMemberUnsubs.push(unsubB);
+                          }catch(e){}
+                        }
+                      }catch(e){}
+                    })();
+                  }
+                }
+              } else {
+                // clan_race: show player's group only
+                const playerClanId = String(localStorage.getItem('player_clanId') || '');
+                const clansToWatchRace = [];
+                if((pairing.groups && pairing.groups.length) || (pairing.unmatched && pairing.unmatched.length)){
+                  const visibleGroups = (pairing.groups || []).filter(g => (g||[]).some(x => x && String(x.id) === playerClanId));
+                  const unmatchedHasPlayer = (pairing.unmatched || []).some(u => u && String(u.id) === playerClanId);
+                  if(!visibleGroups.length && !unmatchedHasPlayer){
+                    html += '<div class="muted">Your clan is not participating in the current race groups.</div>';
+                  } else {
+                    if(visibleGroups.length){ html += '<div style="font-weight:700;margin-bottom:6px">Race Groups</div>'; }
+                    for(const g of visibleGroups){
+                      const parts = [];
+                      for(const x of (g||[])){
+                        const t = await computeClanTotalClicks(x.id);
+                        parts.push(`${escapeHtml(x.name||x.id)} <span id="event-clan-total-${x.id}">${t.toLocaleString()}</span>`);
+                        clansToWatchRace.push(x);
+                      }
+                      html += `<div style="padding:6px;border-bottom:1px solid #111">${parts.join(' • ')}</div>`;
+                    }
+                    if(unmatchedHasPlayer){
+                      const myUn = (pairing.unmatched || []).find(u => u && String(u.id) === playerClanId);
+                      if(myUn){ const ut = await computeClanTotalClicks(myUn.id); html += `<div style="padding:6px;color:#d9b">${escapeHtml(myUn.name||myUn.id)} <span id="event-clan-total-${myUn.id}">${ut.toLocaleString()}</span> — no clan found</div>`; clansToWatchRace.push(myUn); }
+                    }
+                  }
+                } else {
+                  html += '<div class="muted">No clans available for race grouping.</div>';
+                }
+                html += '</div>';
+                try{ setTimeout(()=>{ try{ watchClanTotalsForItems(clansToWatchRace); }catch(e){} }, 40); }catch(e){}
+
+                if (pairingComputed) {
+                  (async () => {
+                    try {
+                      if (typeof setDoc === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined') {
+                        const payload = {
+                          updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
+                          eventName: current.name || '',
+                          eventStart: current.start || Date.now(),
+                          type: 'clan_race',
+                          groups: (pairing.groups || []).map(g => (Array.isArray(g) ? g.map(c => (c && c.id ? { id: c.id, name: c.name || c.id } : c)) : g)),
+                          unmatched: (pairing.unmatched || []).map(u => (u && u.id ? { id: u.id, name: u.name || u.id } : u)),
+                          totals: {}
+                        };
+                        try {
+                          const allClanIds = new Set();
+                          for (const g of (pairing.groups || [])) { for (const c of (g || [])) { if (c && c.id) allClanIds.add(c.id); } }
+                          for (const u of (pairing.unmatched || [])) { if (u && u.id) allClanIds.add(u.id); }
+                          for (const cid of allClanIds) { try { payload.totals[cid] = await computeClanTotalClicks(cid); } catch (e) { /* ignore per-clan total failures */ } }
+                          // persist pairings only if none exist for this event (use transaction to avoid races)
+                          let persisted = false;
+                          try{
+                            const written = await runTransaction(db, async tx => {
+                              const snap = await tx.get(EVENT_PAIRINGS_DOC);
+                              const existing = snap && snap.exists() ? snap.data() : null;
+                              const last = existing && existing.last ? existing.last : null;
+                              if(last && Number(last.eventStart) === Number(payload.eventStart) && last.type === payload.type){
+                                return false; // someone else already persisted
+                              }
+                              tx.set(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
+                              return true;
+                            });
+                            persisted = !!written;
+                          }catch(e){ console.warn('persist race pairings transaction failed', e); }
+                          if(persisted){
+                            try{
+                              for(const cid of allClanIds){ try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap && Array.isArray(memSnap.docs)){ for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); if(typeof updateDoc === 'function'){ await updateDoc(memberRef, { mainClicks: 0 }); } else if(typeof setDoc === 'function'){ await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); } }catch(e){} } } }catch(e){ console.warn('clear mainClicks for clan failed', cid, e); } }
+                            }catch(e){ console.warn('clear mainClicks failed', e); }
+                          } else {
+                            // someone else persisted; we'll rely on their payload
+                          }
+                        } catch (e) { console.warn('prepare race payload failed', e); }
+                      }
+                    } catch (e) { console.warn('persist race pairings outer failed', e); }
+                  })();
+                }
+              }
+            }
+          }catch(e){ console.warn('renderEventsTab pairing display failed', e); }
         }
       } else {
         // no current active item, show next event and time until it (if any)
         if(next){
           const inMs = Math.max(0, (next.start || 0) - now);
-          html += `<div><strong>Next event:</strong> ${escapeHtml(next.isDowntime ? 'Downtime' : (next.name||'Event'))} in <strong>${escapeHtml(fmtTimeRemaining(inMs))}</strong></div>`;
+          html += `<div><strong>Next event:</strong> ${escapeHtml(next.isDowntime ? 'Downtime' : (next.name||'Event'))} in <strong id=\"next-event-time\" data-start=\"${Number(next.start||0)}\">${escapeHtml(fmtTimeRemaining(inMs))}</strong></div>`;
         } else {
           html += '<div class="muted">No scheduled events.</div>';
         }
       }
-      html += '<div style="margin-top:10px"><button id="forceSkipEventBtn" class="btn">Skip to next event (test)</button> <button id="regenScheduleBtn" class="btn">Regenerate schedule now</button></div>';
+      // If admin view unlocked, show full upcoming list and test buttons
+      if(adminUnlocked){
+        html += '<div style="margin-top:12px"><strong>Upcoming schedule</strong><div style="margin-top:6px">';
+        for(let i=0;i<Math.min(16, upcoming.length); i++){
+          const it = upcoming[i]; if(!it) continue;
+          const s = new Date(it.start || 0).toLocaleString(); const e = new Date(it.end || 0).toLocaleString();
+          const tag = it.isDowntime ? '<em>Downtime</em>' : escapeHtml(it.name || 'Event');
+          const relStart = (it.start||0) - now; const relEnd = (it.end||0) - now;
+          html += `<div style="padding:6px;border-bottom:1px solid #111"><div style="display:flex;justify-content:space-between"><div>${tag}</div><div class=\"muted\">${escapeHtml(fmtTimeRemaining(Math.max(0,relStart)))} → ${escapeHtml(fmtTimeRemaining(Math.max(0,relEnd)))}</div></div><div class=\"muted\" style=\"font-size:12px;margin-top:6px\">Starts: ${escapeHtml(s)} — Ends: ${escapeHtml(e)}</div></div>`;
+        }
+        html += '</div></div>';
+        html += '<div style="margin-top:10px"><button id="forceSkipEventBtn" class="btn">Skip to next event (test)</button> <button id="regenScheduleBtn" class="btn">Regenerate schedule now</button></div>';
+      }
       html += '</div>';
       area.innerHTML = html;
+      try{ updateEventTimers(); }catch(e){}
       try{ const skipBtn = document.getElementById('forceSkipEventBtn'); if(skipBtn) skipBtn.addEventListener('click', ()=>{ try{ window.skipToNextEvent(); }catch(e){} }); const regenBtn = document.getElementById('regenScheduleBtn'); if(regenBtn) regenBtn.addEventListener('click', ()=>{ try{ window.forceGenerateScheduleNow(); }catch(e){} }); }catch(e){}
     }catch(e){ console.warn('renderEventsTab failed', e); }
   }
 
   // watch state and render
+  // updateEventTimers: refresh only displayed time strings every second
+  function updateEventTimers(){
+    try{
+      const now = Date.now();
+      try{
+        const el = document.getElementById('event-time-remaining');
+        if(el){ const end = Number(el.getAttribute('data-end')||0); const left = Math.max(0, end - now); el.textContent = fmtTimeRemaining(left); }
+      }catch(e){}
+      try{
+        const el2 = document.getElementById('next-event-time');
+        if(el2){ const start = Number(el2.getAttribute('data-start')||0); const inMs = Math.max(0, start - now); el2.textContent = fmtTimeRemaining(inMs); }
+      }catch(e){}
+    }catch(e){ }
+  }
+
   async function watchEventState(){
     try{
       await ensureEventState();
-      try{ if(typeof window.eventStateUnsub === 'function'){ try{ window.eventStateUnsub(); }catch(e){} window.eventStateUnsub = null; } }catch(e){}
-      window.eventStateUnsub = onSnapshot(EVENT_STATE_DOC, snap => { try{ const data = snap && snap.exists() ? snap.data() : {}; renderEventsTab(data); }catch(e){ console.warn('event snapshot render failed', e); } });
-      // live update countdown every 1s
-      setInterval(async ()=>{
-        try{ const s = await getDoc(EVENT_STATE_DOC); renderEventsTab(s && s.exists() ? s.data() : {}); }catch(e){}
-      }, 1000);
+      // cleanup prior watchers/interval
+      try{ if(window._eventStateUnsub){ window._eventStateUnsub(); window._eventStateUnsub = null; } }catch(e){}
+      try{ if(window._eventTimerInterval){ clearInterval(window._eventTimerInterval); window._eventTimerInterval = null; } }catch(e){}
+
+      // subscribe to event state changes when available, otherwise do single fetch
+      if(typeof onSnapshot === 'function'){
+        try{
+          window._eventStateUnsub = onSnapshot(EVENT_STATE_DOC, async snap => {
+            try{
+              const data = snap && snap.exists() ? snap.data() : {};
+              const prevState = window._lastEventState || {};
+              const now = Date.now();
+              const prevUpcoming = (prevState && Array.isArray(prevState.upcoming)) ? prevState.upcoming : [];
+              const newUpcoming = (data && Array.isArray(data.upcoming)) ? data.upcoming : [];
+              const prevCurrent = prevUpcoming.find(it => (it.start || 0) <= now && (it.end || 0) > now) || null;
+              const newCurrent = newUpcoming.find(it => (it.start || 0) <= now && (it.end || 0) > now) || null;
+
+              // detect event end: previously active but now not active or changed
+              if(prevCurrent && (!newCurrent || Number(prevCurrent.start) !== Number(newCurrent.start))){
+                // handle event end: mark persisted pairing cleared and zero mainClicks once
+                try{
+                  if(typeof getDoc === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined'){
+                    const s = await getDoc(EVENT_PAIRINGS_DOC);
+                    const dataPair = s && s.exists() ? s.data() : null;
+                    const last = dataPair && dataPair.last ? dataPair.last : null;
+                    if(last){
+                      let lastStart = 0;
+                      try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = Number(last.eventStart.toMillis()); else lastStart = Number(last.eventStart || 0); }catch(e){ lastStart = Number(last.eventStart || 0); }
+                      if(Number(lastStart) === Number(prevCurrent.start) && !last.clearedAt){
+                        let wrote = false;
+                        try{
+                          const written = await runTransaction(db, async tx => {
+                            const snap2 = await tx.get(EVENT_PAIRINGS_DOC);
+                            const existing = snap2 && snap2.exists() ? snap2.data() : null;
+                            const last2 = existing && existing.last ? existing.last : null;
+                            let lastStart2 = 0;
+                            try{ if(last2 && typeof last2.eventStart === 'number') lastStart2 = Number(last2.eventStart); else if(last2 && last2.eventStart && typeof last2.eventStart.toMillis === 'function') lastStart2 = Number(last2.eventStart.toMillis()); else if(last2) lastStart2 = Number(last2.eventStart || 0); }catch(e){ lastStart2 = Number((last2 && last2.eventStart) || 0); }
+                            if(!last2 || Number(lastStart2) !== Number(prevCurrent.start) || last2.clearedAt){ return false; }
+                            const newLast = Object.assign({}, last2, { clearedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now() });
+                            tx.set(EVENT_PAIRINGS_DOC, { last: newLast }, { merge: true });
+                            return true;
+                          });
+                          wrote = !!written;
+                        }catch(e){ console.warn('mark pairings cleared transaction failed', e); }
+
+                        if(wrote){
+                          try{
+                            const allClanIds = new Set();
+                            if(last.type === 'clan_race'){
+                              if(Array.isArray(last.groups)) for(const g of last.groups) if(Array.isArray(g)) for(const c of g) if(c && c.id) allClanIds.add(c.id);
+                              if(Array.isArray(last.unmatched)) for(const u of last.unmatched) if(u && u.id) allClanIds.add(u.id);
+                            } else if(last.type === 'clan_v_clan'){
+                              if(Array.isArray(last.pairs)) for(const p of last.pairs){ const a = Array.isArray(p)?p[0]:(p&&p.a? p.a : null); const b = Array.isArray(p)?p[1]:(p&&p.b? p.b : null); if(a && a.id) allClanIds.add(a.id); if(b && b.id) allClanIds.add(b.id); }
+                              if(Array.isArray(last.unmatched)) for(const u of last.unmatched) if(u && u.id) allClanIds.add(u.id);
+                            }
+                            if(last.totals && typeof last.totals === 'object'){ for(const k of Object.keys(last.totals || {})) allClanIds.add(k); }
+                            for(const cid of allClanIds){ try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap && Array.isArray(memSnap.docs)){ for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); if(typeof updateDoc === 'function'){ await updateDoc(memberRef, { mainClicks: 0 }); } else if(typeof setDoc === 'function'){ await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); } }catch(e){} } } }catch(e){ console.warn('clear mainClicks for clan on event end failed', cid, e); } }
+                          }catch(e){ console.warn('clear mainClicks on event end failed', e); }
+                        }
+                      }
+                    }
+                  }
+                }catch(e){ console.warn('event end pairing clear failed', e); }
+              }
+
+              window._lastEventState = data || {};
+              renderEventsTab(data);
+            }catch(e){ console.warn('event state snapshot handler failed', e); }
+          }, err=>{ console.warn('event state snapshot error', err); });
+        }catch(e){ console.warn('subscribe event state failed', e); }
+      } else {
+        try{
+          const s = (typeof getDoc === 'function') ? await getDoc(EVENT_STATE_DOC) : null;
+          const data = s && s.exists() ? s.data() : {};
+          window._lastEventState = data || {};
+          renderEventsTab(data);
+        }catch(e){ console.warn('single event state render failed', e); }
+      }
+
+      // start interval to update displayed timers every second
+      try{
+        window._eventTimerInterval = setInterval(()=>{ try{ updateEventTimers(); }catch(e){} }, 1000);
+      }catch(e){}
     }catch(e){ console.warn('watchEventState failed', e); }
   }
+
+  // --- Pairing helpers for competitive events (client-side starter implementation) ---
+  async function fetchActiveClans(){
+    try{
+      const snap = await getDocs(collection(db,'clans'));
+      return (snap && Array.isArray(snap.docs)) ? snap.docs.map(d => ({ id: d.id, name: (d.data() && d.data().name) ? d.data().name : d.id })) : [];
+    }catch(e){ console.warn('fetchActiveClans failed', e); return []; }
+  }
+
+  function shuffleArray(arr){
+    for(let i = arr.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp; }
+    return arr;
+  }
+
+  // Pair clans into 2-player matchups. Returns { pairs: [[a,b],...], unmatched: [c,...] }
+  async function computePairingsForClanVsClan(){
+    try{
+      const clans = await fetchActiveClans();
+      if(!clans || !clans.length) return { pairs: [], unmatched: [] };
+      const list = shuffleArray(clans.slice());
+      const pairs = [];
+      const unmatched = [];
+      for(let i=0;i<list.length;i+=2){ const a = list[i]; const b = list[i+1]; if(b) pairs.push([a,b]); else unmatched.push(a); }
+      return { pairs, unmatched };
+    }catch(e){ console.warn('computePairingsForClanVsClan failed', e); return { pairs: [], unmatched: [] }; }
+  }
+
+  // Group clans into race groups of 3-5. Returns { groups: [[c1,c2,c3],...], unmatched: [c,...] }
+  async function computePairingsForClanRace(){
+    try{
+      const clans = await fetchActiveClans();
+      if(!clans || !clans.length) return { groups: [], unmatched: [] };
+      const list = shuffleArray(clans.slice());
+      const groups = [];
+      const unmatched = [];
+      let i = 0;
+      while(i < list.length){
+        const remaining = list.length - i;
+        if(remaining < 3){ for(let k=i;k<list.length;k++) unmatched.push(list[k]); break; }
+        // choose group size 3..5 but do not exceed remaining
+        let size = 3 + Math.floor(Math.random() * 3); if(size > 5) size = 5; if(size > remaining) size = remaining;
+        // if remaining would leave a tail of size 1 or 2, prefer to distribute to make groups >=3
+        if(remaining - size > 0 && remaining - size < 3){ size = remaining; }
+        const grp = list.slice(i, i + size);
+        if(grp.length >= 3) groups.push(grp); else for(const g of grp) unmatched.push(g);
+        i += size;
+      }
+      return { groups, unmatched };
+    }catch(e){ console.warn('computePairingsForClanRace failed', e); return { groups: [], unmatched: [] }; }
+  }
+
+  // Compute total clicks (points) for a clan. Prefer clan members subcollection, fallback to profiles query.
+  async function computeClanTotalClicks(clanId){
+    try{
+      if(!clanId) return 0;
+      const memCol = collection(db,'clans',clanId,'members');
+      try{
+        const snap = await getDocs(memCol);
+        if(snap && Array.isArray(snap.docs) && snap.docs.length){
+          let total = 0;
+          snap.forEach(d => { try{ const p = d.data() && (typeof d.data().mainClicks !== 'undefined') ? Number(d.data().mainClicks||0) : 0; if(Number.isFinite(p)) total += p; }catch(e){} });
+          return total;
+        }
+      }catch(e){ /* ignore and fallback */ }
+      // fallback: sum profiles with clanId
+      try{
+        const q = query(collection(db,'profiles'), where('clanId','==',clanId));
+        const snap2 = await getDocs(q);
+        let total2 = 0;
+        snap2.forEach(d => { try{ const v = d.data() && typeof d.data().mainClicks !== 'undefined' ? Number(d.data().mainClicks || 0) : 0; if(Number.isFinite(v)) total2 += v; }catch(e){} });
+        return total2;
+      }catch(e){ return 0; }
+    }catch(e){ console.warn('computeClanTotalClicks failed', e); return 0; }
+  }
+
+  // Watch clan totals for a list of clan ids. `items` is array of clan objects with id property.
+  function watchClanTotalsForItems(items){
+    try{
+      // cleanup previous listeners
+      try{ if(window._eventClanTotalUnsubs && Array.isArray(window._eventClanTotalUnsubs)){ window._eventClanTotalUnsubs.forEach(fn=>{ try{ fn(); }catch(e){} }); } }catch(e){}
+      window._eventClanTotalUnsubs = [];
+      if(!items || !items.length) return;
+      for(const c of items){
+        try{
+          const cid = c.id;
+          // prefer members subcollection listener
+          const memCol = collection(db,'clans',cid,'members');
+          try{
+            const unsub = onSnapshot(memCol, snap=>{
+              try{
+                let tot = 0;
+                if(snap && Array.isArray(snap.docs)){
+                  snap.forEach(d=>{ try{ const p = d.data() && typeof d.data().mainClicks !== 'undefined' ? Number(d.data().mainClicks||0) : 0; if(Number.isFinite(p)) tot += p; }catch(e){} });
+                }
+                const el = document.getElementById('event-clan-total-' + cid);
+                if(el) el.textContent = tot.toLocaleString();
+              }catch(e){ console.warn('memCol snapshot failed', e); }
+            }, err=>{ /* ignore */ });
+            window._eventClanTotalUnsubs.push(unsub);
+            continue;
+          }catch(e){ /* fallback to profiles listener below */ }
+          // fallback: listen to profiles query
+          try{
+            const q = query(collection(db,'profiles'), where('clanId','==',cid));
+            const unsub2 = onSnapshot(q, snap=>{
+              try{
+                let tot2 = 0;
+                if(snap && Array.isArray(snap.docs)){
+                  snap.forEach(d=>{ try{ const v = d.data() && typeof d.data().mainClicks !== 'undefined' ? Number(d.data().mainClicks || 0) : 0; if(Number.isFinite(v)) tot2 += v; }catch(e){} });
+                }
+                const el2 = document.getElementById('event-clan-total-' + cid);
+                if(el2) el2.textContent = tot2.toLocaleString();
+              }catch(e){ console.warn('profiles snapshot failed', e); }
+            }, err=>{});
+            window._eventClanTotalUnsubs.push(unsub2);
+          }catch(e){ }
+        }catch(e){}
+      }
+    }catch(e){ console.warn('watchClanTotalsForItems failed', e); }
+  }
+
+  // refresh events/shop view when player clan membership changes
+  try{ window.addEventListener('storage', function(e){ try{ if(e.key === 'player_clanId'){ try{ renderEventsTab(window._lastEventState || {}); }catch(err){} const tabShop = document.getElementById('tabShop'); try{ if(!localStorage.getItem('player_clanId') && tabShop) tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; else if(tabShop) tabShop.innerHTML = '<div class="muted">Clan shop coming soon.</div>'; }catch(err){} } }catch(err){} }); }catch(e){}
 
   // command: skip to next event/downtime (testing) — exposed to window
   window.skipToNextEvent = async function(){

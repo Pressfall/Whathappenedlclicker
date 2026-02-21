@@ -1094,7 +1094,7 @@
   // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
-        import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteDoc, where } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
+        import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteDoc, where, increment } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
     // TODO: Add SDKs for Firebase products that you want to use
     // https://firebase.google.com/docs/web/setup#available-libraries
 
@@ -1130,6 +1130,7 @@
             window.arrayUnion = arrayUnion;
             window.arrayRemove = arrayRemove;
             window.serverTimestamp = serverTimestamp;
+            window.firestoreIncrement = increment;
         }catch(e){}
         // Ensure player has a local username for chat/clan participation
         function ensureUsername(){
@@ -1255,15 +1256,18 @@
                     const names = new Set();
                     snap.forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                     const titles = await getProfileTitles(Array.from(names));
+                    function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                     for(const d of docs){
                         const nameRaw = String(d.name||'Anon');
-                        const title = (titles[nameRaw] || '');
-                        const displayName = title ? (escapeHtml(title) + ' ' + escapeHtml(nameRaw)) : escapeHtml(nameRaw);
+                        const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
+                        const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const displayHtml = titleHtml + nameHtml;
                         const msg = escapeHtml(String(d.message||''));
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div');
                         row.style.padding='4px 0';
-                        row.innerHTML = `<span style="color:#9cf;font-weight:700">${displayName}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
                         messagesEl.appendChild(row);
                     }
                     if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1281,7 +1285,7 @@
                 if (!input) return;
                 const txt = (input.value||'').trim();
                 if (!txt) return;
-                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
                 input.value = '';
                 try{ await trimCollection('global_chat', 100); }catch(e){}
                 // ensure sender sees latest immediately
@@ -1369,14 +1373,17 @@
                     const docs = []; const names = new Set();
                     snap.forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                     const titles = await getProfileTitles(Array.from(names));
+                    function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                     for(const d of docs){
                         const nameRaw = String(d.name||'Anon');
-                        const title = (titles[nameRaw] || '');
-                        const displayName = title ? (escapeHtml(title) + ' ' + escapeHtml(nameRaw)) : escapeHtml(nameRaw);
+                        const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
+                        const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const displayHtml = titleHtml + nameHtml;
                         const msg = escapeHtml(String(d.message||''));
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
-                        row.innerHTML = `<span style="color:#9cf;font-weight:700">${displayName}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
                         messagesEl.appendChild(row);
                     }
                     if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1413,16 +1420,19 @@
                         const docs = []; const names = new Set();
                         snap.forEach(docSnap => { const d = docSnap.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                         const titles = await getProfileTitles(Array.from(names));
-                        for(const d of docs){
-                            const nameRaw = String(d.name||'Anon');
-                            const title = (titles[nameRaw] || '');
-                            const displayName = title ? (escapeHtml(title) + ' ' + escapeHtml(nameRaw)) : escapeHtml(nameRaw);
-                            const msg = escapeHtml(String(d.message||''));
-                            const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
-                            const row = document.createElement('div'); row.style.padding='4px 0';
-                            row.innerHTML = `<span style="color:#9cf;font-weight:700">${displayName}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
-                            messagesEl.appendChild(row);
-                        }
+                    function titleHtmlWithColor(t){ try{ if(!t) return ''; const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rarity = (rarityMap && rarityMap[t]) ? rarityMap[t] : 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = (typeof RARITY_COLORS !== 'undefined' && RARITY_COLORS[rarity]) ? RARITY_COLORS[rarity] : (FALLBACK[rarity] || FALLBACK.common); return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(t)}</span>`; }catch(e){ return escapeHtml(t||''); } }
+                    for(const d of docs){
+                        const nameRaw = String(d.name||'Anon');
+                        const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
+                        const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const displayHtml = titleHtml + nameHtml;
+                        const msg = escapeHtml(String(d.message||''));
+                        const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
+                        const row = document.createElement('div'); row.style.padding='4px 0';
+                        row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        messagesEl.appendChild(row);
+                    }
                         if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
                         else if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
                         else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1453,14 +1463,17 @@
                                             snap.forEach(docSnap => { const d = docSnap.data(); msgs.push(d); names.add(String(d.name||'Anon')); });
                                             msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
                                             const titles = await getProfileTitles(Array.from(names));
+                                            function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                                             msgs.forEach(d => {
                                                 const nameRaw = String(d.name||'Anon');
                                                 const title = (titles[nameRaw] || '');
-                                                const displayName = title ? (escapeHtml(title) + ' ' + escapeHtml(nameRaw)) : escapeHtml(nameRaw);
+                                                const titleHtml = title ? titleHtmlWithColor(title) + ' ' : '';
+                                                const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                                                const displayHtml = titleHtml + nameHtml;
                                                 const msg = escapeHtml(String(d.message||''));
                                                 const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                                                 const row = document.createElement('div'); row.style.padding='4px 0';
-                                                row.innerHTML = `<span style="color:#9cf;font-weight:700">${displayName}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                                                row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
                                                 messagesEl.appendChild(row);
                                             });
                                             const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
@@ -1528,7 +1541,7 @@
             try{
                 const username = ensureUsername(); if(!username) { alert('Set username'); return; }
                 const input = document.getElementById('sideGlobalInput'); const txt = (input.value||'').trim(); if(!txt) return;
-                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
                 input.value = '';
                 try{ await trimCollection('global_chat', 100); }catch(e){}
                 // live listener will update; ensure immediate refresh as fallback
@@ -1561,11 +1574,14 @@
                     msgs.forEach(d => {
                         const nameRaw = String(d.name||'Anon');
                         const title = (titles[nameRaw] || '');
-                        const displayName = title ? (escapeHtml(title) + ' ' + escapeHtml(nameRaw)) : escapeHtml(nameRaw);
+                                            function titleHtmlWithColor(t){ try{ if(!t) return ''; const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rarity = (rarityMap && rarityMap[t]) ? rarityMap[t] : 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = (typeof RARITY_COLORS !== 'undefined' && RARITY_COLORS[rarity]) ? RARITY_COLORS[rarity] : (FALLBACK[rarity] || FALLBACK.common); return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(t)}</span>`; }catch(e){ return escapeHtml(t||''); } }
+                                            const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const displayHtml = titleHtml + nameHtml;
                         const msg = escapeHtml(String(d.message||''));
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
-                        row.innerHTML = `<span style="color:#9cf;font-weight:700">${displayName}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                        row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
                         messagesEl.appendChild(row);
                     });
                     const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
@@ -1582,7 +1598,7 @@
                 const username = ensureUsername(); if(!username) { alert('Set username'); return; }
                 const clanId = localStorage.getItem('player_clanId') || null; if(!clanId){ alert('You are not in a clan'); return; }
                 const input = document.getElementById('sideClanInput'); const txt = (input.value||'').trim(); if(!txt) return;
-                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), createdAt: serverTimestamp(), scrollToBottom: true });
+                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
                 input.value = '';
                 try{ await trimClanMessages(clanId, 100); }catch(e){}
                 try { const m = document.getElementById('sideClanMessages'); if (m) m.scrollTop = m.scrollHeight; } catch (e) {}

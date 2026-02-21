@@ -1,6 +1,0 @@
-{
-  "name": "leaderboard-server-disabled",
-  "version": "1.0.2",
-  "description": "Leaderboard server removed — use Firebase or other backend",
-  "private": true
-}
