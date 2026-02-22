@@ -35,11 +35,15 @@
     </div>
 
     <div id="tabEvents" style="display:none;margin-top:12px">
-      <div class="muted">No events yet. Coming soon.</div>
+      <div class="card">
+        <div class="muted">No events yet. Coming soon.</div>
+      </div>
     </div>
 
     <div id="tabShop" style="display:none;margin-top:12px">
-      <div class="muted">Clan shop coming soon.</div>
+      <div class="card">
+        <div class="muted">Clan shop coming soon.</div>
+      </div>
     </div>
 
     <div style="margin-top:12px;text-align:right"><a href = "index.html"><button id="backToGameBtn2" class="btn">Back to game</button></a></div>
@@ -258,6 +262,7 @@
       const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30 });
       localStorage.setItem('player_clanId', docRef.id);
       try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname, clanRole: 'leader' }, { merge: true }); }catch(e){}
+      try{ await setDoc(doc(db,'clans',docRef.id,'members',username), { mainClicks: 0, clanRole: 'leader' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
       alert('Clan created.');
       nameInp.value = '';
       loadClanDetail(docRef.id);
@@ -279,6 +284,8 @@
       await updateDoc(clanRef, { members: arrayUnion(username) });
       try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${username} joined the clan!`, createdAt: serverTimestamp(), system: true, color: 'green', scrollToBottom: true }); }catch(e){}
       await setDoc(doc(db,'profiles',username), { clanId: clanId, clanName: data.name, clanRole: 'member' }, { merge: true });
+      // Create member doc in subcollection so clan-v-clan clicks and totals include this user (mainClicks start at 0)
+      try{ await setDoc(doc(db,'clans',clanId,'members',username), { mainClicks: 0, clanRole: 'member' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
       localStorage.setItem('player_clanId', clanId);
       localStorage.setItem('player_clanName', data.name || '');
       localStorage.setItem('player_clanRole', 'member');
@@ -1044,14 +1051,14 @@
     try{
       const area = document.getElementById('tabEvents'); if(!area) return;
       // locked if not in a clan
-      try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div>'; return; } }catch(e){}
+      try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div class="card"><div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div></div>'; return; } }catch(e){}
       const upcoming = (state && Array.isArray(state.upcoming)) ? state.upcoming : [];
       const now = Date.now();
       // find currently active item
       const current = upcoming.find(it => (it.start || 0) <= now && (it.end || 0) > now) || null;
       // next event (first upcoming with start > now)
       const next = upcoming.find(it => (it.start || 0) > now) || null;
-      let html = '<div style="padding:8px">';
+      let html = '<div class="card"><div style="padding:8px">';
       if(current){
         if(current.isDowntime){
           // currently downtime -> show time until next event and its name
@@ -1069,7 +1076,13 @@
           // if this is a competitive event, compute pairings and display them
           try{
             const nameLow = String(current.name||'').toLowerCase();
-            const evType = current.type || (nameLow.includes('race') ? 'clan_race' : (nameLow.includes('clan') && nameLow.includes('click') ? 'clan_v_clan' : ''));
+            let evType = current.type || (nameLow.includes('race') ? 'clan_race' : (nameLow.includes('clan') && nameLow.includes('click') ? 'clan_v_clan' : ''));
+            // Normalize stored type strings (e.g. "ClanVClan clicks") to canonical form so comparisons work
+            if (evType && typeof evType === 'string') {
+              const t = evType.toLowerCase();
+              if (t.includes('race')) evType = 'clan_race';
+              else if (t.includes('clan') && t.includes('click')) evType = 'clan_v_clan';
+            }
             if(evType === 'clan_v_clan' || evType === 'clan_race'){
               // Attempt to reuse persisted pairings for this event instance; compute if missing
               let pairing = null;
@@ -1280,7 +1293,7 @@
         html += '</div></div>';
         html += '<div style="margin-top:10px"><button id="forceSkipEventBtn" class="btn">Skip to next event (test)</button> <button id="regenScheduleBtn" class="btn">Regenerate schedule now</button></div>';
       }
-      html += '</div>';
+      html += '</div></div>';
       area.innerHTML = html;
       try{ updateEventTimers(); }catch(e){}
       try{ const skipBtn = document.getElementById('forceSkipEventBtn'); if(skipBtn) skipBtn.addEventListener('click', ()=>{ try{ window.skipToNextEvent(); }catch(e){} }); const regenBtn = document.getElementById('regenScheduleBtn'); if(regenBtn) regenBtn.addEventListener('click', ()=>{ try{ window.forceGenerateScheduleNow(); }catch(e){} }); }catch(e){}
