@@ -1,3 +1,15 @@
+/**
+ * WHAT HAPPENED clicker — main game logic (loaded by index.html)
+ *
+ * Sections (in order):
+ * - Decimal/currency helpers, core state (count, clickPower, cps)
+ * - Clan sync (syncClanStats), main image size, formatNumber
+ * - Achievements, titles, batch cost, level multipliers, effective CPS
+ * - Upgrade tooltips, upgrade state and buy functions (1–24, divine, specials)
+ * - Prestige, save/load, increment (click handler + mainClicks for clan events)
+ * - UI: falling images, displays, shop, settings, init
+ */
+// ========== Decimal and currency helpers ==========
 // Decimal helper (use Decimal.js if available)
 const hasDecimal = typeof Decimal !== 'undefined';
 const hasBig = hasDecimal; // alias for legacy checks
@@ -81,7 +93,8 @@ function addToCount(v) {
     }
 }
 
-// syncs the what happends and golden what happends for clan
+// ========== Clan stats sync (Firestore members + profile) ==========
+// Syncs main currency and golden currency to clan member doc and player profile.
 async function syncClanStats() {
     try {
         console.debug('syncClanStats: called');
@@ -99,6 +112,7 @@ async function syncClanStats() {
         // Convert Decimal instances to plain Numbers when necessary.
         const ptsValue = (typeof count !== 'undefined') ? (isDecimalInstance(count) ? count.toNumber() : Number(count)) : 0;
         const gptsValue = (typeof goldenWhat !== 'undefined') ? (isDecimalInstance(goldenWhat) ? goldenWhat.toNumber() : Number(goldenWhat)) : 0;
+        const cpValue = (typeof clanPoints !== 'undefined') ? Number(clanPoints) : 0;
 
         // Reference to the member document in the clan
         // Note: Ensure 'db' is initialized and accessible in main.js
@@ -106,7 +120,7 @@ async function syncClanStats() {
         // Support both modular and namespaced Firebase SDKs for member doc write.
         if (typeof doc === 'function' && typeof db !== 'undefined') {
             const memberRef = doc(db, 'clans', clanId, 'members', username);
-            const payload = { points: ptsValue, gpoints: gptsValue, lastUpdate: Date.now() };
+            const payload = { points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastUpdate: Date.now() };
             // Prefer setDoc with merge so the member doc is created if missing
             if (typeof setDoc === 'function') {
                 await setDoc(memberRef, payload, { merge: true });
@@ -129,7 +143,7 @@ async function syncClanStats() {
                 const fs = firebase.firestore();
                 const memberRef = fs.collection('clans').doc(clanId).collection('members').doc(username);
                 // Use set with merge to create the document if it doesn't exist
-                await memberRef.set({ points: ptsValue, gpoints: gptsValue, lastUpdate: Date.now() }, { merge: true });
+                await memberRef.set({ points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastUpdate: Date.now() }, { merge: true });
             } catch (e) {
                 console.warn('syncClanStats: firebase.firestore fallback failed', e);
                 throw e;
@@ -149,6 +163,7 @@ async function syncClanStats() {
                 goldenWhat: gptsValue,
                 totalGoldenEver: gptsValue,
                 totalGolden: gptsValue,
+                clanPoints: cpValue,
                 updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
                 clanId: clanId
             };
@@ -172,7 +187,8 @@ async function syncClanStats() {
     }
 }
 
-// main image max-width (px) controlled by settings slider
+// ========== Main image size (settings) ==========
+// Main image max-width (px) controlled by settings slider
 let mainImageMaxWidth = 700;
 
 function applyMainImageMaxWidth() {
@@ -267,6 +283,7 @@ function formatNumber(n) {
     return sign + v.toFixed(decimals) + (unitIndex >= 0 ? units[unitIndex] : '');
 }
 
+// ========== Achievements (popups, playtime, CPS, click power, upgrade levels) ==========
 // Show a small popup near the Achievements button when an achievement unlocks
 function showAchievementPopup(title, message) {
     try {
@@ -483,6 +500,7 @@ function checkUpgradeLevelAchievements() {
     } catch (e) { try { console.warn('checkUpgradeLevelAchievements failed', e); } catch (e) {} }
 }
 
+// ========== Titles (unlock, equip, display) ==========
 // Titles management (stored in localStorage key 'unlocked_titles' as JSON array)
 // Title rarity metadata. Assign each title a rarity key.
 const TITLE_RARITIES = {
@@ -647,6 +665,13 @@ function computeBatchCost(currentCost, batch, rate) {
         }
         return total;
     }
+}
+// same as computeBatchCost but with Divine Simple Villager discount applied (for normal upgrade costs)
+function computeBatchCostWithSimpleVillager(currentCost, batch, rate) {
+    const raw = computeBatchCost(currentCost, batch, rate);
+    const mult = getSimpleVillagerMultiplier();
+    if (hasDecimal && isDecimalInstance(raw)) return raw.times(mult);
+    return (typeof raw === 'number' ? raw : Number(raw)) * mult;
 }
 
 // compute multiplicative bonus for an upgrade given its level
@@ -2019,6 +2044,8 @@ let goldenMultiplier = 1; // computed as 1 + goldenWhat * 0.1
 
 // Diamonds: rare collectible currency (1 in 2500 chance per click)
 let diamonds = 0;
+// Clan Points: clan currency — main reward from clan events, spent in the clan shop
+let clanPoints = 0;
 // Music settings: background audio element, volume (0.0-1.0) and mute flag
 let musicVolume = 0.5;
 let musicMuted = false;
@@ -2125,6 +2152,18 @@ let divineSpiritCost = 1; // next cost in golden; follows Fibonacci-like progres
 // Divine Simple Villager: reduces normal prices by 10% per level, cost doubles each purchase
 let divineSimpleVillagerLevel = 0;
 let divineSimpleVillagerCost = 1; // cost in golden currency; doubles each purchase
+function getSimpleVillagerMultiplier() { return Math.max(0, 1 - 0.1 * (typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0)); }
+function effectiveUpgradeCost(baseCost) {
+    if (baseCost === undefined || baseCost === null) return baseCost;
+    const mult = getSimpleVillagerMultiplier();
+    if (hasDecimal) {
+        try {
+            const c = isDecimalInstance(baseCost) ? baseCost : D(baseCost);
+            return c.times(mult);
+        } catch (e) { return (typeof baseCost === 'number' ? baseCost : Number(baseCost)) * mult; }
+    }
+    return (typeof baseCost === 'number' ? baseCost : Number(baseCost)) * mult;
+}
 
 // fib helper (supports Decimal if available)
 function fibNumber(n) {
@@ -2753,30 +2792,30 @@ function updateDisplays() {
     const r115 = 1.15;
     const r125 = 1.25; // stronger scaling for ropingnecurse
     const b = purchaseBatch || 1;
-    const cost1 = computeBatchCost(upgrade1Cost, b, r110);
-    const cost2 = computeBatchCost(upgrade2Cost, b, r110);
-    const cost3 = computeBatchCost(upgrade3Cost, b, r110);
-    const cost4 = computeBatchCost(upgrade4Cost, b, r110);
-    const cost5 = computeBatchCost(upgrade5Cost, b, r110);
-    const cost6 = computeBatchCost(upgrade6Cost, b, r110);
-    const cost7 = computeBatchCost(upgrade7Cost, b, r110);
-    const cost8 = computeBatchCost(upgrade8Cost, b, r110);
-    const cost9 = computeBatchCost(upgrade9Cost, b, r110);
-    const cost10 = computeBatchCost(upgrade10Cost, b, r110);
-    const cost11 = computeBatchCost(upgrade11Cost, b, r115);
-    const cost12 = computeBatchCost(upgrade12Cost, b, r115);
-    const cost13 = computeBatchCost(upgrade13Cost, b, r125);
-    const cost14 = computeBatchCost(upgrade14Cost, b, r115);
-    const cost15 = computeBatchCost(upgrade15Cost, b, r115);
-    const cost16 = computeBatchCost(upgrade16Cost, b, r115);
-    const cost17 = computeBatchCost(upgrade17Cost, b, r115);
-    const cost18 = computeBatchCost(upgrade18Cost, b, r115);
-    const cost19 = computeBatchCost(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000, b, r115);
-    const cost20 = computeBatchCost(typeof upgrade20Cost !== 'undefined' ? upgrade20Cost : 1000000000000000, b, r115);
-    const cost21 = computeBatchCost(typeof upgrade21Cost !== 'undefined' ? upgrade21Cost : 200000000000000000, b, r115);
-    const cost22 = computeBatchCost(typeof upgrade22Cost !== 'undefined' ? upgrade22Cost : 1000000000000000000, b, r115);
-    const cost23 = computeBatchCost(typeof upgrade23Cost !== 'undefined' ? upgrade23Cost : 5000000000000000000, b, r115);
-    const cost24 = computeBatchCost(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, b, r115);
+    const cost1 = computeBatchCostWithSimpleVillager(upgrade1Cost, b, r110);
+    const cost2 = computeBatchCostWithSimpleVillager(upgrade2Cost, b, r110);
+    const cost3 = computeBatchCostWithSimpleVillager(upgrade3Cost, b, r110);
+    const cost4 = computeBatchCostWithSimpleVillager(upgrade4Cost, b, r110);
+    const cost5 = computeBatchCostWithSimpleVillager(upgrade5Cost, b, r110);
+    const cost6 = computeBatchCostWithSimpleVillager(upgrade6Cost, b, r110);
+    const cost7 = computeBatchCostWithSimpleVillager(upgrade7Cost, b, r110);
+    const cost8 = computeBatchCostWithSimpleVillager(upgrade8Cost, b, r110);
+    const cost9 = computeBatchCostWithSimpleVillager(upgrade9Cost, b, r110);
+    const cost10 = computeBatchCostWithSimpleVillager(upgrade10Cost, b, r110);
+    const cost11 = computeBatchCostWithSimpleVillager(upgrade11Cost, b, r115);
+    const cost12 = computeBatchCostWithSimpleVillager(upgrade12Cost, b, r115);
+    const cost13 = computeBatchCostWithSimpleVillager(upgrade13Cost, b, r125);
+    const cost14 = computeBatchCostWithSimpleVillager(upgrade14Cost, b, r115);
+    const cost15 = computeBatchCostWithSimpleVillager(upgrade15Cost, b, r115);
+    const cost16 = computeBatchCostWithSimpleVillager(upgrade16Cost, b, r115);
+    const cost17 = computeBatchCostWithSimpleVillager(upgrade17Cost, b, r115);
+    const cost18 = computeBatchCostWithSimpleVillager(upgrade18Cost, b, r115);
+    const cost19 = computeBatchCostWithSimpleVillager(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000, b, r115);
+    const cost20 = computeBatchCostWithSimpleVillager(typeof upgrade20Cost !== 'undefined' ? upgrade20Cost : 1000000000000000, b, r115);
+    const cost21 = computeBatchCostWithSimpleVillager(typeof upgrade21Cost !== 'undefined' ? upgrade21Cost : 200000000000000000, b, r115);
+    const cost22 = computeBatchCostWithSimpleVillager(typeof upgrade22Cost !== 'undefined' ? upgrade22Cost : 1000000000000000000, b, r115);
+    const cost23 = computeBatchCostWithSimpleVillager(typeof upgrade23Cost !== 'undefined' ? upgrade23Cost : 5000000000000000000, b, r115);
+    const cost24 = computeBatchCostWithSimpleVillager(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, b, r115);
 
     setLabel('upgrade1', `OP mouse (cost for ${b}: ${formatNumber(cost1)})` + (upgrade1Level ? ` - lvl ${upgrade1Level}` : ''));
     setLabel('upgrade2', `Somalian Pirate (cost for ${b}: ${formatNumber(cost2)})` + (upgrade2Level ? ` - lvl ${upgrade2Level}` : ''));
@@ -4218,6 +4257,7 @@ function formatSecondsHuman(sec) {
     } catch (e) { return String(sec); }
 }
 
+// ========== Main click handler: currency, achievements, clan mainClicks ==========
 function increment() {
     let critOccurred = false;
     // compute base click reward (clickPower already includes Somalian and clickMultiplier effects)
@@ -4561,17 +4601,18 @@ function buyUpgrade1() {
     const btn = document.getElementById('upgrade1');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade1Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade1Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade1Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseClickPower = (isDecimalInstance(baseClickPower) ? baseClickPower : D(baseClickPower)).plus(D(1));
                 upgrade1Level = (isDecimalInstance(upgrade1Level) ? upgrade1Level : D(upgrade1Level)).plus(D(1));
                 upgrade1Cost = D(upgrade1Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade1Cost) {
-                count -= upgrade1Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseClickPower += 1;
                 upgrade1Level += 1;
                 upgrade1Cost = Math.ceil(upgrade1Cost * 1.1);
@@ -4585,24 +4626,25 @@ function buyUpgrade1() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade1Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade1Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade2() {
     const btn = document.getElementById('upgrade2');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade2Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade2Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade2Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 pirateCps = (isDecimalInstance(pirateCps) ? pirateCps : D(pirateCps)).plus(D(1));
                 upgrade2Level = (isDecimalInstance(upgrade2Level) ? upgrade2Level : D(upgrade2Level)).plus(D(1));
                 upgrade2Cost = D(upgrade2Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade2Cost) {
-                count -= upgrade2Cost;
+            if (count >= eff) {
+                count -= eff;
                 pirateCps += 1;
                 upgrade2Level += 1;
                 upgrade2Cost = Math.ceil(upgrade2Cost * 1.1);
@@ -4616,24 +4658,25 @@ function buyUpgrade2() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade2Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade2Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade3() {
     const btn = document.getElementById('upgrade3');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade3Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade3Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade3Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(5));
                 upgrade3Level = (isDecimalInstance(upgrade3Level) ? upgrade3Level : D(upgrade3Level)).plus(D(1));
                 upgrade3Cost = D(upgrade3Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade3Cost) {
-                count -= upgrade3Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 5;
                 upgrade3Level += 1;
                 upgrade3Cost = Math.ceil(upgrade3Cost * 1.1);
@@ -4647,24 +4690,25 @@ function buyUpgrade3() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade3Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade3Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade4() {
     const btn = document.getElementById('upgrade4');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade4Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade4Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade4Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(20));
                 upgrade4Level = (isDecimalInstance(upgrade4Level) ? upgrade4Level : D(upgrade4Level)).plus(D(1));
                 upgrade4Cost = D(upgrade4Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade4Cost) {
-                count -= upgrade4Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 20;
                 upgrade4Level += 1;
                 upgrade4Cost = Math.ceil(upgrade4Cost * 1.1);
@@ -4678,24 +4722,25 @@ function buyUpgrade4() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade4Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade4Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade5() {
     const btn = document.getElementById('upgrade5');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade5Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade5Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade5Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(100));
                 upgrade5Level = (isDecimalInstance(upgrade5Level) ? upgrade5Level : D(upgrade5Level)).plus(D(1));
                 upgrade5Cost = D(upgrade5Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade5Cost) {
-                count -= upgrade5Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 100;
                 upgrade5Level += 1;
                 upgrade5Cost = Math.ceil(upgrade5Cost * 1.1);
@@ -4709,24 +4754,25 @@ function buyUpgrade5() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade5Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade5Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade6() {
     const btn = document.getElementById('upgrade6');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade6Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade6Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade6Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(500));
                 upgrade6Level = (isDecimalInstance(upgrade6Level) ? upgrade6Level : D(upgrade6Level)).plus(D(1));
                 upgrade6Cost = D(upgrade6Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade6Cost) {
-                count -= upgrade6Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 500;
                 upgrade6Level += 1;
                 upgrade6Cost = Math.ceil(upgrade6Cost * 1.1);
@@ -4740,24 +4786,25 @@ function buyUpgrade6() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade6Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade6Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade7() {
     const btn = document.getElementById('upgrade7');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade7Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade7Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade7Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(5000));
                 upgrade7Level = (isDecimalInstance(upgrade7Level) ? upgrade7Level : D(upgrade7Level)).plus(D(1));
                 upgrade7Cost = D(upgrade7Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade7Cost) {
-                count -= upgrade7Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 5000;
                 upgrade7Level += 1;
                 upgrade7Cost = Math.ceil(upgrade7Cost * 1.1);
@@ -4771,24 +4818,25 @@ function buyUpgrade7() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade7Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade7Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade8() {
     const btn = document.getElementById('upgrade8');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade8Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade8Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade8Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(20000));
                 upgrade8Level = (isDecimalInstance(upgrade8Level) ? upgrade8Level : D(upgrade8Level)).plus(D(1));
                 upgrade8Cost = D(upgrade8Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade8Cost) {
-                count -= upgrade8Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 20000;
                 upgrade8Level += 1;
                 upgrade8Cost = Math.ceil(upgrade8Cost * 1.1);
@@ -4802,24 +4850,25 @@ function buyUpgrade8() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade8Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade8Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade9() {
     const btn = document.getElementById('upgrade9');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade9Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade9Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade9Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(100000));
                 upgrade9Level = (isDecimalInstance(upgrade9Level) ? upgrade9Level : D(upgrade9Level)).plus(D(1));
                 upgrade9Cost = D(upgrade9Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade9Cost) {
-                count -= upgrade9Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 100000;
                 upgrade9Level += 1;
                 upgrade9Cost = Math.ceil(upgrade9Cost * 1.1);
@@ -4833,24 +4882,25 @@ function buyUpgrade9() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade9Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade9Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade10() {
     const btn = document.getElementById('upgrade10');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade10Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade10Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade10Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(500000));
                 upgrade10Level = (isDecimalInstance(upgrade10Level) ? upgrade10Level : D(upgrade10Level)).plus(D(1));
                 upgrade10Cost = D(upgrade10Cost).times(D(1.1)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade10Cost) {
-                count -= upgrade10Cost;
+            if (count >= eff) {
+                count -= eff;
                 baseOtherCps += 500000;
                 upgrade10Level += 1;
                 upgrade10Cost = Math.ceil(upgrade10Cost * 1.1);
@@ -4864,24 +4914,25 @@ function buyUpgrade10() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade10Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade10Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade11() {
     const btn = document.getElementById('upgrade11');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade11Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade11Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade11Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 jonathanBaseCps = (isDecimalInstance(jonathanBaseCps) ? jonathanBaseCps : D(jonathanBaseCps)).plus(D(1500000));
                 upgrade11Level = (isDecimalInstance(upgrade11Level) ? upgrade11Level : D(upgrade11Level)).plus(D(1));
                 upgrade11Cost = D(upgrade11Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade11Cost) {
-                count -= upgrade11Cost;
+            if (count >= eff) {
+                count -= eff;
                 jonathanBaseCps += 1500000;
                 upgrade11Level += 1;
                 upgrade11Cost = Math.ceil(upgrade11Cost * 1.15);
@@ -4895,24 +4946,25 @@ function buyUpgrade11() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade11Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade11Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade12() {
     const btn = document.getElementById('upgrade12');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade12Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade12Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade12Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 crBaseCps = (isDecimalInstance(crBaseCps) ? crBaseCps : D(crBaseCps)).plus(D(5000000));
                 upgrade12Level = (isDecimalInstance(upgrade12Level) ? upgrade12Level : D(upgrade12Level)).plus(D(1));
                 upgrade12Cost = D(upgrade12Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade12Cost) {
-                count -= upgrade12Cost;
+            if (count >= eff) {
+                count -= eff;
                 crBaseCps += 5000000;
                 upgrade12Level += 1;
                 upgrade12Cost = Math.ceil(upgrade12Cost * 1.15);
@@ -4926,16 +4978,17 @@ function buyUpgrade12() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade12Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade12Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade13() {
     const btn = document.getElementById('upgrade13');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade13Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade13Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade13Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 // ropingnecurse contribution is computed from level with 10% per-level growth;
                 // do not add to `baseOtherCps` here to avoid double-counting — keep level-based contribution
                 upgrade13Level = (isDecimalInstance(upgrade13Level) ? upgrade13Level : D(upgrade13Level)).plus(D(1));
@@ -4947,8 +5000,8 @@ function buyUpgrade13() {
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade13Cost) {
-                count -= upgrade13Cost;
+            if (count >= eff) {
+                count -= eff;
                 // ropingnecurse contribution is computed from level with 10% per-level growth;
                 // do not add to `baseOtherCps` here to avoid double-counting — keep level-based contribution
                 upgrade13Level += 1;
@@ -4967,24 +5020,25 @@ function buyUpgrade13() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade13Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade13Cost, purchaseBatch || 1, 1.25)) + '.');
 }
 
 function buyUpgrade14() {
     const btn = document.getElementById('upgrade14');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade14Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade14Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade14Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 // scimitar contribution is tracked by level; do NOT add to baseOtherCps
                 upgrade14Level = (isDecimalInstance(upgrade14Level) ? upgrade14Level : D(upgrade14Level)).plus(D(1));
                 upgrade14Cost = D(upgrade14Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade14Cost) {
-                count -= upgrade14Cost;
+            if (count >= eff) {
+                count -= eff;
                 // scimitar contribution is tracked by level; do NOT add to baseOtherCps
                 upgrade14Level += 1;
                 upgrade14Cost = Math.ceil(upgrade14Cost * 1.15);
@@ -4998,24 +5052,25 @@ function buyUpgrade14() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade14Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade14Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade15() {
     const btn = document.getElementById('upgrade15');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade15Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade15Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade15Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 // Beats contribution is tracked by level; do NOT add to baseOtherCps
                 upgrade15Level = (isDecimalInstance(upgrade15Level) ? upgrade15Level : D(upgrade15Level)).plus(D(1));
                 upgrade15Cost = D(upgrade15Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade15Cost) {
-                count -= upgrade15Cost;
+            if (count >= eff) {
+                count -= eff;
                 // Beats contribution is tracked by level; do NOT add to baseOtherCps
                 upgrade15Level += 1;
                 upgrade15Cost = Math.ceil(upgrade15Cost * 1.15);
@@ -5029,24 +5084,25 @@ function buyUpgrade15() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade15Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade15Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade16() {
     const btn = document.getElementById('upgrade16');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade16Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade16Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade16Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 // ez villager contribution is tracked by level; do NOT add to `baseOtherCps` here
                 upgrade16Level = (isDecimalInstance(upgrade16Level) ? upgrade16Level : D(upgrade16Level)).plus(D(1));
                 upgrade16Cost = D(upgrade16Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade16Cost) {
-                count -= upgrade16Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade16Level += 1;
                 upgrade16Cost = Math.ceil(upgrade16Cost * 1.15);
                 bought++;
@@ -5059,24 +5115,25 @@ function buyUpgrade16() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade16Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade16Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade17() {
     const btn = document.getElementById('upgrade17');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade17Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade17Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade17Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 // SCP contribution tracked by level
                 upgrade17Level = (isDecimalInstance(upgrade17Level) ? upgrade17Level : D(upgrade17Level)).plus(D(1));
                 upgrade17Cost = D(upgrade17Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade17Cost) {
-                count -= upgrade17Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade17Level += 1;
                 upgrade17Cost = Math.ceil(upgrade17Cost * 1.15);
                 bought++;
@@ -5089,23 +5146,24 @@ function buyUpgrade17() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade17Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade17Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade18() {
     const btn = document.getElementById('upgrade18');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade18Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade18Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade18Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade18Level = (isDecimalInstance(upgrade18Level) ? upgrade18Level : D(upgrade18Level)).plus(D(1));
                 upgrade18Cost = D(upgrade18Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade18Cost) {
-                count -= upgrade18Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade18Level += 1;
                 upgrade18Cost = Math.ceil(upgrade18Cost * 1.15);
                 bought++;
@@ -5118,23 +5176,24 @@ function buyUpgrade18() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade18Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade18Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade19() {
     const btn = document.getElementById('upgrade19');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade19Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade19Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade19Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade19Level = (isDecimalInstance(upgrade19Level) ? upgrade19Level : D(upgrade19Level)).plus(D(1));
                 upgrade19Cost = D(upgrade19Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade19Cost) {
-                count -= upgrade19Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade19Level += 1;
                 upgrade19Cost = Math.ceil(upgrade19Cost * 1.15);
                 bought++;
@@ -5147,23 +5206,24 @@ function buyUpgrade19() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade19Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade20() {
     const btn = document.getElementById('upgrade20');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade20Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade20Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade20Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade20Level = (isDecimalInstance(upgrade20Level) ? upgrade20Level : D(upgrade20Level)).plus(D(1));
                 upgrade20Cost = D(upgrade20Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade20Cost) {
-                count -= upgrade20Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade20Level += 1;
                 upgrade20Cost = Math.ceil(upgrade20Cost * 1.15);
                 bought++;
@@ -5176,23 +5236,24 @@ function buyUpgrade20() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade20Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade20Cost !== 'undefined' ? upgrade20Cost : 1000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade21() {
     const btn = document.getElementById('upgrade21');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade21Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade21Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade21Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade21Level = (isDecimalInstance(upgrade21Level) ? upgrade21Level : D(upgrade21Level)).plus(D(1));
                 upgrade21Cost = D(upgrade21Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade21Cost) {
-                count -= upgrade21Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade21Level += 1;
                 upgrade21Cost = Math.ceil(upgrade21Cost * 1.15);
                 bought++;
@@ -5205,23 +5266,24 @@ function buyUpgrade21() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade21Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade21Cost !== 'undefined' ? upgrade21Cost : 200000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade22() {
     const btn = document.getElementById('upgrade22');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade22Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade22Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade22Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade22Level = (isDecimalInstance(upgrade22Level) ? upgrade22Level : D(upgrade22Level)).plus(D(1));
                 upgrade22Cost = D(upgrade22Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade22Cost) {
-                count -= upgrade22Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade22Level += 1;
                 upgrade22Cost = Math.ceil(upgrade22Cost * 1.15);
                 bought++;
@@ -5234,23 +5296,24 @@ function buyUpgrade22() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade22Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade22Cost !== 'undefined' ? upgrade22Cost : 1000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade23() {
     const btn = document.getElementById('upgrade23');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade23Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade23Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade23Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade23Level = (isDecimalInstance(upgrade23Level) ? upgrade23Level : D(upgrade23Level)).plus(D(1));
                 upgrade23Cost = D(upgrade23Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade23Cost) {
-                count -= upgrade23Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade23Level += 1;
                 upgrade23Cost = Math.ceil(upgrade23Cost * 1.15);
                 bought++;
@@ -5263,23 +5326,24 @@ function buyUpgrade23() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade23Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade23Cost !== 'undefined' ? upgrade23Cost : 5000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade24() {
     const btn = document.getElementById('upgrade24');
     let bought = 0;
     for (let i = 0; i < purchaseBatch; i++) {
+        var eff = effectiveUpgradeCost(upgrade24Cost);
         if (hasDecimal) {
-            if ((isDecimalInstance(count) ? count : D(count)).gte(D(upgrade24Cost))) {
-                count = (isDecimalInstance(count) ? count : D(count)).minus(D(upgrade24Cost));
+            if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
+                count = (isDecimalInstance(count) ? count : D(count)).minus(eff);
                 upgrade24Level = (isDecimalInstance(upgrade24Level) ? upgrade24Level : D(upgrade24Level)).plus(D(1));
                 upgrade24Cost = D(upgrade24Cost).times(D(1.15)).ceil();
                 bought++;
             } else break;
         } else {
-            if (count >= upgrade24Cost) {
-                count -= upgrade24Cost;
+            if (count >= eff) {
+                count -= eff;
                 upgrade24Level += 1;
                 upgrade24Cost = Math.ceil(upgrade24Cost * 1.15);
                 bought++;
@@ -5292,7 +5356,7 @@ function buyUpgrade24() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(upgrade24Cost) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 // SCP special purchases (each doubles SCP contribution)
@@ -6426,6 +6490,38 @@ function buyPrestige() {
     try { totalGoldenEver = (Number(totalGoldenEver) || 0) + Number(finalAwards || 0); } catch (e) { totalGoldenEver = Number(finalAwards || 0); }
     if (goldenWhat >= 1) divineUnlocked = true;
 
+    // Prestige Party event: report this prestige to clan total (if event active and in clan)
+    try {
+        (async function () {
+            try {
+                var clanId = localStorage.getItem('player_clanId');
+                if (!clanId) return;
+                var getDocFn = typeof window !== 'undefined' && window.getDoc;
+                var docFn = typeof window !== 'undefined' && window.doc;
+                var setDocFn = typeof window !== 'undefined' && window.setDoc;
+                var dbVal = typeof window !== 'undefined' && window.db;
+                if (typeof getDocFn !== 'function' || !docFn || typeof setDocFn !== 'function' || !dbVal) return;
+                var stateSnap = await getDocFn(docFn(dbVal, 'events', 'state'));
+                var state = stateSnap && stateSnap.exists() ? stateSnap.data() : {};
+                var upcoming = state.upcoming || [];
+                var now = Date.now();
+                var current = upcoming.find(function (it) { return (it.start || 0) <= now && (it.end || 0) > now; });
+                if (!current || String(current.name || '').toLowerCase().indexOf('prestige party') === -1) return;
+                var eventStart = Number(current.start || 0);
+                var progressRef = docFn(dbVal, 'events', 'prestige_party_progress');
+                var progSnap = await getDocFn(progressRef);
+                var prog = progSnap && progSnap.exists() ? progSnap.data() : {};
+                var eventsMap = prog.events || {};
+                if (typeof eventsMap !== 'object' || eventsMap === null) eventsMap = {};
+                var clanMap = eventsMap[eventStart];
+                if (typeof clanMap !== 'object' || clanMap === null) clanMap = {};
+                clanMap[clanId] = (Number(clanMap[clanId]) || 0) + 1;
+                eventsMap[eventStart] = clanMap;
+                await setDocFn(progressRef, { events: eventsMap }, { merge: true });
+            } catch (e) { console.warn('Prestige Party report failed', e); }
+        })();
+    } catch (e) {}
+
     // reset all special purchased flags and multipliers so special effects do NOT carry over
     try {
         // multipliers and derived vars
@@ -6492,6 +6588,8 @@ function buyPrestige() {
             divineUnlocked,
             // preserve diamonds across prestige
             diamonds,
+            // preserve clan points across prestige
+            clanPoints,
             // preserve music settings across prestige
             musicVolume, musicMuted,
             // preserve SFX settings across prestige
@@ -8983,6 +9081,8 @@ function saveGame() {
             goldenWhat, goldenThreshold,
             // diamonds collectible currency
             diamonds,
+            // clan currency (rewards from clan events, spent in clan shop)
+            clanPoints,
             // music settings
             musicVolume,
             musicMuted,
@@ -9299,6 +9399,9 @@ function loadGame() {
         // diamonds
         if (typeof s.diamonds === 'string') diamonds = Number(s.diamonds);
         else if (typeof s.diamonds === 'number') diamonds = s.diamonds;
+        // clan points (clan currency)
+        if (typeof s.clanPoints === 'string') clanPoints = Number(s.clanPoints);
+        else if (typeof s.clanPoints === 'number') clanPoints = s.clanPoints;
         // music settings
         if (typeof s.musicVolume === 'string') musicVolume = Number(s.musicVolume) || musicVolume;
         else if (typeof s.musicVolume === 'number') musicVolume = s.musicVolume;

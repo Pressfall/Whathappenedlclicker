@@ -1,6 +1,12 @@
 <!DOCTYPE html>
+<!--
+  WHAT HAPPENED clicker — Main game page
+  Entry point: loads styles.css, main.js. Navigation to leaderboard, achievements, clan, gamba, privacy.
+  Sections: head/meta, loading overlay, left upgrades bar, quick buttons, main content, stats/modals, shop, chat, clan panel, footer, Firebase/scripts.
+-->
 <html lang="en">
 <head>
+    <!-- Meta, title, favicon, ads -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="version" content="1.0.1">
@@ -17,6 +23,7 @@
         </style>
 </head>
 <body>
+    <!-- ========== Loading overlay (hidden after init or 10s failsafe) ========== -->
     <div id="loadingOverlay">
         <div class="loader">
             <div class="shapes" aria-hidden="true">
@@ -34,10 +41,12 @@
     setTimeout(()=>{ try{ const lo=document.getElementById('loadingOverlay'); if(lo) lo.style.display='none'; }catch(e){} }, 10000);
     </script>
         
+    <!-- ========== Left sidebar: upgrades menu toggle and overlay ========== -->
     <button id="leftBarToggle" aria-label="Open upgrades menu" onclick="toggleLeftBar()">☰</button>
     <div id="leftBarOverlay" onclick="closeLeftBar()"></div>
     <aside id="leftBar">
         <div class="leftBarScroll">
+            <!-- Normal / Divine menu switcher; then upgrade buttons 1–24 -->
             <ul>
         <li>
             <div style="display:flex;gap:6px;flex-direction:column;padding:8px;">
@@ -205,7 +214,7 @@
             </div>
         </div>
     </aside>
-    <!-- Quick buttons placed adjacent to the left upgrades bar -->
+    <!-- ========== Quick action buttons (Leaderboard, Achievements, Prestige, Gamble) ========== -->
     <div id="leftQuickBtns">
         <div style="display:flex;gap:6px;">
             <button id="leaderboardTopBtn" onclick="window.location.href='leaderboard.html'" title="Global Leaderboard" style="background:blue;color:#fff;padding:6px;border-radius:6px;border:none;">Leaderboard</button>
@@ -316,6 +325,7 @@
         </li>
     </ul>
 
+    <!-- ========== Main game area: title, equipped title, click image, counters ========== -->
     <div id="mainContent">
         <h1 style = "text-align: center;">WHAT HAPPENED!?!?!?!?!?!?!?!?!?!?</h1>
         <div id="equippedTitleDisplay" style="text-align:center;color:#9cf;margin-top:6px;font-weight:600;"></div>
@@ -337,7 +347,7 @@
         </div>
     </div>
 
-    <!-- Stats panel (modal-like) -->
+    <!-- ========== Stats panel (modal) ========== -->
     <div id="statsPanel" style="display:none;position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);background:#111;color:#fff;padding:18px;border-radius:10px;z-index:2000;min-width:320px;box-shadow:0 8px 30px rgba(0,0,0,0.7);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <h3 style="margin:0;font-size:16px;">Player Stats</h3>
@@ -360,7 +370,7 @@
         </div>
     </div>
 
-    <!-- Welcome Back modal for offline gains -->
+    <!-- ========== Welcome Back modal (offline gains) ========== -->
     <div id="welcomeBackModal" style="display:none;position:fixed;left:50%;top:40%;transform:translate(-50%,-40%);background:#000000;color:#fff;padding:18px;border-radius:10px;z-index:2200;min-width:300px;box-shadow:0 8px 30px rgba(0,0,0,0.8);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
             <h3 id="welcomeBackTitle" style="margin:0;font-size:18px;">Welcome Back!</h3>
@@ -373,7 +383,7 @@
         </div>
     </div>
 
-    <!-- Shop overlay and menu -->
+    <!-- ========== Shop overlay and menu (gems, main image skins, BG, music) ========== -->
     <div id="shopOverlay" class="shop-overlay"></div>
     <div id="shopMenu" class="shop-menu">
         <div class="shop-header">
@@ -438,6 +448,7 @@
     <!-- Leaderboard removed (replaced by Firebase later) -->
     
     <!-- Footer with Privacy link -->
+    <!-- ========== Footer and nav links ========== -->
     <footer style="text-align:center;color:#aaa;margin:18px 0;font-size:13px;">
         <a href="privacy.html">Privacy Policy</a>
     </footer>
@@ -961,7 +972,7 @@
 
     <!-- Settings toggle (fixed top-right) -->
     <button id="settingsToggle" class="settings-btn" onclick="toggleSettingsMenu()">Settings ⚙</button>
-    <!-- Chat & Clan quick buttons (moved to bottom-right, smaller) -->
+    <!-- ========== Chat & Clan quick-open buttons (bottom-right) ========== -->
     <button id="chatToggle" class="settings-btn" style="position:fixed;right:18px;bottom:18px;z-index:1300;width:32px;height:32px;padding:2px;border-radius:8px;font-size:14px;display:flex;align-items:center;justify-content:center;" title="Open Global Chat">💬</button>
     <button id="clanToggle" class="settings-btn" style="position:fixed;right:18px;bottom:54px;z-index:1300;width:32px;height:24px;padding:2px;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center;" title="Open Clans">Clan</button>
     <!-- Shop toggle (fixed near settings) -->
@@ -1089,9 +1100,8 @@
     </script>
 
     </body>
-    <!--firebase database-->
+    <!-- ========== Firebase (Firestore, Analytics): exposes db, doc, setDoc, getDoc, updateDoc, etc. for main.js ========== -->
     <script type="module">
-  // Import the functions you need from the SDKs you need
   import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
         import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteDoc, where, increment } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";

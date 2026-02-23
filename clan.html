@@ -9,6 +9,15 @@
 </head>
 <body>
   <div class="card">
+    <div id="clanXpBarContainer" style="display:none;margin-bottom:16px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <strong style="font-size:16px">Clan Level <span id="clanLevelNum">1</span></strong>
+        <span class="muted" id="clanXpText">0 / 200 XP</span>
+      </div>
+      <div style="height:24px;background:#1a1a1a;border-radius:6px;overflow:hidden;border:1px solid #222">
+        <div id="clanXpBarFill" style="height:100%;width:0%;background:linear-gradient(90deg,#164,#2a8);transition:width 0.3s ease"></div>
+      </div>
+    </div>
     <div style="display:flex;justify-content:space-between;align-items:center">
       <div style="display:flex;gap:8px;align-items:center">
         <button id="tabClansBtn" class="btn" style="background:#164;color:#fff;padding:6px 10px;border-radius:6px">CLANS</button>
@@ -42,7 +51,8 @@
 
     <div id="tabShop" style="display:none;margin-top:12px">
       <div class="card">
-        <div class="muted">Clan shop coming soon.</div>
+        <div id="clanShopBalance" style="margin-bottom:12px;font-size:18px;font-weight:700"></div>
+        <div class="muted">Clan shop coming soon. Spend Clan Points here when items are added.</div>
       </div>
     </div>
 
@@ -83,6 +93,28 @@
   }catch(e){}
   // Local helper: escape HTML to prevent XSS and ensure availability in this module
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
+  // Read Clan Points from game save (clan currency — rewards from events, spent in clan shop)
+  function getClanPointsFromSave(){ try{ const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1'); if(!raw) return 0; const s = JSON.parse(raw); return Number(s.clanPoints) || 0; }catch(e){ return 0; } }
+  function renderClanShopTab(){ const tabShop = document.getElementById('tabShop'); if(!tabShop) return; const cp = getClanPointsFromSave(); tabShop.innerHTML = '<div class="card"><div id="clanShopBalance" style="margin-bottom:12px;font-size:18px;font-weight:700">Clan Points: ' + String(cp).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '</div><div class="muted">Clan shop coming soon. Spend Clan Points here when items are added.</div></div>'; }
+
+  // Clan XP and level (1–20, exponentially harder)
+  const CLAN_MAX_LEVEL = 20;
+  const CLAN_XP_BASE = 200;
+  const CLAN_XP_GROWTH = 1.55;
+  function totalClanXpForLevel(L){ if(L <= 1) return 0; let sum = 0; for(let i = 2; i <= L; i++) sum += CLAN_XP_BASE * Math.pow(CLAN_XP_GROWTH, i - 2); return sum; }
+  function clanLevelFromXp(clanXp){ let x = Number(clanXp) || 0; for(let L = CLAN_MAX_LEVEL; L >= 1; L--){ if(x >= totalClanXpForLevel(L)) return { level: L, xpInLevel: x - totalClanXpForLevel(L), xpNeededForNext: L < CLAN_MAX_LEVEL ? totalClanXpForLevel(L + 1) - totalClanXpForLevel(L) : 0 }; } return { level: 1, xpInLevel: x, xpNeededForNext: CLAN_XP_BASE }; }
+  async function updateClanXpBar(){
+    const container = document.getElementById('clanXpBarContainer'); if(!container) return;
+    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ container.style.display = 'none'; return; }
+    try{
+      const snap = await getDoc(doc(db,'clans',clanId)); const clanXp = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp) || 0) : 0;
+      const info = clanLevelFromXp(clanXp);
+      container.style.display = 'block';
+      const levelEl = document.getElementById('clanLevelNum'); if(levelEl) levelEl.textContent = String(info.level);
+      const xpTextEl = document.getElementById('clanXpText'); if(xpTextEl){ if(info.level >= CLAN_MAX_LEVEL) xpTextEl.textContent = 'Max level!'; else xpTextEl.textContent = info.xpInLevel.toLocaleString() + ' / ' + (info.xpInLevel + info.xpNeededForNext).toLocaleString() + ' XP'; }
+      const fillEl = document.getElementById('clanXpBarFill'); if(fillEl){ const pct = info.level >= CLAN_MAX_LEVEL ? 100 : (info.xpNeededForNext ? Math.min(100, (info.xpInLevel / info.xpNeededForNext) * 100) : 0); fillEl.style.width = pct + '%'; }
+    }catch(e){ container.style.display = 'none'; }
+  }
 
   window.currentChatUnsub = null;
   let currentClanUnsub = null;
@@ -309,12 +341,14 @@
           // if viewer isn't in a clan, show locked message for events/shop
           if(which === 'events' && !inClan){ try{ tabEvents.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
           if(which === 'shop' && !inClan){ try{ tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
+          if(which === 'shop' && inClan){ try{ renderClanShopTab(); }catch(e){} }
         }
         if(tabClansBtn) tabClansBtn.addEventListener('click', ()=> showTab('clans'));
         if(tabEventsBtn) tabEventsBtn.addEventListener('click', ()=> showTab('events'));
         if(tabShopBtn) tabShopBtn.addEventListener('click', ()=> showTab('shop'));
         showTab('clans');
       }catch(e){}
+      try{ updateClanXpBar(); }catch(e){}
       // show recommended clans on load (only if viewer not in a clan)
       try{ if(!localStorage.getItem('player_clanId')) showRecommendedClans(); }catch(e){}
     }catch(e){ console.warn('clans init listeners failed', e); }
@@ -920,8 +954,18 @@
   const EVENT_CONFIG_DOC = doc(db,'events','config');
   const EVENT_STATE_DOC = doc(db,'events','state');
   const EVENT_PAIRINGS_DOC = doc(db,'events','pairings');
+  const PRESTIGE_PARTY_PROGRESS_DOC = doc(db,'events','prestige_party_progress');
+  const LAST_ENDED_EVENT_DOC = doc(db,'events','last_ended_event');
   const EVENT_DURATION = 3 * 24 * 60 * 60 * 1000; // 3 days
   const DOWNTIME_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days
+  const PRESTIGE_PARTY_TIERS = [20, 40, 60, 80, 100];
+  const PRESTIGE_PARTY_REWARDS = [
+    { prestiges: 20, gems: 5, clanXp: 50, clanPoints: 10 },
+    { prestiges: 40, gems: 10, clanXp: 100, clanPoints: 25 },
+    { prestiges: 60, gems: 20, clanXp: 200, clanPoints: 50 },
+    { prestiges: 80, gems: 35, clanXp: 350, clanPoints: 100 },
+    { prestiges: 100, gems: 50, clanXp: 500, clanPoints: 150 }
+  ];
 
   // Admin unlock for viewing/editing detailed Events UI
   // Generated password (copy this exact string and keep it safe):
@@ -1017,6 +1061,7 @@
       if(upcoming.length === 0){ await generateSchedule(now,8); return; }
       // if the current first event already ended, advance schedule
       if((upcoming[0].end || 0) <= now){
+        try{ const endedEv = upcoming[0]; if(endedEv && String(endedEv.name||'').toLowerCase().includes('prestige party')) await setDoc(LAST_ENDED_EVENT_DOC, { name: endedEv.name, start: endedEv.start, end: endedEv.end }); }catch(e){}
         // find first future item
         let idx = upcoming.findIndex(it => (it.end || 0) > now);
         if(idx === -1){ await generateSchedule(now,8); return; }
@@ -1047,6 +1092,28 @@
     }catch(e){ return '0s'; }
   }
 
+  async function processEndedPrestigePartyRewards(eventItem){
+    try{
+      const eventStart = Number(eventItem.start||0);
+      const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
+      const claimedKey = 'whathappened_pp_claimed_' + eventStart;
+      if(localStorage.getItem(claimedKey)) return;
+      const progSnap = await getDoc(PRESTIGE_PARTY_PROGRESS_DOC);
+      const prog = progSnap && progSnap.exists() ? progSnap.data() : {};
+      const byClan = (prog.events || {})[eventStart] || {};
+      const totalPrestiges = Number(byClan[clanId]) || 0;
+      let totalGems = 0, totalClanXp = 0, totalCP = 0;
+      for(const r of PRESTIGE_PARTY_REWARDS){ if(totalPrestiges >= r.prestiges){ totalGems += r.gems; totalClanXp += r.clanXp; totalCP += r.clanPoints; } }
+      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const cur = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
+      const msg = 'The clan event has ended!\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP (added to your clan), ' + totalCP + ' Clan Points.';
+      alert(msg);
+    }catch(e){ console.warn('processEndedPrestigePartyRewards failed', e); }
+  }
+
   async function renderEventsTab(state){
     try{
       const area = document.getElementById('tabEvents'); if(!area) return;
@@ -1054,6 +1121,8 @@
       try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div class="card"><div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div></div>'; return; } }catch(e){}
       const upcoming = (state && Array.isArray(state.upcoming)) ? state.upcoming : [];
       const now = Date.now();
+      if(upcoming.length > 0 && (upcoming[0].end || 0) <= now && String(upcoming[0].name||'').toLowerCase().includes('prestige party')){ try{ await processEndedPrestigePartyRewards(upcoming[0]); }catch(e){} }
+      else { try{ const endedSnap = await getDoc(LAST_ENDED_EVENT_DOC); const ended = endedSnap && endedSnap.exists() ? endedSnap.data() : null; if(ended && (ended.end||0) <= now && String(ended.name||'').toLowerCase().includes('prestige party')) await processEndedPrestigePartyRewards(ended); }catch(e){} }
       // find currently active item
       const current = upcoming.find(it => (it.start || 0) <= now && (it.end || 0) > now) || null;
       // next event (first upcoming with start > now)
@@ -1073,9 +1142,43 @@
           const leftMs = Math.max(0, (current.end || 0) - now);
           // large box showing current event
           html += `<div style="display:flex;justify-content:center;margin:12px 0"><div style=\"background:rgba(255,255,255,0.02);border:1px solid #222;padding:18px 24px;border-radius:8px;min-width:320px;text-align:center\"><div style=\"font-size:20px;font-weight:800;margin-bottom:6px\">${escapeHtml(current.name||'Event')}</div><div class=\"muted\">Ends in <strong id=\"event-time-remaining\" data-end=\"${Number(current.end||0)}\">${escapeHtml(fmtTimeRemaining(leftMs))}</strong></div></div></div>`;
+          const nameLow = String(current.name||'').toLowerCase();
+          const isPrestigeParty = nameLow.includes('prestige party');
+          if(isPrestigeParty){
+            // Prestige Party: individual event — bar with tiers 20, 40, 60, 80, 100
+            const eventStart = Number(current.start||0);
+            const playerClanId = String(localStorage.getItem('player_clanId')||'');
+            let totalPrestiges = 0;
+            try{ const progSnap = await getDoc(PRESTIGE_PARTY_PROGRESS_DOC); const prog = progSnap && progSnap.exists() ? progSnap.data() : {}; const byEvent = prog.events || {}; const byClan = byEvent[eventStart] || {}; totalPrestiges = Number(byClan[playerClanId]) || 0; }catch(e){}
+            const maxP = 100;
+            const pct = Math.min(100, (totalPrestiges / maxP) * 100);
+            const currentTierIndex = PRESTIGE_PARTY_TIERS.findIndex(t => totalPrestiges < t);
+            const tierIndex = currentTierIndex === -1 ? PRESTIGE_PARTY_TIERS.length : currentTierIndex;
+            html += '<div style="margin-top:16px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333">';
+            html += '<div style="font-weight:700;margin-bottom:8px">Total clan prestiges this event: <span id="prestige-party-total">' + String(totalPrestiges) + '</span></div>';
+            html += '<div style="height:28px;background:#1a1a1a;border-radius:6px;overflow:hidden;border:1px solid #222;position:relative">';
+            html += '<div id="prestige-party-bar-fill" style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#164,#2a8);transition:width 0.3s ease"></div>';
+            for(let i = 0; i < PRESTIGE_PARTY_TIERS.length; i++){
+              const t = PRESTIGE_PARTY_TIERS[i];
+              const left = (t / maxP) * 100;
+              const isReached = totalPrestiges >= t;
+              const isCurrent = (tierIndex === i);
+              html += '<div style="position:absolute;left:' + left + '%;top:0;bottom:0;width:2px;background:' + (isReached ? '#2a8' : '#444') + ';margin-left:-1px" title="' + t + ' prestiges"></div>';
+              html += '<div style="position:absolute;left:' + left + '%;top:-22px;transform:translateX(-50%);font-size:11px;white-space:nowrap;font-weight:' + (isCurrent ? '800' : '400') + ';color:' + (isReached ? '#2a8' : (isCurrent ? '#fff' : '#888')) + '" title="Tier ' + (i+1) + '">' + t + (isReached ? ' ✓' : '') + '</div>';
+            }
+            html += '</div>';
+            html += '<div style="margin-top:24px;display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between">';
+            for(let i = 0; i < PRESTIGE_PARTY_REWARDS.length; i++){
+              const r = PRESTIGE_PARTY_REWARDS[i];
+              const reached = totalPrestiges >= r.prestiges;
+              const emph = tierIndex === i;
+              html += '<div style="padding:8px 12px;border-radius:6px;border:1px solid ' + (emph ? '#2a8' : '#333') + ';background:' + (emph ? 'rgba(42,136,136,0.15)' : 'rgba(0,0,0,0.2)') + ';font-size:13px"><strong>' + r.prestiges + ' prestiges</strong>: ' + (reached ? '✓ ' : '') + r.gems + ' gems, ' + r.clanXp + ' clan XP, ' + r.clanPoints + ' CP</div>';
+            }
+            html += '</div></div>';
+            try{ window._prestigePartyUnsub = onSnapshot(PRESTIGE_PARTY_PROGRESS_DOC, async ()=>{ const s = await getDoc(PRESTIGE_PARTY_PROGRESS_DOC); const d = s && s.exists() ? s.data() : {}; const byClan = (d.events || {})[eventStart] || {}; const tot = Number(byClan[playerClanId]) || 0; const el = document.getElementById('prestige-party-total'); if(el) el.textContent = String(tot); const fillEl = document.getElementById('prestige-party-bar-fill'); if(fillEl) fillEl.style.width = Math.min(100, (tot / 100) * 100) + '%'; }); }catch(e){}
+          } else {
           // if this is a competitive event, compute pairings and display them
           try{
-            const nameLow = String(current.name||'').toLowerCase();
             let evType = current.type || (nameLow.includes('race') ? 'clan_race' : (nameLow.includes('clan') && nameLow.includes('click') ? 'clan_v_clan' : ''));
             // Normalize stored type strings (e.g. "ClanVClan clicks") to canonical form so comparisons work
             if (evType && typeof evType === 'string') {
@@ -1270,6 +1373,7 @@
               }
             }
           }catch(e){ console.warn('renderEventsTab pairing display failed', e); }
+          }
         }
       } else {
         // no current active item, show next event and time until it (if any)
@@ -1528,7 +1632,7 @@
   }
 
   // refresh events/shop view when player clan membership changes
-  try{ window.addEventListener('storage', function(e){ try{ if(e.key === 'player_clanId'){ try{ renderEventsTab(window._lastEventState || {}); }catch(err){} const tabShop = document.getElementById('tabShop'); try{ if(!localStorage.getItem('player_clanId') && tabShop) tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; else if(tabShop) tabShop.innerHTML = '<div class="muted">Clan shop coming soon.</div>'; }catch(err){} } }catch(err){} }); }catch(e){}
+  try{ window.addEventListener('storage', function(e){ try{ if(e.key === 'player_clanId'){ try{ renderEventsTab(window._lastEventState || {}); }catch(err){} try{ updateClanXpBar(); }catch(err){} const tabShop = document.getElementById('tabShop'); try{ if(!localStorage.getItem('player_clanId') && tabShop) tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; else if(tabShop && localStorage.getItem('player_clanId')) renderClanShopTab(); }catch(err){} } }catch(err){} }); }catch(e){}
 
   // command: skip to next event/downtime (testing) — exposed to window
   window.skipToNextEvent = async function(){

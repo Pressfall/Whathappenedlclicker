@@ -1,3 +1,8 @@
+/**
+ * WHAT HAPPENED clicker — main game styles (used by index.html, privacy.html)
+ * Sections: loading overlay, left bar, upgrades, main content, stats/modals, shop, settings, chat, misc
+ */
+/* ========== CSS variables ========== */
 /* Left vertical upgrades bar */
 :root{ --leftbar-width:320px; --leftbar-gap:24px; --bulk-height:64px; }
 

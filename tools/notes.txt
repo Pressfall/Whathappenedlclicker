@@ -1,23 +1,16 @@
-This code uses firebase database for all of the database
-functions, including chat, clans, leaderboard, etc.
+NOTES
+CHANGE RULES IN FIREBASE EVENTUALLY
 
-Make sure to go back and add rules, to stop the page from getting hacked eventually.
-It is fine for now, as long as I change it eventualy.
+TODO
+ADD CLAN CURRENCY AND SHOP
+ADD CLAN XP AND LEVEL UP SYSTEM
+CLAN BANNERS?
 
+ADD CLAN EVENTS:
+    PRESTIGE party
+    CLAN V CLAN CLICKS
+    CLAN race
+    CONSTRUCTION EVENT
+    BOSSFIGHT
+    ENDLESS BOSSFIGHT
 
------------------------------------------------------------
-TO DOS:
------------------------------------------------------------
-    - Make sure buffs from daily spins work
-    -add hardstyle and edm soundtrack ----- ADDED FILES, NOT IN ACTUAL PROJECT YET
-    - Make clans work, and add clan events
-    -clan shop
-    - MAKE THE CLAN EVENTS 
-    -- Bossfight
-    --clanVclan clicks  --------------IN PROGRESS
-    --clan race -----------------IN PROGRESS
-    --prestige party
-    --construction event
-    --endless boss
-
-    CHECK THAT CLAN MATCHUPS WORK RIGHT!!!!
