@@ -108,19 +108,19 @@ async function syncClanStats() {
         }
 
         // Ensure we are sending Numbers, not Decimal objects
-        // Use the game's primary currency variables (`count` and `goldenWhat`)
-        // Convert Decimal instances to plain Numbers when necessary.
         const ptsValue = (typeof count !== 'undefined') ? (isDecimalInstance(count) ? count.toNumber() : Number(count)) : 0;
         const gptsValue = (typeof goldenWhat !== 'undefined') ? (isDecimalInstance(goldenWhat) ? goldenWhat.toNumber() : Number(goldenWhat)) : 0;
         const cpValue = (typeof clanPoints !== 'undefined') ? Number(clanPoints) : 0;
+        let cpsVal = 0, clickPowerVal = 0;
+        try { cpsVal = (typeof cps !== 'undefined' && isDecimalInstance(cps)) ? cps.toNumber() : Number(cps) || 0; } catch (e) {}
+        try { clickPowerVal = (typeof clickPower !== 'undefined' && isDecimalInstance(clickPower)) ? clickPower.toNumber() : Number(clickPower) || 0; } catch (e) {}
+        try { if (!cpsVal && localStorage.getItem('whathappened_current_cps')) cpsVal = Number(localStorage.getItem('whathappened_current_cps')) || 0; } catch (e) {}
+        try { if (!clickPowerVal && localStorage.getItem('whathappened_current_clickpower')) clickPowerVal = Number(localStorage.getItem('whathappened_current_clickpower')) || 0; } catch (e) {}
 
-        // Reference to the member document in the clan
-        // Note: Ensure 'db' is initialized and accessible in main.js
         console.log('syncClanStats: preparing update', { clanId, username, points: ptsValue, gpoints: gptsValue });
-        // Support both modular and namespaced Firebase SDKs for member doc write.
         if (typeof doc === 'function' && typeof db !== 'undefined') {
             const memberRef = doc(db, 'clans', clanId, 'members', username);
-            const payload = { points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastUpdate: Date.now() };
+            const payload = { points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastCps: cpsVal, lastClickPower: clickPowerVal, lastUpdate: Date.now() };
             // Prefer setDoc with merge so the member doc is created if missing
             if (typeof setDoc === 'function') {
                 await setDoc(memberRef, payload, { merge: true });
@@ -142,8 +142,7 @@ async function syncClanStats() {
             try {
                 const fs = firebase.firestore();
                 const memberRef = fs.collection('clans').doc(clanId).collection('members').doc(username);
-                // Use set with merge to create the document if it doesn't exist
-                await memberRef.set({ points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastUpdate: Date.now() }, { merge: true });
+                await memberRef.set({ points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastCps: cpsVal, lastClickPower: clickPowerVal, lastUpdate: Date.now() }, { merge: true });
             } catch (e) {
                 console.warn('syncClanStats: firebase.firestore fallback failed', e);
                 throw e;
@@ -4468,6 +4467,7 @@ function increment() {
                         }
                     }catch(e){ console.warn('update member mainClicks failed', e); }
                 }
+                if (clanId) try { window._bossfightPending = (window._bossfightPending || 0) + 1; } catch (e) {}
             }catch(e){}
         })();
     }catch(e){}
@@ -6490,36 +6490,13 @@ function buyPrestige() {
     try { totalGoldenEver = (Number(totalGoldenEver) || 0) + Number(finalAwards || 0); } catch (e) { totalGoldenEver = Number(finalAwards || 0); }
     if (goldenWhat >= 1) divineUnlocked = true;
 
-    // Prestige Party event: report this prestige to clan total (if event active and in clan)
+    // Prestige Party: always increment pending; clan page flushes to Firestore when you open Events (avoids Firebase timing on game page)
     try {
-        (async function () {
-            try {
-                var clanId = localStorage.getItem('player_clanId');
-                if (!clanId) return;
-                var getDocFn = typeof window !== 'undefined' && window.getDoc;
-                var docFn = typeof window !== 'undefined' && window.doc;
-                var setDocFn = typeof window !== 'undefined' && window.setDoc;
-                var dbVal = typeof window !== 'undefined' && window.db;
-                if (typeof getDocFn !== 'function' || !docFn || typeof setDocFn !== 'function' || !dbVal) return;
-                var stateSnap = await getDocFn(docFn(dbVal, 'events', 'state'));
-                var state = stateSnap && stateSnap.exists() ? stateSnap.data() : {};
-                var upcoming = state.upcoming || [];
-                var now = Date.now();
-                var current = upcoming.find(function (it) { return (it.start || 0) <= now && (it.end || 0) > now; });
-                if (!current || String(current.name || '').toLowerCase().indexOf('prestige party') === -1) return;
-                var eventStart = Number(current.start || 0);
-                var progressRef = docFn(dbVal, 'events', 'prestige_party_progress');
-                var progSnap = await getDocFn(progressRef);
-                var prog = progSnap && progSnap.exists() ? progSnap.data() : {};
-                var eventsMap = prog.events || {};
-                if (typeof eventsMap !== 'object' || eventsMap === null) eventsMap = {};
-                var clanMap = eventsMap[eventStart];
-                if (typeof clanMap !== 'object' || clanMap === null) clanMap = {};
-                clanMap[clanId] = (Number(clanMap[clanId]) || 0) + 1;
-                eventsMap[eventStart] = clanMap;
-                await setDocFn(progressRef, { events: eventsMap }, { merge: true });
-            } catch (e) { console.warn('Prestige Party report failed', e); }
-        })();
+        var clanId = localStorage.getItem('player_clanId');
+        if (clanId) {
+            var pending = Math.max(0, parseInt(localStorage.getItem('whathappened_prestige_party_pending') || '0', 10)) + 1;
+            try { localStorage.setItem('whathappened_prestige_party_pending', String(pending)); } catch (e) {}
+        }
     } catch (e) {}
 
     // reset all special purchased flags and multipliers so special effects do NOT carry over
@@ -7786,6 +7763,50 @@ function initApp() {
 }, 30000); // Syncs every 30 seconds
     // save on unload
     window.addEventListener('beforeunload', saveGame);
+    // Bossfight event: flush pending damage to Firestore every 3s (scaled by click power + CPS, per-member)
+    try {
+        setInterval(async function () {
+            try {
+                var pending = (typeof window !== 'undefined' && window._bossfightPending) ? window._bossfightPending : 0;
+                if (pending <= 0) return;
+                var clanId = localStorage.getItem('player_clanId');
+                var username = localStorage.getItem('player_username');
+                if (!clanId || !username) return;
+                var getDocFn = typeof window !== 'undefined' && window.getDoc;
+                var docFn = typeof window !== 'undefined' && window.doc;
+                var setDocFn = typeof window !== 'undefined' && window.setDoc;
+                var dbVal = typeof window !== 'undefined' && window.db;
+                if (typeof getDocFn !== 'function' || !docFn || typeof setDocFn !== 'function' || !dbVal) return;
+                var stateSnap = await getDocFn(docFn(dbVal, 'events', 'state'));
+                var state = stateSnap && stateSnap.exists() ? stateSnap.data() : {};
+                var upcoming = state.upcoming || [];
+                var now = Date.now();
+                var current = upcoming.find(function (it) { return (it.start || 0) <= now && (it.end || 0) > now; });
+                if (!current || String(current.name || '').toLowerCase().indexOf('bossfight') === -1) return;
+                window._bossfightPending = 0;
+                var cpVal = 0, cpsVal = 0;
+                try { cpVal = (typeof isDecimalInstance !== 'undefined' && isDecimalInstance(clickPower)) ? clickPower.toNumber() : Number(clickPower) || 0; } catch (e) {}
+                try { cpsVal = (typeof isDecimalInstance !== 'undefined' && isDecimalInstance(cps)) ? cps.toNumber() : Number(cps) || 0; } catch (e) {}
+                var perClick = 1 + Math.min(Math.max(0, cpVal), 100000);
+                var damage = Math.floor(pending * perClick + cpsVal * 3);
+                if (damage <= 0) return;
+                var eventStartKey = String(Number(current.start || 0));
+                var cid = String(clanId);
+                var progressRef = docFn(dbVal, 'events', 'bossfight_progress');
+                var bossSnap = await getDocFn(progressRef);
+                var prog = bossSnap && bossSnap.exists() ? bossSnap.data() : {};
+                var eventsMap = prog.events && typeof prog.events === 'object' ? prog.events : {};
+                if (!eventsMap[eventStartKey] || typeof eventsMap[eventStartKey] !== 'object') eventsMap[eventStartKey] = {};
+                var clanData = eventsMap[eventStartKey][cid];
+                if (typeof clanData !== 'object' || clanData === null) clanData = { total: 0, members: {} };
+                if (typeof clanData.members !== 'object' || clanData.members === null) clanData.members = {};
+                clanData.total = (Number(clanData.total) || 0) + damage;
+                clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + damage;
+                eventsMap[eventStartKey][cid] = clanData;
+                await setDocFn(progressRef, { events: eventsMap });
+            } catch (e) {}
+        }, 3000);
+    } catch (e) {}
     // restore bulk select UI if present
     try {
         const sel = document.getElementById('bulkSelect');

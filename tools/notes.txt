@@ -7,10 +7,10 @@ ADD CLAN XP AND LEVEL UP SYSTEM
 CLAN BANNERS?
 
 ADD CLAN EVENTS:
-    PRESTIGE party
-    CLAN V CLAN CLICKS
-    CLAN race
+    PRESTIGE party --- in progress
+    CLAN V CLAN CLICKS --- in progress
+    CLAN race --- in progress
     CONSTRUCTION EVENT
-    BOSSFIGHT
+    BOSSFIGHT --- in progress
     ENDLESS BOSSFIGHT
 

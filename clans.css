@@ -100,3 +100,14 @@ input:focus,button:focus,select:focus{
 #clanChatBox::-webkit-scrollbar-thumb:hover,#searchResults::-webkit-scrollbar-thumb:hover,#membersList::-webkit-scrollbar-thumb:hover{
     background:rgba(255,255,255,0.3);
 }
+.card-inner{
+    background:rgba(12,12,15,0.9);
+    border:1px solid rgba(255,255,255,0.08);
+    border-radius:8px;
+}
+#clanDetailArea.card{
+    padding:20px;
+}
+#findArea .card-inner{
+    min-height:80px;
+}
