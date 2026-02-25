@@ -7782,7 +7782,10 @@ function initApp() {
                 var upcoming = state.upcoming || [];
                 var now = Date.now();
                 var current = upcoming.find(function (it) { return (it.start || 0) <= now && (it.end || 0) > now; });
-                if (!current || String(current.name || '').toLowerCase().indexOf('bossfight') === -1) return;
+                var nameLow = current ? String(current.name || '').toLowerCase() : '';
+                var isBossfight = nameLow.indexOf('bossfight') !== -1 && nameLow.indexOf('endless') === -1;
+                var isEndlessBoss = nameLow.indexOf('endless') !== -1 && nameLow.indexOf('boss') !== -1;
+                if (!current || (!isBossfight && !isEndlessBoss)) return;
                 window._bossfightPending = 0;
                 var cpVal = 0, cpsVal = 0;
                 try { cpVal = (typeof isDecimalInstance !== 'undefined' && isDecimalInstance(clickPower)) ? clickPower.toNumber() : Number(clickPower) || 0; } catch (e) {}
@@ -7804,6 +7807,20 @@ function initApp() {
                 clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + damage;
                 eventsMap[eventStartKey][cid] = clanData;
                 await setDocFn(progressRef, { events: eventsMap });
+                if (isEndlessBoss) {
+                    var endlessRef = docFn(dbVal, 'events', 'endless_boss_progress');
+                    var endlessSnap = await getDocFn(endlessRef);
+                    var endlessProg = endlessSnap && endlessSnap.exists() ? endlessSnap.data() : {};
+                    var endlessMap = endlessProg.events && typeof endlessProg.events === 'object' ? endlessProg.events : {};
+                    if (!endlessMap[eventStartKey] || typeof endlessMap[eventStartKey] !== 'object') endlessMap[eventStartKey] = {};
+                    var endlessClan = endlessMap[eventStartKey][cid];
+                    if (typeof endlessClan !== 'object' || endlessClan === null) endlessClan = { total: 0, members: {} };
+                    if (typeof endlessClan.members !== 'object' || endlessClan.members === null) endlessClan.members = {};
+                    endlessClan.total = (Number(endlessClan.total) || 0) + damage;
+                    endlessClan.members[String(username)] = (Number(endlessClan.members[String(username)]) || 0) + damage;
+                    endlessMap[eventStartKey][cid] = endlessClan;
+                    await setDocFn(endlessRef, { events: endlessMap });
+                }
             } catch (e) {}
         }, 3000);
     } catch (e) {}

@@ -10,7 +10,7 @@ ADD CLAN EVENTS:
     PRESTIGE party --- in progress
     CLAN V CLAN CLICKS --- in progress
     CLAN race --- in progress
-    CONSTRUCTION EVENT
+    CONSTRUCTION EVENT - in progress
     BOSSFIGHT --- in progress
-    ENDLESS BOSSFIGHT
+    ENDLESS BOSSFIGHT - in progress
 

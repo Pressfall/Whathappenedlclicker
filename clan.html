@@ -10,12 +10,17 @@
 <body>
   <div class="card">
     <div id="clanXpBarContainer" style="display:none;margin-bottom:16px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
         <strong style="font-size:16px">Clan Level <span id="clanLevelNum">1</span></strong>
         <span class="muted" id="clanXpText">0 / 200 XP</span>
+        <button type="button" id="clanLevelBonusesToggle" class="btn" style="font-size:12px;padding:4px 8px;background:#2a4;color:#fff;border-radius:4px">Level bonuses ▼</button>
       </div>
       <div style="height:24px;background:#1a1a1a;border-radius:6px;overflow:hidden;border:1px solid #222">
         <div id="clanXpBarFill" style="height:100%;width:0%;background:linear-gradient(90deg,#164,#2a8);transition:width 0.3s ease"></div>
+      </div>
+      <div id="clanLevelBonusesDropdown" style="display:none;margin-top:10px;padding:10px;background:rgba(0,0,0,0.3);border-radius:6px;border:1px solid #355;max-height:240px;overflow-y:auto">
+        <div style="font-weight:700;margin-bottom:8px;color:#8c8">Bonuses per level</div>
+        <div id="clanLevelBonusesList"></div>
       </div>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center">
@@ -102,6 +107,35 @@
   const CLAN_XP_GROWTH = 1.55;
   function totalClanXpForLevel(L){ if(L <= 1) return 0; let sum = 0; for(let i = 2; i <= L; i++) sum += CLAN_XP_BASE * Math.pow(CLAN_XP_GROWTH, i - 2); return sum; }
   function clanLevelFromXp(clanXp){ let x = Number(clanXp) || 0; for(let L = CLAN_MAX_LEVEL; L >= 1; L--){ if(x >= totalClanXpForLevel(L)) return { level: L, xpInLevel: x - totalClanXpForLevel(L), xpNeededForNext: L < CLAN_MAX_LEVEL ? totalClanXpForLevel(L + 1) - totalClanXpForLevel(L) : 0 }; } return { level: 1, xpInLevel: x, xpNeededForNext: CLAN_XP_BASE }; }
+  const CLAN_LEVEL_BONUSES = [
+    { level: 1, bonus: 'Base — no bonus' },
+    { level: 2, bonus: '+2% CPS for all members' },
+    { level: 3, bonus: '+2% click power for all members' },
+    { level: 4, bonus: '+4% CPS, +1% event gem rewards' },
+    { level: 5, bonus: '+5% CPS, +2% click power' },
+    { level: 6, bonus: '+6% CPS, +3% click power, +2% event rewards' },
+    { level: 7, bonus: '+8% CPS, +4% click power' },
+    { level: 8, bonus: '+10% CPS, +5% click power, +3% event rewards' },
+    { level: 9, bonus: '+12% CPS, +6% click power' },
+    { level: 10, bonus: '+15% CPS, +8% click power, +5% event rewards' },
+    { level: 11, bonus: '+18% CPS, +10% click power' },
+    { level: 12, bonus: '+20% CPS, +12% click power, +6% event rewards' },
+    { level: 13, bonus: '+24% CPS, +14% click power' },
+    { level: 14, bonus: '+28% CPS, +16% click power, +8% event rewards' },
+    { level: 15, bonus: '+32% CPS, +18% click power' },
+    { level: 16, bonus: '+36% CPS, +20% click power, +10% event rewards' },
+    { level: 17, bonus: '+40% CPS, +22% click power' },
+    { level: 18, bonus: '+45% CPS, +25% click power, +12% event rewards' },
+    { level: 19, bonus: '+50% CPS, +28% click power' },
+    { level: 20, bonus: '+55% CPS, +30% click power, +15% event rewards (max)' }
+  ];
+  function fillClanLevelBonusesList(){
+    const listEl = document.getElementById('clanLevelBonusesList'); if(!listEl || listEl._filled) return;
+    listEl._filled = true;
+    let html = '';
+    for(const row of CLAN_LEVEL_BONUSES){ html += '<div style="display:flex;justify-content:space-between;gap:12px;padding:4px 0;font-size:12px;border-bottom:1px solid #333"><span style="color:#8c8">Level ' + row.level + '</span><span>' + escapeHtml(row.bonus) + '</span></div>'; }
+    listEl.innerHTML = html;
+  }
   async function updateClanXpBar(){
     const container = document.getElementById('clanXpBarContainer'); if(!container) return;
     const clanId = localStorage.getItem('player_clanId'); if(!clanId){ container.style.display = 'none'; return; }
@@ -112,6 +146,9 @@
       const levelEl = document.getElementById('clanLevelNum'); if(levelEl) levelEl.textContent = String(info.level);
       const xpTextEl = document.getElementById('clanXpText'); if(xpTextEl){ if(info.level >= CLAN_MAX_LEVEL) xpTextEl.textContent = 'Max level!'; else xpTextEl.textContent = info.xpInLevel.toLocaleString() + ' / ' + (info.xpInLevel + info.xpNeededForNext).toLocaleString() + ' XP'; }
       const fillEl = document.getElementById('clanXpBarFill'); if(fillEl){ const pct = info.level >= CLAN_MAX_LEVEL ? 100 : (info.xpNeededForNext ? Math.min(100, (info.xpInLevel / info.xpNeededForNext) * 100) : 0); fillEl.style.width = pct + '%'; }
+      fillClanLevelBonusesList();
+      const toggleBtn = document.getElementById('clanLevelBonusesToggle'); const dropdown = document.getElementById('clanLevelBonusesDropdown');
+      if(toggleBtn && dropdown && !toggleBtn._bound){ toggleBtn._bound = true; toggleBtn.addEventListener('click', function(){ const open = dropdown.style.display === 'block'; dropdown.style.display = open ? 'none' : 'block'; toggleBtn.textContent = open ? 'Level bonuses ▼' : 'Level bonuses ▲'; }); }
     }catch(e){ container.style.display = 'none'; }
   }
 
@@ -955,7 +992,68 @@
   const PRESTIGE_PARTY_PROGRESS_DOC = doc(db,'events','prestige_party_progress');
   const BOSSFIGHT_PROGRESS_DOC = doc(db,'events','bossfight_progress');
   const BOSSFIGHT_META_DOC = doc(db,'events','bossfight_meta');
+  const ENDLESS_BOSS_PROGRESS_DOC = doc(db,'events','endless_boss_progress');
+  const ENDLESS_BOSS_META_DOC = doc(db,'events','endless_boss_meta');
+  const CONSTRUCTION_PROGRESS_DOC = doc(db,'events','construction_progress');
   const LAST_ENDED_EVENT_DOC = doc(db,'events','last_ended_event');
+  const CONSTRUCTION_TIERS = [25, 75, 150, 300, 500, 800, 1200];
+  const CONSTRUCTION_REWARDS = [
+    { points: 25, gems: 3, clanXp: 30, clanPoints: 5 },
+    { points: 75, gems: 8, clanXp: 80, clanPoints: 15 },
+    { points: 150, gems: 15, clanXp: 150, clanPoints: 30 },
+    { points: 300, gems: 25, clanXp: 300, clanPoints: 55 },
+    { points: 500, gems: 38, clanXp: 480, clanPoints: 85 },
+    { points: 800, gems: 55, clanXp: 700, clanPoints: 120 },
+    { points: 1200, gems: 80, clanXp: 1000, clanPoints: 180 }
+  ];
+  function getConstructionPlayerStats(){
+    const stats = { count: 0, goldenWhat: 0, prestigeTimes: 0, totalLevels: 0, cps: 0, clickPower: 0, divineTotalLevels: 0, casinoTotalWins: 0 };
+    try{
+      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(raw){
+        const s = JSON.parse(raw);
+        stats.count = Number(s.count) || 0;
+        stats.goldenWhat = Number(s.goldenWhat) || 0;
+        stats.prestigeTimes = Number(s.prestigeTimes) || 0;
+        for(let i = 1; i <= 23; i++){ const L = s['upgrade' + i + 'Level'] || s['upgrade' + i]; stats.totalLevels += Number(L) || 0; }
+        const divNames = ['divineArgonLevel','divineSomalianLevel','divineAssassinLevel','divineCollectorLevel','divineMoneyManLevel','divineSpiritLevel','divineSimpleVillagerLevel'];
+        for(const key of divNames){ stats.divineTotalLevels += Number(s[key]) || 0; }
+        stats.casinoTotalWins = Number(s.casino_total_wins) || Number(localStorage.getItem('gamba_total_wins') || 0) || 0;
+      }
+      stats.prestigeTimes = stats.prestigeTimes || Number(localStorage.getItem('whathappened_prestige_times') || 0) || 0;
+      stats.cps = Number(localStorage.getItem('whathappened_current_cps') || 0) || 0;
+      stats.clickPower = Number(localStorage.getItem('whathappened_current_clickpower') || 0) || 0;
+    }catch(e){}
+    return stats;
+  }
+  // Challenges use only "gain" (during challenge) or safe "reach" (prestige) so players can't claim free points from existing totals
+  const CONSTRUCTION_CHALLENGES = [
+    { id: 'c1', name: 'Small click gain', desc: 'Gain {target} more clicks (from when you start).', type: 'gain', stat: 'count', points: 6, scale: s => Math.max(200, Math.floor(300 * (1 + s.prestigeTimes * 0.2))) },
+    { id: 'c2', name: 'Golden gain', desc: 'Earn {target} more Golden Whats (during this challenge).', type: 'gain', stat: 'goldenWhat', points: 15, scale: s => Math.max(1, Math.floor(1 + s.prestigeTimes * 0.3)) },
+    { id: 'c3', name: 'Level grind', desc: 'Gain {target} more total upgrade levels.', type: 'gain', stat: 'totalLevels', points: 14, scale: s => Math.max(5, Math.floor(8 + s.prestigeTimes * 2)) },
+    { id: 'c4', name: 'CPS gain', desc: 'Gain {target} more CPS (from when you start).', type: 'gain', stat: 'cps', points: 18, scale: s => Math.max(5, Math.floor(20 * (1 + s.prestigeTimes * 0.15))) },
+    { id: 'c5', name: 'Mega clicks', desc: 'Gain {target} clicks during this challenge.', type: 'gain', stat: 'count', points: 10, scale: s => Math.max(500, Math.floor(800 * (1 + s.prestigeTimes * 0.25))) },
+    { id: 'c6', name: 'Prestige runner', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 18, scale: s => Math.max(1, Math.floor((s.prestigeTimes || 0) + 1)) },
+    { id: 'c7', name: 'Double golden', desc: 'Earn 2 more Golden Whats during challenge.', type: 'gain', stat: 'goldenWhat', points: 25, scale: () => 2 },
+    { id: 'c8', name: 'Level sprint', desc: 'Gain {target} upgrade levels during challenge.', type: 'gain', stat: 'totalLevels', points: 20, scale: s => Math.max(10, Math.floor(15 + s.prestigeTimes * 3)) },
+    { id: 'c9', name: 'CPS burst', desc: 'Gain {target} CPS during challenge.', type: 'gain', stat: 'cps', points: 28, scale: s => Math.max(50, Math.floor(80 * (1 + s.prestigeTimes * 0.2))) },
+    { id: 'c10', name: 'Prestige plus one', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 12, scale: s => Math.max(1, (s.prestigeTimes || 0) + 1) },
+    { id: 'd1', name: 'Divine step', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 12, scale: s => Math.max(1, Math.floor(1 + (s.prestigeTimes || 0) * 0.2)) },
+    { id: 'd2', name: 'Divine push', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 20, scale: s => Math.max(2, Math.floor(2 + (s.prestigeTimes || 0) * 0.4)) },
+    { id: 'd3', name: 'Divine grind', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 28, scale: s => Math.max(3, Math.floor(3 + (s.prestigeTimes || 0) * 0.5)) },
+    { id: 'd4', name: 'Divine dedication', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 35, scale: s => Math.max(5, Math.floor(5 + (s.prestigeTimes || 0) * 0.6)) },
+    { id: 'd5', name: 'First divine', desc: 'Buy 1 divine upgrade level during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 8, scale: () => 1 },
+    { id: 'g1', name: 'Casino win', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 10, scale: s => Math.max(1, Math.floor(1 + (s.prestigeTimes || 0) * 0.15)) },
+    { id: 'g2', name: 'Casino streak', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 18, scale: s => Math.max(2, Math.floor(2 + (s.prestigeTimes || 0) * 0.25)) },
+    { id: 'g3', name: 'Casino regular', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 25, scale: s => Math.max(3, Math.floor(3 + (s.prestigeTimes || 0) * 0.3)) },
+    { id: 'g4', name: 'Casino high roller', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 32, scale: s => Math.max(5, Math.floor(5 + (s.prestigeTimes || 0) * 0.4)) },
+    { id: 'g5', name: 'First blackjack win', desc: 'Win 1 blackjack game during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 6, scale: () => 1 },
+    { id: 'c11', name: 'Big click gain', desc: 'Gain {target} more clicks during this challenge.', type: 'gain', stat: 'count', points: 14, scale: s => Math.max(1000, Math.floor(1500 * (1 + s.prestigeTimes * 0.2))) },
+    { id: 'c12', name: 'Golden sprint', desc: 'Earn {target} more Golden Whats during this challenge.', type: 'gain', stat: 'goldenWhat', points: 20, scale: s => Math.max(2, Math.floor(3 + s.prestigeTimes * 0.4)) },
+    { id: 'c13', name: 'Level push', desc: 'Gain {target} upgrade levels during this challenge.', type: 'gain', stat: 'totalLevels', points: 24, scale: s => Math.max(15, Math.floor(20 + s.prestigeTimes * 4)) },
+    { id: 'c14', name: 'CPS climb', desc: 'Gain {target} more CPS during this challenge.', type: 'gain', stat: 'cps', points: 22, scale: s => Math.max(30, Math.floor(50 * (1 + s.prestigeTimes * 0.2))) },
+    { id: 'c15', name: 'Prestige two', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 16, scale: s => Math.max(1, (s.prestigeTimes || 0) + 2) },
+  ];
   const BOSS_IMAGE_URL = 'mainimage/upgrades/eastonBundy.png';
   const BOSSFIGHT_BASE_HP = 5e7;
   const BOSSFIGHT_GIMMICKS = [
@@ -980,6 +1078,15 @@
     { minDamage: 1e7, gems: 15, clanXp: 150, clanPoints: 30 },
     { minDamage: 1e8, gems: 25, clanXp: 300, clanPoints: 60 },
     { minDamage: 5e8, gems: 40, clanXp: 500, clanPoints: 100 }
+  ];
+  const ENDLESS_BOSS_BASE_HP = 3e6;
+  const ENDLESS_BOSS_SCALE = 1.45;
+  const ENDLESS_BOSS_REWARDS = [
+    { bosses: 1, gems: 5, clanXp: 40, clanPoints: 8 },
+    { bosses: 3, gems: 12, clanXp: 100, clanPoints: 20 },
+    { bosses: 5, gems: 22, clanXp: 200, clanPoints: 40 },
+    { bosses: 8, gems: 35, clanXp: 350, clanPoints: 65 },
+    { bosses: 12, gems: 50, clanXp: 500, clanPoints: 100 }
   ];
   const EVENT_DURATION = 3 * 24 * 60 * 60 * 1000; // 3 days
   const DOWNTIME_DURATION = 2 * 24 * 60 * 60 * 1000; // 2 days
@@ -1050,6 +1157,55 @@
     let phase = 0;
     for(let i = 0; i < 4; i++){ if(clanDamage >= (phaseHps[i] || 0)) phase = i + 1; }
     return phase;
+  }
+
+  async function ensureEndlessBossMeta(eventStartKey){
+    try{
+      const metaSnap = await getDoc(ENDLESS_BOSS_META_DOC);
+      const metaData = metaSnap && metaSnap.exists() ? metaSnap.data() : {};
+      const eventsMeta = metaData.events && typeof metaData.events === 'object' ? metaData.events : {};
+      if(eventsMeta[eventStartKey] && eventsMeta[eventStartKey].baseHp) return eventsMeta[eventStartKey];
+      let totalStrength = 0;
+      try{
+        const clansSnap = await getDocs(collection(db,'clans'));
+        if(clansSnap && clansSnap.docs){
+          for(const clanDoc of clansSnap.docs){
+            const clanId = clanDoc.id;
+            try{
+              const membersSnap = await getDocs(collection(db,'clans',clanId,'members'));
+              if(membersSnap && membersSnap.docs){
+                for(const memDoc of membersSnap.docs){
+                  const d = memDoc.data() || {};
+                  const cp = Number(d.lastClickPower) || Number(d.clickPower) || 0;
+                  const cps = Number(d.lastCps) || Number(d.cps) || 0;
+                  totalStrength += cp + Math.max(0, cps) * 5;
+                }
+              }
+            }catch(er){}
+          }
+        }
+      }catch(e){}
+      const baseHp = Math.max(ENDLESS_BOSS_BASE_HP, Math.floor(ENDLESS_BOSS_BASE_HP * Math.max(0.5, Math.min(2, (totalStrength || 1000) / 50000))));
+      const newMeta = Object.assign({}, eventsMeta, { [eventStartKey]: { baseHp } });
+      await setDoc(ENDLESS_BOSS_META_DOC, { events: newMeta }, { merge: true });
+      return { baseHp };
+    }catch(e){ console.warn('ensureEndlessBossMeta failed', e); return { baseHp: ENDLESS_BOSS_BASE_HP }; }
+  }
+
+  function endlessBossesDefeated(totalDamage, baseHp){
+    if(!baseHp || baseHp <= 0) return { defeated: 0, currentBossHp: baseHp || ENDLESS_BOSS_BASE_HP, damageIntoCurrent: 0 };
+    const scale = ENDLESS_BOSS_SCALE;
+    let sum = 0;
+    let n = 0;
+    while(true){
+      const bossHp = baseHp * Math.pow(scale, n);
+      if(sum + bossHp > totalDamage) break;
+      sum += bossHp;
+      n++;
+    }
+    const currentBossHp = baseHp * Math.pow(scale, n);
+    const damageIntoCurrent = totalDamage - sum;
+    return { defeated: n, currentBossHp, damageIntoCurrent, remainingHp: Math.max(0, currentBossHp - damageIntoCurrent) };
   }
 
   // Admin unlock for viewing/editing detailed Events UI
@@ -1217,7 +1373,7 @@
       if(firstEndMs <= now){
         const endedEv = upcoming[0];
         await runEventEndClear(endedEv);
-        try{ const nm = endedEv && String(endedEv.name||'').toLowerCase(); const isPp = nm.includes('prestige party'); const isBf = nm.includes('bossfight'); const isCvc = (nm.includes('clan') && nm.includes('click')) || (endedEv && String(endedEv.type||'').toLowerCase().includes('clan_v_clan')); if(endedEv && (isPp || isBf || isCvc)) await setDoc(LAST_ENDED_EVENT_DOC, { name: endedEv.name, start: endedEv.start, end: endedEv.end, type: isCvc ? 'clan_v_clan' : (isPp ? 'prestige_party' : 'bossfight') }); }catch(e){}
+        try{ const nm = endedEv && String(endedEv.name||'').toLowerCase(); const isPp = nm.includes('prestige party'); const isBf = nm.includes('bossfight') && !nm.includes('endless'); const isEb = nm.includes('endless') && nm.includes('boss'); const isCon = nm.includes('construction'); const isCvc = (nm.includes('clan') && nm.includes('click')) || (endedEv && String(endedEv.type||'').toLowerCase().includes('clan_v_clan')); const isRace = nm.includes('race') || (endedEv && String(endedEv.type||'').toLowerCase().includes('clan_race')); if(endedEv && (isPp || isBf || isEb || isCon || isCvc || isRace)) await setDoc(LAST_ENDED_EVENT_DOC, { name: endedEv.name, start: endedEv.start, end: endedEv.end, type: isCvc ? 'clan_v_clan' : (isRace ? 'clan_race' : (isPp ? 'prestige_party' : (isEb ? 'endless_boss' : (isCon ? 'construction' : 'bossfight')))) }); }catch(e){}
         let idx = upcoming.findIndex(it => eventToMs(it.end) > now);
         if(idx === -1){ await generateSchedule(now,8); return; }
         if(idx > 0){
@@ -1323,6 +1479,42 @@
   const CLAN_V_CLAN_LOSER_REWARDS = { gems: 10, clanXp: 80, clanPoints: 15 };
   const CLAN_V_CLAN_UNMATCHED_REWARDS = { gems: 5, clanXp: 30, clanPoints: 5 };
 
+  const CLAN_RACE_GOAL = 5000000;
+  const CLAN_RACE_PLACE_REWARDS = [
+    { place: 1, gems: 40, clanXp: 350, clanPoints: 70 },
+    { place: 2, gems: 25, clanXp: 200, clanPoints: 45 },
+    { place: 3, gems: 15, clanXp: 120, clanPoints: 25 },
+    { place: 4, gems: 8, clanXp: 60, clanPoints: 12 },
+    { place: 0, gems: 5, clanXp: 30, clanPoints: 5 }
+  ];
+
+  async function processEndedEndlessBossRewards(eventItem){
+    try{
+      const eventStart = Number(eventItem.start||0);
+      const eventStartKey = String(eventStart);
+      const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
+      const claimedKey = 'whathappened_eb_claimed_' + eventStart;
+      if(localStorage.getItem(claimedKey)) return;
+      const snap = await getDoc(ENDLESS_BOSS_PROGRESS_DOC);
+      const data = snap && snap.exists() ? snap.data() : {};
+      const byEvent = data.events || {};
+      const totalDamage = eventClanTotal(byEvent, eventStartKey, eventStart, clanId);
+      const metaSnap = await getDoc(ENDLESS_BOSS_META_DOC);
+      const metaData = metaSnap && metaSnap.exists() ? metaSnap.data() : {};
+      const eventMeta = (metaData.events || {})[eventStartKey];
+      const baseHp = (eventMeta && eventMeta.baseHp) ? eventMeta.baseHp : ENDLESS_BOSS_BASE_HP;
+      const { defeated } = endlessBossesDefeated(totalDamage, baseHp);
+      let totalGems = 0, totalClanXp = 0, totalCP = 0;
+      for(let i = ENDLESS_BOSS_REWARDS.length - 1; i >= 0; i--){ const r = ENDLESS_BOSS_REWARDS[i]; if(defeated >= r.bosses){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
+      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const s = await getDoc(clanRef); const cur = (s && s.exists() && s.data()) ? (Number(s.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
+      alert('Endless Boss event ended!\n\nYour clan defeated ' + defeated + ' boss(es).\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+    }catch(e){ console.warn('processEndedEndlessBossRewards failed', e); }
+  }
+
   async function processEndedClanVClanRewards(eventItem){
     try{
       const eventStart = Number(eventItem.start||0);
@@ -1367,6 +1559,67 @@
     }catch(e){ console.warn('processEndedClanVClanRewards failed', e); }
   }
 
+  async function processEndedClanRaceRewards(eventItem){
+    try{
+      const eventStart = Number(eventItem.start||0);
+      const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
+      const claimedKey = 'whathappened_race_claimed_' + eventStart;
+      if(localStorage.getItem(claimedKey)) return;
+      const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
+      const pairData = pairSnap && pairSnap.exists() ? pairSnap.data() : {};
+      const last = pairData.last || {};
+      let lastStart = 0;
+      try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = last.eventStart.toMillis(); else lastStart = Number(last.eventStart || 0); }catch(e){}
+      if(Number(lastStart) !== Number(eventStart) || String(last.type||'').toLowerCase() !== 'clan_race') return;
+      const totals = last.totals && typeof last.totals === 'object' ? last.totals : {};
+      const groups = Array.isArray(last.groups) ? last.groups : [];
+      const unmatched = Array.isArray(last.unmatched) ? last.unmatched : [];
+      const myGroup = [];
+      for(const g of groups){ if(Array.isArray(g) && (g||[]).some(c => c && String(c.id) === clanId)){ for(const c of g) if(c && c.id) myGroup.push({ id: c.id, name: c.name || c.id }); break; } }
+      if(!myGroup.length && unmatched.some(u => u && String(u.id) === clanId)){ const u = unmatched.find(x => x && String(x.id) === clanId); if(u) myGroup.push({ id: u.id, name: u.name || u.id }); }
+      if(!myGroup.length) return;
+      const ranked = myGroup.slice().map(c => ({ id: c.id, name: c.name, total: Number(totals[c.id]) || 0 })).sort((a,b) => (b.total - a.total));
+      let place = 0;
+      for(let i = 0; i < ranked.length; i++){ if(String(ranked[i].id) === clanId){ place = i + 1; break; } }
+      const rewardsByPlace = CLAN_RACE_PLACE_REWARDS.filter(r => r.place > 0).sort((a,b) => a.place - b.place);
+      const participation = CLAN_RACE_PLACE_REWARDS.find(r => r.place === 0) || { gems: 5, clanXp: 30, clanPoints: 5 };
+      const r = (place >= 1 && place <= rewardsByPlace.length) ? rewardsByPlace[place - 1] : participation;
+      const totalGems = r.gems || 0;
+      const totalClanXp = r.clanXp || 0;
+      const totalCP = r.clanPoints || 0;
+      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const cur = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
+      const placeStr = place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : place ? place + 'th' : 'participation';
+      alert('Clan Race event ended!\n\nYour clan placed ' + placeStr + ' in your group.\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+    }catch(e){ console.warn('processEndedClanRaceRewards failed', e); }
+  }
+
+  async function processEndedConstructionRewards(eventItem){
+    try{
+      const eventStart = Number(eventItem.start||0);
+      const eventStartKey = String(eventStart);
+      const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
+      const claimedKey = 'whathappened_con_claimed_' + eventStart;
+      if(localStorage.getItem(claimedKey)) return;
+      const snap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
+      const data = snap && snap.exists() ? snap.data() : {};
+      const byEvent = data.events || {};
+      const clanData = (byEvent[eventStartKey] || byEvent[eventStart] || {})[clanId];
+      const totalPoints = (clanData && typeof clanData.total === 'number') ? clanData.total : (typeof clanData === 'number' ? clanData : 0);
+      let totalGems = 0, totalClanXp = 0, totalCP = 0;
+      for(let i = CONSTRUCTION_REWARDS.length - 1; i >= 0; i--){ const r = CONSTRUCTION_REWARDS[i]; if(totalPoints >= r.points){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
+      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap2 = await getDoc(clanRef); const cur = (snap2 && snap2.exists() && snap2.data()) ? (Number(snap2.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
+      alert('Construction event ended!\n\nYour clan scored ' + totalPoints + ' points.\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+    }catch(e){ console.warn('processEndedConstructionRewards failed', e); }
+  }
+
   async function renderEventsTab(state){
     try{
       const area = document.getElementById('tabEvents'); if(!area) return;
@@ -1374,8 +1627,8 @@
       try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div class="card"><div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div></div>'; return; } }catch(e){}
       const upcoming = (state && Array.isArray(state.upcoming)) ? state.upcoming : [];
       const now = Date.now();
-      if(upcoming.length > 0 && (upcoming[0].end || 0) <= now){ const endedName = String(upcoming[0].name||'').toLowerCase(); const ended = upcoming[0]; if(endedName.includes('prestige party')){ try{ await processEndedPrestigePartyRewards(ended); }catch(e){} } else if(endedName.includes('bossfight')){ try{ await processEndedBossfightRewards(ended); }catch(e){} } else if((endedName.includes('clan') && endedName.includes('click')) || (ended && String(ended.type||'').toLowerCase().includes('clan_v_clan'))){ try{ await processEndedClanVClanRewards(ended); }catch(e){} } }
-      else { try{ const endedSnap = await getDoc(LAST_ENDED_EVENT_DOC); const ended = endedSnap && endedSnap.exists() ? endedSnap.data() : null; if(ended && (ended.end||0) <= now){ const n = String(ended.name||'').toLowerCase(); const t = String(ended.type||'').toLowerCase(); if(n.includes('prestige party')) await processEndedPrestigePartyRewards(ended); else if(n.includes('bossfight')) await processEndedBossfightRewards(ended); else if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(ended); } }catch(e){} }
+      if(upcoming.length > 0 && (upcoming[0].end || 0) <= now){ const endedName = String(upcoming[0].name||'').toLowerCase(); const ended = upcoming[0]; if(endedName.includes('prestige party')){ try{ await processEndedPrestigePartyRewards(ended); }catch(e){} } else if(endedName.includes('bossfight') && !endedName.includes('endless')){ try{ await processEndedBossfightRewards(ended); }catch(e){} } else if(endedName.includes('endless') && endedName.includes('boss')){ try{ await processEndedEndlessBossRewards(ended); }catch(e){} } else if(endedName.includes('construction')){ try{ await processEndedConstructionRewards(ended); }catch(e){} } else if((endedName.includes('clan') && endedName.includes('click')) || (ended && String(ended.type||'').toLowerCase().includes('clan_v_clan'))){ try{ await processEndedClanVClanRewards(ended); }catch(e){} } else if(endedName.includes('race') || (ended && String(ended.type||'').toLowerCase().includes('clan_race'))){ try{ await processEndedClanRaceRewards(ended); }catch(e){} } }
+      else { try{ const endedSnap = await getDoc(LAST_ENDED_EVENT_DOC); const ended = endedSnap && endedSnap.exists() ? endedSnap.data() : null; if(ended && (ended.end||0) <= now){ const n = String(ended.name||'').toLowerCase(); const t = String(ended.type||'').toLowerCase(); if(n.includes('prestige party')) await processEndedPrestigePartyRewards(ended); else if(n.includes('bossfight') && !n.includes('endless')) await processEndedBossfightRewards(ended); else if(n.includes('endless') && n.includes('boss')) await processEndedEndlessBossRewards(ended); else if(n.includes('construction')) await processEndedConstructionRewards(ended); else if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(ended); else if(n.includes('race') || t.includes('clan_race')) await processEndedClanRaceRewards(ended); } }catch(e){} }
       const current = upcoming.find(it => eventToMs(it.start) <= now && eventToMs(it.end) > now) || null;
       // next event (first upcoming with start > now)
       const next = upcoming.find(it => (it.start || 0) > now) || null;
@@ -1489,6 +1742,98 @@
             else { html += '<div class="muted" style="font-size:13px">No damage yet. Click in the game to contribute!</div>'; }
             html += '</div></div></div>';
             try{ window._bossfightUnsub = onSnapshot(BOSSFIGHT_PROGRESS_DOC, async ()=>{ const s = await getDoc(BOSSFIGHT_PROGRESS_DOC); const d = s && s.exists() ? s.data() : {}; const byEvent = d.events || {}; const dmg = eventClanTotal(byEvent, eventStartKey, eventStart, playerClanId); const mem = eventClanMembers(byEvent, eventStartKey, eventStart, playerClanId); const mSnap = await getDoc(BOSSFIGHT_META_DOC); const mData = mSnap && mSnap.exists() ? mSnap.data() : {}; const evMeta = (mData.events || {})[eventStartKey]; const thp = (evMeta && evMeta.totalHp) ? evMeta.totalHp : totalHp; const remHp = Math.max(0, thp - dmg); const remPct = thp > 0 ? Math.min(100, (remHp / thp) * 100) : 0; const el = document.getElementById('bossfight-clan-damage'); if(el) el.textContent = remHp.toLocaleString(); const fillEl = document.getElementById('bossfight-hp-fill'); if(fillEl) fillEl.style.width = remPct + '%'; const lb = document.getElementById('bossfight-leaderboard'); if(lb){ const entries = Object.entries(mem).sort((a,b)=>(b[1]||0)-(a[1]||0)); lb.innerHTML = entries.length ? entries.map(([name,v],i)=>{ const medal = i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':''; return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">'+medal+escapeHtml(name)+' <strong>'+Number(v||0).toLocaleString()+'</strong> damage</div>'; }).join('') : '<div class="muted" style="font-size:13px">No damage yet. Click in the game to contribute!</div>'; } }); }catch(e){}
+          } else if(nameLow.includes('endless') && nameLow.includes('boss')){
+            const eventStart = eventToMs(current.start);
+            const eventStartKey = String(eventStart);
+            const playerClanId = String(localStorage.getItem('player_clanId')||'');
+            let totalDamage = 0;
+            let membersMap = {};
+            let meta = await ensureEndlessBossMeta(eventStartKey);
+            const baseHp = meta.baseHp || ENDLESS_BOSS_BASE_HP;
+            try{ const snap = await getDoc(ENDLESS_BOSS_PROGRESS_DOC); const data = snap && snap.exists() ? snap.data() : {}; const byEvent = data.events || {}; totalDamage = eventClanTotal(byEvent, eventStartKey, eventStart, playerClanId); membersMap = eventClanMembers(byEvent, eventStartKey, eventStart, playerClanId); }catch(e){}
+            const { defeated, currentBossHp, damageIntoCurrent, remainingHp } = endlessBossesDefeated(totalDamage, baseHp);
+            const currentBossPct = currentBossHp > 0 ? Math.min(100, (remainingHp / currentBossHp) * 100) : 0;
+            html += '<div class="card" style="margin-top:16px;padding:16px;background:linear-gradient(180deg,rgba(40,20,60,0.35),rgba(20,20,26,0.95));border:2px solid #84a;border-radius:12px">';
+            html += '<div style="text-align:center;font-size:18px;font-weight:800;margin-bottom:12px;text-shadow:0 0 8px #a8f">♾ Endless Boss — Beat bosses before time runs out!</div>';
+            html += '<div style="display:flex;justify-content:center;margin:12px 0"><img src="' + escapeHtml(BOSS_IMAGE_URL) + '" alt="Boss" style="max-width:140px;max-height:140px;border-radius:12px;border:3px solid #84a;box-shadow:0 0 20px rgba(136,68,170,0.5)" onerror="this.style.display=\'none\'"></div>';
+            html += '<div style="font-weight:700;margin-bottom:6px">Bosses defeated: <span id="endless-bosses-defeated">' + defeated + '</span> — Current boss HP: <span id="endless-current-remaining">' + remainingHp.toLocaleString() + '</span> / ' + currentBossHp.toLocaleString() + '</div>';
+            html += '<div style="height:24px;background:#2a1a2a;border-radius:6px;overflow:hidden;border:2px solid #636;position:relative">';
+            html += '<div id="endless-boss-hp-fill" style="height:100%;width:' + currentBossPct + '%;min-width:0;background:linear-gradient(90deg,#428,#84a);transition:width 0.3s ease"></div></div>';
+            html += '<div class="muted" style="margin-top:8px">Each boss is ' + (ENDLESS_BOSS_SCALE * 100 - 100).toFixed(0) + '% harder. Rewards based on how many you defeat.</div>';
+            const lbEntries = Object.entries(membersMap).sort((a,b)=>(b[1]||0)-(a[1]||0));
+            html += '<div style="margin-top:16px;padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #84a"><div style="font-weight:700;margin-bottom:8px;color:#c8f">Clan contribution</div><div id="endless-boss-leaderboard">';
+            if(lbEntries.length){ for(let i = 0; i < lbEntries.length; i++){ const [name, val] = lbEntries[i]; const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : ''; html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">' + medal + escapeHtml(name) + ' <strong>' + Number(val||0).toLocaleString() + '</strong> damage</div>'; } }
+            else { html += '<div class="muted" style="font-size:13px">No damage yet. Click in the game to contribute!</div>'; }
+            html += '</div></div></div>';
+            try{ window._endlessBossUnsub = onSnapshot(ENDLESS_BOSS_PROGRESS_DOC, async ()=>{ const s = await getDoc(ENDLESS_BOSS_PROGRESS_DOC); const d = s && s.exists() ? s.data() : {}; const byEvent = d.events || {}; const dmg = eventClanTotal(byEvent, eventStartKey, eventStart, playerClanId); const mem = eventClanMembers(byEvent, eventStartKey, eventStart, playerClanId); const mSnap = await getDoc(ENDLESS_BOSS_META_DOC); const mData = mSnap && mSnap.exists() ? mSnap.data() : {}; const evMeta = (mData.events || {})[eventStartKey]; const bHp = (evMeta && evMeta.baseHp) ? evMeta.baseHp : baseHp; const { defeated: def, remainingHp: rem, currentBossHp: cHp } = endlessBossesDefeated(dmg, bHp); const pct = cHp > 0 ? Math.min(100, (rem / cHp) * 100) : 0; const elDef = document.getElementById('endless-bosses-defeated'); if(elDef) elDef.textContent = def; const elRem = document.getElementById('endless-current-remaining'); if(elRem) elRem.textContent = rem.toLocaleString(); const fillEl = document.getElementById('endless-boss-hp-fill'); if(fillEl) fillEl.style.width = pct + '%'; const lb = document.getElementById('endless-boss-leaderboard'); if(lb){ const entries = Object.entries(mem).sort((a,b)=>(b[1]||0)-(a[1]||0)); lb.innerHTML = entries.length ? entries.map(([name,v],i)=>{ const medal = i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':''; return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">'+medal+escapeHtml(name)+' <strong>'+Number(v||0).toLocaleString()+'</strong> damage</div>'; }).join('') : '<div class="muted" style="font-size:13px">No damage yet. Click in the game to contribute!</div>'; } }); }catch(e){}
+          } else if(nameLow.includes('construction')){
+            const eventStart = eventToMs(current.start);
+            const eventStartKey = String(eventStart);
+            const playerClanId = String(localStorage.getItem('player_clanId')||'');
+            const username = String(localStorage.getItem('player_username')||'');
+            let conSnap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
+            let conData = conSnap && conSnap.exists() ? conSnap.data() : {};
+            let byEvent = conData.events && typeof conData.events === 'object' ? conData.events : {};
+            let clanBlock = (byEvent[eventStartKey] || byEvent[eventStart] || {})[playerClanId];
+            if(typeof clanBlock !== 'object' || clanBlock === null) clanBlock = { total: 0, members: {} };
+            let myMember = (clanBlock.members && typeof clanBlock.members === 'object' ? clanBlock.members : {})[username];
+            if(typeof myMember !== 'object' || myMember === null) myMember = { points: 0, completedCount: 0 };
+            const stats = getConstructionPlayerStats();
+            const curChallenge = myMember.currentChallenge;
+            if(curChallenge && curChallenge.target != null){
+              let currentVal = Number(stats[curChallenge.stat]) || 0;
+              const baseline = curChallenge.baseline || {};
+              const baseVal = Number(baseline[curChallenge.stat]) || 0;
+              let done = false;
+              if(curChallenge.type === 'reach') done = currentVal >= (curChallenge.target || 0);
+              else if(curChallenge.type === 'gain') done = (currentVal - baseVal) >= (curChallenge.target || 0);
+              if(done){
+                const addPoints = Number(curChallenge.points) || 0;
+                clanBlock.total = (Number(clanBlock.total) || 0) + addPoints;
+                myMember.points = (Number(myMember.points) || 0) + addPoints;
+                myMember.completedCount = (Number(myMember.completedCount) || 0) + 1;
+                myMember.currentChallenge = null;
+                if(!clanBlock.members) clanBlock.members = {};
+                clanBlock.members[username] = myMember;
+                if(!byEvent[eventStartKey]) byEvent[eventStartKey] = {};
+                byEvent[eventStartKey][playerClanId] = clanBlock;
+                await setDoc(CONSTRUCTION_PROGRESS_DOC, { events: byEvent });
+                conSnap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
+                conData = conSnap && conSnap.exists() ? conSnap.data() : {};
+                byEvent = conData.events || {};
+                clanBlock = (byEvent[eventStartKey] || {})[playerClanId] || { total: 0, members: {} };
+                myMember = (clanBlock.members || {})[username] || { points: 0, completedCount: 0 };
+              }
+            }
+            const totalPoints = Number(clanBlock.total) || 0;
+            const maxTier = Math.max(...CONSTRUCTION_TIERS, 1);
+            const tierPct = Math.min(100, (totalPoints / maxTier) * 100);
+            const membersByPoints = clanBlock.members && typeof clanBlock.members === 'object' ? Object.entries(clanBlock.members).map(([n,m])=>[n, Number(m && m.points) || 0]).sort((a,b)=>b[1]-a[1]) : [];
+            html += '<div id="construction-event-block" class="card" data-event-start-key="' + escapeHtml(eventStartKey) + '" data-player-clan-id="' + escapeHtml(playerClanId) + '" data-username="' + escapeHtml(username) + '" style="margin-top:16px;padding:16px;background:linear-gradient(180deg,rgba(40,50,30,0.35),rgba(20,20,26,0.95));border:2px solid #6a8;border-radius:12px">';
+            html += '<div style="text-align:center;font-size:18px;font-weight:800;margin-bottom:12px;color:#8c8">🏗 Construction Event — Complete challenges for your clan!</div>';
+            html += '<div style="font-weight:700;margin-bottom:6px">Clan total points: <span id="construction-total">' + totalPoints + '</span></div>';
+            html += '<div style="height:22px;background:#1a2a1a;border-radius:6px;overflow:hidden;border:1px solid #4a6;margin-bottom:12px"><div id="construction-tier-fill" style="height:100%;width:' + tierPct + '%;background:linear-gradient(90deg,#284,#4a8);transition:width 0.3s ease"></div></div>';
+            html += '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px">';
+            for(let i = 0; i < CONSTRUCTION_TIERS.length; i++){ const pt = CONSTRUCTION_TIERS[i]; const reached = totalPoints >= pt; const r = CONSTRUCTION_REWARDS[i]; if(!r) continue; html += '<div style="padding:6px 10px;border-radius:6px;border:1px solid ' + (reached ? '#4a8' : '#354') + ';background:' + (reached ? 'rgba(70,140,70,0.2)' : 'rgba(0,0,0,0.2)') + ';font-size:12px"><strong>' + pt + ' pts</strong> — ' + (reached ? '✓ ' : '') + (r.gems||0) + ' gems, ' + (r.clanXp||0) + ' XP, ' + (r.clanPoints||0) + ' CP</div>'; }
+            html += '</div>';
+            const hasChallenge = myMember.currentChallenge && myMember.currentChallenge.target != null;
+            if(hasChallenge){
+              const ch = myMember.currentChallenge;
+              const curVal = Number(stats[ch.stat]) || 0;
+              const baseVal = Number((ch.baseline || {})[ch.stat]) || 0;
+              const progress = ch.type === 'gain' ? (curVal - baseVal) : curVal;
+              const target = Number(ch.target) || 0;
+              const desc = (ch.desc || '').replace(/\{target\}/g, target.toLocaleString());
+              html += '<div style="padding:12px;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid #6a8;margin-bottom:12px"><div style="font-weight:700;color:#9e9">Current challenge: ' + escapeHtml(ch.name || '') + '</div><div class="muted" style="margin:6px 0">' + escapeHtml(desc) + '</div><div>Progress: <strong id="construction-progress">' + Math.min(progress, target).toLocaleString() + '</strong> / ' + target.toLocaleString() + ' — ' + (progress >= target ? 'Complete! Refresh to claim.' : 'Play the game to progress.') + '</div></div>';
+            } else {
+              html += '<div style="margin-bottom:12px"><button id="construction-pick-btn" class="btn" style="background:#4a8;color:#fff">Pick a challenge (3 random)</button></div>';
+              html += '<div id="construction-choices" style="display:none;padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #4a6;margin-bottom:12px"></div>';
+            }
+            html += '<div style="padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #6a8"><div style="font-weight:700;margin-bottom:8px;color:#9e9">Clan contribution (points)</div><div id="construction-leaderboard">';
+            if(membersByPoints.length){ for(let i = 0; i < membersByPoints.length; i++){ const [n,v] = membersByPoints[i]; const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : ''; html += '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">' + medal + escapeHtml(n) + ' <strong>' + Number(v).toLocaleString() + '</strong> pts</div>'; } }
+            else { html += '<div class="muted" style="font-size:13px">No points yet. Pick a challenge to start!</div>'; }
+            html += '</div></div></div>';
+            try{ window._constructionUnsub = onSnapshot(CONSTRUCTION_PROGRESS_DOC, async ()=>{ const s = await getDoc(CONSTRUCTION_PROGRESS_DOC); const d = s && s.exists() ? s.data() : {}; const byE = d.events || {}; const block = (byE[eventStartKey] || {})[playerClanId] || {}; const tot = Number(block.total) || 0; const mems = block.members && typeof block.members === 'object' ? block.members : {}; const entries = Object.entries(mems).map(([n,m])=>[n, Number(m && m.points)||0]).sort((a,b)=>b[1]-a[1]); const el = document.getElementById('construction-total'); if(el) el.textContent = tot; const fill = document.getElementById('construction-tier-fill'); if(fill) fill.style.width = Math.min(100, (tot / Math.max(...CONSTRUCTION_TIERS, 1)) * 100) + '%'; const lb = document.getElementById('construction-leaderboard'); if(lb) lb.innerHTML = entries.length ? entries.map(([n,v],i)=>{ const medal = i===0?'🥇 ':i===1?'🥈 ':i===2?'🥉 ':''; return '<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:13px">'+medal+escapeHtml(n)+' <strong>'+Number(v).toLocaleString()+'</strong> pts</div>'; }).join('') : '<div class="muted" style="font-size:13px">No points yet.</div>'; const prog = document.getElementById('construction-progress'); if(prog){ const me = mems[username]; const ch = me && me.currentChallenge; if(ch){ const st = getConstructionPlayerStats(); const cur = Number(st[ch.stat])||0; const base = Number((ch.baseline||{})[ch.stat])||0; const p = ch.type==='gain' ? (cur-base) : cur; prog.textContent = Math.min(p, Number(ch.target)||0).toLocaleString(); } } }); }catch(e){}
           } else {
           // if this is a competitive event, compute pairings and display them
           try{
@@ -1540,7 +1885,6 @@
               html += '<div style="padding:8px;margin-top:6px">';
 
               if(evType === 'clan_v_clan'){
-                // show only the pair that contains the player's clan
                 const playerClanId = String(localStorage.getItem('player_clanId') || '');
                 const visiblePairs = (pairing.pairs || []).filter(p => {
                   const a = Array.isArray(p) ? p[0] : (p.a || p[0]);
@@ -1552,42 +1896,54 @@
                 if(!visiblePairs.length && !isUnmatched){
                   html += '<div class="muted">Your clan is not participating in the current pairings.</div>';
                 } else {
-                  html += '<div class="muted" style="margin-bottom:10px">Rewards when event ends: Winner — ' + CLAN_V_CLAN_WINNER_REWARDS.gems + ' Gems, ' + CLAN_V_CLAN_WINNER_REWARDS.clanXp + ' Clan XP, ' + CLAN_V_CLAN_WINNER_REWARDS.clanPoints + ' CP; Loser — ' + CLAN_V_CLAN_LOSER_REWARDS.gems + ' Gems, ' + CLAN_V_CLAN_LOSER_REWARDS.clanXp + ' XP, ' + CLAN_V_CLAN_LOSER_REWARDS.clanPoints + ' CP; Participation — ' + CLAN_V_CLAN_UNMATCHED_REWARDS.gems + ' Gems, ' + CLAN_V_CLAN_UNMATCHED_REWARDS.clanXp + ' XP, ' + CLAN_V_CLAN_UNMATCHED_REWARDS.clanPoints + ' CP.</div>';
+                  html += '<div class="muted" style="margin-bottom:10px">Rewards when event ends: Winner — ' + CLAN_V_CLAN_WINNER_REWARDS.gems + ' Gems, ' + CLAN_V_CLAN_WINNER_REWARDS.clanXp + ' Clan XP, ' + CLAN_V_CLAN_WINNER_REWARDS.clanPoints + ' CP; Loser — ' + CLAN_V_CLAN_LOSER_REWARDS.gems + ' Gems, ' + CLAN_V_CLAN_LOSER_REWARDS.clanXp + ' XP, ' + CLAN_V_CLAN_LOSER_REWARDS.clanPoints + ' CP.</div>';
                   try{ if(window._eventMemberUnsubs && Array.isArray(window._eventMemberUnsubs)){ window._eventMemberUnsubs.forEach(fn=>{ try{ fn(); }catch(e){} }); } }catch(e){}
                   window._eventMemberUnsubs = [];
                   for(const p of visiblePairs){
                     const a = Array.isArray(p) ? p[0] : (p.a || p[0]);
                     const b = Array.isArray(p) ? p[1] : (p.b || p[1]);
-                    const pairKey = `${a.id}__${b.id}`;
-                    const membersLeftId = `event-clan-members-${a.id}`;
-                    const membersRightId = `event-clan-members-${b.id}`;
-                    const aTot = await computeClanTotalClicks(a.id);
-                    const bTot = await computeClanTotalClicks(b.id);
-                    html += `<div style="display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap">`;
-                    html += `<div style="flex:1;min-width:260px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid #222;border-radius:8px"><div style="font-size:20px;font-weight:800">${escapeHtml(a.name||a.id)}</div><div id="clan-desc-${a.id}" class="muted" style="margin:6px 0;font-size:13px">Loading description...</div><div style="font-size:28px;font-weight:800;margin:8px 0" id="event-clan-total-${a.id}">${aTot.toLocaleString()}</div><div id="${membersLeftId}">Loading members...</div></div>`;
-                    html += `<div style="flex:1;min-width:260px;padding:12px;background:rgba(255,255,255,0.02);border:1px solid #222;border-radius:8px"><div style="font-size:20px;font-weight:800">${escapeHtml(b.name||b.id)}</div><div id="clan-desc-${b.id}" class="muted" style="margin:6px 0;font-size:13px">Loading description...</div><div style="font-size:28px;font-weight:800;margin:8px 0" id="event-clan-total-${b.id}">${bTot.toLocaleString()}</div><div id="${membersRightId}">Loading members...</div></div>`;
-                    html += `</div>`;
+                    const aIsMine = a && String(a.id) === playerClanId;
+                    const myClan = aIsMine ? a : b;
+                    const oppClan = aIsMine ? b : a;
+                    const membersLeftId = 'event-clan-members-' + myClan.id;
+                    const membersRightId = 'event-clan-members-' + oppClan.id;
+                    let myTot = await computeClanTotalClicks(myClan.id);
+                    let oppTot = await computeClanTotalClicks(oppClan.id);
+                    const totalClicks = myTot + oppTot;
+                    const myPct = totalClicks > 0 ? (myTot / totalClicks) * 100 : 50;
+                    const oppPct = totalClicks > 0 ? (oppTot / totalClicks) * 100 : 50;
+                    html += '<div style="margin-bottom:16px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333">';
+                    html += '<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:13px;font-weight:700"><span style="color:#3a8">' + escapeHtml(myClan.name||myClan.id) + ' (you)</span><span style="color:#c44">' + escapeHtml(oppClan.name||oppClan.id) + '</span></div>';
+                    html += '<div style="height:32px;border-radius:8px;overflow:hidden;display:flex;border:2px solid #444;position:relative">';
+                    html += '<div id="cvc-bar-green" style="height:100%;width:' + myPct + '%;min-width:' + (myPct > 0 ? '4px' : '0') + ';background:linear-gradient(90deg,#184,#2a6);transition:width 0.3s ease"></div>';
+                    html += '<div id="cvc-bar-red" style="height:100%;width:' + oppPct + '%;min-width:' + (oppPct > 0 ? '4px' : '0') + ';background:linear-gradient(90deg,#822,#c44);transition:width 0.3s ease"></div>';
+                    html += '</div>';
+                    html += '<div style="display:flex;justify-content:space-between;margin-top:6px;font-size:14px"><span id="event-clan-total-' + myClan.id + '" style="color:#6c8">' + myTot.toLocaleString() + ' clicks</span><span id="event-clan-total-' + oppClan.id + '" style="color:#c66">' + oppTot.toLocaleString() + ' clicks</span></div>';
+                    html += '<div style="display:flex;gap:12px;margin-top:14px;flex-wrap:wrap">';
+                    html += '<div style="flex:1;min-width:200px;padding:10px;background:rgba(0,40,0,0.15);border:1px solid #2a6;border-radius:8px"><div style="font-weight:700;color:#6c8;margin-bottom:6px">Your clan — top contributors</div><div id="' + membersLeftId + '">Loading...</div></div>';
+                    html += '<div style="flex:1;min-width:200px;padding:10px;background:rgba(40,0,0,0.15);border:1px solid #822;border-radius:8px"><div style="font-weight:700;color:#c66;margin-bottom:6px">Opponent — top contributors</div><div id="' + membersRightId + '">Loading...</div></div>';
+                    html += '</div></div>';
 
-                    // attach lightweight listeners safely
                     (async ()=>{
-                      try{ if(typeof getDoc==='function'){ const ca = await getDoc(doc(db,'clans',a.id)); if(ca && ca.exists()){ const d = ca.data() && ca.data().description ? ca.data().description : ''; const el = document.getElementById('clan-desc-'+a.id); if(el) el.textContent = d; } } }catch(e){}
-                      try{ if(typeof getDoc==='function'){ const cb = await getDoc(doc(db,'clans',b.id)); if(cb && cb.exists()){ const d2 = cb.data() && cb.data().description ? cb.data().description : ''; const el2 = document.getElementById('clan-desc-'+b.id); if(el2) el2.textContent = d2; } } }catch(e){}
+                      try{ if(typeof getDoc==='function'){ const ca = await getDoc(doc(db,'clans',myClan.id)); if(ca && ca.exists()){ } const cb = await getDoc(doc(db,'clans',oppClan.id)); if(cb && cb.exists()){ } } }catch(e){}
                       try{
                         if(typeof onSnapshot==='function' && typeof collection==='function'){
                           try{
-                            const memColA = collection(db,'clans',a.id,'members');
+                            const memColA = collection(db,'clans',myClan.id,'members');
                             const unsubA = onSnapshot(memColA, snap=>{
-                              try{ let tot=0, rows=''; if(snap && Array.isArray(snap.docs)){ const docs=snap.docs.slice(); docs.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const role=data.clanRole||data.role||'member'; const contrib=Number(data.mainClicks||0)||0; tot+=contrib; rows+=`<div style="display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #111"><div><strong>${escapeHtml(uname)}</strong> <span class=\"muted\">${escapeHtml(role)}</span></div><div>${contrib.toLocaleString()}</div></div>`;}catch(e){} }); }
-                                  const elTotal=document.getElementById('event-clan-total-'+a.id); if(elTotal) elTotal.textContent=tot.toLocaleString(); const elRows=document.getElementById(membersLeftId); if(elRows) elRows.innerHTML = rows || '<div class="muted">No members</div>';
+                              try{ let tot=0, rows=''; if(snap && Array.isArray(snap.docs)){ const docs=snap.docs.slice(); docs.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const contrib=Number(data.mainClicks||0)||0; tot+=contrib; rows+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span>${escapeHtml(uname)}</span><strong>${contrib.toLocaleString()}</strong></div>`;}catch(e){} }); }
+                                  const elTotal=document.getElementById('event-clan-total-'+myClan.id); if(elTotal) elTotal.textContent=tot.toLocaleString()+' clicks'; const elRows=document.getElementById(membersLeftId); if(elRows) elRows.innerHTML = rows || '<div class="muted">No contributions yet</div>';
+                                  const elGreen=document.getElementById('cvc-bar-green'); const elRed=document.getElementById('cvc-bar-red'); if(elGreen&&elRed){ const oppEl=document.getElementById('event-clan-total-'+oppClan.id); const oppTotNow=oppEl?parseInt(oppEl.textContent.replace(/\D/g,'')||'0',10):0; const total=tot+oppTotNow; const pct=total>0?(tot/total)*100:50; elGreen.style.width=pct+'%'; elRed.style.width=(100-pct)+'%'; }
                               }catch(e){ console.warn('member snapshot left failed', e); }
                             }, err=>{});
                             window._eventMemberUnsubs.push(unsubA);
                           }catch(e){}
                           try{
-                            const memColB = collection(db,'clans',b.id,'members');
+                            const memColB = collection(db,'clans',oppClan.id,'members');
                             const unsubB = onSnapshot(memColB, snap=>{
-                              try{ let tot2=0, rows2=''; if(snap && Array.isArray(snap.docs)){ const docs2=snap.docs.slice(); docs2.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs2.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const role=data.clanRole||data.role||'member'; const contrib=Number(data.mainClicks||0)||0; tot2+=contrib; rows2+=`<div style="display:flex;justify-content:space-between;padding:6px;border-bottom:1px solid #111"><div><strong>${escapeHtml(uname)}</strong> <span class=\"muted\">${escapeHtml(role)}</span></div><div>${contrib.toLocaleString()}</div></div>`;}catch(e){} }); }
-                                    const elTotal2=document.getElementById('event-clan-total-'+b.id); if(elTotal2) elTotal2.textContent=tot2.toLocaleString(); const elRows2=document.getElementById(membersRightId); if(elRows2) elRows2.innerHTML = rows2 || '<div class="muted">No members</div>';
+                              try{ let tot2=0, rows2=''; if(snap && Array.isArray(snap.docs)){ const docs2=snap.docs.slice(); docs2.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs2.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const contrib=Number(data.mainClicks||0)||0; tot2+=contrib; rows2+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span>${escapeHtml(uname)}</span><strong>${contrib.toLocaleString()}</strong></div>`;}catch(e){} }); }
+                                    const elTotal2=document.getElementById('event-clan-total-'+oppClan.id); if(elTotal2) elTotal2.textContent=tot2.toLocaleString()+' clicks'; const elRows2=document.getElementById(membersRightId); if(elRows2) elRows2.innerHTML = rows2 || '<div class="muted">No contributions yet</div>';
+                                    const elGreen=document.getElementById('cvc-bar-green'); const elRed=document.getElementById('cvc-bar-red'); if(elGreen&&elRed){ const myEl=document.getElementById('event-clan-total-'+myClan.id); const myTotNow=myEl?parseInt(myEl.textContent.replace(/\D/g,'')||'0',10):0; const total=myTotNow+tot2; const pct=total>0?(myTotNow/total)*100:50; elGreen.style.width=pct+'%'; elRed.style.width=(100-pct)+'%'; }
                               }catch(e){ console.warn('member snapshot right failed', e); }
                             }, err=>{});
                             window._eventMemberUnsubs.push(unsubB);
@@ -1620,28 +1976,32 @@
                   }
                 }
               } else {
-                // clan_race: show player's group only
+                // clan_race: show goal, player's group ranked by total; rewards by place at event end
                 const playerClanId = String(localStorage.getItem('player_clanId') || '');
                 const clansToWatchRace = [];
+                const goal = typeof CLAN_RACE_GOAL === 'number' ? CLAN_RACE_GOAL : 5000000;
+                html += '<div style="font-weight:700;margin-bottom:8px">Goal: ' + goal.toLocaleString() + ' points — first to reach it wins! At event end, ranking by total determines rewards (1st–4th get better rewards).</div>';
                 if((pairing.groups && pairing.groups.length) || (pairing.unmatched && pairing.unmatched.length)){
                   const visibleGroups = (pairing.groups || []).filter(g => (g||[]).some(x => x && String(x.id) === playerClanId));
                   const unmatchedHasPlayer = (pairing.unmatched || []).some(u => u && String(u.id) === playerClanId);
                   if(!visibleGroups.length && !unmatchedHasPlayer){
                     html += '<div class="muted">Your clan is not participating in the current race groups.</div>';
                   } else {
-                    if(visibleGroups.length){ html += '<div style="font-weight:700;margin-bottom:6px">Race Groups</div>'; }
+                    if(visibleGroups.length){ html += '<div style="font-weight:700;margin-bottom:6px">Your race group (ranked by points)</div>'; }
                     for(const g of visibleGroups){
-                      const parts = [];
-                      for(const x of (g||[])){
-                        const t = await computeClanTotalClicks(x.id);
-                        parts.push(`${escapeHtml(x.name||x.id)} <span id="event-clan-total-${x.id}">${t.toLocaleString()}</span>`);
-                        clansToWatchRace.push(x);
+                      const withTotals = [];
+                      for(const x of (g||[])){ const t = await computeClanTotalClicks(x.id); withTotals.push({ id: x.id, name: x.name||x.id, total: t }); clansToWatchRace.push(x); }
+                      withTotals.sort((a,b) => (b.total - a.total));
+                      for(let i = 0; i < withTotals.length; i++){
+                        const x = withTotals[i];
+                        const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : (i + 1) + '. ';
+                        const isYou = String(x.id) === playerClanId;
+                        html += '<div style="padding:6px;border-bottom:1px solid #111;' + (isYou ? 'background:rgba(80,120,80,0.2);' : '') + '">' + medal + escapeHtml(x.name) + ' <span id="event-clan-total-' + x.id + '">' + x.total.toLocaleString() + '</span> / ' + goal.toLocaleString() + (x.total >= goal ? ' ✓' : '') + '</div>';
                       }
-                      html += `<div style="padding:6px;border-bottom:1px solid #111">${parts.join(' • ')}</div>`;
                     }
                     if(unmatchedHasPlayer){
                       const myUn = (pairing.unmatched || []).find(u => u && String(u.id) === playerClanId);
-                      if(myUn){ const ut = await computeClanTotalClicks(myUn.id); html += `<div style="padding:6px;color:#d9b">${escapeHtml(myUn.name||myUn.id)} <span id="event-clan-total-${myUn.id}">${ut.toLocaleString()}</span> — no clan found</div>`; clansToWatchRace.push(myUn); }
+                      if(myUn){ const ut = await computeClanTotalClicks(myUn.id); html += '<div style="padding:6px;color:#d9b">' + escapeHtml(myUn.name||myUn.id) + ' <span id="event-clan-total-' + myUn.id + '">' + ut.toLocaleString() + '</span> / ' + goal.toLocaleString() + ' — in unmatched group</div>'; clansToWatchRace.push(myUn); }
                     }
                   }
                 } else {
@@ -1684,11 +2044,7 @@
                             persisted = !!written;
                           }catch(e){ console.warn('persist race pairings transaction failed', e); }
                           console.debug('pairings: transaction write result for race', { persisted });
-                          if(persisted){
-                            try{
-                              for(const cid of allClanIds){ try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap && Array.isArray(memSnap.docs)){ for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); if(typeof updateDoc === 'function'){ await updateDoc(memberRef, { mainClicks: 0 }); } else if(typeof setDoc === 'function'){ await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); } }catch(e){} } } }catch(e){ console.warn('clear mainClicks for clan failed', cid, e); } }
-                            }catch(e){ console.warn('clear mainClicks failed', e); }
-                          } else {
+                          if(!persisted){
                             // someone else persisted; re-read and use their payload so matchups stay consistent
                             try{
                               const s3 = await getDoc(EVENT_PAIRINGS_DOC);
@@ -1737,6 +2093,54 @@
       area.innerHTML = html;
       try{ updateEventTimers(); }catch(e){}
       try{ const skipBtn = document.getElementById('forceSkipEventBtn'); if(skipBtn) skipBtn.addEventListener('click', ()=>{ try{ window.skipToNextEvent(); }catch(e){} }); const regenBtn = document.getElementById('regenScheduleBtn'); if(regenBtn) regenBtn.addEventListener('click', ()=>{ try{ window.forceGenerateScheduleNow(); }catch(e){} }); }catch(e){}
+      try{
+        if(!area._constructionDelegation){
+          area._constructionDelegation = true;
+          area.addEventListener('click', async function(e){
+            const pickBtn = e.target && e.target.closest && e.target.closest('#construction-pick-btn');
+            const chooseBtn = e.target && e.target.closest && e.target.closest('.construction-choose-btn');
+            if(pickBtn){
+              const choicesEl = document.getElementById('construction-choices');
+              if(!choicesEl) return;
+              const statsNow = getConstructionPlayerStats();
+              const shuffled = CONSTRUCTION_CHALLENGES.slice();
+              for(let i = shuffled.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; }
+              const three = shuffled.slice(0, 3);
+              let html2 = '<div style="font-weight:700;margin-bottom:8px">Choose one:</div>';
+              for(const ch of three){
+                const target = typeof ch.scale === 'function' ? ch.scale(statsNow) : 0;
+                const desc = (ch.desc || '').replace(/\{target\}/g, Number(target).toLocaleString());
+                html2 += '<div style="padding:8px;margin:6px 0;border:1px solid #4a6;border-radius:6px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><div><strong>' + escapeHtml(ch.name) + '</strong> — ' + escapeHtml(desc) + ' <span style="color:#9e9">(' + (ch.points || 0) + ' pts)</span></div><button type="button" class="btn construction-choose-btn" data-id="' + escapeHtml(ch.id) + '" data-name="' + escapeHtml(ch.name) + '" data-desc="' + escapeHtml(desc) + '" data-target="' + target + '" data-type="' + escapeHtml(ch.type) + '" data-stat="' + escapeHtml(ch.stat) + '" data-points="' + (ch.points || 0) + '" style="background:#4a8;color:#fff">Choose</button></div>';
+              }
+              choicesEl.innerHTML = html2;
+              choicesEl.style.display = 'block';
+            } else if(chooseBtn){
+              const block = chooseBtn.closest('#construction-event-block');
+              if(!block) return;
+              const evKey = block.getAttribute('data-event-start-key'); const cid = block.getAttribute('data-player-clan-id'); const uname = block.getAttribute('data-username');
+              if(!evKey || !cid || !uname) return;
+              const id = chooseBtn.getAttribute('data-id'); const name = chooseBtn.getAttribute('data-name'); const target = Number(chooseBtn.getAttribute('data-target')) || 0; const type = chooseBtn.getAttribute('data-type') || 'reach'; const stat = chooseBtn.getAttribute('data-stat') || 'count'; const points = Number(chooseBtn.getAttribute('data-points')) || 0;
+              const baseline = getConstructionPlayerStats();
+              try{
+                const snap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
+                const data = snap && snap.exists() ? snap.data() : {};
+                const events = data.events && typeof data.events === 'object' ? data.events : {};
+                if(!events[evKey]) events[evKey] = {};
+                let bl = events[evKey][cid];
+                if(typeof bl !== 'object' || bl === null) bl = { total: 0, members: {} };
+                if(!bl.members) bl.members = {};
+                let mem = bl.members[uname];
+                if(typeof mem !== 'object' || mem === null) mem = { points: 0, completedCount: 0 };
+                mem.currentChallenge = { id: id, name: name, target: target, type: type, stat: stat, points: points, baseline: baseline };
+                bl.members[uname] = mem;
+                events[evKey][cid] = bl;
+                await setDoc(CONSTRUCTION_PROGRESS_DOC, { events: events });
+                renderEventsTab(window._lastEventState || {});
+              }catch(err){ console.warn('construction choose failed', err); }
+            }
+          });
+        }
+      }catch(e){ console.warn('construction delegation failed', e); }
     }catch(e){ console.warn('renderEventsTab failed', e); }
   }
 
@@ -1991,8 +2395,9 @@
       const ending = upcoming[0];
       const nm = ending && String(ending.name||'').toLowerCase();
       const isPp = nm.includes('prestige party');
-      const isBf = nm.includes('bossfight');
+      const isBf = nm.includes('bossfight') && !nm.includes('endless');
       const isCvc = (nm.includes('clan') && nm.includes('click')) || (ending && String(ending.type||'').toLowerCase().includes('clan_v_clan'));
+      const isRace = (nm.includes('race')) || (ending && String(ending.type||'').toLowerCase().includes('clan_race'));
       if(ending && isCvc){
         try{
           const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
@@ -2012,13 +2417,30 @@
           }
         }catch(e){ console.warn('skipToNextEvent ensure CVC pairings failed', e); }
       }
+      if(ending && isRace){
+        try{
+          const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
+          const pairData = pairSnap && pairSnap.exists() ? pairSnap.data() : {};
+          const last = pairData.last || {};
+          let lastStart = 0;
+          try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = last.eventStart.toMillis(); else lastStart = Number(last.eventStart || 0); }catch(e){}
+          if(Number(lastStart) !== Number(ending.start) || String(last.type||'').toLowerCase() !== 'clan_race'){
+            const pairing = await computePairingsForClanRace();
+            const allClanIds = new Set();
+            for(const g of (pairing.groups || [])){ for(const c of (g||[])) if(c && c.id) allClanIds.add(c.id); }
+            for(const u of (pairing.unmatched||[])){ if(u&&u.id) allClanIds.add(u.id); }
+            const totals = {};
+            for(const cid of allClanIds){ try{ totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
+            const payload = { eventName: ending.name || '', eventStart: ending.start || Date.now(), type: 'clan_race', groups: (pairing.groups || []).map(g => (Array.isArray(g) ? g.map(c => (c&&c.id ? { id: c.id, name: c.name || c.id } : c)) : g)), unmatched: (pairing.unmatched || []).map(u => (u&&u.id ? { id: u.id, name: u.name || u.id } : u)), totals };
+            await setDoc(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
+          }
+        }catch(e){ console.warn('skipToNextEvent ensure race pairings failed', e); }
+      }
+      const isEb = ending && (nm.includes('endless') && nm.includes('boss'));
+      const isCon = ending && nm.includes('construction');
       if(ending && !ending.isDowntime){
-        await setDoc(LAST_ENDED_EVENT_DOC, {
-          name: ending.name,
-          start: ending.start,
-          end: ending.end,
-          type: isCvc ? 'clan_v_clan' : (isPp ? 'prestige_party' : 'bossfight')
-        });
+        const endType = isCvc ? 'clan_v_clan' : (isRace ? 'clan_race' : (isPp ? 'prestige_party' : (isEb ? 'endless_boss' : (isCon ? 'construction' : 'bossfight'))));
+        await setDoc(LAST_ENDED_EVENT_DOC, { name: ending.name, start: ending.start, end: ending.end, type: endType });
       }
       const next = upcoming[1];
       let now = Date.now();
@@ -2041,7 +2463,10 @@
       if(ending && !ending.isDowntime){
         if(isPp) try{ await processEndedPrestigePartyRewards(ending); }catch(e){}
         else if(isBf) try{ await processEndedBossfightRewards(ending); }catch(e){}
+        else if(isEb) try{ await processEndedEndlessBossRewards(ending); }catch(e){}
+        else if(isCon) try{ await processEndedConstructionRewards(ending); }catch(e){}
         else if(isCvc) try{ await processEndedClanVClanRewards(ending); }catch(e){}
+        else if(isRace) try{ await processEndedClanRaceRewards(ending); }catch(e){}
       }
     }catch(e){ console.warn('skipToNextEvent failed', e); }
   };
