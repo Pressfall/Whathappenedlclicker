@@ -37,6 +37,14 @@
       <strong style="font-size:15px">Find clans</strong>
       <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:10px"><input id="searchClanName" placeholder="Search by name" style="flex:1"><button id="searchClanBtn" class="btn green">Search</button></div>
       <div id="searchResults" class="card-inner" style="max-height:320px;overflow:auto;padding:10px;border-radius:8px"></div>
+      <div id="createArea" style="margin-top:16px;padding-top:14px;border-top:1px solid #333">
+        <strong style="font-size:15px">Create a clan</strong>
+        <p class="muted" style="margin:6px 0 10px;font-size:13px">Costs 10 Golden What Happeneds. Unlocks after your first prestige.</p>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <input id="newClanName" placeholder="Clan name" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#fff">
+          <button id="createClan" class="btn" style="background:#f49a1a;color:#fff;padding:8px 16px">Create clan</button>
+        </div>
+      </div>
     </div>
 
     <hr style="border:none;border-top:1px solid #333;margin:16px 0">
@@ -99,7 +107,140 @@
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
   // Read Clan Points from game save (clan currency — rewards from events, spent in clan shop)
   function getClanPointsFromSave(){ try{ const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1'); if(!raw) return 0; const s = JSON.parse(raw); return Number(s.clanPoints) || 0; }catch(e){ return 0; } }
-  function renderClanShopTab(){ const tabShop = document.getElementById('tabShop'); if(!tabShop) return; const cp = getClanPointsFromSave(); tabShop.innerHTML = '<div class="card"><div id="clanShopBalance" style="margin-bottom:12px;font-size:18px;font-weight:700">Clan Points: ' + String(cp).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '</div><div class="muted">Clan shop coming soon. Spend Clan Points here when items are added.</div></div>'; }
+  const CLAN_SHOP_ITEMS = [
+    { id: 'gems5', name: '5 Gems', cost: 25, reward: { diamonds: 5 } },
+    { id: 'gems15', name: '15 Gems', cost: 60, reward: { diamonds: 15 } },
+    { id: 'gems50', name: '50 Gems', cost: 200, reward: { diamonds: 50 } },
+    { id: 'gems120', name: '120 Gems', cost: 450, reward: { diamonds: 120 } },
+    { id: 'golden1', name: '1 Golden What', cost: 80, reward: { goldenWhat: 1 } },
+    { id: 'golden3', name: '3 Golden Whats', cost: 220, reward: { goldenWhat: 3 } }
+  ];
+  // Clan buffs: whole-clan temporary buffs; CP contributions fill a bar; when full, buff activates and decays over duration.
+  const CLAN_BUFFS = [
+    { id: 'cps_double_1h', name: 'Double CPS', description: 'Whole clan: 2× CPS for 1 hour.', cpCost: 800, durationMs: 60 * 60 * 1000, cpsMult: 2, clickMult: 1 },
+    { id: 'click_double_30m', name: 'Double Click Power', description: 'Whole clan: 2× click power for 30 minutes.', cpCost: 500, durationMs: 30 * 60 * 1000, cpsMult: 1, clickMult: 2 },
+    { id: 'both_triple_20m', name: 'Triple Everything', description: 'Whole clan: 3× CPS and 3× click power for 20 minutes.', cpCost: 1200, durationMs: 20 * 60 * 1000, cpsMult: 3, clickMult: 3 }
+  ];
+  function purchaseClanShopItem(item){
+    if(!item || typeof item.cost !== 'number') return;
+    const cost = item.cost;
+    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+    if(!raw){ alert('No save found.'); return; }
+    try{
+      const s = JSON.parse(raw);
+      const have = Number(s.clanPoints) || 0;
+      if(have < cost){ alert('Not enough Clan Points. You have ' + have.toLocaleString() + ', need ' + cost + '.'); renderClanShopTab(); return; }
+      s.clanPoints = Math.max(0, have - cost);
+      if(item.reward.diamonds) s.diamonds = (Number(s.diamonds)||0) + item.reward.diamonds;
+      if(item.reward.goldenWhat) s.goldenWhat = (Number(s.goldenWhat)||0) + item.reward.goldenWhat;
+      localStorage.setItem('whathappened_save', JSON.stringify(s));
+      try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
+      renderClanShopTab();
+      const rewardStr = item.reward.diamonds ? (item.reward.diamonds + ' Gems') : (item.reward.goldenWhat + ' Golden What(s)');
+      alert('Purchased: ' + item.name + '. +' + rewardStr + ' Remaining CP: ' + s.clanPoints.toLocaleString());
+    }catch(e){ alert('Purchase failed.'); }
+  }
+  async function renderClanShopTab(){
+    const tabShop = document.getElementById('tabShop'); if(!tabShop) return;
+    const cp = getClanPointsFromSave();
+    const clanId = localStorage.getItem('player_clanId') || '';
+    let buffProgress = {};
+    let activeBuff = null;
+    if(clanId){
+      try{
+        const snap = await getDoc(doc(db,'clans',clanId));
+        if(snap.exists()){
+          const d = snap.data();
+          buffProgress = (d.buffProgress && typeof d.buffProgress === 'object') ? d.buffProgress : {};
+          const ab = d.activeBuff;
+          if(ab && ab.expiresAt){
+            const exp = typeof ab.expiresAt === 'number' ? ab.expiresAt : (ab.expiresAt.toMillis ? ab.expiresAt.toMillis() : 0);
+            if(exp > Date.now()) activeBuff = { id: ab.id, expiresAt: exp, cpsMult: ab.cpsMult || 1, clickMult: ab.clickMult || 1 };
+          }
+        }
+      }catch(e){ console.warn('Clan buff fetch failed', e); }
+    }
+    let html = '<div class="card"><div id="clanShopBalance" style="margin-bottom:16px;font-size:18px;font-weight:700">Clan Points: <span id="clanShopBalanceVal">' + String(cp).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '</span></div>';
+    html += '<div class="muted" style="margin-bottom:12px">Spend Clan Points (earned from events) on personal rewards or contribute to clan buffs.</div>';
+    html += '<div id="clanShopItems" style="display:flex;flex-direction:column;gap:10px">';
+    for(const item of CLAN_SHOP_ITEMS){
+      const canAfford = cp >= item.cost;
+      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333"><div><strong>' + escapeHtml(item.name) + '</strong> <span class="muted">— ' + item.cost + ' CP</span></div><button type="button" class="btn clan-shop-buy" data-id="' + escapeHtml(item.id) + '"' + (canAfford ? '' : ' disabled') + ' style="background:#2a6;color:#fff">Buy</button></div>';
+    }
+    html += '</div>';
+    if(clanId){
+      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #333"><strong style="font-size:16px">Clan buffs</strong><p class="muted" style="margin:8px 0">Contribute CP to fill the bar; when full, the whole clan gets the buff for the duration.</p>';
+      for(const b of CLAN_BUFFS){
+        const progress = Number(buffProgress[b.id]) || 0;
+        const isActive = activeBuff && activeBuff.id === b.id;
+        const pct = Math.min(100, (progress / b.cpCost) * 100);
+        html += '<div class="clan-buff-card" style="padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #444;margin-bottom:10px" data-buff-id="' + escapeHtml(b.id) + '">';
+        html += '<div><strong>' + escapeHtml(b.name) + '</strong> <span class="muted">— ' + escapeHtml(b.description) + '</span></div>';
+        html += '<div style="margin:8px 0;height:20px;background:#1a1a1a;border-radius:6px;overflow:hidden;border:1px solid #333"><div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#164,#2a8);transition:width 0.3s"></div></div>';
+        html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
+        html += '<span class="muted">' + progress + ' / ' + b.cpCost + ' CP</span>';
+        if(isActive){
+          const left = Math.max(0, Math.ceil((activeBuff.expiresAt - Date.now()) / 60000));
+          html += '<span style="color:#8c8;font-weight:700">Active — expires in ' + left + ' min</span>';
+        } else {
+          html += '<input type="number" min="1" max="99999" placeholder="CP" class="clan-buff-amount" data-buff-id="' + escapeHtml(b.id) + '" style="width:80px;padding:4px 8px">';
+          html += '<button type="button" class="btn clan-buff-contribute" data-buff-id="' + escapeHtml(b.id) + '" style="background:#2a6;color:#fff">Contribute</button>';
+        }
+        html += '</div></div>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+    tabShop.innerHTML = html;
+    tabShop.querySelectorAll('.clan-shop-buy').forEach(btn => {
+      const id = btn.getAttribute('data-id');
+      const item = CLAN_SHOP_ITEMS.find(i => i.id === id);
+      if(item) btn.addEventListener('click', () => purchaseClanShopItem(item));
+    });
+    tabShop.querySelectorAll('.clan-buff-contribute').forEach(btn => {
+      const buffId = btn.getAttribute('data-buff-id');
+      const card = tabShop.querySelector('.clan-buff-card[data-buff-id="' + buffId + '"]');
+      const input = card ? card.querySelector('.clan-buff-amount') : null;
+      const buff = CLAN_BUFFS.find(x => x.id === buffId);
+      if(buff) btn.addEventListener('click', () => {
+        const raw = (input && input.value) ? input.value.trim() : '';
+        const amount = Math.floor(Number(raw)) || 0;
+        if(amount < 1){ alert('Enter a positive amount of CP to contribute.'); return; }
+        contributeClanBuff(buffId, amount);
+      });
+    });
+  }
+  async function contributeClanBuff(buffId, amount){
+    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ alert('You are not in a clan.'); return; }
+    const buff = CLAN_BUFFS.find(b => b.id === buffId); if(!buff){ alert('Unknown buff.'); return; }
+    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+    if(!raw){ alert('No save found.'); return; }
+    let s; try{ s = JSON.parse(raw); }catch(e){ alert('Save error.'); return; }
+    const have = Number(s.clanPoints) || 0;
+    if(have < amount){ alert('Not enough Clan Points. You have ' + have.toLocaleString() + ', need ' + amount + '.'); return; }
+    const clanRef = doc(db,'clans',clanId);
+    try{
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(clanRef);
+        if(!snap.exists()) throw new Error('Clan not found');
+        const d = snap.data();
+        const curProgress = Number((d.buffProgress && d.buffProgress[buffId]) || 0) || 0;
+        const newProgress = curProgress + amount;
+        const updates = { buffProgress: { ...(d.buffProgress || {}), [buffId]: newProgress } };
+        if(newProgress >= buff.cpCost){
+          const expiresAt = Date.now() + buff.durationMs;
+          updates.activeBuff = { id: buffId, expiresAt, cpsMult: buff.cpsMult, clickMult: buff.clickMult };
+          updates.buffProgress = { ...(d.buffProgress || {}), [buffId]: newProgress - buff.cpCost };
+        }
+        tx.update(clanRef, updates);
+      });
+    }catch(e){ alert('Contribution failed: ' + (e.message || 'try again')); return; }
+    s.clanPoints = Math.max(0, have - amount);
+    localStorage.setItem('whathappened_save', JSON.stringify(s));
+    try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
+    await renderClanShopTab();
+    alert('Contributed ' + amount + ' CP to ' + (buff.name) + '. Remaining CP: ' + s.clanPoints.toLocaleString());
+  }
 
   // Clan XP and level (1–20, exponentially harder)
   const CLAN_MAX_LEVEL = 20;
@@ -107,6 +248,18 @@
   const CLAN_XP_GROWTH = 1.55;
   function totalClanXpForLevel(L){ if(L <= 1) return 0; let sum = 0; for(let i = 2; i <= L; i++) sum += CLAN_XP_BASE * Math.pow(CLAN_XP_GROWTH, i - 2); return sum; }
   function clanLevelFromXp(clanXp){ let x = Number(clanXp) || 0; for(let L = CLAN_MAX_LEVEL; L >= 1; L--){ if(x >= totalClanXpForLevel(L)) return { level: L, xpInLevel: x - totalClanXpForLevel(L), xpNeededForNext: L < CLAN_MAX_LEVEL ? totalClanXpForLevel(L + 1) - totalClanXpForLevel(L) : 0 }; } return { level: 1, xpInLevel: x, xpNeededForNext: CLAN_XP_BASE }; }
+  const CLAN_ICONS = [
+    { id: 'default', level: 1, label: 'Default', emoji: '⚔' },
+    { id: 'shield', level: 3, label: 'Shield', emoji: '🛡' },
+    { id: 'crown', level: 5, label: 'Crown', emoji: '👑' },
+    { id: 'dragon', level: 7, label: 'Dragon', emoji: '🐉' },
+    { id: 'star', level: 10, label: 'Star', emoji: '⭐' },
+    { id: 'fire', level: 12, label: 'Fire', emoji: '🔥' },
+    { id: 'gem', level: 15, label: 'Gem', emoji: '💎' },
+    { id: 'trophy', level: 18, label: 'Trophy', emoji: '🏆' },
+    { id: 'max', level: 20, label: 'Elite', emoji: '🌟' }
+  ];
+  function getClanIconForLevel(level){ const L = Number(level) || 1; let out = CLAN_ICONS[0]; for(const ic of CLAN_ICONS){ if(L >= ic.level) out = ic; } return out; }
   const CLAN_LEVEL_BONUSES = [
     { level: 1, bonus: 'Base — no bonus' },
     { level: 2, bonus: '+2% CPS for all members' },
@@ -327,7 +480,7 @@
       if (!cname) { alert('Enter a clan name.'); return; }
       if(!confirm(`Create clan "${cname}" for 10 Golden What Happend?`)) return;
       try{ const newVal = Math.max(0, readGoldenCount() - 10); try{ localStorage.setItem('whathappened_golden', String(newVal)); }catch(e){} try{ const el = document.getElementById('goldenCount'); if(el) el.textContent = String(newVal); }catch(e){} }catch(e){}
-      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30 });
+      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default' });
       localStorage.setItem('player_clanId', docRef.id);
       try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname, clanRole: 'leader' }, { merge: true }); }catch(e){}
       try{ await setDoc(doc(db,'clans',docRef.id,'members',username), { mainClicks: 0, clanRole: 'leader' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
@@ -449,9 +602,15 @@
           const name = c.name || '';
           const members = Array.isArray(c.members) ? c.members.slice(0,100) : [];
             let descriptionText = c.description || ''; 
-            let html = `<div class="card" style="padding:16px;margin-bottom:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px"><div><h2 style="margin:0;font-size:22px">${escapeHtml(name)}</h2><div class="muted" style="margin-top:4px">Owner: ${escapeHtml(owner)}</div><div id="clanDescription" class="muted" style="margin-top:8px;max-width:480px">${escapeHtml(descriptionText)}</div></div>`;
+            const clanXp = Number(c.clanXp) || 0;
+            const clanLevelInfo = clanLevelFromXp(clanXp);
+            const currentIconId = c.clanIcon || 'default';
+            const currentIcon = CLAN_ICONS.find(ic => ic.id === currentIconId) || getClanIconForLevel(clanLevelInfo.level);
+            const iconEmoji = currentIcon.emoji || '⚔';
+            let html = `<div class="card" style="padding:16px;margin-bottom:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px"><div><h2 style="margin:0;font-size:22px;display:flex;align-items:center;gap:8px"><span id="clanIconDisplay" style="font-size:28px" title="Clan icon">${iconEmoji}</span>${escapeHtml(name)}</h2><div class="muted" style="margin-top:4px">Owner: ${escapeHtml(owner)} · Level ${clanLevelInfo.level}</div><div id="clanDescription" class="muted" style="margin-top:8px;max-width:480px">${escapeHtml(descriptionText)}</div></div>`;
           const me = (localStorage.getItem('player_username')||'');
-          if(members.includes(me)) html += `<div id=\"clanHeaderActions\"><button id=\"leaveClanBtn\" class=\"btn\">Leave Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
+          const canChangeIcon = me === owner || (Array.isArray(c.leaders) && c.leaders.indexOf(me) !== -1);
+          if(members.includes(me)) html += `<div id=\"clanHeaderActions\">${canChangeIcon ? '<select id="clanIconSelect" class="btn" style="margin-right:8px;padding:4px 8px" title="Clan icon (leaders only)"><option value="">Icon...</option></select>' : ''}<button id=\"leaveClanBtn\" class=\"btn\">Leave Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
           else html += `<div id=\"clanHeaderActions\"><button id=\"joinClanBtn\" class=\"btn green\">Join Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
           html += `</div></div><div class="card" style="margin-top:14px;padding:12px"><div style="display:flex;justify-content:space-between;align-items:center"><strong>Members (${members.length})</strong><button id=\"toggleMembersBtn\" class=\"btn\">Toggle</button></div><div id=\"membersList\" class=\"card-inner\" style=\"margin-top:10px;max-height:360px;overflow:auto;padding:10px;border-radius:8px\"></div></div>`;
           if (members.includes(me)) {
@@ -460,6 +619,12 @@
             html += `<div class="card" style="margin-top:14px;padding:12px"><strong>Clan Chat</strong><div class=\"muted\">Join the clan to view and send clan messages.</div></div>`;
           }
           if(area) area.innerHTML = html;
+          const iconSelect = document.getElementById('clanIconSelect');
+          if(iconSelect && canChangeIcon){
+            const unlocked = CLAN_ICONS.filter(ic => clanLevelInfo.level >= ic.level);
+            unlocked.forEach(ic => { const o = document.createElement('option'); o.value = ic.id; o.textContent = ic.emoji + ' ' + ic.label; if(ic.id === (c.clanIcon || 'default')) o.selected = true; iconSelect.appendChild(o); });
+            iconSelect.addEventListener('change', async ()=>{ const v = iconSelect.value; if(!v) return; try{ await updateDoc(doc(db,'clans',clanId), { clanIcon: v }); const ic = CLAN_ICONS.find(i=>i.id===v); const disp = document.getElementById('clanIconDisplay'); if(disp && ic) disp.textContent = ic.emoji; }catch(e){ console.warn('clan icon update failed', e); } });
+          }
           if(members.includes(me)){
             const el = document.getElementById('leaveClanBtn'); if(el) el.addEventListener('click', ()=>leaveClan(clanId));
             const delEl = document.getElementById('deleteClanBtn'); if(delEl) delEl.addEventListener('click', ()=>{ if(confirm('Delete this clan? This cannot be undone.')) deleteClan(clanId); });
@@ -639,11 +804,15 @@
           const name = c.name || id;
           const owner = c.owner || '';
           const desc = (c.description||'').toString().slice(0,160);
+          const clanXp = Number(c.clanXp) || 0;
+          const lvl = clanLevelFromXp(clanXp).level;
+          const iconObj = CLAN_ICONS.find(ic => ic.id === (c.clanIcon||'')) || getClanIconForLevel(lvl);
+          const iconEmoji = iconObj.emoji || '⚔';
           const row = document.createElement('div');
           row.style.padding = '8px';
           row.style.borderBottom = '1px solid #111';
           row.style.cursor = 'pointer';
-          row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div><strong style="color:#9cf">${escapeHtml(name)}</strong><div class="muted">Owner: ${escapeHtml(owner)}</div><div class="muted" style="margin-top:6px">${escapeHtml(desc)}</div></div><div class="muted">Members: ${Array.isArray(c.members)?c.members.length:0}</div></div>`;
+          row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">${iconEmoji}</span><div><strong style="color:#9cf">${escapeHtml(name)}</strong><div class="muted">Owner: ${escapeHtml(owner)}</div><div class="muted" style="margin-top:6px">${escapeHtml(desc)}</div></div></div><div class="muted">Members: ${Array.isArray(c.members)?c.members.length:0}</div></div>`;
           row.addEventListener('click', ()=>{ if(id) loadClanDetail(id); });
           container.appendChild(row);
         }catch(e){}
@@ -995,6 +1164,7 @@
   const ENDLESS_BOSS_PROGRESS_DOC = doc(db,'events','endless_boss_progress');
   const ENDLESS_BOSS_META_DOC = doc(db,'events','endless_boss_meta');
   const CONSTRUCTION_PROGRESS_DOC = doc(db,'events','construction_progress');
+  const RACE_PROGRESS_DOC = doc(db,'events','race_progress');
   const LAST_ENDED_EVENT_DOC = doc(db,'events','last_ended_event');
   const CONSTRUCTION_TIERS = [25, 75, 150, 300, 500, 800, 1200];
   const CONSTRUCTION_REWARDS = [
@@ -1026,33 +1196,35 @@
     }catch(e){}
     return stats;
   }
-  // Challenges use only "gain" (during challenge) or safe "reach" (prestige) so players can't claim free points from existing totals
+  // Challenges use only "gain" (during challenge) or safe "reach" (prestige) so players can't claim free points from existing totals.
+  // Many quests scale with current strength (count, cps, clickPower, totalLevels, goldenWhat, divineTotalLevels) so stronger players get proportionally higher targets.
   const CONSTRUCTION_CHALLENGES = [
-    { id: 'c1', name: 'Small click gain', desc: 'Gain {target} more clicks (from when you start).', type: 'gain', stat: 'count', points: 6, scale: s => Math.max(200, Math.floor(300 * (1 + s.prestigeTimes * 0.2))) },
-    { id: 'c2', name: 'Golden gain', desc: 'Earn {target} more Golden Whats (during this challenge).', type: 'gain', stat: 'goldenWhat', points: 15, scale: s => Math.max(1, Math.floor(1 + s.prestigeTimes * 0.3)) },
-    { id: 'c3', name: 'Level grind', desc: 'Gain {target} more total upgrade levels.', type: 'gain', stat: 'totalLevels', points: 14, scale: s => Math.max(5, Math.floor(8 + s.prestigeTimes * 2)) },
-    { id: 'c4', name: 'CPS gain', desc: 'Gain {target} more CPS (from when you start).', type: 'gain', stat: 'cps', points: 18, scale: s => Math.max(5, Math.floor(20 * (1 + s.prestigeTimes * 0.15))) },
-    { id: 'c5', name: 'Mega clicks', desc: 'Gain {target} clicks during this challenge.', type: 'gain', stat: 'count', points: 10, scale: s => Math.max(500, Math.floor(800 * (1 + s.prestigeTimes * 0.25))) },
+    { id: 'c1', name: 'Small click gain', desc: 'Gain {target} more clicks (from when you start).', type: 'gain', stat: 'count', points: 6, scale: s => Math.max(200, Math.floor(300 * (1 + (s.prestigeTimes || 0) * 0.2) + Math.min(8000, (s.count || 0) * 0.015))) },
+    { id: 'c2', name: 'Golden gain', desc: 'Earn {target} more Golden Whats (during this challenge).', type: 'gain', stat: 'goldenWhat', points: 15, scale: s => Math.max(1, Math.floor(1 + (s.prestigeTimes || 0) * 0.3 + (s.goldenWhat || 0) * 0.15)) },
+    { id: 'c3', name: 'Level grind', desc: 'Gain {target} more total upgrade levels.', type: 'gain', stat: 'totalLevels', points: 14, scale: s => Math.max(5, Math.floor(8 + (s.prestigeTimes || 0) * 2 + (s.totalLevels || 0) * 0.08)) },
+    { id: 'c4', name: 'CPS gain', desc: 'Gain {target} more CPS (from when you start).', type: 'gain', stat: 'cps', points: 18, scale: s => Math.max(5, Math.floor(20 * (1 + (s.prestigeTimes || 0) * 0.15) + Math.min(2000, (s.cps || 0) * 0.08))) },
+    { id: 'c5', name: 'Mega clicks', desc: 'Gain {target} clicks during this challenge.', type: 'gain', stat: 'count', points: 10, scale: s => Math.max(500, Math.floor(800 * (1 + (s.prestigeTimes || 0) * 0.25) + Math.min(25000, (s.count || 0) * 0.04))) },
     { id: 'c6', name: 'Prestige runner', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 18, scale: s => Math.max(1, Math.floor((s.prestigeTimes || 0) + 1)) },
     { id: 'c7', name: 'Double golden', desc: 'Earn 2 more Golden Whats during challenge.', type: 'gain', stat: 'goldenWhat', points: 25, scale: () => 2 },
-    { id: 'c8', name: 'Level sprint', desc: 'Gain {target} upgrade levels during challenge.', type: 'gain', stat: 'totalLevels', points: 20, scale: s => Math.max(10, Math.floor(15 + s.prestigeTimes * 3)) },
-    { id: 'c9', name: 'CPS burst', desc: 'Gain {target} CPS during challenge.', type: 'gain', stat: 'cps', points: 28, scale: s => Math.max(50, Math.floor(80 * (1 + s.prestigeTimes * 0.2))) },
+    { id: 'c8', name: 'Level sprint', desc: 'Gain {target} upgrade levels during challenge.', type: 'gain', stat: 'totalLevels', points: 20, scale: s => Math.max(10, Math.floor(15 + (s.prestigeTimes || 0) * 3 + (s.totalLevels || 0) * 0.12)) },
+    { id: 'c9', name: 'CPS burst', desc: 'Gain {target} CPS during challenge.', type: 'gain', stat: 'cps', points: 28, scale: s => Math.max(50, Math.floor(80 * (1 + (s.prestigeTimes || 0) * 0.2) + Math.min(5000, (s.cps || 0) * 0.1))) },
     { id: 'c10', name: 'Prestige plus one', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 12, scale: s => Math.max(1, (s.prestigeTimes || 0) + 1) },
-    { id: 'd1', name: 'Divine step', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 12, scale: s => Math.max(1, Math.floor(1 + (s.prestigeTimes || 0) * 0.2)) },
-    { id: 'd2', name: 'Divine push', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 20, scale: s => Math.max(2, Math.floor(2 + (s.prestigeTimes || 0) * 0.4)) },
-    { id: 'd3', name: 'Divine grind', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 28, scale: s => Math.max(3, Math.floor(3 + (s.prestigeTimes || 0) * 0.5)) },
-    { id: 'd4', name: 'Divine dedication', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 35, scale: s => Math.max(5, Math.floor(5 + (s.prestigeTimes || 0) * 0.6)) },
+    { id: 'd1', name: 'Divine step', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 12, scale: s => Math.max(1, Math.floor(1 + (s.prestigeTimes || 0) * 0.2 + (s.divineTotalLevels || 0) * 0.1)) },
+    { id: 'd2', name: 'Divine push', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 20, scale: s => Math.max(2, Math.floor(2 + (s.prestigeTimes || 0) * 0.4 + (s.divineTotalLevels || 0) * 0.15)) },
+    { id: 'd3', name: 'Divine grind', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 28, scale: s => Math.max(3, Math.floor(3 + (s.prestigeTimes || 0) * 0.5 + (s.divineTotalLevels || 0) * 0.2)) },
+    { id: 'd4', name: 'Divine dedication', desc: 'Buy {target} divine upgrade level(s) during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 35, scale: s => Math.max(5, Math.floor(5 + (s.prestigeTimes || 0) * 0.6 + (s.divineTotalLevels || 0) * 0.25)) },
     { id: 'd5', name: 'First divine', desc: 'Buy 1 divine upgrade level during this challenge.', type: 'gain', stat: 'divineTotalLevels', points: 8, scale: () => 1 },
     { id: 'g1', name: 'Casino win', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 10, scale: s => Math.max(1, Math.floor(1 + (s.prestigeTimes || 0) * 0.15)) },
     { id: 'g2', name: 'Casino streak', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 18, scale: s => Math.max(2, Math.floor(2 + (s.prestigeTimes || 0) * 0.25)) },
     { id: 'g3', name: 'Casino regular', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 25, scale: s => Math.max(3, Math.floor(3 + (s.prestigeTimes || 0) * 0.3)) },
     { id: 'g4', name: 'Casino high roller', desc: 'Win {target} blackjack game(s) during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 32, scale: s => Math.max(5, Math.floor(5 + (s.prestigeTimes || 0) * 0.4)) },
     { id: 'g5', name: 'First blackjack win', desc: 'Win 1 blackjack game during this challenge.', type: 'gain', stat: 'casinoTotalWins', points: 6, scale: () => 1 },
-    { id: 'c11', name: 'Big click gain', desc: 'Gain {target} more clicks during this challenge.', type: 'gain', stat: 'count', points: 14, scale: s => Math.max(1000, Math.floor(1500 * (1 + s.prestigeTimes * 0.2))) },
-    { id: 'c12', name: 'Golden sprint', desc: 'Earn {target} more Golden Whats during this challenge.', type: 'gain', stat: 'goldenWhat', points: 20, scale: s => Math.max(2, Math.floor(3 + s.prestigeTimes * 0.4)) },
-    { id: 'c13', name: 'Level push', desc: 'Gain {target} upgrade levels during this challenge.', type: 'gain', stat: 'totalLevels', points: 24, scale: s => Math.max(15, Math.floor(20 + s.prestigeTimes * 4)) },
-    { id: 'c14', name: 'CPS climb', desc: 'Gain {target} more CPS during this challenge.', type: 'gain', stat: 'cps', points: 22, scale: s => Math.max(30, Math.floor(50 * (1 + s.prestigeTimes * 0.2))) },
+    { id: 'c11', name: 'Big click gain', desc: 'Gain {target} more clicks during this challenge.', type: 'gain', stat: 'count', points: 14, scale: s => Math.max(1000, Math.floor(1500 * (1 + (s.prestigeTimes || 0) * 0.2) + Math.min(50000, (s.count || 0) * 0.06))) },
+    { id: 'c12', name: 'Golden sprint', desc: 'Earn {target} more Golden Whats during this challenge.', type: 'gain', stat: 'goldenWhat', points: 20, scale: s => Math.max(2, Math.floor(3 + (s.prestigeTimes || 0) * 0.4 + (s.goldenWhat || 0) * 0.2)) },
+    { id: 'c13', name: 'Level push', desc: 'Gain {target} upgrade levels during this challenge.', type: 'gain', stat: 'totalLevels', points: 24, scale: s => Math.max(15, Math.floor(20 + (s.prestigeTimes || 0) * 4 + (s.totalLevels || 0) * 0.15)) },
+    { id: 'c14', name: 'CPS climb', desc: 'Gain {target} more CPS during this challenge.', type: 'gain', stat: 'cps', points: 22, scale: s => Math.max(30, Math.floor(50 * (1 + (s.prestigeTimes || 0) * 0.2) + Math.min(4000, (s.cps || 0) * 0.12))) },
     { id: 'c15', name: 'Prestige two', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 16, scale: s => Math.max(1, (s.prestigeTimes || 0) + 2) },
+    { id: 'c16', name: 'Click power gain', desc: 'Gain {target} more click power (from when you start).', type: 'gain', stat: 'clickPower', points: 16, scale: s => Math.max(10, Math.floor(15 * (1 + (s.prestigeTimes || 0) * 0.1) + Math.min(5000, (s.clickPower || 0) * 0.05))) },
   ];
   const BOSS_IMAGE_URL = 'mainimage/upgrades/eastonBundy.png';
   const BOSSFIGHT_BASE_HP = 5e7;
@@ -1346,10 +1518,11 @@
         if(Array.isArray(last.unmatched)) for(const u of last.unmatched) if(u&&u.id) allClanIds.add(u.id);
       }
       const newTotals = {};
-      for(const cid of allClanIds){ try{ newTotals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
+      for(const cid of allClanIds){ if(String(cid) === BOT_CLAN_ID){ newTotals[cid] = 0; continue; } try{ newTotals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
       const finalLast = Object.assign({}, last, { totals: newTotals, clearedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now() });
       await setDoc(EVENT_PAIRINGS_DOC, { last: finalLast }, { merge: true });
       for(const cid of allClanIds){
+        if(String(cid) === BOT_CLAN_ID) continue;
         try{
           const memSnap = await getDocs(collection(db,'clans',cid,'members'));
           if(memSnap && memSnap.docs) for(const md of memSnap.docs){
@@ -1405,7 +1578,7 @@
 
   async function processEndedPrestigePartyRewards(eventItem){
     try{
-      const eventStart = Number(eventItem.start||0);
+      const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
       const claimedKey = 'whathappened_pp_claimed_' + eventStart;
@@ -1426,7 +1599,7 @@
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
       if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const cur = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'pp_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['pp_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['pp_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       let msg = 'The clan event has ended!\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP (added to your clan), ' + totalCP + ' Clan Points.';
       if(bonusGems || bonusCP) msg += '\n(Top contributor bonus: +' + bonusGems + ' Gems, +' + bonusCP + ' Clan Points)';
@@ -1436,7 +1609,7 @@
 
   async function processEndedBossfightRewards(eventItem){
     try{
-      const eventStart = Number(eventItem.start||0);
+      const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
       const claimedKey = 'whathappened_bf_claimed_' + eventStart;
@@ -1467,7 +1640,7 @@
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
       if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const cur = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'bf_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['bf_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['bf_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       let msg = 'The clan event has ended!\n\nBossfight rewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points. (Your clan dealt ' + clanDamage.toLocaleString() + ' damage.)';
       if(bonusGems || bonusCP) msg += '\n(Top contributor bonus: +' + bonusGems + ' Gems, +' + bonusCP + ' Clan Points)';
@@ -1479,7 +1652,7 @@
   const CLAN_V_CLAN_LOSER_REWARDS = { gems: 10, clanXp: 80, clanPoints: 15 };
   const CLAN_V_CLAN_UNMATCHED_REWARDS = { gems: 5, clanXp: 30, clanPoints: 5 };
 
-  const CLAN_RACE_GOAL = 5000000;
+  const CLAN_RACE_GOAL = 500;
   const CLAN_RACE_PLACE_REWARDS = [
     { place: 1, gems: 40, clanXp: 350, clanPoints: 70 },
     { place: 2, gems: 25, clanXp: 200, clanPoints: 45 },
@@ -1490,7 +1663,7 @@
 
   async function processEndedEndlessBossRewards(eventItem){
     try{
-      const eventStart = Number(eventItem.start||0);
+      const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
       const claimedKey = 'whathappened_eb_claimed_' + eventStart;
@@ -1509,7 +1682,7 @@
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
       if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const s = await getDoc(clanRef); const cur = (s && s.exists() && s.data()) ? (Number(s.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'eb_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const s = await getDoc(clanRef); const d = s && s.exists() ? s.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['eb_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['eb_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       alert('Endless Boss event ended!\n\nYour clan defeated ' + defeated + ' boss(es).\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
     }catch(e){ console.warn('processEndedEndlessBossRewards failed', e); }
@@ -1517,15 +1690,14 @@
 
   async function processEndedClanVClanRewards(eventItem){
     try{
-      const eventStart = Number(eventItem.start||0);
+      const eventStart = eventToMs(eventItem.start);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
       const claimedKey = 'whathappened_cvc_claimed_' + eventStart;
       if(localStorage.getItem(claimedKey)) return;
       const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
       const pairData = pairSnap && pairSnap.exists() ? pairSnap.data() : {};
       const last = pairData.last || {};
-      let lastStart = 0;
-      try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = Number(last.eventStart.toMillis()); else lastStart = Number(last.eventStart || 0); }catch(e){}
+      const lastStart = eventToMs(last.eventStart);
       if(Number(lastStart) !== Number(eventStart) || String(last.type||'').toLowerCase() !== 'clan_v_clan') return;
       const totals = last.totals && typeof last.totals === 'object' ? last.totals : {};
       const pairs = last.pairs || [];
@@ -1552,7 +1724,7 @@
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
       if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const cur = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'cvc_' + eventStart; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['cvc_' + eventStart]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['cvc_' + eventStart]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       const resultText = isWinner ? 'Your clan won!' : (isLoser ? 'Your clan was defeated.' : 'Your clan participated (no matchup).');
       alert('Clan v Clan event ended!\n\n' + resultText + '\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
@@ -1561,24 +1733,33 @@
 
   async function processEndedClanRaceRewards(eventItem){
     try{
-      const eventStart = Number(eventItem.start||0);
+      const eventStart = eventToMs(eventItem.start);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
       const claimedKey = 'whathappened_race_claimed_' + eventStart;
       if(localStorage.getItem(claimedKey)) return;
       const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
       const pairData = pairSnap && pairSnap.exists() ? pairSnap.data() : {};
       const last = pairData.last || {};
-      let lastStart = 0;
-      try{ if(typeof last.eventStart === 'number') lastStart = Number(last.eventStart); else if(last.eventStart && typeof last.eventStart.toMillis === 'function') lastStart = last.eventStart.toMillis(); else lastStart = Number(last.eventStart || 0); }catch(e){}
+      const lastStart = eventToMs(last.eventStart);
       if(Number(lastStart) !== Number(eventStart) || String(last.type||'').toLowerCase() !== 'clan_race') return;
-      const totals = last.totals && typeof last.totals === 'object' ? last.totals : {};
+      const raceProgSnap = await getDoc(RACE_PROGRESS_DOC);
+      const raceProgData = raceProgSnap && raceProgSnap.exists() ? raceProgSnap.data() : {};
+      const raceByEvent = raceProgData.events && typeof raceProgData.events === 'object' ? raceProgData.events : {};
+      const eventKey = String(eventStart);
       const groups = Array.isArray(last.groups) ? last.groups : [];
       const unmatched = Array.isArray(last.unmatched) ? last.unmatched : [];
       const myGroup = [];
       for(const g of groups){ if(Array.isArray(g) && (g||[]).some(c => c && String(c.id) === clanId)){ for(const c of g) if(c && c.id) myGroup.push({ id: c.id, name: c.name || c.id }); break; } }
       if(!myGroup.length && unmatched.some(u => u && String(u.id) === clanId)){ const u = unmatched.find(x => x && String(x.id) === clanId); if(u) myGroup.push({ id: u.id, name: u.name || u.id }); }
       if(!myGroup.length) return;
-      const ranked = myGroup.slice().map(c => ({ id: c.id, name: c.name, total: Number(totals[c.id]) || 0 })).sort((a,b) => (b.total - a.total));
+      const realGroup = myGroup.filter(c => !isBotClan(c));
+      const raceTotals = (raceByEvent[eventKey] && typeof raceByEvent[eventKey] === 'object') ? raceByEvent[eventKey] : {};
+      const lastTotals = last.totals && typeof last.totals === 'object' ? last.totals : {};
+      const ranked = realGroup.slice().map(c => {
+        const fromRace = (raceTotals[c.id] && typeof raceTotals[c.id].total === 'number') ? raceTotals[c.id].total : null;
+        const fromLast = typeof lastTotals[c.id] === 'number' ? lastTotals[c.id] : 0;
+        return { id: c.id, name: c.name, total: fromRace != null ? fromRace : fromLast };
+      }).sort((a,b) => (b.total - a.total));
       let place = 0;
       for(let i = 0; i < ranked.length; i++){ if(String(ranked[i].id) === clanId){ place = i + 1; break; } }
       const rewardsByPlace = CLAN_RACE_PLACE_REWARDS.filter(r => r.place > 0).sort((a,b) => a.place - b.place);
@@ -1590,7 +1771,7 @@
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
       if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const cur = (snap && snap.exists() && snap.data()) ? (Number(snap.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'race_' + eventStart; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['race_' + eventStart]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['race_' + eventStart]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       const placeStr = place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : place ? place + 'th' : 'participation';
       alert('Clan Race event ended!\n\nYour clan placed ' + placeStr + ' in your group.\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
@@ -1599,7 +1780,7 @@
 
   async function processEndedConstructionRewards(eventItem){
     try{
-      const eventStart = Number(eventItem.start||0);
+      const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
       const claimedKey = 'whathappened_con_claimed_' + eventStart;
@@ -1614,7 +1795,7 @@
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
       if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); await updateDoc(clanRef, { clanXp: increment(totalClanXp) }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap2 = await getDoc(clanRef); const cur = (snap2 && snap2.exists() && snap2.data()) ? (Number(snap2.data().clanXp)||0) : 0; await updateDoc(clanRef, { clanXp: cur + totalClanXp }); }catch(e2){} } }
+      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'con_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap2 = await getDoc(clanRef); const d = snap2 && snap2.exists() ? snap2.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['con_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['con_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       alert('Construction event ended!\n\nYour clan scored ' + totalPoints + ' points.\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
     }catch(e){ console.warn('processEndedConstructionRewards failed', e); }
@@ -1627,8 +1808,23 @@
       try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div class="card"><div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div></div>'; return; } }catch(e){}
       const upcoming = (state && Array.isArray(state.upcoming)) ? state.upcoming : [];
       const now = Date.now();
-      if(upcoming.length > 0 && (upcoming[0].end || 0) <= now){ const endedName = String(upcoming[0].name||'').toLowerCase(); const ended = upcoming[0]; if(endedName.includes('prestige party')){ try{ await processEndedPrestigePartyRewards(ended); }catch(e){} } else if(endedName.includes('bossfight') && !endedName.includes('endless')){ try{ await processEndedBossfightRewards(ended); }catch(e){} } else if(endedName.includes('endless') && endedName.includes('boss')){ try{ await processEndedEndlessBossRewards(ended); }catch(e){} } else if(endedName.includes('construction')){ try{ await processEndedConstructionRewards(ended); }catch(e){} } else if((endedName.includes('clan') && endedName.includes('click')) || (ended && String(ended.type||'').toLowerCase().includes('clan_v_clan'))){ try{ await processEndedClanVClanRewards(ended); }catch(e){} } else if(endedName.includes('race') || (ended && String(ended.type||'').toLowerCase().includes('clan_race'))){ try{ await processEndedClanRaceRewards(ended); }catch(e){} } }
-      else { try{ const endedSnap = await getDoc(LAST_ENDED_EVENT_DOC); const ended = endedSnap && endedSnap.exists() ? endedSnap.data() : null; if(ended && (ended.end||0) <= now){ const n = String(ended.name||'').toLowerCase(); const t = String(ended.type||'').toLowerCase(); if(n.includes('prestige party')) await processEndedPrestigePartyRewards(ended); else if(n.includes('bossfight') && !n.includes('endless')) await processEndedBossfightRewards(ended); else if(n.includes('endless') && n.includes('boss')) await processEndedEndlessBossRewards(ended); else if(n.includes('construction')) await processEndedConstructionRewards(ended); else if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(ended); else if(n.includes('race') || t.includes('clan_race')) await processEndedClanRaceRewards(ended); } }catch(e){} }
+      // Always check last_ended_event so any account (including those who didn't trigger the end) can claim rewards when they load
+      try{
+        const endedSnap = await getDoc(LAST_ENDED_EVENT_DOC);
+        const lastEnded = endedSnap && endedSnap.exists() ? endedSnap.data() : null;
+        if(lastEnded && typeof lastEnded === 'object' && eventToMs(lastEnded.end) <= now){
+          const n = String(lastEnded.name||'').toLowerCase();
+          const t = String(lastEnded.type||'').toLowerCase();
+          try{ if(n.includes('prestige party')) await processEndedPrestigePartyRewards(lastEnded); }catch(e){ console.warn('processEndedPrestigePartyRewards', e); }
+          try{ if(n.includes('bossfight') && !n.includes('endless')) await processEndedBossfightRewards(lastEnded); }catch(e){ console.warn('processEndedBossfightRewards', e); }
+          try{ if(n.includes('endless') && n.includes('boss')) await processEndedEndlessBossRewards(lastEnded); }catch(e){ console.warn('processEndedEndlessBossRewards', e); }
+          try{ if(n.includes('construction')) await processEndedConstructionRewards(lastEnded); }catch(e){ console.warn('processEndedConstructionRewards', e); }
+          try{ if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(lastEnded); }catch(e){ console.warn('processEndedClanVClanRewards', e); }
+          try{ if(n.includes('race') || t.includes('clan_race')) await processEndedClanRaceRewards(lastEnded); }catch(e){ console.warn('processEndedClanRaceRewards', e); }
+        }
+      }catch(e){ console.warn('last_ended_event check failed', e); }
+      if(upcoming.length > 0 && eventToMs(upcoming[0].end) <= now){ const endedName = String(upcoming[0].name||'').toLowerCase(); const ended = upcoming[0]; if(endedName.includes('prestige party')){ try{ await processEndedPrestigePartyRewards(ended); }catch(e){} } else if(endedName.includes('bossfight') && !endedName.includes('endless')){ try{ await processEndedBossfightRewards(ended); }catch(e){} } else if(endedName.includes('endless') && endedName.includes('boss')){ try{ await processEndedEndlessBossRewards(ended); }catch(e){} } else if(endedName.includes('construction')){ try{ await processEndedConstructionRewards(ended); }catch(e){} } else if((endedName.includes('clan') && endedName.includes('click')) || (ended && String(ended.type||'').toLowerCase().includes('clan_v_clan'))){ try{ await processEndedClanVClanRewards(ended); }catch(e){} } else if(endedName.includes('race') || (ended && String(ended.type||'').toLowerCase().includes('clan_race'))){ try{ await processEndedClanRaceRewards(ended); }catch(e){} } }
+      else { try{ const endedSnap2 = await getDoc(LAST_ENDED_EVENT_DOC); const ended = endedSnap2 && endedSnap2.exists() ? endedSnap2.data() : null; if(ended && eventToMs(ended.end) <= now){ const n = String(ended.name||'').toLowerCase(); const t = String(ended.type||'').toLowerCase(); if(n.includes('prestige party')) await processEndedPrestigePartyRewards(ended); else if(n.includes('bossfight') && !n.includes('endless')) await processEndedBossfightRewards(ended); else if(n.includes('endless') && n.includes('boss')) await processEndedEndlessBossRewards(ended); else if(n.includes('construction')) await processEndedConstructionRewards(ended); else if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(ended); else if(n.includes('race') || t.includes('clan_race')) await processEndedClanRaceRewards(ended); } }catch(e){} }
       const current = upcoming.find(it => eventToMs(it.start) <= now && eventToMs(it.end) > now) || null;
       // next event (first upcoming with start > now)
       const next = upcoming.find(it => (it.start || 0) > now) || null;
@@ -1644,9 +1840,10 @@
           }
         } else {
           // an event is active now
-          const leftMs = Math.max(0, (current.end || 0) - now);
+          const currentEndMs = eventToMs(current.end);
+          const leftMs = Math.max(0, currentEndMs - now);
           // large box showing current event
-          html += `<div style="display:flex;justify-content:center;margin:12px 0"><div style=\"background:rgba(255,255,255,0.02);border:1px solid #222;padding:18px 24px;border-radius:8px;min-width:320px;text-align:center\"><div style=\"font-size:20px;font-weight:800;margin-bottom:6px\">${escapeHtml(current.name||'Event')}</div><div class=\"muted\">Ends in <strong id=\"event-time-remaining\" data-end=\"${Number(current.end||0)}\">${escapeHtml(fmtTimeRemaining(leftMs))}</strong></div></div></div>`;
+          html += `<div style="display:flex;justify-content:center;margin:12px 0"><div style=\"background:rgba(255,255,255,0.02);border:1px solid #222;padding:18px 24px;border-radius:8px;min-width:320px;text-align:center\"><div style=\"font-size:20px;font-weight:800;margin-bottom:6px\">${escapeHtml(current.name||'Event')}</div><div class=\"muted\">Ends in <strong id=\"event-time-remaining\" data-end=\"${currentEndMs}\">${escapeHtml(fmtTimeRemaining(leftMs))}</strong></div></div></div>`;
           const nameLow = String(current.name||'').toLowerCase();
           const isPrestigeParty = nameLow.includes('prestige party') || nameLow.includes('prestige');
           if(isPrestigeParty){
@@ -1658,17 +1855,19 @@
             try{ pendingCount = Math.max(0, parseInt(localStorage.getItem('whathappened_prestige_party_pending') || '0', 10)); }catch(e){}
             if(playerClanId && pendingCount > 0 && username){
               try{
-                const progSnap = await getDoc(PRESTIGE_PARTY_PROGRESS_DOC);
-                const prog = progSnap && progSnap.exists() ? progSnap.data() : {};
-                const eventsMap = prog.events && typeof prog.events === 'object' ? prog.events : {};
-                if(!eventsMap[eventStartKey] || typeof eventsMap[eventStartKey] !== 'object') eventsMap[eventStartKey] = {};
-                let clanData = eventsMap[eventStartKey][playerClanId];
-                if(typeof clanData !== 'object' || clanData === null) clanData = { total: 0, members: {} };
-                if(typeof clanData.members !== 'object' || clanData.members === null) clanData.members = {};
-                clanData.total = (Number(clanData.total) || 0) + pendingCount;
-                clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + pendingCount;
-                eventsMap[eventStartKey][playerClanId] = clanData;
-                await setDoc(PRESTIGE_PARTY_PROGRESS_DOC, { events: eventsMap }, { merge: true });
+                await runTransaction(db, async (tx) => {
+                  const progSnap = await tx.get(PRESTIGE_PARTY_PROGRESS_DOC);
+                  const prog = progSnap && progSnap.exists() ? progSnap.data() : {};
+                  const eventsMap = prog.events && typeof prog.events === 'object' ? Object.assign({}, prog.events) : {};
+                  if(!eventsMap[eventStartKey] || typeof eventsMap[eventStartKey] !== 'object') eventsMap[eventStartKey] = {};
+                  let clanData = eventsMap[eventStartKey][playerClanId];
+                  if(typeof clanData !== 'object' || clanData === null) clanData = { total: 0, members: {} };
+                  clanData = { total: (Number(clanData.total) || 0) + pendingCount, members: Object.assign({}, clanData.members || {}) };
+                  clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + pendingCount;
+                  eventsMap[eventStartKey] = Object.assign({}, eventsMap[eventStartKey] || {});
+                  eventsMap[eventStartKey][playerClanId] = clanData;
+                  tx.set(PRESTIGE_PARTY_PROGRESS_DOC, { events: eventsMap }, { merge: true });
+                });
                 try{ localStorage.removeItem('whathappened_prestige_party_pending'); }catch(e){}
               }catch(e){ console.warn('Prestige Party flush pending failed', e); }
             }
@@ -1789,15 +1988,24 @@
               else if(curChallenge.type === 'gain') done = (currentVal - baseVal) >= (curChallenge.target || 0);
               if(done){
                 const addPoints = Number(curChallenge.points) || 0;
-                clanBlock.total = (Number(clanBlock.total) || 0) + addPoints;
-                myMember.points = (Number(myMember.points) || 0) + addPoints;
-                myMember.completedCount = (Number(myMember.completedCount) || 0) + 1;
-                myMember.currentChallenge = null;
-                if(!clanBlock.members) clanBlock.members = {};
-                clanBlock.members[username] = myMember;
-                if(!byEvent[eventStartKey]) byEvent[eventStartKey] = {};
-                byEvent[eventStartKey][playerClanId] = clanBlock;
-                await setDoc(CONSTRUCTION_PROGRESS_DOC, { events: byEvent });
+                try {
+                  await runTransaction(db, async (tx) => {
+                    const snap = await tx.get(CONSTRUCTION_PROGRESS_DOC);
+                    const data = snap && snap.exists() ? snap.data() : {};
+                    const eventsOut = data.events && typeof data.events === 'object' ? JSON.parse(JSON.stringify(data.events)) : {};
+                    if(!eventsOut[eventStartKey]) eventsOut[eventStartKey] = {};
+                    let bl = eventsOut[eventStartKey][playerClanId];
+                    if(typeof bl !== 'object' || bl === null) bl = { total: 0, members: {} };
+                    if(!bl.members) bl.members = {};
+                    let mem = bl.members[username];
+                    if(typeof mem !== 'object' || mem === null) mem = { points: 0, completedCount: 0 };
+                    bl = { total: (Number(bl.total) || 0) + addPoints, members: Object.assign({}, bl.members) };
+                    mem = { points: (Number(mem.points) || 0) + addPoints, completedCount: (Number(mem.completedCount) || 0) + 1, currentChallenge: null };
+                    bl.members[username] = mem;
+                    eventsOut[eventStartKey][playerClanId] = bl;
+                    tx.set(CONSTRUCTION_PROGRESS_DOC, { events: eventsOut });
+                  });
+                }catch(err){ console.warn('Construction completion transaction failed', err); }
                 conSnap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
                 conData = conSnap && conSnap.exists() ? conSnap.data() : {};
                 byEvent = conData.events || {};
@@ -1908,7 +2116,7 @@
                     const membersLeftId = 'event-clan-members-' + myClan.id;
                     const membersRightId = 'event-clan-members-' + oppClan.id;
                     let myTot = await computeClanTotalClicks(myClan.id);
-                    let oppTot = await computeClanTotalClicks(oppClan.id);
+                    let oppTot = isBotClan(oppClan) ? 0 : await computeClanTotalClicks(oppClan.id);
                     const totalClicks = myTot + oppTot;
                     const myPct = totalClicks > 0 ? (myTot / totalClicks) * 100 : 50;
                     const oppPct = totalClicks > 0 ? (oppTot / totalClicks) * 100 : 50;
@@ -1938,16 +2146,20 @@
                             }, err=>{});
                             window._eventMemberUnsubs.push(unsubA);
                           }catch(e){}
-                          try{
-                            const memColB = collection(db,'clans',oppClan.id,'members');
-                            const unsubB = onSnapshot(memColB, snap=>{
-                              try{ let tot2=0, rows2=''; if(snap && Array.isArray(snap.docs)){ const docs2=snap.docs.slice(); docs2.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs2.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const contrib=Number(data.mainClicks||0)||0; tot2+=contrib; rows2+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span>${escapeHtml(uname)}</span><strong>${contrib.toLocaleString()}</strong></div>`;}catch(e){} }); }
-                                    const elTotal2=document.getElementById('event-clan-total-'+oppClan.id); if(elTotal2) elTotal2.textContent=tot2.toLocaleString()+' clicks'; const elRows2=document.getElementById(membersRightId); if(elRows2) elRows2.innerHTML = rows2 || '<div class="muted">No contributions yet</div>';
-                                    const elGreen=document.getElementById('cvc-bar-green'); const elRed=document.getElementById('cvc-bar-red'); if(elGreen&&elRed){ const myEl=document.getElementById('event-clan-total-'+myClan.id); const myTotNow=myEl?parseInt(myEl.textContent.replace(/\D/g,'')||'0',10):0; const total=myTotNow+tot2; const pct=total>0?(myTotNow/total)*100:50; elGreen.style.width=pct+'%'; elRed.style.width=(100-pct)+'%'; }
-                              }catch(e){ console.warn('member snapshot right failed', e); }
-                            }, err=>{});
-                            window._eventMemberUnsubs.push(unsubB);
-                          }catch(e){}
+                          if(!isBotClan(oppClan)){
+                            try{
+                              const memColB = collection(db,'clans',oppClan.id,'members');
+                              const unsubB = onSnapshot(memColB, snap=>{
+                                try{ let tot2=0, rows2=''; if(snap && Array.isArray(snap.docs)){ const docs2=snap.docs.slice(); docs2.sort((x,y)=>{ const xa=Number((x.data()&&x.data().mainClicks)||0); const ya=Number((y.data()&&y.data().mainClicks)||0); return ya-xa; }); docs2.forEach(d=>{ try{ const data=d.data()||{}; const uname=d.id; const contrib=Number(data.mainClicks||0)||0; tot2+=contrib; rows2+=`<div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px"><span>${escapeHtml(uname)}</span><strong>${contrib.toLocaleString()}</strong></div>`;}catch(e){} }); }
+                                      const elTotal2=document.getElementById('event-clan-total-'+oppClan.id); if(elTotal2) elTotal2.textContent=tot2.toLocaleString()+' clicks'; const elRows2=document.getElementById(membersRightId); if(elRows2) elRows2.innerHTML = rows2 || '<div class="muted">No contributions yet</div>';
+                                      const elGreen=document.getElementById('cvc-bar-green'); const elRed=document.getElementById('cvc-bar-red'); if(elGreen&&elRed){ const myEl=document.getElementById('event-clan-total-'+myClan.id); const myTotNow=myEl?parseInt(myEl.textContent.replace(/\D/g,'')||'0',10):0; const total=myTotNow+tot2; const pct=total>0?(myTotNow/total)*100:50; elGreen.style.width=pct+'%'; elRed.style.width=(100-pct)+'%'; }
+                                }catch(e){ console.warn('member snapshot right failed', e); }
+                              }, err=>{});
+                              window._eventMemberUnsubs.push(unsubB);
+                            }catch(e){}
+                          } else {
+                            const elRows2=document.getElementById(membersRightId); if(elRows2) elRows2.innerHTML = '<div class="muted">Bot Clan (0)</div>';
+                          }
                         }
                       }catch(e){}
                     })();
@@ -1957,11 +2169,12 @@
                       try{
                         if(typeof setDoc !== 'function' || !EVENT_PAIRINGS_DOC) return;
                         const allClanIds = new Set();
-                        for(const p of (pairing.pairs || [])){ const a = Array.isArray(p)?p[0]:(p&&p.a?p.a:null); const b = Array.isArray(p)?p[1]:(p&&p.b?p.b:null); if(a&&a.id) allClanIds.add(a.id); if(b&&b.id) allClanIds.add(b.id); }
-                        for(const u of (pairing.unmatched||[])){ if(u&&u.id) allClanIds.add(u.id); }
+                        for(const p of (pairing.pairs || [])){ const a = Array.isArray(p)?p[0]:(p&&p.a?p.a:null); const b = Array.isArray(p)?p[1]:(p&&p.b?p.b:null); if(a&&a.id&&!isBotClan(a)) allClanIds.add(a.id); if(b&&b.id&&!isBotClan(b)) allClanIds.add(b.id); }
+                        for(const u of (pairing.unmatched||[])){ if(u&&u.id&&!isBotClan(u)) allClanIds.add(u.id); }
                         const totals = {};
-                        for(const cid of allClanIds){ try{ totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
-                        const payload = { updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(), eventName: current.name || '', eventStart: current.start || Date.now(), type: 'clan_v_clan', pairs: (pairing.pairs || []).map(p => (Array.isArray(p) ? [p[0]&&p[0].id?{id:p[0].id,name:p[0].name||p[0].id}:p[0], p[1]&&p[1].id?{id:p[1].id,name:p[1].name||p[1].id}:p[1]] : [(p.a||p[0]),(p.b||p[1])])), unmatched: (pairing.unmatched || []).map(u => (u&&u.id ? { id: u.id, name: u.name || u.id } : u)), totals };
+                        for(const cid of allClanIds){ totals[cid] = 0; }
+                        if(pairing.pairs && pairing.pairs.some(p=>{ const b = Array.isArray(p)?p[1]:(p&&p.b?p.b:null); return isBotClan(b); })) totals[BOT_CLAN_ID] = 0;
+                        const payload = { updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(), eventName: current.name || '', eventStart: current.start || Date.now(), type: 'clan_v_clan', pairs: (pairing.pairs || []).map(p => (Array.isArray(p) ? [p[0]&&p[0].id?{id:p[0].id,name:p[0].name||p[0].id,isBot:!!p[0].isBot}:p[0], p[1]&&p[1].id?{id:p[1].id,name:p[1].name||p[1].id,isBot:!!p[1].isBot}:p[1]] : [(p.a||p[0]),(p.b||p[1])])), unmatched: [], totals };
                         const written = await runTransaction(db, async tx => {
                           const snap = await tx.get(EVENT_PAIRINGS_DOC);
                           const existing = snap && snap.exists() ? snap.data() : null;
@@ -1970,98 +2183,136 @@
                           tx.set(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
                           return true;
                         });
-                        if(!written){ const s2 = await getDoc(EVENT_PAIRINGS_DOC); const d2 = s2 && s2.exists() ? s2.data() : null; const last2 = d2 && d2.last ? d2.last : null; if(last2 && Number(last2.eventStart) === Number(current.start) && last2.type === 'clan_v_clan' && (!last2.totals || Object.keys(last2.totals).length === 0)){ const upd = Object.assign({}, last2, { totals }); await setDoc(EVENT_PAIRINGS_DOC, { last: upd }, { merge: true }); } }
+                        if(written){
+                          for(const cid of allClanIds){
+                            try{ const memSnap = await getDocs(collection(db,'clans',cid,'members')); if(memSnap&&memSnap.docs) for(const md of memSnap.docs){ try{ const memberRef = doc(db,'clans',cid,'members',md.id); await setDoc(memberRef, { mainClicks: 0 }, { merge: true }); }catch(er){} } }catch(e){ console.warn('CVC clear mainClicks for clan failed', cid, e); }
+                          }
+                        } else { const s2 = await getDoc(EVENT_PAIRINGS_DOC); const d2 = s2 && s2.exists() ? s2.data() : null; const last2 = d2 && d2.last ? d2.last : null; if(last2 && Number(last2.eventStart) === Number(current.start) && last2.type === 'clan_v_clan' && (!last2.totals || Object.keys(last2.totals).length === 0)){ const t2 = {}; for(const cid of allClanIds) t2[cid] = 0; t2[BOT_CLAN_ID] = 0; const upd = Object.assign({}, last2, { totals: t2 }); await setDoc(EVENT_PAIRINGS_DOC, { last: upd }, { merge: true }); } }
                       }catch(e){ console.warn('persist clan_v_clan pairings failed', e); }
                     })();
                   }
                 }
               } else {
-                // clan_race: show goal, player's group ranked by total; rewards by place at event end
+                // clan_race: same challenge system as construction; race to goal points; 4 clans per group (bot fill); track aesthetic
                 const playerClanId = String(localStorage.getItem('player_clanId') || '');
-                const clansToWatchRace = [];
-                const goal = typeof CLAN_RACE_GOAL === 'number' ? CLAN_RACE_GOAL : 5000000;
-                html += '<div style="font-weight:700;margin-bottom:8px">Goal: ' + goal.toLocaleString() + ' points — first to reach it wins! At event end, ranking by total determines rewards (1st–4th get better rewards).</div>';
-                if((pairing.groups && pairing.groups.length) || (pairing.unmatched && pairing.unmatched.length)){
-                  const visibleGroups = (pairing.groups || []).filter(g => (g||[]).some(x => x && String(x.id) === playerClanId));
-                  const unmatchedHasPlayer = (pairing.unmatched || []).some(u => u && String(u.id) === playerClanId);
-                  if(!visibleGroups.length && !unmatchedHasPlayer){
-                    html += '<div class="muted">Your clan is not participating in the current race groups.</div>';
-                  } else {
-                    if(visibleGroups.length){ html += '<div style="font-weight:700;margin-bottom:6px">Your race group (ranked by points)</div>'; }
-                    for(const g of visibleGroups){
-                      const withTotals = [];
-                      for(const x of (g||[])){ const t = await computeClanTotalClicks(x.id); withTotals.push({ id: x.id, name: x.name||x.id, total: t }); clansToWatchRace.push(x); }
-                      withTotals.sort((a,b) => (b.total - a.total));
-                      for(let i = 0; i < withTotals.length; i++){
-                        const x = withTotals[i];
-                        const medal = i === 0 ? '🥇 ' : i === 1 ? '🥈 ' : i === 2 ? '🥉 ' : (i + 1) + '. ';
-                        const isYou = String(x.id) === playerClanId;
-                        html += '<div style="padding:6px;border-bottom:1px solid #111;' + (isYou ? 'background:rgba(80,120,80,0.2);' : '') + '">' + medal + escapeHtml(x.name) + ' <span id="event-clan-total-' + x.id + '">' + x.total.toLocaleString() + '</span> / ' + goal.toLocaleString() + (x.total >= goal ? ' ✓' : '') + '</div>';
-                      }
-                    }
-                    if(unmatchedHasPlayer){
-                      const myUn = (pairing.unmatched || []).find(u => u && String(u.id) === playerClanId);
-                      if(myUn){ const ut = await computeClanTotalClicks(myUn.id); html += '<div style="padding:6px;color:#d9b">' + escapeHtml(myUn.name||myUn.id) + ' <span id="event-clan-total-' + myUn.id + '">' + ut.toLocaleString() + '</span> / ' + goal.toLocaleString() + ' — in unmatched group</div>'; clansToWatchRace.push(myUn); }
+                const username = String(localStorage.getItem('player_username') || '');
+                const eventStart = eventToMs(current.start);
+                const eventStartKey = String(eventStart);
+                const goal = typeof CLAN_RACE_GOAL === 'number' ? CLAN_RACE_GOAL : 500;
+                let raceSnap = await getDoc(RACE_PROGRESS_DOC);
+                let raceData = raceSnap && raceSnap.exists() ? raceSnap.data() : {};
+                let raceByEvent = raceData.events && typeof raceData.events === 'object' ? raceData.events : {};
+                const myRaceBlock = (raceByEvent[eventStartKey] || {})[playerClanId];
+                let myRaceMember = (myRaceBlock && myRaceBlock.members && myRaceBlock.members[username]) ? myRaceBlock.members[username] : { points: 0, completedCount: 0 };
+                const stats = getConstructionPlayerStats();
+                const curRaceChallenge = myRaceMember.currentChallenge;
+                if(curRaceChallenge && curRaceChallenge.target != null){
+                  let currentVal = Number(stats[curRaceChallenge.stat]) || 0;
+                  const baseline = curRaceChallenge.baseline || {};
+                  const baseVal = Number(baseline[curRaceChallenge.stat]) || 0;
+                  let done = false;
+                  if(curRaceChallenge.type === 'reach') done = currentVal >= (curRaceChallenge.target || 0);
+                  else if(curRaceChallenge.type === 'gain') done = (currentVal - baseVal) >= (curRaceChallenge.target || 0);
+                  if(done){
+                    const addPoints = Number(curRaceChallenge.points) || 0;
+                    try {
+                      await runTransaction(db, async (tx) => {
+                        const snap = await tx.get(RACE_PROGRESS_DOC);
+                        const data = snap && snap.exists() ? snap.data() : {};
+                        const eventsOut = data.events && typeof data.events === 'object' ? JSON.parse(JSON.stringify(data.events)) : {};
+                        if(!eventsOut[eventStartKey]) eventsOut[eventStartKey] = {};
+                        let bl = eventsOut[eventStartKey][playerClanId];
+                        if(typeof bl !== 'object' || bl === null) bl = { total: 0, members: {} };
+                        if(!bl.members) bl.members = {};
+                        let mem = bl.members[username];
+                        if(typeof mem !== 'object' || mem === null) mem = { points: 0, completedCount: 0 };
+                        bl = { total: (Number(bl.total) || 0) + addPoints, members: Object.assign({}, bl.members) };
+                        mem = { points: (Number(mem.points) || 0) + addPoints, completedCount: (Number(mem.completedCount) || 0) + 1, currentChallenge: null };
+                        bl.members[username] = mem;
+                        eventsOut[eventStartKey][playerClanId] = bl;
+                        tx.set(RACE_PROGRESS_DOC, { events: eventsOut });
+                      });
+                    }catch(err){ console.warn('Race completion transaction failed', err); }
+                    raceSnap = await getDoc(RACE_PROGRESS_DOC);
+                    raceData = raceSnap && raceSnap.exists() ? raceSnap.data() : {};
+                    raceByEvent = raceData.events || {};
+                    myRaceMember = ((raceByEvent[eventStartKey] || {})[playerClanId] || {}).members && ((raceByEvent[eventStartKey] || {})[playerClanId].members[username]) ? (raceByEvent[eventStartKey][playerClanId].members[username]) : { points: 0, completedCount: 0 };
+                  }
+                }
+                const visibleGroups = (pairing.groups || []).filter(g => (g||[]).some(x => x && String(x.id) === playerClanId));
+                const raceTotalsByClan = {};
+                for(const g of (pairing.groups || [])){ for(const x of (g||[])){ if(!x||!x.id) continue; const bid = String(x.id); const bl = (raceByEvent[eventStartKey] || {})[bid]; raceTotalsByClan[bid] = isBotClan(x) ? 0 : (bl && typeof bl.total === 'number' ? bl.total : 0); } }
+                html += '<div id="race-event-block" data-event-start-key="' + escapeHtml(eventStartKey) + '" data-player-clan-id="' + escapeHtml(playerClanId) + '" data-username="' + escapeHtml(username) + '" data-progress-doc="race" class="card" style="margin-top:16px;padding:16px;background:linear-gradient(180deg,rgba(30,50,80,0.4),rgba(15,25,40,0.95));border:2px solid #4a7;border-radius:12px">';
+                html += '<div style="text-align:center;font-size:18px;font-weight:800;margin-bottom:4px;text-shadow:0 0 10px #6cf">🏁 CLAN RACE</div>';
+                html += '<div style="text-align:center;font-size:13px;margin-bottom:14px;color:#9cf">Complete challenges (pick 1 of 3) to earn points. First to <strong>' + goal + '</strong> pts wins! Rank at event end = rewards.</div>';
+                html += '<div style="margin-bottom:16px;padding:10px;background:rgba(0,0,0,0.35);border-radius:8px;border:1px solid #3a6">';
+                html += '<div style="font-weight:700;margin-bottom:8px;color:#8df">Race track — your group</div>';
+                if(visibleGroups.length){
+                  for(const g of visibleGroups){
+                    const withTotals = [];
+                    for(const x of (g||[])){ const t = raceTotalsByClan[x.id] !== undefined ? raceTotalsByClan[x.id] : 0; withTotals.push({ id: x.id, name: x.name||x.id, total: t }); }
+                    withTotals.sort((a,b) => (b.total - a.total));
+                    for(let i = 0; i < withTotals.length; i++){
+                      const x = withTotals[i];
+                      const pct = Math.min(100, (x.total / goal) * 100);
+                      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '▸';
+                      const isYou = String(x.id) === playerClanId;
+                      const laneColor = isYou ? '#2a6' : (i === 0 ? '#c90' : '#666');
+                      html += '<div style="margin-bottom:10px">';
+                      html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;font-size:13px"><span style="' + (isYou ? 'font-weight:800;color:#6c8' : '') + '">' + medal + ' ' + escapeHtml(x.name) + (isYou ? ' (you)' : '') + '</span><span id="race-clan-total-' + x.id + '">' + x.total + ' / ' + goal + (x.total >= goal ? ' ✓' : '') + '</span></div>';
+                      html += '<div style="height:20px;background:#1a2a1a;border-radius:4px;overflow:hidden;border:1px solid #354"><div id="race-bar-fill-' + x.id + '" style="height:100%;width:' + pct + '%;min-width:0;background:linear-gradient(90deg,' + laneColor + ',#4a8);transition:width 0.3s ease;border-radius:3px"></div></div>';
+                      html += '</div>';
                     }
                   }
                 } else {
-                  html += '<div class="muted">No clans available for race grouping.</div>';
+                  html += '<div class="muted">Your clan is not in a race group.</div>';
                 }
                 html += '</div>';
-                try{ setTimeout(()=>{ try{ watchClanTotalsForItems(clansToWatchRace); }catch(e){} }, 40); }catch(e){}
-
+                const hasRaceChallenge = myRaceMember.currentChallenge && myRaceMember.currentChallenge.target != null;
+                if(hasRaceChallenge){
+                  const ch = myRaceMember.currentChallenge;
+                  const curVal = Number(stats[ch.stat]) || 0;
+                  const baseVal = Number((ch.baseline || {})[ch.stat]) || 0;
+                  const progress = ch.type === 'gain' ? (curVal - baseVal) : curVal;
+                  const target = Number(ch.target) || 0;
+                  const desc = (ch.desc || '').replace(/\{target\}/g, target.toLocaleString());
+                  html += '<div style="padding:12px;background:rgba(0,0,0,0.3);border-radius:8px;border:1px solid #4a7;margin-bottom:12px"><div style="font-weight:700;color:#9e9">Your challenge: ' + escapeHtml(ch.name || '') + '</div><div class="muted" style="margin:6px 0">' + escapeHtml(desc) + '</div><div>Progress: <strong id="race-progress">' + Math.min(progress, target).toLocaleString() + '</strong> / ' + target.toLocaleString() + (progress >= target ? ' — Complete! Refresh to claim.' : '') + '</div></div>';
+                } else {
+                  html += '<div style="margin-bottom:12px"><button id="race-pick-btn" type="button" class="btn" style="background:#4a7;color:#fff">Pick a challenge (3 random)</button></div>';
+                  html += '<div id="race-choices" style="display:none;padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #4a7;margin-bottom:12px"></div>';
+                }
+                html += '</div>';
                 if (pairingComputed) {
                   (async () => {
                     try {
-                      if (typeof setDoc === 'function' && typeof EVENT_PAIRINGS_DOC !== 'undefined') {
-                        const payload = {
-                          updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
-                          eventName: current.name || '',
-                          eventStart: current.start || Date.now(),
-                          type: 'clan_race',
-                          groups: (pairing.groups || []).map(g => (Array.isArray(g) ? g.map(c => (c && c.id ? { id: c.id, name: c.name || c.id } : c)) : g)),
-                          unmatched: (pairing.unmatched || []).map(u => (u && u.id ? { id: u.id, name: u.name || u.id } : u)),
-                          totals: {}
-                        };
-                        try {
-                          const allClanIds = new Set();
-                          for (const g of (pairing.groups || [])) { for (const c of (g || [])) { if (c && c.id) allClanIds.add(c.id); } }
-                          for (const u of (pairing.unmatched || [])) { if (u && u.id) allClanIds.add(u.id); }
-                          for (const cid of allClanIds) { try { payload.totals[cid] = await computeClanTotalClicks(cid); } catch (e) { /* ignore per-clan total failures */ } }
-                          // persist pairings only if none exist for this event (use transaction to avoid races)
-                          let persisted = false;
-                          try{
-                            const written = await runTransaction(db, async tx => {
-                              const snap = await tx.get(EVENT_PAIRINGS_DOC);
-                              const existing = snap && snap.exists() ? snap.data() : null;
-                              const last = existing && existing.last ? existing.last : null;
-                              if(last && Number(last.eventStart) === Number(payload.eventStart) && last.type === payload.type){
-                                return false; // someone else already persisted
-                              }
-                              tx.set(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
-                              return true;
-                            });
-                            persisted = !!written;
-                          }catch(e){ console.warn('persist race pairings transaction failed', e); }
-                          console.debug('pairings: transaction write result for race', { persisted });
-                          if(!persisted){
-                            // someone else persisted; re-read and use their payload so matchups stay consistent
-                            try{
-                              const s3 = await getDoc(EVENT_PAIRINGS_DOC);
-                              const d3 = s3 && s3.exists() ? s3.data() : null;
-                              const last3 = d3 && d3.last ? d3.last : null;
-                              if(last3){
-                                let lastStart3 = 0;
-                                try{ if(typeof last3.eventStart === 'number') lastStart3 = Number(last3.eventStart); else if(last3.eventStart && typeof last3.eventStart.toMillis === 'function') lastStart3 = Number(last3.eventStart.toMillis()); else lastStart3 = Number(last3.eventStart || 0); }catch(e){ lastStart3 = Number(last3.eventStart || 0); }
-                                if(Number(lastStart3) === Number(payload.eventStart) && last3.type === payload.type){ pairing = last3; pairingComputed = false; }
-                              }
-                            }catch(e){}
-                          }
-                        } catch (e) { console.warn('prepare race payload failed', e); }
-                      }
+                      if (typeof setDoc !== 'function' || !EVENT_PAIRINGS_DOC) return;
+                      const allClanIds = new Set();
+                      for (const g of (pairing.groups || [])) { for (const c of (g || [])) { if (c && c.id && !isBotClan(c)) allClanIds.add(c.id); } }
+                      const payload = {
+                        updatedAt: (typeof serverTimestamp === 'function') ? serverTimestamp() : Date.now(),
+                        eventName: current.name || '',
+                        eventStart: current.start || Date.now(),
+                        type: 'clan_race',
+                        groups: (pairing.groups || []).map(g => (Array.isArray(g) ? g.map(c => (c && c.id ? { id: c.id, name: c.name || c.id, isBot: !!c.isBot } : c)) : g)),
+                        unmatched: []
+                      };
+                      try {
+                        const written = await runTransaction(db, async tx => {
+                          const snap = await tx.get(EVENT_PAIRINGS_DOC);
+                          const existing = snap && snap.exists() ? snap.data() : null;
+                          const last = existing && existing.last ? existing.last : null;
+                          if(last && Number(last.eventStart) === Number(payload.eventStart) && last.type === payload.type) return false;
+                          tx.set(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
+                          return true;
+                        });
+                        if(!written){
+                          try{ const s3 = await getDoc(EVENT_PAIRINGS_DOC); const d3 = s3 && s3.exists() ? s3.data() : null; const last3 = d3 && d3.last ? d3.last : null; if(last3 && Number(last3.eventStart) === Number(payload.eventStart) && last3.type === payload.type){ pairing = last3; pairingComputed = false; } }catch(e){}
+                        }
+                      } catch (e) { console.warn('persist race pairings failed', e); }
                     } catch (e) { console.warn('persist race pairings outer failed', e); }
                   })();
                 }
+                try{ window._raceUnsub = onSnapshot(RACE_PROGRESS_DOC, async ()=>{ const s = await getDoc(RACE_PROGRESS_DOC); const d = s && s.exists() ? s.data() : {}; const byE = d.events || {}; const block = (byE[eventStartKey] || {})[playerClanId] || {}; const mems = block.members || {}; const me = mems[username]; const ch = me && me.currentChallenge; const progEl = document.getElementById('race-progress'); if(progEl && ch){ const st = getConstructionPlayerStats(); const cur = Number(st[ch.stat])||0; const base = Number((ch.baseline||{})[ch.stat])||0; const p = ch.type==='gain' ? (cur-base) : cur; progEl.textContent = Math.min(p, Number(ch.target)||0).toLocaleString(); } for(const g of visibleGroups||[]){ for(const x of (g||[])){ if(!x||!x.id) continue; const bl = (byE[eventStartKey] || {})[x.id]; const tot = isBotClan(x) ? 0 : (bl && typeof bl.total === 'number' ? bl.total : 0); const el = document.getElementById('race-clan-total-' + x.id); if(el) el.textContent = tot + ' / ' + goal + (tot >= goal ? ' ✓' : ''); const barFill = document.getElementById('race-bar-fill-' + x.id); if(barFill) barFill.style.width = Math.min(100, (goal > 0 ? (tot / goal) * 100 : 0)) + '%'; } } }); }catch(e){}
               }
             }
           }catch(e){ console.warn('renderEventsTab pairing display failed', e); }
@@ -2070,8 +2321,9 @@
       } else {
         // no current active item, show next event and time until it (if any)
         if(next){
-          const inMs = Math.max(0, (next.start || 0) - now);
-          html += `<div><strong>Next event:</strong> ${escapeHtml(next.isDowntime ? 'Downtime' : (next.name||'Event'))} in <strong id=\"next-event-time\" data-start=\"${Number(next.start||0)}\">${escapeHtml(fmtTimeRemaining(inMs))}</strong></div>`;
+          const nextStartMs = eventToMs(next.start);
+          const inMs = Math.max(0, nextStartMs - now);
+          html += `<div><strong>Next event:</strong> ${escapeHtml(next.isDowntime ? 'Downtime' : (next.name||'Event'))} in <strong id=\"next-event-time\" data-start=\"${nextStartMs}\">${escapeHtml(fmtTimeRemaining(inMs))}</strong></div>`;
         } else {
           html += '<div class="muted">No scheduled events.</div>';
         }
@@ -2097,16 +2349,17 @@
         if(!area._constructionDelegation){
           area._constructionDelegation = true;
           area.addEventListener('click', async function(e){
-            const pickBtn = e.target && e.target.closest && e.target.closest('#construction-pick-btn');
+            const pickBtn = e.target && e.target.closest && (e.target.closest('#construction-pick-btn') || e.target.closest('#race-pick-btn'));
             const chooseBtn = e.target && e.target.closest && e.target.closest('.construction-choose-btn');
             if(pickBtn){
-              const choicesEl = document.getElementById('construction-choices');
+              const isRace = !!e.target.closest('#race-pick-btn');
+              const choicesEl = document.getElementById(isRace ? 'race-choices' : 'construction-choices');
               if(!choicesEl) return;
               const statsNow = getConstructionPlayerStats();
               const shuffled = CONSTRUCTION_CHALLENGES.slice();
               for(let i = shuffled.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]; }
               const three = shuffled.slice(0, 3);
-              let html2 = '<div style="font-weight:700;margin-bottom:8px">Choose one:</div>';
+              let html2 = '<div style="font-weight:700;margin-bottom:8px">Choose one (no reroll):</div>';
               for(const ch of three){
                 const target = typeof ch.scale === 'function' ? ch.scale(statsNow) : 0;
                 const desc = (ch.desc || '').replace(/\{target\}/g, Number(target).toLocaleString());
@@ -2114,34 +2367,43 @@
               }
               choicesEl.innerHTML = html2;
               choicesEl.style.display = 'block';
+              pickBtn.style.display = 'none';
+              pickBtn.disabled = true;
             } else if(chooseBtn){
-              const block = chooseBtn.closest('#construction-event-block');
+              const block = chooseBtn.closest('#construction-event-block') || chooseBtn.closest('#race-event-block');
               if(!block) return;
               const evKey = block.getAttribute('data-event-start-key'); const cid = block.getAttribute('data-player-clan-id'); const uname = block.getAttribute('data-username');
               if(!evKey || !cid || !uname) return;
+              const isRace = block.getAttribute('data-progress-doc') === 'race';
+              const progressDoc = isRace ? RACE_PROGRESS_DOC : CONSTRUCTION_PROGRESS_DOC;
               const id = chooseBtn.getAttribute('data-id'); const name = chooseBtn.getAttribute('data-name'); const target = Number(chooseBtn.getAttribute('data-target')) || 0; const type = chooseBtn.getAttribute('data-type') || 'reach'; const stat = chooseBtn.getAttribute('data-stat') || 'count'; const points = Number(chooseBtn.getAttribute('data-points')) || 0;
               const baseline = getConstructionPlayerStats();
               try{
-                const snap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
-                const data = snap && snap.exists() ? snap.data() : {};
-                const events = data.events && typeof data.events === 'object' ? data.events : {};
-                if(!events[evKey]) events[evKey] = {};
-                let bl = events[evKey][cid];
-                if(typeof bl !== 'object' || bl === null) bl = { total: 0, members: {} };
-                if(!bl.members) bl.members = {};
-                let mem = bl.members[uname];
-                if(typeof mem !== 'object' || mem === null) mem = { points: 0, completedCount: 0 };
-                mem.currentChallenge = { id: id, name: name, target: target, type: type, stat: stat, points: points, baseline: baseline };
-                bl.members[uname] = mem;
-                events[evKey][cid] = bl;
-                await setDoc(CONSTRUCTION_PROGRESS_DOC, { events: events });
+                await runTransaction(db, async (tx) => {
+                  const snap = await tx.get(progressDoc);
+                  const data = snap && snap.exists() ? snap.data() : {};
+                  const events = data.events && typeof data.events === 'object' ? JSON.parse(JSON.stringify(data.events)) : {};
+                  if(!events[evKey]) events[evKey] = {};
+                  let bl = events[evKey][cid];
+                  if(typeof bl !== 'object' || bl === null) bl = { total: 0, members: {} };
+                  if(!bl.members) bl.members = {};
+                  let mem = bl.members[uname];
+                  if(typeof mem !== 'object' || mem === null) mem = { points: 0, completedCount: 0 };
+                  mem = Object.assign({}, mem);
+                  mem.currentChallenge = { id: id, name: name, target: target, type: type, stat: stat, points: points, baseline: baseline };
+                  bl = Object.assign({}, bl, { members: Object.assign({}, bl.members || {}) });
+                  bl.members[uname] = mem;
+                  events[evKey] = Object.assign({}, events[evKey] || {});
+                  events[evKey][cid] = bl;
+                  tx.set(progressDoc, { events: events });
+                });
                 renderEventsTab(window._lastEventState || {});
-              }catch(err){ console.warn('construction choose failed', err); }
+              }catch(err){ console.warn(isRace ? 'race' : 'construction' + ' choose failed', err); }
             }
           });
         }
       }catch(e){ console.warn('construction delegation failed', e); }
-    }catch(e){ console.warn('renderEventsTab failed', e); }
+    }catch(e){ console.warn('renderEventsTab failed', e); try{ if(area) area.innerHTML = '<div class="card"><div class="muted">Events failed to load. Try refreshing the page.</div></div>'; }catch(e2){} }
   }
 
   // watch state and render
@@ -2261,6 +2523,9 @@
   }
 
   // --- Pairing helpers for competitive events (client-side starter implementation) ---
+  const BOT_CLAN_ID = '__bot__';
+  const BOT_CLAN = { id: BOT_CLAN_ID, name: 'Bot Clan', isBot: true };
+
   async function fetchActiveClans(){
     try{
       const snap = await getDocs(collection(db,'clans'));
@@ -2273,42 +2538,38 @@
     return arr;
   }
 
-  // Pair clans into 2-player matchups. Returns { pairs: [[a,b],...], unmatched: [c,...] }
+  function isBotClan(c){ return c && (String(c.id) === BOT_CLAN_ID || c.isBot === true); }
+
+  // Pair clans into 2-player matchups. Unmatched get paired with Bot Clan. Returns { pairs: [[a,b],...], unmatched: [] }
   async function computePairingsForClanVsClan(){
     try{
       const clans = await fetchActiveClans();
       if(!clans || !clans.length) return { pairs: [], unmatched: [] };
-      // Deterministic pairing: sort by id then pair adjacent entries.
       const list = clans.slice().sort((x,y)=>{ try{ return String(x.id).localeCompare(String(y.id)); }catch(e){ return 0; } });
       const pairs = [];
       const unmatched = [];
       for(let i=0;i<list.length;i+=2){ const a = list[i]; const b = list[i+1]; if(b) pairs.push([a,b]); else unmatched.push(a); }
-      return { pairs, unmatched };
+      for(const u of unmatched) pairs.push([u, BOT_CLAN]);
+      return { pairs, unmatched: [] };
     }catch(e){ console.warn('computePairingsForClanVsClan failed', e); return { pairs: [], unmatched: [] }; }
   }
 
-  // Group clans into race groups of 3-5. Returns { groups: [[c1,c2,c3],...], unmatched: [c,...] }
+  // Group clans into race groups of 4. Fill with Bot Clan if needed. Returns { groups: [[c1,c2,c3,c4],...], unmatched: [] }
   async function computePairingsForClanRace(){
     try{
       const clans = await fetchActiveClans();
       if(!clans || !clans.length) return { groups: [], unmatched: [] };
-      // Deterministic grouping: sort by id then create groups of size 4 where possible, avoid groups smaller than 3
       const list = clans.slice().sort((x,y)=>{ try{ return String(x.id).localeCompare(String(y.id)); }catch(e){ return 0; } });
       const groups = [];
-      const unmatched = [];
+      const GROUP_SIZE = 4;
       let i = 0;
       while(i < list.length){
-        const remaining = list.length - i;
-        if(remaining < 3){ for(let k=i;k<list.length;k++) unmatched.push(list[k]); break; }
-        // prefer group size 4, but ensure tail not < 3
-        let size = 4;
-        if(size > remaining) size = remaining;
-        if(remaining - size > 0 && remaining - size < 3){ size = remaining; }
-        const grp = list.slice(i, i + size);
-        if(grp.length >= 3) groups.push(grp); else for(const g of grp) unmatched.push(g);
-        i += size;
+        const grp = list.slice(i, i + GROUP_SIZE);
+        i += grp.length;
+        while(grp.length < GROUP_SIZE) grp.push(BOT_CLAN);
+        groups.push(grp);
       }
-      return { groups, unmatched };
+      return { groups, unmatched: [] };
     }catch(e){ console.warn('computePairingsForClanRace failed', e); return { groups: [], unmatched: [] }; }
   }
 
@@ -2409,10 +2670,10 @@
             const pairing = await computePairingsForClanVsClan();
             const allClanIds = new Set();
             for(const p of (pairing.pairs || [])){ const a = Array.isArray(p)?p[0]:(p&&p.a?p.a:null); const b = Array.isArray(p)?p[1]:(p&&p.b?p.b:null); if(a&&a.id) allClanIds.add(a.id); if(b&&b.id) allClanIds.add(b.id); }
-            for(const u of (pairing.unmatched||[])){ if(u&&u.id) allClanIds.add(u.id); }
             const totals = {};
-            for(const cid of allClanIds){ try{ totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
-            const payload = { eventName: ending.name || '', eventStart: ending.start || Date.now(), type: 'clan_v_clan', pairs: (pairing.pairs || []).map(p => (Array.isArray(p) ? [{ id: p[0]&&p[0].id, name: (p[0]&&p[0].name)||p[0].id }, { id: p[1]&&p[1].id, name: (p[1]&&p[1].name)||p[1].id }] : [(p.a||p[0]),(p.b||p[1])])), unmatched: (pairing.unmatched || []).map(u => (u&&u.id ? { id: u.id, name: u.name || u.id } : u)), totals };
+            for(const cid of allClanIds){ if(String(cid)===BOT_CLAN_ID){ totals[cid]=0; continue; } try{ totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
+            if(!totals[BOT_CLAN_ID]) totals[BOT_CLAN_ID] = 0;
+            const payload = { eventName: ending.name || '', eventStart: ending.start || Date.now(), type: 'clan_v_clan', pairs: (pairing.pairs || []).map(p => (Array.isArray(p) ? [{ id: p[0]&&p[0].id, name: (p[0]&&p[0].name)||p[0].id }, { id: p[1]&&p[1].id, name: (p[1]&&p[1].name)||p[1].id }] : [(p.a||p[0]),(p.b||p[1])])), unmatched: [], totals };
             await setDoc(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
           }
         }catch(e){ console.warn('skipToNextEvent ensure CVC pairings failed', e); }
@@ -2427,15 +2688,16 @@
           if(Number(lastStart) !== Number(ending.start) || String(last.type||'').toLowerCase() !== 'clan_race'){
             const pairing = await computePairingsForClanRace();
             const allClanIds = new Set();
-            for(const g of (pairing.groups || [])){ for(const c of (g||[])) if(c && c.id) allClanIds.add(c.id); }
-            for(const u of (pairing.unmatched||[])){ if(u&&u.id) allClanIds.add(u.id); }
+            for(const g of (pairing.groups || [])){ for(const c of (g||[])) if(c && c.id && !isBotClan(c)) allClanIds.add(c.id); }
             const totals = {};
-            for(const cid of allClanIds){ try{ totals[cid] = await computeClanTotalClicks(cid); }catch(e){} }
-            const payload = { eventName: ending.name || '', eventStart: ending.start || Date.now(), type: 'clan_race', groups: (pairing.groups || []).map(g => (Array.isArray(g) ? g.map(c => (c&&c.id ? { id: c.id, name: c.name || c.id } : c)) : g)), unmatched: (pairing.unmatched || []).map(u => (u&&u.id ? { id: u.id, name: u.name || u.id } : u)), totals };
+            for(const cid of allClanIds) totals[cid] = 0;
+            totals[BOT_CLAN_ID] = 0;
+            const payload = { eventName: ending.name || '', eventStart: ending.start || Date.now(), type: 'clan_race', groups: (pairing.groups || []).map(g => (Array.isArray(g) ? g.map(c => (c&&c.id ? { id: c.id, name: c.name || c.id, isBot: !!c.isBot } : c)) : g)), unmatched: [], totals };
             await setDoc(EVENT_PAIRINGS_DOC, { last: payload }, { merge: true });
           }
         }catch(e){ console.warn('skipToNextEvent ensure race pairings failed', e); }
       }
+      if(ending && (isCvc || isRace)){ try{ await runEventEndClear(ending); }catch(e){ console.warn('skipToNextEvent runEventEndClear failed', e); } }
       const isEb = ending && (nm.includes('endless') && nm.includes('boss'));
       const isCon = ending && nm.includes('construction');
       if(ending && !ending.isDowntime){

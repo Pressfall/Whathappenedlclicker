@@ -9,7 +9,7 @@
     <!-- Meta, title, favicon, ads -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="version" content="1.0.1">
+    <meta name="version" content="1.1.1">
     <title>WHAT HAPPENED clicker</title>
     <link rel="stylesheet" href="styles.css">
     <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
@@ -973,7 +973,10 @@
     <!-- Settings toggle (fixed top-right) -->
     <button id="settingsToggle" class="settings-btn" onclick="toggleSettingsMenu()">Settings ⚙</button>
     <!-- ========== Chat & Clan quick-open buttons (bottom-right) ========== -->
-    <button id="chatToggle" class="settings-btn" style="position:fixed;right:18px;bottom:18px;z-index:1300;width:32px;height:32px;padding:2px;border-radius:8px;font-size:14px;display:flex;align-items:center;justify-content:center;" title="Open Global Chat">💬</button>
+    <div style="position:fixed;right:18px;bottom:18px;z-index:1300;width:32px;height:32px;">
+        <button id="chatToggle" class="settings-btn" style="width:100%;height:100%;padding:2px;border-radius:8px;font-size:14px;display:flex;align-items:center;justify-content:center;position:relative;" title="Open Global Chat">💬</button>
+        <span id="chatUnreadBadge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;padding:0 4px;background:#e74c3c;border-radius:10px;border:2px solid #101218;pointer-events:none;z-index:1;font-size:11px;font-weight:700;color:#fff;align-items:center;justify-content:center;box-sizing:border-box;"></span>
+    </div>
     <button id="clanToggle" class="settings-btn" style="position:fixed;right:18px;bottom:54px;z-index:1300;width:32px;height:24px;padding:2px;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center;" title="Open Clans">Clan</button>
     <!-- Shop toggle (fixed near settings) -->
     <button id="shopToggle" class="settings-btn" onclick="toggleShopMenu()" style="position:fixed;top:10px;right:110px;z-index:1300;display:flex;align-items:center;gap:6px;">
@@ -1160,6 +1163,33 @@
         // small helper to escape HTML for chat display
         function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
 
+        // Chat safe mode: censor curse words when enabled (whole-word, case-insensitive)
+        function getChatSafeMode(){ try{ return localStorage.getItem('chat_safe_mode')==='1'; }catch(e){ return false; } }
+        function setChatSafeMode(v){ try{ localStorage.setItem('chat_safe_mode', v?'1':'0'); }catch(e){} }
+        function censorForSafeMode(txt){
+            if(!txt || !getChatSafeMode()) return txt;
+            const words = ['damn','hell','crap','ass','bastard','bitch','shit','shitty','fuck','fucking','fucker','fucked','wtf','stfu','dick','dumbass','bullshit','piss','pissed','slut','whore','cunt','nigger','nigga','fag','faggot','retard','retarded','rape','raped'];
+            let out = String(txt);
+            for(let i=0;i<words.length;i++){ const w = words[i]; const r = new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','gi'); out = out.replace(r,'***'); }
+            return out;
+        }
+
+        // Chat unread indicator (badge with count when new messages and panel closed)
+        const CHAT_LASTREAD_KEY = 'whathappened_chat_lastRead';
+        function getChatLastRead(){ try{ return Math.max(0, Number(localStorage.getItem(CHAT_LASTREAD_KEY) || 0)); }catch(e){ return 0; } }
+        function setChatLastRead(ts){ try{ localStorage.setItem(CHAT_LASTREAD_KEY, String(ts)); }catch(e){} }
+        function isChatPanelVisible(){ try{ if(!sidePanel) return false; if(String(sidePanel.style.transform).indexOf('translateX(0)')===-1) return false; const g = document.getElementById('sideGlobalArea'); return g && g.style.display!=='none'; }catch(e){ return false; } }
+        function setChatUnreadBadge(count){
+            try{
+                const el = document.getElementById('chatUnreadBadge');
+                if(!el) return;
+                if(!count || count <= 0){ el.style.display = 'none'; el.textContent = ''; return; }
+                el.style.display = 'flex';
+                el.textContent = count > 20 ? '20+' : String(count);
+            }catch(e){}
+        }
+        function clearChatUnread(){ setChatUnreadBadge(0); }
+
         // Golden currency helpers: read/update safely from Decimal or localStorage
         function getGoldenCountNumber(){
             try{
@@ -1208,7 +1238,7 @@
                         snap.forEach(docSnap => {
                             const d = docSnap.data(); lastData = d;
                             const name = escapeHtml(String(d.name||'Anon'));
-                            const msg = escapeHtml(String(d.message||''));
+                            const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
                             const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                             const row = document.createElement('div'); row.style.padding='4px 0';
                             row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1274,7 +1304,7 @@
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
                         const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(String(d.message||''));
+                        const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div');
                         row.style.padding='4px 0';
@@ -1316,9 +1346,10 @@
             });
             sidePanel.innerHTML = `
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-                    <div style="display:flex;gap:6px;align-items:center">
+                    <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                         <button id="sideTabGlobal" style="padding:6px 10px;border-radius:6px;border:1px solid #333;background:#164;color:#fff">Global</button>
                         <button id="sideTabClan" style="padding:6px 10px;border-radius:6px;border:1px solid #333;background:transparent;color:#ddd">Clan</button>
+                        <label style="display:flex;align-items:center;gap:4px;color:#aaa;font-size:12px;cursor:pointer;margin-left:4px"><input type="checkbox" id="chatSafeModeCheck" style="cursor:pointer"> Safe mode</label>
                     </div>
                     <div><button id="sidePanelClose" style="background:transparent;border:none;color:#ddd;font-size:18px">✕</button></div>
                 </div>
@@ -1338,6 +1369,7 @@
             document.getElementById('sidePanelClose').addEventListener('click', closeSidePanel);
             document.getElementById('sideTabGlobal').addEventListener('click', ()=>setSideTab('global'));
             document.getElementById('sideTabClan').addEventListener('click', ()=>setSideTab('clan'));
+            const safeCheck = document.getElementById('chatSafeModeCheck'); if(safeCheck){ safeCheck.checked = getChatSafeMode(); safeCheck.addEventListener('change', ()=>{ setChatSafeMode(safeCheck.checked); try{ loadGlobalInto('sideGlobalMessages'); }catch(e){} }); }
             document.getElementById('sideGlobalSend').addEventListener('click', async ()=>{ await sideSendGlobal(); });
             document.getElementById('sideGlobalInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sideSendGlobal(); });
             document.getElementById('sideClanSend').addEventListener('click', async ()=>{ await sideSendClan(); });
@@ -1348,6 +1380,8 @@
         function openSidePanel(tab='global'){
             try{
                 ensureUsername();
+                clearChatUnread();
+                setChatLastRead(Date.now());
                 const sp = createSidePanel();
                 requestAnimationFrame(()=>{ sp.style.transform = 'translateX(0)'; });
                 setSideTab(tab);
@@ -1391,7 +1425,7 @@
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
                         const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(String(d.message||''));
+                        const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1407,9 +1441,34 @@
 
         // Live listeners and trimming helpers
         let globalChatUnsub = null;
+        let globalChatBadgeUnsub = null;
         let clanChatUnsub = null;
 
         function stopGlobalListener(){ try{ if(globalChatUnsub){ globalChatUnsub(); globalChatUnsub = null; } }catch(e){}
+        }
+        // Always-on listener for unread badge (runs even when panel is closed)
+        function startGlobalBadgeListener(){
+            try{
+                if(globalChatBadgeUnsub) return;
+                if(typeof db === 'undefined' || !collection || !query || !orderBy || !limit || !onSnapshot) return;
+                const col = collection(db,'global_chat');
+                const q = query(col, orderBy('createdAt','asc'), limit(100));
+                globalChatBadgeUnsub = onSnapshot(q, snap => {
+                    try{
+                        if(typeof isChatPanelVisible === 'function' && isChatPanelVisible()){ setChatUnreadBadge(0); return; }
+                        const lastRead = getChatLastRead();
+                        let unread = 0;
+                        if(lastRead > 0){
+                            snap.forEach(docSnap => {
+                                const d = docSnap.data();
+                                const t = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().getTime() : 0;
+                                if(t > lastRead) unread++;
+                            });
+                        }
+                        setChatUnreadBadge(unread);
+                    }catch(e){}
+                }, () => {});
+            }catch(e){}
         }
         function stopClanListener(){ try{ if(clanChatUnsub){ clanChatUnsub(); clanChatUnsub = null; } }catch(e){}
         }
@@ -1438,12 +1497,23 @@
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
                         const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(String(d.message||''));
+                        const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
                         messagesEl.appendChild(row);
                     }
+                        if (!isChatPanelVisible()) {
+                            const lastRead = getChatLastRead();
+                            let unread = 0;
+                            if (lastRead > 0) {
+                                docs.forEach(d => {
+                                    const t = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().getTime() : 0;
+                                    if (t > lastRead) unread++;
+                                });
+                            }
+                            setChatUnreadBadge(unread);
+                        }
                         if (isViewing) messagesEl.scrollTop = messagesEl.scrollHeight;
                         else if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
                         else if (wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1654,6 +1724,7 @@
 
         // open side panel with Global Chat tab
         document.getElementById('chatToggle').addEventListener('click', ()=>{ ensureUsername(); openSidePanel('global'); });
+        startGlobalBadgeListener();
 
         // Quick clan preview panel (small list + link to full page)
         let clanPanel = null;

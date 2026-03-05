@@ -2151,7 +2151,8 @@ let divineSpiritCost = 1; // next cost in golden; follows Fibonacci-like progres
 // Divine Simple Villager: reduces normal prices by 10% per level, cost doubles each purchase
 let divineSimpleVillagerLevel = 0;
 let divineSimpleVillagerCost = 1; // cost in golden currency; doubles each purchase
-function getSimpleVillagerMultiplier() { return Math.max(0, 1 - 0.1 * (typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0)); }
+// Price is divided by (1 + 10% per level), so it never goes to zero (e.g. level 10 => 1/2 price, level 90 => 1/10 price)
+function getSimpleVillagerMultiplier() { const lvl = typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0; return 1 / (1 + 0.1 * Math.max(0, lvl)); }
 function effectiveUpgradeCost(baseCost) {
     if (baseCost === undefined || baseCost === null) return baseCost;
     const mult = getSimpleVillagerMultiplier();
@@ -2232,6 +2233,9 @@ function showNormalMenu() {
 function updateDisplays() {
     // updateDisplays: UI refresh (debug logs removed)
     document.getElementById('goonCount').innerText = formatNumber(count);
+    // When mystery buff is active, casino/gamba.js owns cps and clickPower; do not overwrite them
+    const mysteryBuffActive = !!(window._gambaMystery && window._gambaMystery.active);
+    if (!mysteryBuffActive) {
     if (hasDecimal) {
         // recompute current click power from base and multipliers using Decimal math
         // include Divine Somalian multiplier: level 0 -> x1, level1 -> x11, subsequent levels multiply by 5 each
@@ -2349,6 +2353,47 @@ function updateDisplays() {
             const divineMult = 1 + (appliedPercent / 100);
             cps = cps * divineMult;
         }
+    }
+    // Clan buff: whole-clan temporary multipliers from clan shop (CPS and click power)
+    try {
+        const cpsMult = (typeof window.clanBuffCpsMult === 'number' && window.clanBuffCpsMult > 0) ? window.clanBuffCpsMult : 1;
+        const clickMult = (typeof window.clanBuffClickMult === 'number' && window.clanBuffClickMult > 0) ? window.clanBuffClickMult : 1;
+        if (hasDecimal) {
+            cps = cps.times(D(cpsMult));
+            clickPower = clickPower.times(D(clickMult));
+        } else {
+            cps = cps * cpsMult;
+            clickPower = clickPower * clickMult;
+        }
+    } catch (e) {}
+    // Casino buff: apply active spin buffs from save (clickBoost/cpsBoost) so they persist across updateDisplays
+    try {
+        const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+        if (raw) {
+            let s = {};
+            try { s = JSON.parse(raw); } catch (e) {}
+            const spin = s.casinoSpin;
+            const buff = spin && spin.buff;
+            const now = Date.now();
+            if (buff && buff.expiresAt && Number(buff.expiresAt) > now) {
+                if (buff.type === 'crit') {
+                    try { window.casinoCritBonus = buff.value || 0.15; window.casinoCritExpires = buff.expiresAt; } catch (e) {}
+                } else {
+                    try { window.casinoCritBonus = 0; window.casinoCritExpires = null; } catch (e) {}
+                }
+                if (buff.type === 'clickBoost' && buff.mult) {
+                    if (hasDecimal) clickPower = (isDecimalInstance(clickPower) ? clickPower : D(clickPower)).times(D(buff.mult));
+                    else clickPower = clickPower * (buff.mult || 10);
+                }
+                if (buff.type === 'cpsBoost' && buff.mult) {
+                    if (hasDecimal) cps = (isDecimalInstance(cps) ? cps : D(cps)).times(D(buff.mult));
+                    else cps = cps * (buff.mult || 10);
+                }
+            } else if (buff && buff.type === 'crit') {
+                try { if (window.casinoCritExpires && Number(window.casinoCritExpires) <= now) { window.casinoCritBonus = 0; window.casinoCritExpires = null; } } catch (e) {}
+            }
+        }
+    } catch (e) {}
     }
     // persist latest cps for achievements UI to read when opened in separate tab
     try { localStorage.setItem('whathappened_current_cps', String(isDecimalInstance(cps) ? cps.toNumber() : Number(cps) || 0)); } catch (e) {}
@@ -2750,9 +2795,11 @@ function updateDisplays() {
             const lvl = typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0;
             const labelEl = svBtn.querySelector('.upgrade-label');
             const perLevelPercent = 10;
-            const currentPercent = lvl * perLevelPercent;
-            const nextPercent = (lvl + 1) * perLevelPercent;
-            if (labelEl) labelEl.innerHTML = `Divine Simple Villager — lvl ${lvl} — reduces normal prices by ${perLevelPercent}% per lvl (current: ${currentPercent}% off, next: ${nextPercent}% off) — cost: <span id="divineSimpleVillagerCost">${formatNumber(divineSimpleVillagerCost || 1)}</span> golden`;
+            const currentMult = 1 / (1 + 0.1 * lvl);
+            const nextMult = 1 / (1 + 0.1 * (lvl + 1));
+            const currentPct = Math.round((1 - currentMult) * 100);
+            const nextPct = Math.round((1 - nextMult) * 100);
+            if (labelEl) labelEl.innerHTML = `Divine Simple Villager — lvl ${lvl} — price ÷ (1 + ${perLevelPercent}% per lvl); current ${currentPct}% reduction, next ${nextPct}% — cost: <span id="divineSimpleVillagerCost">${formatNumber(divineSimpleVillagerCost || 1)}</span> golden`;
             try {
                 const afford = !!goldenCanAfford(divineSimpleVillagerCost);
                 try { svBtn.disabled = !afford; } catch (e) {}
@@ -4270,11 +4317,13 @@ function increment() {
         let gm = (typeof goldenMultiplier === 'number') ? goldenMultiplier : Number(goldenMultiplier);
         reward = cp * gm;
     }
-    // Divine Assassin: chance to perform a critical click that multiplies earnings by 10
+    // Divine Assassin + casino crit buff: chance to perform a critical click that multiplies earnings by 10
     try {
-        if (typeof divineAssassinLevel !== 'undefined' && divineAssassinLevel > 0) {
-            const chance = Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel);
-            if (Math.random() < chance) {
+        let chance = (typeof divineAssassinLevel !== 'undefined' && divineAssassinLevel > 0) ? Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel) : 0;
+        // Casino crit buff: add bonus crit chance when active
+        if (window.casinoCritExpires && window.casinoCritExpires > Date.now()) chance += (window.casinoCritBonus || 0);
+        chance = Math.min(1, chance);
+        if (chance > 0 && Math.random() < chance) {
                 // compute crit multiplier: base 10x, scaled by Divine Spirit levels (doubles per level)
                 let critMult = 10;
                 if (typeof divineSpiritLevel === 'number' && divineSpiritLevel > 0) critMult = 10 * Math.pow(2, Math.max(0, divineSpiritLevel - 1));
@@ -4327,7 +4376,6 @@ function increment() {
                     } catch (e) {}
                 } catch (e) {}
             }
-        }
     } catch (e) {}
     // reset consecutive crit counter if this click was not a crit
     try {
@@ -7617,12 +7665,34 @@ function buyPhonk5() {
     } else { alert('Not enough What Happeneds — need ' + formatNumber(phonk5Cost) + '.'); }
 }
 
+// Fetch active clan buff from Firestore and set window.clanBuffCpsMult / clanBuffClickMult for updateDisplays
+async function refreshClanBuff() {
+    try {
+        var clanId = localStorage.getItem('player_clanId');
+        if (!clanId) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
+        var dbVal = typeof window !== 'undefined' && window.db;
+        var docFn = typeof window !== 'undefined' && window.doc;
+        var getDocFn = typeof window !== 'undefined' && window.getDoc;
+        if (!dbVal || !docFn || typeof getDocFn !== 'function') return;
+        var snap = await getDocFn(docFn(dbVal, 'clans', clanId));
+        if (!snap.exists()) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
+        var d = snap.data();
+        var ab = d.activeBuff;
+        if (!ab || !ab.expiresAt) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
+        var exp = typeof ab.expiresAt === 'number' ? ab.expiresAt : (ab.expiresAt.toMillis ? ab.expiresAt.toMillis() : 0);
+        if (exp <= Date.now()) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
+        window.clanBuffCpsMult = typeof ab.cpsMult === 'number' ? ab.cpsMult : 1;
+        window.clanBuffClickMult = typeof ab.clickMult === 'number' ? ab.clickMult : 1;
+    } catch (e) { try { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; } catch (e2) {} }
+}
+
 // Ensure buttons and displays show initial values on load
 function initApp() {
     try {
         console.log('initApp: start');
     // load saved game (if any) then update displays
     loadGame();
+    try { refreshClanBuff(); } catch (e) {}
     updateDisplays();
     try { updateShopUI(); } catch (e) {}
     // initialize hover tooltips for upgrades
@@ -7651,6 +7721,8 @@ function initApp() {
             }
         } catch (e) { console.error('Auto-tick error', e); }
     }, 100);
+    // refresh clan buff from Firestore every 60s when in a clan
+    setInterval(function () { try { refreshClanBuff(); } catch (e) {} }, 60000);
     // ensure special menu state reflects initial (collapsed)
     const sm = document.getElementById('specialMenu');
     if (sm) sm.classList.remove('open');
@@ -7763,8 +7835,9 @@ function initApp() {
 }, 30000); // Syncs every 30 seconds
     // save on unload
     window.addEventListener('beforeunload', saveGame);
-    // Bossfight event: flush pending damage to Firestore every 3s (scaled by click power + CPS, per-member)
+    // Bossfight event: flush pending damage to Firestore every 3s (runTransaction so we don't overwrite other clans/members)
     try {
+        var runTransactionFn = typeof window !== 'undefined' && window.runTransaction;
         setInterval(async function () {
             try {
                 var pending = (typeof window !== 'undefined' && window._bossfightPending) ? window._bossfightPending : 0;
@@ -7774,9 +7847,8 @@ function initApp() {
                 if (!clanId || !username) return;
                 var getDocFn = typeof window !== 'undefined' && window.getDoc;
                 var docFn = typeof window !== 'undefined' && window.doc;
-                var setDocFn = typeof window !== 'undefined' && window.setDoc;
                 var dbVal = typeof window !== 'undefined' && window.db;
-                if (typeof getDocFn !== 'function' || !docFn || typeof setDocFn !== 'function' || !dbVal) return;
+                if (typeof getDocFn !== 'function' || !docFn || !dbVal || typeof runTransactionFn !== 'function') return;
                 var stateSnap = await getDocFn(docFn(dbVal, 'events', 'state'));
                 var state = stateSnap && stateSnap.exists() ? stateSnap.data() : {};
                 var upcoming = state.upcoming || [];
@@ -7796,30 +7868,34 @@ function initApp() {
                 var eventStartKey = String(Number(current.start || 0));
                 var cid = String(clanId);
                 var progressRef = docFn(dbVal, 'events', 'bossfight_progress');
-                var bossSnap = await getDocFn(progressRef);
-                var prog = bossSnap && bossSnap.exists() ? bossSnap.data() : {};
-                var eventsMap = prog.events && typeof prog.events === 'object' ? prog.events : {};
-                if (!eventsMap[eventStartKey] || typeof eventsMap[eventStartKey] !== 'object') eventsMap[eventStartKey] = {};
-                var clanData = eventsMap[eventStartKey][cid];
-                if (typeof clanData !== 'object' || clanData === null) clanData = { total: 0, members: {} };
-                if (typeof clanData.members !== 'object' || clanData.members === null) clanData.members = {};
-                clanData.total = (Number(clanData.total) || 0) + damage;
-                clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + damage;
-                eventsMap[eventStartKey][cid] = clanData;
-                await setDocFn(progressRef, { events: eventsMap });
+                await runTransactionFn(dbVal, async function (tx) {
+                    var bossSnap = await tx.get(progressRef);
+                    var prog = bossSnap && bossSnap.exists() ? bossSnap.data() : {};
+                    var eventsMap = prog.events && typeof prog.events === 'object' ? Object.assign({}, prog.events) : {};
+                    if (!eventsMap[eventStartKey] || typeof eventsMap[eventStartKey] !== 'object') eventsMap[eventStartKey] = {};
+                    var clanData = eventsMap[eventStartKey][cid];
+                    if (typeof clanData !== 'object' || clanData === null) clanData = { total: 0, members: {} };
+                    clanData = { total: (Number(clanData.total) || 0) + damage, members: Object.assign({}, clanData.members || {}) };
+                    clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + damage;
+                    eventsMap[eventStartKey] = Object.assign({}, eventsMap[eventStartKey] || {});
+                    eventsMap[eventStartKey][cid] = clanData;
+                    tx.set(progressRef, { events: eventsMap });
+                });
                 if (isEndlessBoss) {
                     var endlessRef = docFn(dbVal, 'events', 'endless_boss_progress');
-                    var endlessSnap = await getDocFn(endlessRef);
-                    var endlessProg = endlessSnap && endlessSnap.exists() ? endlessSnap.data() : {};
-                    var endlessMap = endlessProg.events && typeof endlessProg.events === 'object' ? endlessProg.events : {};
-                    if (!endlessMap[eventStartKey] || typeof endlessMap[eventStartKey] !== 'object') endlessMap[eventStartKey] = {};
-                    var endlessClan = endlessMap[eventStartKey][cid];
-                    if (typeof endlessClan !== 'object' || endlessClan === null) endlessClan = { total: 0, members: {} };
-                    if (typeof endlessClan.members !== 'object' || endlessClan.members === null) endlessClan.members = {};
-                    endlessClan.total = (Number(endlessClan.total) || 0) + damage;
-                    endlessClan.members[String(username)] = (Number(endlessClan.members[String(username)]) || 0) + damage;
-                    endlessMap[eventStartKey][cid] = endlessClan;
-                    await setDocFn(endlessRef, { events: endlessMap });
+                    await runTransactionFn(dbVal, async function (tx) {
+                        var endlessSnap = await tx.get(endlessRef);
+                        var endlessProg = endlessSnap && endlessSnap.exists() ? endlessSnap.data() : {};
+                        var endlessMap = endlessProg.events && typeof endlessProg.events === 'object' ? Object.assign({}, endlessProg.events) : {};
+                        if (!endlessMap[eventStartKey] || typeof endlessMap[eventStartKey] !== 'object') endlessMap[eventStartKey] = {};
+                        var endlessClan = endlessMap[eventStartKey][cid];
+                        if (typeof endlessClan !== 'object' || endlessClan === null) endlessClan = { total: 0, members: {} };
+                        endlessClan = { total: (Number(endlessClan.total) || 0) + damage, members: Object.assign({}, endlessClan.members || {}) };
+                        endlessClan.members[String(username)] = (Number(endlessClan.members[String(username)]) || 0) + damage;
+                        endlessMap[eventStartKey] = Object.assign({}, endlessMap[eventStartKey] || {});
+                        endlessMap[eventStartKey][cid] = endlessClan;
+                        tx.set(endlessRef, { events: endlessMap });
+                    });
                 }
             } catch (e) {}
         }, 3000);

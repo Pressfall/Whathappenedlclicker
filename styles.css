@@ -139,7 +139,7 @@ body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap))
     border-radius: 6px;
     box-shadow: 0 8px 28px rgba(0,0,0,0.18);
     font-size: 14px;
-    z-index: 1190; /* keep below the toggle button (z-index:1200) so it remains clickable */
+    z-index: 1100; /* below chat (1300) and side panel (1400) so chat always appears in front */
     /* start hidden off-canvas to the right; toggled by adding `open` */
     transform: translateX(110%);
     transform-origin: right center;
@@ -158,12 +158,12 @@ body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap))
 }
 .special-menu.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
 
-/* Floating toggle button on the right edge that opens the special menu */
+/* Floating toggle button on the right edge that opens the special menu (below chat/side panel) */
 #specialMenuBtn {
     position: fixed;
     right: 12px;
     top: 90px;
-    z-index: 99999; /* ensure toggle always sits above overlays/menus */
+    z-index: 1000; /* below chat (1300) and side panel (1400) so chat always appears in front */
     width: 44px;
     height: 44px;
     border-radius: 999px;
@@ -387,8 +387,8 @@ body.leftbar-closed #merchPageBtn { left: 12px; }
 }
 .menu-content { display: none; }
 .special-menu.open .menu-content { display: block; }
-/* Ensure special menu sits above settings menu */
-.special-menu { z-index: 1200; }
+/* Special menu below chat (1300) and side panel (1400) so chat is always in front */
+.special-menu { z-index: 1100; }
 .settings-menu { z-index: 1100; }
 /* Make the menu content behave normally (drop down) and scroll when large */
 .special-menu { max-height: 80vh; overflow: hidden; }
@@ -889,7 +889,7 @@ body.leftbar-collapsed #leftBarToggle { left: 12px !important; }
         width: min(92vw, 360px);
         max-height: 60vh;
         overflow-y: auto;
-        z-index: 1300;
+        z-index: 1100;
         box-shadow: 0 10px 40px rgba(0,0,0,0.6);
         background: rgba(244,244,244,0.98);
         opacity: 0;
