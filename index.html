@@ -950,6 +950,17 @@
                         </div>
                     </div>
             <div class="setting-row" style="margin-top:8px;">
+                <label for="performanceSelect">Performance</label>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                    <select id="performanceSelect" style="flex:1;padding:6px;border-radius:4px;border:1px solid #ccc;">
+                        <option value="high">High (better quality)</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low (higher frame rate)</option>
+                    </select>
+                </div>
+                <div id="performanceHelp" style="margin-top:6px;font-size:13px;color:#bbb;">Lower = fewer effects, smoother. Higher = more visuals.</div>
+            </div>
+            <div class="setting-row" style="margin-top:8px;">
                 <label for="secretCodeInput">Codes</label>
                 <div style="display:flex;gap:8px;margin-top:6px;align-items:center;">
                     <input id="secretCodeInput" type="text" maxlength="64" placeholder="Enter code" style="flex:1;padding:6px;border-radius:4px;border:1px solid #ccc;">

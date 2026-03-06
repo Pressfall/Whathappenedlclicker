@@ -1378,7 +1378,7 @@
     { id: 'c15', name: 'Prestige two', desc: 'Reach {target} total prestiges.', type: 'reach', stat: 'prestigeTimes', points: 16, scale: s => Math.max(1, (s.prestigeTimes || 0) + 2) },
     { id: 'c16', name: 'Click power gain', desc: 'Gain {target} more click power (from when you start).', type: 'gain', stat: 'clickPower', points: 16, scale: s => Math.max(10, Math.floor(15 * (1 + (s.prestigeTimes || 0) * 0.1) + Math.min(5000, (s.clickPower || 0) * 0.05))) },
   ];
-  const BOSS_IMAGE_URL = 'mainimage/upgrades/eastonBundy.png';
+  const BOSS_IMAGE_URL = 'mainimage/WHboss.png';
   const BOSSFIGHT_BASE_HP = 5e7;
   const BOSSFIGHT_GIMMICKS = [
     { id: 'regen', name: 'Regeneration', desc: 'In this phase the boss regenerates health over time; deal damage quickly to break through.' },

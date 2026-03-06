@@ -2122,6 +2122,8 @@ let shopPlatinumPurchased = false;
 let shopDivineWHPurchased = false;
 // WH Vrill skin
 let shopWHVrillPurchased = false;
+// WH Nature skin (whnature.webp)
+let shopWHNaturePurchased = false;
 // Mobile Man skin (new)
 let shopMobileManPurchased = false;
 // Shop: collection background purchase state (collectionbg.png)
@@ -2144,7 +2146,9 @@ const BG_IMAGES = [
     'treesbg.png',
     'Vrillbg.png',
     'stormbg.png',
-    'volcanobg.png'
+    'volcanobg.png',
+    'blizardbg.png',
+    'burningcitybg.png'
 ];
 // purchased state for background images (keyed by filename)
 let shopBgPurchased = {};
@@ -4372,50 +4376,46 @@ function increment() {
                 if (typeof divineSpiritLevel === 'number' && divineSpiritLevel > 0) critMult = 10 * Math.pow(2, Math.max(0, divineSpiritLevel - 1));
                 if (hasDecimal) reward = (isDecimalInstance(reward) ? reward : D(reward)).times(D(critMult));
                 else reward *= critMult;
-                // optional visual feedback: spawn extra falling image with crit effects
-                try { spawnFallingImage(true); } catch (e) {}
-                // show a temporary critical indicator near center of main content
-                try {
+                // optional visual feedback: spawn extra falling image with crit effects (skipped on Low performance)
+                if (window._perfCritFalling !== false) { try { spawnFallingImage(true); } catch (e) {} }
+                // show a temporary critical indicator (skipped on Low performance)
+                if (window._perfCritIndicator !== false) try {
                     const indicator = document.createElement('div');
                     indicator.className = 'crit-indicator';
                     indicator.innerText = 'CRIT!';
-                    // position near mainContent center if available
                     const mainEl = document.getElementById('mainContent');
                     if (mainEl) {
                         const r = mainEl.getBoundingClientRect();
                         indicator.style.left = (r.left + r.width / 2) + 'px';
                         indicator.style.top = (r.top + r.height / 3) + 'px';
                     } else {
-                        // default to center of viewport
                         indicator.style.left = (window.innerWidth / 2) + 'px';
                         indicator.style.top = (window.innerHeight * 0.35) + 'px';
                     }
                     document.body.appendChild(indicator);
                     setTimeout(() => { try { indicator.remove(); } catch (e) {} }, 900);
+                } catch (e) {}
+                // always track crit for achievements and consecutive counter
+                try {
+                    critOccurred = true;
+                    if (localStorage.getItem('ach_gotCrit') !== '1') {
+                        try { localStorage.setItem('ach_gotCrit','1'); } catch (e) {}
+                        try { showAchievementPopup('Achievement unlocked', "That wasn't supposed to happen — Got a critical click"); } catch (e) {}
+                        try { addUnlockedTitle('Source: Trust Me'); } catch (e) {}
+                        try { window.dispatchEvent(new Event('storage')); } catch (e) {}
+                    }
                     try {
-                        critOccurred = true;
-                        // mark that we've seen a crit (one-time achievement)
-                        if (localStorage.getItem('ach_gotCrit') !== '1') {
-                            try { localStorage.setItem('ach_gotCrit','1'); } catch (e) {}
-                            try { showAchievementPopup('Achievement unlocked', "That wasn't supposed to happen — Got a critical click"); } catch (e) {}
-                            try { addUnlockedTitle('Source: Trust Me'); } catch (e) {}
+                        const lastWas = localStorage.getItem('last_was_crit') === '1';
+                        const prev = Number(localStorage.getItem('consecutive_crits')||0) || 0;
+                        const next = lastWas ? (prev + 1) : 1;
+                        try { localStorage.setItem('consecutive_crits', String(next)); } catch (e) {}
+                        try { localStorage.setItem('last_was_crit','1'); } catch (e) {}
+                        if (next >= 2 && localStorage.getItem('ach_stat_unlikely') !== '1') {
+                            try { localStorage.setItem('ach_stat_unlikely','1'); } catch (e) {}
+                            try { showAchievementPopup('Achievement unlocked', 'Statistically Unlikely — 2 crits in a row'); } catch (e) {}
+                            try { addUnlockedTitle('Probability Skeptic'); } catch (e) {}
                             try { window.dispatchEvent(new Event('storage')); } catch (e) {}
                         }
-                        // handle consecutive crits counter
-                        try {
-                            const lastWas = localStorage.getItem('last_was_crit') === '1';
-                            const prev = Number(localStorage.getItem('consecutive_crits')||0) || 0;
-                            const next = lastWas ? (prev + 1) : 1;
-                            try { localStorage.setItem('consecutive_crits', String(next)); } catch (e) {}
-                            try { localStorage.setItem('last_was_crit','1'); } catch (e) {}
-                            // unlock statistically unlikely at 2 consecutive crits
-                            if (next >= 2 && localStorage.getItem('ach_stat_unlikely') !== '1') {
-                                try { localStorage.setItem('ach_stat_unlikely','1'); } catch (e) {}
-                                try { showAchievementPopup('Achievement unlocked', 'Statistically Unlikely — 2 crits in a row'); } catch (e) {}
-                                try { addUnlockedTitle('Probability Skeptic'); } catch (e) {}
-                                try { window.dispatchEvent(new Event('storage')); } catch (e) {}
-                            }
-                        } catch (e) {}
                     } catch (e) {}
                 } catch (e) {}
             }
@@ -4456,15 +4456,20 @@ function increment() {
             } catch (e) {}
         }
     } catch (e) {}
-    try { const el = document.getElementById('goonCount'); if (el) el.innerText = formatNumber(count); } catch (e) {}
+    try {
+        const str = formatNumber(count);
+        const el = window._goonCountElClick || document.getElementById('goonCount');
+        if (el) { el.innerText = str; window._goonCountElClick = el; }
+    } catch (e) {}
     const now = Date.now();
-    if (!window._lastIncrementUpdateDisplays || now - window._lastIncrementUpdateDisplays > 120) {
+    if (!window._lastIncrementUpdateDisplays || now - window._lastIncrementUpdateDisplays > 150) {
         window._lastIncrementUpdateDisplays = now;
         updateDisplays();
     }
-    // spawn a falling image effect (throttled so rapid clicks don't flood the DOM)
+    // spawn a falling image effect (throttled; disabled on Low performance)
     try {
-        if (!window._lastFallingSpawn || now - window._lastFallingSpawn > 80) {
+        const throttle = (typeof window._perfFallingThrottleMs === 'number') ? window._perfFallingThrottleMs : 80;
+        if (throttle > 0 && (!window._lastFallingSpawn || now - window._lastFallingSpawn > throttle)) {
             window._lastFallingSpawn = now;
             spawnFallingImage(false);
         }
@@ -4659,8 +4664,12 @@ function spawnFallingImage(isCrit = false) {
             });
         } catch (e) {}
     }
-    // run periodically so UI updates (including from other tabs) reflect affordability
-    setInterval(updateDisabledClasses, 500);
+    // run periodically so UI updates reflect affordability (interval depends on Performance setting)
+    function scheduleDisabledClasses() {
+        const ms = (typeof window._perfDisabledClassIntervalMs === 'number') ? window._perfDisabledClassIntervalMs : 500;
+        window._perfDisabledClassTimeout = setTimeout(function() { try { updateDisabledClasses(); } catch (e) {} scheduleDisabledClasses(); }, ms);
+    }
+    scheduleDisabledClasses();
 
 // Ensure `updateDisplays` always triggers a visual sync for disabled classes
 try {
@@ -7750,28 +7759,78 @@ function initApp() {
     try { updateShopUI(); } catch (e) {}
     // initialize hover tooltips for upgrades
     try { initTooltips(); } catch (e) {}
-    // auto-increment by cps (100ms ticks). Lightweight: only add to count and update counter; full UI refresh runs on 500ms interval.
-    setInterval(() => {
-        try {
-            if (hasBig) {
-                const cpsVal = D(cps);
-                const isPositive = (typeof cpsVal === 'number' && cpsVal > 0) || (cpsVal && typeof cpsVal.gt === 'function' ? cpsVal.gt(0) : Number(cpsVal) > 0);
-                if (isPositive) {
-                    const inc = (typeof cpsVal.div === 'function') ? cpsVal.div(10) : D(Number(cpsVal) / 10);
-                    addToCount(inc);
-                    const el = document.getElementById('goonCount');
-                    if (el) el.innerText = formatNumber(count);
+    // Performance mode: high = quality, low = frame rate. Drives full-update interval and falling-image throttle.
+    function getPerformanceMode() { try { return localStorage.getItem('whathappened_performance') || 'high'; } catch (e) { return 'high'; } }
+    function applyPerformanceMode(mode) {
+        if (mode === 'low') {
+            window._perfFullUpdateMs = 1500;
+            window._perfFallingThrottleMs = 0;
+            window._perfClickUpdateThrottleMs = 200;
+            window._perfDisabledClassIntervalMs = 1000;
+            window._perfCpsTickMs = 150;
+            window._perfCritFalling = false;
+            window._perfCritIndicator = false;
+        } else if (mode === 'medium') {
+            window._perfFullUpdateMs = 1000;
+            window._perfFallingThrottleMs = 120;
+            window._perfClickUpdateThrottleMs = 150;
+            window._perfDisabledClassIntervalMs = 750;
+            window._perfCpsTickMs = 100;
+            window._perfCritFalling = true;
+            window._perfCritIndicator = true;
+        } else {
+            window._perfFullUpdateMs = 750;
+            window._perfFallingThrottleMs = 80;
+            window._perfClickUpdateThrottleMs = 150;
+            window._perfDisabledClassIntervalMs = 500;
+            window._perfCpsTickMs = 100;
+            window._perfCritFalling = true;
+            window._perfCritIndicator = true;
+        }
+    }
+    applyPerformanceMode(getPerformanceMode());
+    try {
+        const perfSel = document.getElementById('performanceSelect');
+        if (perfSel) {
+            perfSel.value = getPerformanceMode();
+            perfSel.onchange = function() { const v = perfSel.value; try { localStorage.setItem('whathappened_performance', v); } catch (e) {} applyPerformanceMode(v); };
+        }
+    } catch (e) {}
+    // auto-increment by cps (tick interval depends on Performance: High/Medium 100ms, Low 150ms). Full UI refresh runs on configurable interval.
+    let _goonCountEl = null;
+    const getGoonCountEl = () => { if (!_goonCountEl) _goonCountEl = document.getElementById('goonCount'); return _goonCountEl; };
+    let _lastGoonCountStr = '';
+    function scheduleCpsTick() {
+        const ms = (typeof window._perfCpsTickMs === 'number') ? window._perfCpsTickMs : 100;
+        window._perfCpsTickTimeout = setTimeout(() => {
+            try {
+                const frac = ms / 1000; // so total per second = cps
+                if (hasBig) {
+                    const cpsVal = D(cps);
+                    const isPositive = (typeof cpsVal === 'number' && cpsVal > 0) || (cpsVal && typeof cpsVal.gt === 'function' ? cpsVal.gt(0) : Number(cpsVal) > 0);
+                    if (isPositive) {
+                        const inc = (typeof cpsVal.times === 'function') ? cpsVal.times(frac) : D(Number(cpsVal) * frac);
+                        addToCount(inc);
+                        const str = formatNumber(count);
+                        if (str !== _lastGoonCountStr) { _lastGoonCountStr = str; const el = getGoonCountEl(); if (el) el.innerText = str; }
+                    }
+                } else {
+                    if (cps > 0) {
+                        count = (typeof count === 'number' ? count : Number(count)) + Number(cps) * frac;
+                        const str = formatNumber(count);
+                        if (str !== _lastGoonCountStr) { _lastGoonCountStr = str; const el = getGoonCountEl(); if (el) el.innerText = str; }
+                    }
                 }
-            } else {
-                if (cps > 0) {
-                    count = (typeof count === 'number' ? count : Number(count)) + Number(cps) / 10;
-                    const el = document.getElementById('goonCount');
-                    if (el) el.innerText = formatNumber(count);
-                }
-            }
-        } catch (e) {}
-    }, 100);
-    setInterval(() => { try { updateDisplays(); } catch (e) {} }, 500);
+            } catch (e) {}
+            scheduleCpsTick();
+        }, ms);
+    }
+    scheduleCpsTick();
+    function scheduleFullUpdate() {
+        const ms = (typeof window._perfFullUpdateMs === 'number') ? window._perfFullUpdateMs : 750;
+        window._perfFullUpdateTimeout = setTimeout(function() { try { updateDisplays(); _lastGoonCountStr = ''; } catch (e) {} scheduleFullUpdate(); }, ms);
+    }
+    scheduleFullUpdate();
     // refresh clan buff from Firestore every 60s when in a clan
     setInterval(function () { try { refreshClanBuff(); } catch (e) {} }, 60000);
     // ensure special menu state reflects initial (collapsed)
@@ -8284,6 +8343,16 @@ function updateShopUI() {
                         <div id="shopGoldStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
                     </div>
                 </div>
+                <div class="shop-item" id="shopWHNatureItem">
+                    <div class="shop-item-title">WH Nature</div>
+                    <img id="shopWHNatureImg" src="mainimage/whnature.webp" alt="WH Nature" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%2380c080%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2220%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Nature</text></svg>'" />
+                    <div class="shop-item-info">Cost: <strong>20</strong> gems</div>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                        <button id="buyWHNatureBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
+                        <button id="equipWHNatureBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
+                        <div id="shopWHNatureStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
+                    </div>
+                </div>
             </div>`;
         // attach handlers
         // Ensure WH Vrill buy button respects purchased state immediately after rendering
@@ -8480,6 +8549,35 @@ function updateShopUI() {
         if (goldBuyBtn) goldBuyBtn.onclick = () => { buyGold(); refresh(); refreshGold(); };
         if (goldEquipBtn) goldEquipBtn.onclick = () => { if (!shopGoldPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/GoldWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/GoldWH.png'); refresh(); refreshGold(); };
         if (goldImg) goldImg.onclick = () => { if (shopGoldPurchased) { if (equippedShopImage === 'mainimage/GoldWH_fixed.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/GoldWH.png'); refresh(); refreshGold(); } else { if (confirm('Buy Gold WH for 500 gems?')) { buyGold(); refresh(); refreshGold(); } } };
+        // WH Nature handlers
+        const whNatureBuyBtn = document.getElementById('buyWHNatureBtn');
+        const whNatureEquipBtn = document.getElementById('equipWHNatureBtn');
+        const whNatureImg = document.getElementById('shopWHNatureImg');
+        const whNatureStatus = document.getElementById('shopWHNatureStatus');
+        function refreshWHNature() {
+            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
+            if (shopWHNaturePurchased) {
+                if (whNatureBuyBtn) whNatureBuyBtn.style.display = 'none';
+                if (whNatureEquipBtn) { whNatureEquipBtn.disabled = false; whNatureEquipBtn.innerText = (equippedShopImage === 'mainimage/whnature.webp') ? 'Equipped' : 'Equip'; }
+                if (whNatureStatus) whNatureStatus.innerText = (equippedShopImage === 'mainimage/whnature.webp') ? 'equipped' : '';
+            } else {
+                if (whNatureBuyBtn) { whNatureBuyBtn.style.display = 'inline-block'; whNatureBuyBtn.innerText = 'Buy (20)'; whNatureBuyBtn.disabled = (diamonds < 20); }
+                if (whNatureEquipBtn) { whNatureEquipBtn.disabled = true; whNatureEquipBtn.innerText = 'Equip'; }
+                if (whNatureStatus) whNatureStatus.innerText = '';
+            }
+        }
+        function buyWHNature() {
+            if (shopWHNaturePurchased) return;
+            if ((diamonds || 0) < 20) { alert('Not enough gems. Need 20.'); return; }
+            diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 20;
+            shopWHNaturePurchased = true;
+            saveGame();
+            try { playSfx('audio/purchase.wav'); } catch (e) {}
+            updateDisplays();
+        }
+        if (whNatureBuyBtn) whNatureBuyBtn.onclick = () => { buyWHNature(); refresh(); refreshWHNature(); };
+        if (whNatureEquipBtn) whNatureEquipBtn.onclick = () => { if (!shopWHNaturePurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/whnature.webp') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/whnature.webp'); refresh(); refreshWHNature(); };
+        if (whNatureImg) whNatureImg.onclick = () => { if (shopWHNaturePurchased) { if (equippedShopImage === 'mainimage/whnature.webp') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/whnature.webp'); refresh(); refreshWHNature(); } else { if (confirm('Buy WH Nature for 20 gems?')) { buyWHNature(); refresh(); refreshWHNature(); } } };
         // Platinum handlers
         const platinumBuyBtn = document.getElementById('buyPlatinumBtn');
         const platinumEquipBtn = document.getElementById('equipPlatinumBtn');
@@ -8533,6 +8631,7 @@ function updateShopUI() {
         try { refreshPlatinum(); } catch (e) {}
         try { refreshDivineWH(); } catch (e) {}
         try { refreshGold(); } catch (e) {}
+        try { refreshWHNature(); } catch (e) {}
         try { refreshMobileMan(); } catch (e) {}
         // render background images into BG tab
         try {
@@ -8542,7 +8641,7 @@ function updateShopUI() {
                 const bgCostFor = (fn) => {
                     try {
                         if (fn === 'Vrillbg.png') return 20;
-                        if (fn === 'stormbg.png' || fn === 'volcanobg.png') return 50;
+                        if (fn === 'stormbg.png' || fn === 'volcanobg.png' || fn === 'blizardbg.png' || fn === 'burningcitybg.png') return 50;
                         return 10;
                     } catch (e) { return 10; }
                 };
@@ -8896,6 +8995,7 @@ function equipShopItem(filename) {
     if ((base === 'divinewh.png' || base === 'DivineWH.png') && !shopDivineWHPurchased) { alert('You must buy this item first.'); return; }
     if ((base === 'whvrill.png' || base === 'WHVrill.png') && !shopWHVrillPurchased) { alert('You must buy this item first.'); return; }
     if ((base === 'mobilemanskin.png' || base === 'MobileManSkin.png') && !shopMobileManPurchased) { alert('You must buy this item first.'); return; }
+    if (base === 'whnature.webp' && !shopWHNaturePurchased) { alert('You must buy this item first.'); return; }
     equippedShopImage = normalized;
     // update main image element
     try {
@@ -9269,6 +9369,7 @@ function saveGame() {
             shopPlatinumPurchased,
             shopDivineWHPurchased,
             shopWHVrillPurchased,
+            shopWHNaturePurchased,
             shopMobileManPurchased,
             shopSilverPurchased,
             shopGoldPurchased,
@@ -9541,6 +9642,7 @@ function loadGame() {
         shopPlatinumPurchased = !!s.shopPlatinumPurchased;
         shopDivineWHPurchased = !!s.shopDivineWHPurchased;
         shopWHVrillPurchased = !!s.shopWHVrillPurchased;
+        shopWHNaturePurchased = !!s.shopWHNaturePurchased;
         shopMobileManPurchased = !!s.shopMobileManPurchased;
         shopSilverPurchased = !!s.shopSilverPurchased;
         shopGoldPurchased = !!s.shopGoldPurchased;
