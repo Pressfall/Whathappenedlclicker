@@ -163,7 +163,7 @@ body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap))
     position: fixed;
     right: 12px;
     top: 90px;
-    z-index: 1000; /* below chat (1300) and side panel (1400) so chat always appears in front */
+    z-index: 1250; /* above special menu (1100), below chat button/menu (1300+/1400+) */
     width: 44px;
     height: 44px;
     border-radius: 999px;
@@ -818,7 +818,9 @@ button[disabled],
 
 /* Mobile-specific adjustments: collapse left-bar, scale main image, add toggle/overlay support */
 @media (max-width: 700px) {
-    body { margin-left: 0; }
+    body,
+    body.leftbar-open,
+    body.leftbar-closed { margin-left: 0 !important; }
     /* left bar hidden by default off-canvas */
     #leftBar {
         width: 80vw;

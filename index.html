@@ -1052,7 +1052,11 @@
             // ensure body class reflects leftBar initial state so toggle sits correctly
             var left = document.getElementById('leftBar');
             if (left) {
-                if (left.classList.contains('collapsed')) {
+                if (window.innerWidth <= 700) {
+                    // Mobile: menu starts closed (off-canvas). Use closed state so no wide margin is applied.
+                    document.body.classList.remove('leftbar-open');
+                    document.body.classList.add('leftbar-closed');
+                } else if (left.classList.contains('collapsed')) {
                     document.body.classList.remove('leftbar-open');
                     document.body.classList.add('leftbar-closed');
                 } else {

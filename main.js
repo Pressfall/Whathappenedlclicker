@@ -2142,7 +2142,9 @@ const BG_IMAGES = [
     'oceanviewbg.png',
     'stonghengebg.png',
     'treesbg.png',
-    'Vrillbg.png'
+    'Vrillbg.png',
+    'stormbg.png',
+    'volcanobg.png'
 ];
 // purchased state for background images (keyed by filename)
 let shopBgPurchased = {};
@@ -2296,7 +2298,6 @@ function updateDisplays() {
 
         // compute effective components applying per-upgrade multipliers
         const parts = computeEffectiveCpsParts();
-        try { console.debug('Easton debug (Decimal)', { upgrade24Level: (upgrade24Level && upgrade24Level.toString ? upgrade24Level.toString() : upgrade24Level), eastonEffective: (parts.eastonEffective && parts.eastonEffective.toString ? parts.eastonEffective.toString() : parts.eastonEffective) }); } catch (e) {}
         const nonPhonkOtherBase = parts.otherEffective;
         const jonathanContribution = parts.jonathanEffective.times(D(jonathanOtherMultiplier || 1));
         const crContribution = parts.crEffective.times(D(crOtherMultiplier || 1));
@@ -2311,7 +2312,6 @@ function updateDisplays() {
             if (lvl18.gt(0) && per18Local.gt(0)) {
                 const goatisEff = per18Local.times(lvl18).times(D(computeLevelMultiplier(Number(lvl18)))).times(D(typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1));
                 otherCps = otherCps.plus(goatisEff);
-                console.debug('Goatis debug (Decimal):', { lvl: lvl18.toString(), goatisEff: goatisEff.toString(), goatisMultiplier: (typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1) });
             }
         } catch (e) {}
         // Ensure Easton Bundy contribution is present — sometimes the parts object
@@ -2353,7 +2353,6 @@ function updateDisplays() {
         clickPower = opEffectiveBase * clickMultiplier * divineSomalianMult;
         // compute effective components applying per-upgrade multipliers
         const parts = computeEffectiveCpsParts();
-        try { console.debug('Easton debug (numeric)', { upgrade24Level: upgrade24Level, eastonEffective: parts.eastonEffective }); } catch (e) {}
         const nonPhonkOtherBase = parts.otherEffective;
         const jonathanContribution = parts.jonathanEffective * (jonathanOtherMultiplier || 1);
         const crContribution = parts.crEffective * (crOtherMultiplier || 1);
@@ -2368,7 +2367,6 @@ function updateDisplays() {
             if (lvl18 > 0 && per18Local > 0) {
                 const goatisEff = per18Local * lvl18 * computeLevelMultiplier(lvl18) * (typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1);
                 otherCps += goatisEff;
-                console.debug('Goatis debug (numeric):', { lvl: lvl18, goatisEff: goatisEff, goatisMultiplier: (typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1) });
             }
         } catch (e) {}
         // apply prestige golden multiplier (10% per golden by default)
@@ -2680,8 +2678,9 @@ function updateDisplays() {
         } catch (e) {}
 
         try {
-            const ebSectionEl = document.getElementById('eastonBundySection');
-            const ebContent = document.getElementById('eastonBundyContent');
+            // Easton Bundy specials section (upgrade24). IDs live in index.html as eastonSection/eastonContent.
+            const ebSectionEl = document.getElementById('eastonSection');
+            const ebContent = document.getElementById('eastonContent');
             const ebUnlocked = numericLevel(upgrade24Level) >= 1;
             if (ebSectionEl) ebSectionEl.style.display = (ebUnlocked && specialsVisible) ? '' : 'none';
             if (ebContent) ebContent.style.display = (ebUnlocked && specialsVisible) ? '' : 'none';
@@ -4457,9 +4456,19 @@ function increment() {
             } catch (e) {}
         }
     } catch (e) {}
-    updateDisplays();
-    // spawn a falling image effect on each click
-    try { spawnFallingImage(false); } catch (e) { /* ignore if animation fails */ }
+    try { const el = document.getElementById('goonCount'); if (el) el.innerText = formatNumber(count); } catch (e) {}
+    const now = Date.now();
+    if (!window._lastIncrementUpdateDisplays || now - window._lastIncrementUpdateDisplays > 120) {
+        window._lastIncrementUpdateDisplays = now;
+        updateDisplays();
+    }
+    // spawn a falling image effect (throttled so rapid clicks don't flood the DOM)
+    try {
+        if (!window._lastFallingSpawn || now - window._lastFallingSpawn > 80) {
+            window._lastFallingSpawn = now;
+            spawnFallingImage(false);
+        }
+    } catch (e) { /* ignore if animation fails */ }
     // visual: briefly pulsate the main image on click
     try {
         const img = document.querySelector('.main-image');
@@ -4651,7 +4660,7 @@ function spawnFallingImage(isCrit = false) {
         } catch (e) {}
     }
     // run periodically so UI updates (including from other tabs) reflect affordability
-    setInterval(updateDisabledClasses, 300);
+    setInterval(updateDisabledClasses, 500);
 
 // Ensure `updateDisplays` always triggers a visual sync for disabled classes
 try {
@@ -7741,30 +7750,28 @@ function initApp() {
     try { updateShopUI(); } catch (e) {}
     // initialize hover tooltips for upgrades
     try { initTooltips(); } catch (e) {}
-    // auto-increment by cps once per second (uses 100ms ticks)
+    // auto-increment by cps (100ms ticks). Lightweight: only add to count and update counter; full UI refresh runs on 500ms interval.
     setInterval(() => {
         try {
-            // Debugging: inspect numeric mode and cps type/value
-            try { console.debug('Auto-tick', { hasDecimal: hasDecimal, hasBig: hasBig, cpsType: typeof cps, cpsValue: (isDecimalInstance(cps) ? (cps && cps.toString ? cps.toString() : String(cps)) : cps) }); } catch (e) {}
             if (hasBig) {
                 const cpsVal = D(cps);
                 const isPositive = (typeof cpsVal === 'number' && cpsVal > 0) || (cpsVal && typeof cpsVal.gt === 'function' ? cpsVal.gt(0) : Number(cpsVal) > 0);
                 if (isPositive) {
                     const inc = (typeof cpsVal.div === 'function') ? cpsVal.div(10) : D(Number(cpsVal) / 10);
-                    try { console.debug('Auto-tick (Decimal)', { inc: (inc && inc.toString ? inc.toString() : inc) }); } catch (e) {}
                     addToCount(inc);
-                    updateDisplays();
+                    const el = document.getElementById('goonCount');
+                    if (el) el.innerText = formatNumber(count);
                 }
             } else {
                 if (cps > 0) {
-                    const numericInc = Number(cps) / 10;
-                    try { console.debug('Auto-tick (numeric)', { numericInc: numericInc, cps: cps }); } catch (e) {}
-                    count = (typeof count === 'number' ? count : Number(count)) + numericInc;
-                    updateDisplays();
+                    count = (typeof count === 'number' ? count : Number(count)) + Number(cps) / 10;
+                    const el = document.getElementById('goonCount');
+                    if (el) el.innerText = formatNumber(count);
                 }
             }
-        } catch (e) { console.error('Auto-tick error', e); }
+        } catch (e) {}
     }, 100);
+    setInterval(() => { try { updateDisplays(); } catch (e) {} }, 500);
     // refresh clan buff from Firestore every 60s when in a clan
     setInterval(function () { try { refreshClanBuff(); } catch (e) {} }, 60000);
     // ensure special menu state reflects initial (collapsed)
@@ -8532,11 +8539,18 @@ function updateShopUI() {
             const bgContainer = document.getElementById('shopTabBG');
             if (bgContainer) {
                 let html = '<div class="shop-items-row">';
+                const bgCostFor = (fn) => {
+                    try {
+                        if (fn === 'Vrillbg.png') return 20;
+                        if (fn === 'stormbg.png' || fn === 'volcanobg.png') return 50;
+                        return 10;
+                    } catch (e) { return 10; }
+                };
                 // default background preview
                 html += `<div class="shop-item"><div class="shop-item-title">Default Background</div><img src="mainimage/Mainbg.png" class="shop-item-img" /><div class="shop-item-info">Cost: <strong>Free</strong></div><div style="display:flex;gap:8px;align-items:center;margin-top:6px;"><button id="equipDefaultBgBtn" style="padding:6px 8px;border-radius:6px;">Equip</button><div id="shopDefaultBgStatus" style="font-weight:700;color:#000;margin-left:6px;"></div></div></div>`;
                 BG_IMAGES.forEach(fn => {
                     const id = fn.replace(/\W+/g, '_');
-                    const cost = (fn === 'Vrillbg.png') ? 20 : 10;
+                    const cost = bgCostFor(fn);
                     const path = (fn === 'Vrillbg.png') ? ('mainimage/' + fn) : ('bgimages/' + fn);
                     // display friendly name: remove trailing 'bg.png' or just '.png'
                     let displayName = String(fn || '');
@@ -8560,7 +8574,7 @@ function updateShopUI() {
                 try { document.getElementById('equipDefaultBgBtn').onclick = () => { equipBgImage('mainimage/Mainbg.png'); updateShopUI(); }; } catch (e) {}
                 BG_IMAGES.forEach(fn => {
                     const id = fn.replace(/\W+/g, '_');
-                    const cost = (fn === 'Vrillbg.png') ? 20 : 10;
+                    const cost = bgCostFor(fn);
                     const path = (fn === 'Vrillbg.png') ? ('mainimage/' + fn) : ('bgimages/' + fn);
                     const buyBtn = document.getElementById('buyBg_' + id);
                     const equipBtn = document.getElementById('equipBg_' + id);
