@@ -1687,37 +1687,51 @@
             }catch(e){ console.warn(e); alert('Send failed'); }
         }
 
-        // Developer code support: grant golden via secret code
+        // Developer code support: grant golden or clan points via secret code
         const DEV_GOLD_CODE = 'GIVEGOLD1000-2026';
+        const DEV_CP_CODE = 'GIVECP10000-2026';
         window.applyDevCode = function(code){
             try{
-                if(String(code).trim() !== DEV_GOLD_CODE) return false;
-                const amount = 1000;
-                try{
-                    if (typeof goldenWhat !== 'undefined'){
-                        try{
-                            if (goldenWhat && typeof goldenWhat.plus === 'function'){
-                                goldenWhat = goldenWhat.plus ? goldenWhat.plus(amount) : (Number(goldenWhat||0) + amount);
-                            } else {
-                                goldenWhat = Number(goldenWhat||0) + amount;
-                            }
-                        }catch(e){ goldenWhat = Number(goldenWhat||0) + amount; }
-                        const el = document.getElementById('goldenCount'); if(el) el.textContent = String(goldenWhat);
-                    } else {
-                        const cur = Number(localStorage.getItem('whathappened_golden')||0);
-                        localStorage.setItem('whathappened_golden', String(cur + amount));
-                        const el = document.getElementById('goldenCount'); if(el) el.textContent = String(cur + amount);
-                    }
+                const c = String(code).trim();
+                if(c === DEV_GOLD_CODE){
+                    const amount = 1000;
+                    try{
+                        if (typeof goldenWhat !== 'undefined'){
+                            try{
+                                if (goldenWhat && typeof goldenWhat.plus === 'function'){
+                                    goldenWhat = goldenWhat.plus ? goldenWhat.plus(amount) : (Number(goldenWhat||0) + amount);
+                                } else {
+                                    goldenWhat = Number(goldenWhat||0) + amount;
+                                }
+                            }catch(e){ goldenWhat = Number(goldenWhat||0) + amount; }
+                            const el = document.getElementById('goldenCount'); if(el) el.textContent = String(goldenWhat);
+                        } else {
+                            const cur = Number(localStorage.getItem('whathappened_golden')||0);
+                            localStorage.setItem('whathappened_golden', String(cur + amount));
+                            const el = document.getElementById('goldenCount'); if(el) el.textContent = String(cur + amount);
+                        }
+                        try{ if (typeof saveGame === 'function') saveGame(); }catch(e){}
+                    }catch(e){ console.warn('grant failed', e); }
+                    return 'gold';
+                }
+                if(c === DEV_CP_CODE){
+                    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+                    if(!raw){ alert('No save found. Start the game first.'); return 'cp'; }
+                    const s = JSON.parse(raw);
+                    s.clanPoints = (Number(s.clanPoints) || 0) + 10000;
+                    localStorage.setItem('whathappened_save', JSON.stringify(s));
+                    try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
                     try{ if (typeof saveGame === 'function') saveGame(); }catch(e){}
-                }catch(e){ console.warn('grant failed', e); }
-                return true;
+                    return 'cp';
+                }
+                return false;
             }catch(e){return false}
         };
         // Keyboard shortcut to enter code (Ctrl+Alt+G)
         window.addEventListener('keydown', (e)=>{
             try{
                 if (e.ctrlKey && e.altKey && (e.key === 'g' || e.key === 'G')){
-                    const c = prompt('Enter dev code:',''); if(!c) return; const ok = window.applyDevCode(c); if(ok) alert('Granted 1000 Golden What Happeneds'); else alert('Invalid code');
+                    const c = prompt('Enter dev code:',''); if(!c) return; const result = window.applyDevCode(c); if(result === 'gold') alert('Granted 1000 Golden What Happeneds'); else if(result === 'cp') alert('Granted 10,000 Clan Points'); else alert('Invalid code');
                 }
             }catch(er){}
         });

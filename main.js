@@ -499,6 +499,46 @@ function checkUpgradeLevelAchievements() {
     } catch (e) { try { console.warn('checkUpgradeLevelAchievements failed', e); } catch (e) {} }
 }
 
+// Check and unlock clan-based achievements
+function checkClanAchievements() {
+    try {
+        const clanId = localStorage.getItem('player_clanId') || '';
+        const clanRole = (localStorage.getItem('player_clanRole') || '').toLowerCase();
+
+        // Join a clan (have a clan ID)
+        if (clanId && clanId !== 'undefined' && !localStorage.getItem('ach_clan_joined')) {
+            try { localStorage.setItem('ach_clan_joined', '1'); } catch (e) {}
+            try { addUnlockedTitle('Clan Recruit'); } catch (e) {}
+            try { showAchievementPopup('Clan Member', 'Join or create a clan — Title: Clan Recruit'); } catch (e) {}
+        }
+
+        // Create a clan (flag set from clan.html when user creates a clan)
+        if (localStorage.getItem('ach_clan_created') === '1') {
+            try { addUnlockedTitle('Clan Founder'); } catch (e) {}
+        }
+
+        // Created a clan (achievement popup only once)
+        if (localStorage.getItem('ach_clan_created') === '1' && !localStorage.getItem('ach_clan_created_shown')) {
+            try { localStorage.setItem('ach_clan_created_shown', '1'); } catch (e) {}
+            try { showAchievementPopup('Clan Founder', 'Create a clan — Title: Clan Founder'); } catch (e) {}
+        }
+
+        // Be co-leader of a clan
+        if ((clanRole === 'co-leader' || clanRole === 'coleader') && !localStorage.getItem('ach_clan_coleader')) {
+            try { localStorage.setItem('ach_clan_coleader', '1'); } catch (e) {}
+            try { addUnlockedTitle('Lieutenant'); } catch (e) {}
+            try { showAchievementPopup('Second in Command', 'Become a co-leader of a clan — Title: Lieutenant'); } catch (e) {}
+        }
+
+        // Be owner/leader of a clan
+        if ((clanRole === 'owner' || clanRole === 'leader') && !localStorage.getItem('ach_clan_owner')) {
+            try { localStorage.setItem('ach_clan_owner', '1'); } catch (e) {}
+            try { addUnlockedTitle('Warlord'); } catch (e) {}
+            try { showAchievementPopup('Warlord', 'Become the owner of a clan — Title: Warlord'); } catch (e) {}
+        }
+    } catch (e) { try { console.warn('checkClanAchievements failed', e); } catch (e) {} }
+}
+
 // ========== Titles (unlock, equip, display) ==========
 // Titles management (stored in localStorage key 'unlocked_titles' as JSON array)
 // Title rarity metadata. Assign each title a rarity key.
@@ -526,7 +566,11 @@ const TITLE_RARITIES = {
     'Camp Cheif': 'uncommon',
     'Argoonion': 'uncommon',
     'partygoer': 'common',
-    'Somali Captain': 'uncommon'
+    'Somali Captain': 'uncommon',
+    'Clan Recruit': 'common',
+    'Clan Founder': 'uncommon',
+    'Lieutenant': 'uncommon',
+    'Warlord': 'rare'
 };
 
 // Color map for rarities
@@ -2401,6 +2445,7 @@ function updateDisplays() {
     try { localStorage.setItem('whathappened_current_clickpower', String(isDecimalInstance(clickPower) ? clickPower.toNumber() : Number(clickPower) || 0)); } catch (e) {}
     try { checkClickPowerAchievements(); } catch (e) {}
     try { checkUpgradeLevelAchievements(); } catch (e) {}
+    try { checkClanAchievements(); } catch (e) {}
     // ------------------ Stats panel fields ------------------
     try {
         // total playtime (seconds -> human readable)
@@ -2836,7 +2881,6 @@ function updateDisplays() {
     // show batch cost (how much needed to buy the selected `purchaseBatch` amount)
     const r110 = 1.1;
     const r115 = 1.15;
-    const r125 = 1.25; // stronger scaling for ropingnecurse
     const b = purchaseBatch || 1;
     const cost1 = computeBatchCostWithSimpleVillager(upgrade1Cost, b, r110);
     const cost2 = computeBatchCostWithSimpleVillager(upgrade2Cost, b, r110);
@@ -2850,7 +2894,7 @@ function updateDisplays() {
     const cost10 = computeBatchCostWithSimpleVillager(upgrade10Cost, b, r110);
     const cost11 = computeBatchCostWithSimpleVillager(upgrade11Cost, b, r115);
     const cost12 = computeBatchCostWithSimpleVillager(upgrade12Cost, b, r115);
-    const cost13 = computeBatchCostWithSimpleVillager(upgrade13Cost, b, r125);
+    const cost13 = computeBatchCostWithSimpleVillager(upgrade13Cost, b, r115);
     const cost14 = computeBatchCostWithSimpleVillager(upgrade14Cost, b, r115);
     const cost15 = computeBatchCostWithSimpleVillager(upgrade15Cost, b, r115);
     const cost16 = computeBatchCostWithSimpleVillager(upgrade16Cost, b, r115);
@@ -5042,7 +5086,7 @@ function buyUpgrade13() {
                 upgrade13Level = (isDecimalInstance(upgrade13Level) ? upgrade13Level : D(upgrade13Level)).plus(D(1));
                 // ensure cost grows monotonically (avoid rare rounding regressions)
                 const prev = D(upgrade13Cost);
-                let next = prev.times(D(1.25)).ceil(); // stronger growth for roping
+                let next = prev.times(D(1.15)).ceil();
                 if (next.lte(prev)) next = prev.plus(D(1));
                 upgrade13Cost = next;
                 bought++;
@@ -5055,7 +5099,7 @@ function buyUpgrade13() {
                 upgrade13Level += 1;
                 // ensure monotonic increase even with rounding
                 const prev = Number(upgrade13Cost);
-                let next = Math.ceil(prev * 1.25);
+                let next = Math.ceil(prev * 1.15);
                 if (next <= prev) next = prev + 1;
                 upgrade13Cost = next;
                 bought++;
@@ -5068,7 +5112,7 @@ function buyUpgrade13() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade13Cost, purchaseBatch || 1, 1.25)) + '.');
+    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade13Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade14() {

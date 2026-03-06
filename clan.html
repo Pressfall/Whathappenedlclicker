@@ -73,8 +73,7 @@
 
   <script type="module">
   import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-  import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot, runTransaction, increment } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
-
+  import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot, runTransaction, increment, deleteField } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
   const firebaseConfig = {
     apiKey: "AIzaSyDkrNV4bQgRHzGJ__9XqHzry7xbYuH8IuU",
     authDomain: "whleaderboard.firebaseapp.com",
@@ -84,8 +83,8 @@
     appId: "1:602999414155:web:541f51b97db8358be4638e",
     measurementId: "G-C2FWNR7288"
   };
-  try{ if(!getApps().length) initializeApp(firebaseConfig); }catch(e){}
-  const db = getFirestore();
+  const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
+  const db = getFirestore(app);
   // Expose common Firestore helpers to the global scope so non-module scripts (e.g., main.js)
   // can access the same Firestore instance and functions when this page is loaded.
   try{
@@ -146,6 +145,8 @@
     const clanId = localStorage.getItem('player_clanId') || '';
     let buffProgress = {};
     let activeBuff = null;
+    let clanShopIconsUnlocked = [];
+    let isClanLeader = false;
     if(clanId){
       try{
         const snap = await getDoc(doc(db,'clans',clanId));
@@ -157,6 +158,9 @@
             const exp = typeof ab.expiresAt === 'number' ? ab.expiresAt : (ab.expiresAt.toMillis ? ab.expiresAt.toMillis() : 0);
             if(exp > Date.now()) activeBuff = { id: ab.id, expiresAt: exp, cpsMult: ab.cpsMult || 1, clickMult: ab.clickMult || 1 };
           }
+          clanShopIconsUnlocked = Array.isArray(d.clanShopIconsUnlocked) ? d.clanShopIconsUnlocked : [];
+          const me = localStorage.getItem('player_username') || '';
+          isClanLeader = (d.owner === me) || (Array.isArray(d.leaders) && d.leaders.indexOf(me) !== -1);
         }
       }catch(e){ console.warn('Clan buff fetch failed', e); }
     }
@@ -189,6 +193,26 @@
         html += '</div></div>';
       }
       html += '</div>';
+      // Clan Icons (buy with CP to unlock for the whole clan)
+      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #333"><strong style="font-size:16px">Clan Icons</strong><p class="muted" style="margin:8px 0">Unlock new icons for your clan.</p><div style="display:flex;flex-wrap:wrap;gap:10px">';
+      for(const ic of CLAN_SHOP_ICONS){
+        const owned = clanShopIconsUnlocked.indexOf(ic.id) !== -1;
+        const canAfford = cp >= ic.cost;
+        if(owned){
+          html += '<div style="padding:10px;background:rgba(0,80,0,0.2);border-radius:8px;border:1px solid #2a4" title="Owned"><span style="font-size:24px">' + (ic.emoji||'') + '</span> <span class="muted">' + escapeHtml(ic.label) + ' — Owned</span></div>';
+        } else {
+          html += '<div style="padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #444;display:flex;align-items:center;gap:8px"><span style="font-size:24px">' + (ic.emoji||'') + '</span><span>' + escapeHtml(ic.label) + ' — ' + ic.cost + ' CP</span><button type="button" class="btn clan-shop-icon-buy" data-icon-id="' + escapeHtml(ic.id) + '"' + (canAfford ? '' : ' disabled') + ' style="background:#2a6;color:#fff;padding:4px 10px">Buy</button></div>';
+        }
+      }
+      html += '</div></div>';
+      // Custom clan logo (leader only, 5000 CP — upload to Firebase Storage for moderation)
+      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #333"><strong style="font-size:16px">Custom Clan Logo</strong><p class="muted" style="margin:8px 0">Clan leaders: upload PNG, JPEG, GIF or WebP (max 5 MB). Image is resized to 512px and compressed for reliable upload.</p>';
+      if(isClanLeader){
+        html += '<input type="file" id="clanCustomLogoInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none"><button type="button" id="clanCustomLogoBtn" class="btn" style="background:#f49a1a;color:#fff">Upload clan logo (5,000 CP)</button><span id="clanCustomLogoStatus" class="muted" style="margin-left:8px"></span>';
+      } else {
+        html += '<p class="muted">Only the clan leader can upload a custom logo.</p>';
+      }
+      html += '</div>';
     }
     html += '</div>';
     tabShop.innerHTML = html;
@@ -209,6 +233,87 @@
         contributeClanBuff(buffId, amount);
       });
     });
+    tabShop.querySelectorAll('.clan-shop-icon-buy').forEach(btn => {
+      const iconId = btn.getAttribute('data-icon-id');
+      const shopIcon = CLAN_SHOP_ICONS.find(i => i.id === iconId);
+      if(shopIcon) btn.addEventListener('click', () => purchaseClanShopIcon(iconId, shopIcon.cost));
+    });
+    const customLogoBtn = tabShop.querySelector('#clanCustomLogoBtn');
+    const customLogoInput = tabShop.querySelector('#clanCustomLogoInput');
+    if(customLogoBtn && customLogoInput){
+      customLogoBtn.addEventListener('click', () => customLogoInput.click());
+      customLogoInput.addEventListener('change', async () => {
+        const file = customLogoInput.files && customLogoInput.files[0];
+        customLogoInput.value = '';
+        if(!file || !file.type.startsWith('image/')){ alert('Please select an image (PNG, JPEG, GIF or WebP).'); return; }
+        const maxSize = 5 * 1024 * 1024;
+        if(file.size > maxSize){ alert('Image must be under 5 MB. It will be resized and compressed for upload.'); return; }
+        const statusEl = tabShop.querySelector('#clanCustomLogoStatus');
+        if(statusEl) statusEl.textContent = 'Preparing...';
+        try {
+          const blob = await compressImageForLogo(file);
+          if(statusEl) statusEl.textContent = 'Uploading...';
+          await uploadClanCustomLogo(clanId, blob, statusEl);
+        } catch(e){ alert('Upload failed: ' + (e.message || e)); if(statusEl) statusEl.textContent = ''; }
+      });
+    }
+  }
+  // Resize and compress image for Firestore (max 384px, JPEG 0.7 — keeps data URL under ~150KB). Returns a Blob.
+  function compressImageForLogo(file){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 384;
+        let w = img.naturalWidth || img.width, h = img.naturalHeight || img.height;
+        if(w > MAX || h > MAX){ if(w >= h){ h = Math.round(h * MAX / w); w = MAX; } else { w = Math.round(w * MAX / h); h = MAX; } }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        if(!ctx){ reject(new Error('Canvas not supported')); return; }
+        ctx.drawImage(img, 0, 0, w, h);
+        canvas.toBlob(b => { if(b) resolve(b); else reject(new Error('Compress failed')); }, 'image/jpeg', 0.7);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load image')); };
+      img.src = url;
+    });
+  }
+  function blobToDataUrl(blob){ return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('Read failed')); r.readAsDataURL(blob); }); }
+  async function purchaseClanShopIcon(iconId, cost){
+    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ alert('You are not in a clan.'); return; }
+    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+    if(!raw){ alert('No save found.'); return; }
+    let s; try{ s = JSON.parse(raw); }catch(e){ alert('Save error.'); return; }
+    const have = Number(s.clanPoints) || 0;
+    if(have < cost){ alert('Not enough Clan Points. You have ' + have.toLocaleString() + ', need ' + cost + '.'); return; }
+    const clanRef = doc(db,'clans',clanId);
+    try{
+      await updateDoc(clanRef, { clanShopIconsUnlocked: arrayUnion(iconId) });
+      s.clanPoints = Math.max(0, have - cost);
+      localStorage.setItem('whathappened_save', JSON.stringify(s));
+      try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
+      await renderClanShopTab();
+      const ic = CLAN_SHOP_ICONS.find(i => i.id === iconId);
+      alert('Unlocked clan icon: ' + (ic ? ic.label : iconId) + '. Remaining CP: ' + s.clanPoints.toLocaleString());
+    }catch(e){ alert('Purchase failed: ' + (e.message || 'try again')); }
+  }
+  const CUSTOM_LOGO_CP_COST = 5000;
+  // Store logo as data URL in Firestore (no Firebase Storage — one fast Firestore write).
+  async function uploadClanCustomLogo(clanId, blob, statusEl){
+    if(!clanId || !blob){ return; }
+    const have = getClanPointsFromSave();
+    if(have < CUSTOM_LOGO_CP_COST){ alert('Not enough Clan Points. You need 5,000 CP to upload a custom logo.'); if(statusEl) statusEl.textContent = ''; return; }
+    const dataUrl = await blobToDataUrl(blob);
+    if(dataUrl.length > 900000){ alert('Image too large after compression. Try a smaller or simpler image.'); if(statusEl) statusEl.textContent = ''; return; }
+    const clanRef = doc(db,'clans',clanId);
+    await updateDoc(clanRef, { clanCustomLogoUrl: dataUrl, clanIcon: 'custom' });
+    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
+    if(raw){ try{ const s = JSON.parse(raw); s.clanPoints = Math.max(0, (Number(s.clanPoints)||0) - CUSTOM_LOGO_CP_COST); localStorage.setItem('whathappened_save', JSON.stringify(s)); localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }
+    if(statusEl) statusEl.textContent = 'Uploaded!';
+    await renderClanShopTab();
+    const area = document.getElementById('clanDetailArea'); if(area && area.innerHTML) loadClanDetail(clanId);
   }
   async function contributeClanBuff(buffId, amount){
     const clanId = localStorage.getItem('player_clanId'); if(!clanId){ alert('You are not in a clan.'); return; }
@@ -259,7 +364,23 @@
     { id: 'trophy', level: 18, label: 'Trophy', emoji: '🏆' },
     { id: 'max', level: 20, label: 'Elite', emoji: '🌟' }
   ];
+  // Icons that can be bought in the clan shop (unlock for the whole clan)
+  const CLAN_SHOP_ICONS = [
+    { id: 'skull', label: 'Skull', emoji: '💀', cost: 350 },
+    { id: 'moon', label: 'Moon', emoji: '🌙', cost: 400 },
+    { id: 'lightning', label: 'Lightning', emoji: '⚡', cost: 450 },
+    { id: 'heart', label: 'Heart', emoji: '❤️', cost: 500 },
+    { id: 'anchor', label: 'Anchor', emoji: '⚓', cost: 550 },
+    { id: 'rocket', label: 'Rocket', emoji: '🚀', cost: 600 },
+    { id: 'crystal', label: 'Crystal', emoji: '🔮', cost: 700 },
+    { id: 'phoenix', label: 'Phoenix', emoji: '🔥', cost: 800 }
+  ];
   function getClanIconForLevel(level){ const L = Number(level) || 1; let out = CLAN_ICONS[0]; for(const ic of CLAN_ICONS){ if(L >= ic.level) out = ic; } return out; }
+  function getClanIconById(id){
+    const fromLevel = CLAN_ICONS.find(ic => ic.id === id);
+    if(fromLevel) return fromLevel;
+    return CLAN_SHOP_ICONS.find(ic => ic.id === id) || CLAN_ICONS[0];
+  }
   const CLAN_LEVEL_BONUSES = [
     { level: 1, bonus: 'Base — no bonus' },
     { level: 2, bonus: '+2% CPS for all members' },
@@ -482,6 +603,9 @@
       try{ const newVal = Math.max(0, readGoldenCount() - 10); try{ localStorage.setItem('whathappened_golden', String(newVal)); }catch(e){} try{ const el = document.getElementById('goldenCount'); if(el) el.textContent = String(newVal); }catch(e){} }catch(e){}
       const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default' });
       localStorage.setItem('player_clanId', docRef.id);
+      localStorage.setItem('player_clanName', cname || '');
+      localStorage.setItem('player_clanRole', 'leader');
+      try{ localStorage.setItem('ach_clan_created', '1'); }catch(e){}
       try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname, clanRole: 'leader' }, { merge: true }); }catch(e){}
       try{ await setDoc(doc(db,'clans',docRef.id,'members',username), { mainClicks: 0, clanRole: 'leader' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
       alert('Clan created.');
@@ -605,9 +729,14 @@
             const clanXp = Number(c.clanXp) || 0;
             const clanLevelInfo = clanLevelFromXp(clanXp);
             const currentIconId = c.clanIcon || 'default';
-            const currentIcon = CLAN_ICONS.find(ic => ic.id === currentIconId) || getClanIconForLevel(clanLevelInfo.level);
-            const iconEmoji = currentIcon.emoji || '⚔';
-            let html = `<div class="card" style="padding:16px;margin-bottom:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px"><div><h2 style="margin:0;font-size:22px;display:flex;align-items:center;gap:8px"><span id="clanIconDisplay" style="font-size:28px" title="Clan icon">${iconEmoji}</span>${escapeHtml(name)}</h2><div class="muted" style="margin-top:4px">Owner: ${escapeHtml(owner)} · Level ${clanLevelInfo.level}</div><div id="clanDescription" class="muted" style="margin-top:8px;max-width:480px">${escapeHtml(descriptionText)}</div></div>`;
+            const clanCustomLogoUrl = c.clanCustomLogoUrl || '';
+            const useCustomLogo = (currentIconId === 'custom' && clanCustomLogoUrl);
+            const currentIcon = useCustomLogo ? null : (CLAN_ICONS.find(ic => ic.id === currentIconId) || getClanIconById(currentIconId) || getClanIconForLevel(clanLevelInfo.level));
+            const iconEmoji = currentIcon ? currentIcon.emoji : '⚔';
+            const iconDisplayHtml = useCustomLogo
+              ? `<img id="clanIconDisplay" src="${escapeHtml(clanCustomLogoUrl)}" alt="Clan" style="width:28px;height:28px;object-fit:contain;border-radius:4px;vertical-align:middle" title="Clan icon" />`
+              : `<span id="clanIconDisplay" style="font-size:28px" title="Clan icon">${iconEmoji}</span>`;
+            let html = `<div class="card" style="padding:16px;margin-bottom:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px"><div><h2 style="margin:0;font-size:22px;display:flex;align-items:center;gap:8px">${iconDisplayHtml}${escapeHtml(name)}</h2><div class="muted" style="margin-top:4px">Owner: ${escapeHtml(owner)} · Level ${clanLevelInfo.level}</div><div id="clanDescription" class="muted" style="margin-top:8px;max-width:480px">${escapeHtml(descriptionText)}</div></div>`;
           const me = (localStorage.getItem('player_username')||'');
           const canChangeIcon = me === owner || (Array.isArray(c.leaders) && c.leaders.indexOf(me) !== -1);
           if(members.includes(me)) html += `<div id=\"clanHeaderActions\">${canChangeIcon ? '<select id="clanIconSelect" class="btn" style="margin-right:8px;padding:4px 8px" title="Clan icon (leaders only)"><option value="">Icon...</option></select>' : ''}<button id=\"leaveClanBtn\" class=\"btn\">Leave Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
@@ -621,9 +750,28 @@
           if(area) area.innerHTML = html;
           const iconSelect = document.getElementById('clanIconSelect');
           if(iconSelect && canChangeIcon){
-            const unlocked = CLAN_ICONS.filter(ic => clanLevelInfo.level >= ic.level);
-            unlocked.forEach(ic => { const o = document.createElement('option'); o.value = ic.id; o.textContent = ic.emoji + ' ' + ic.label; if(ic.id === (c.clanIcon || 'default')) o.selected = true; iconSelect.appendChild(o); });
-            iconSelect.addEventListener('change', async ()=>{ const v = iconSelect.value; if(!v) return; try{ await updateDoc(doc(db,'clans',clanId), { clanIcon: v }); const ic = CLAN_ICONS.find(i=>i.id===v); const disp = document.getElementById('clanIconDisplay'); if(disp && ic) disp.textContent = ic.emoji; }catch(e){ console.warn('clan icon update failed', e); } });
+            const levelUnlocked = CLAN_ICONS.filter(ic => clanLevelInfo.level >= ic.level);
+            const shopUnlocked = (Array.isArray(c.clanShopIconsUnlocked) ? c.clanShopIconsUnlocked : []).map(id => CLAN_SHOP_ICONS.find(ic => ic.id === id)).filter(Boolean);
+            const allUnlocked = [...levelUnlocked];
+            shopUnlocked.forEach(ic => { if(ic && !allUnlocked.find(x => x.id === ic.id)) allUnlocked.push(ic); });
+            if(clanCustomLogoUrl) allUnlocked.push({ id: 'custom', label: 'Custom logo', emoji: '🖼' });
+            allUnlocked.forEach(ic => { const o = document.createElement('option'); o.value = ic.id; o.textContent = ic.emoji + ' ' + ic.label; if(ic.id === (c.clanIcon || 'default')) o.selected = true; iconSelect.appendChild(o); });
+            iconSelect.addEventListener('change', async ()=>{
+              const v = iconSelect.value; if(!v) return;
+              try{
+                await updateDoc(doc(db,'clans',clanId), { clanIcon: v });
+                const disp = document.getElementById('clanIconDisplay');
+                if(!disp) return;
+                if(v === 'custom' && clanCustomLogoUrl){
+                  if(disp.tagName === 'IMG') disp.src = clanCustomLogoUrl;
+                  else { const img = document.createElement('img'); img.id = 'clanIconDisplay'; img.src = clanCustomLogoUrl; img.alt = 'Clan'; img.style.cssText = 'width:28px;height:28px;object-fit:contain;border-radius:4px;vertical-align:middle'; img.title = 'Clan icon'; disp.parentNode.replaceChild(img, disp); }
+                } else {
+                  const ic = getClanIconById(v);
+                  if(disp.tagName === 'IMG'){ const span = document.createElement('span'); span.id = 'clanIconDisplay'; span.style.fontSize = '28px'; span.title = 'Clan icon'; span.textContent = ic.emoji || '⚔'; disp.parentNode.replaceChild(span, disp); }
+                  else disp.textContent = ic.emoji || '⚔';
+                }
+              }catch(e){ console.warn('clan icon update failed', e); }
+            });
           }
           if(members.includes(me)){
             const el = document.getElementById('leaveClanBtn'); if(el) el.addEventListener('click', ()=>leaveClan(clanId));
@@ -806,13 +954,17 @@
           const desc = (c.description||'').toString().slice(0,160);
           const clanXp = Number(c.clanXp) || 0;
           const lvl = clanLevelFromXp(clanXp).level;
-          const iconObj = CLAN_ICONS.find(ic => ic.id === (c.clanIcon||'')) || getClanIconForLevel(lvl);
-          const iconEmoji = iconObj.emoji || '⚔';
+          const customLogoUrl = c.clanCustomLogoUrl || '';
+          const useCustomLogo = (c.clanIcon === 'custom' && customLogoUrl);
+          const iconObj = useCustomLogo ? null : (CLAN_ICONS.find(ic => ic.id === (c.clanIcon||'')) || getClanIconForLevel(lvl));
+          const iconPart = useCustomLogo
+            ? `<img src="${escapeHtml(customLogoUrl)}" alt="" style="width:24px;height:24px;object-fit:contain;border-radius:4px" />`
+            : `<span style="font-size:20px">${iconObj ? iconObj.emoji : '⚔'}</span>`;
           const row = document.createElement('div');
           row.style.padding = '8px';
           row.style.borderBottom = '1px solid #111';
           row.style.cursor = 'pointer';
-          row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:8px"><span style="font-size:20px">${iconEmoji}</span><div><strong style="color:#9cf">${escapeHtml(name)}</strong><div class="muted">Owner: ${escapeHtml(owner)}</div><div class="muted" style="margin-top:6px">${escapeHtml(desc)}</div></div></div><div class="muted">Members: ${Array.isArray(c.members)?c.members.length:0}</div></div>`;
+          row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:8px">${iconPart}<div><strong style="color:#9cf">${escapeHtml(name)}</strong><div class="muted">Owner: ${escapeHtml(owner)}</div><div class="muted" style="margin-top:6px">${escapeHtml(desc)}</div></div></div><div class="muted">Members: ${Array.isArray(c.members)?c.members.length:0}</div></div>`;
           row.addEventListener('click', ()=>{ if(id) loadClanDetail(id); });
           container.appendChild(row);
         }catch(e){}
@@ -1455,6 +1607,8 @@
 
   (function(){ try{ window.addEventListener('keydown', function(ev){ try{ if(ev && ev.ctrlKey && ev.altKey && String(ev.key||'').toLowerCase() === 'g'){ if(!adminUnlocked){ const attempt = prompt('Enter admin password to toggle Events admin view:',''); if(attempt === null) return; if(attempt === ADMIN_PASSWORD){ setAdminUnlocked(true); alert('Events admin view unlocked'); } else { setAdminUnlocked(false); alert('Incorrect password — admin view locked'); } } else { // already unlocked: open chooser to pick active event
                 adminChooseActiveEvent(); } } }catch(e){} }); }catch(e){} })();
+  // Dev: Ctrl+Alt+P — add 10,000 Clan Points (requires code so it cannot be abused)
+  (function(){ const DEV_CP_CODE = 'GIVECP10000-2026'; try{ window.addEventListener('keydown', function(ev){ try{ if(ev && ev.ctrlKey && ev.altKey && String(ev.key||'').toLowerCase() === 'p'){ const attempt = prompt('Enter dev code to add 10,000 Clan Points:',''); if(attempt === null) return; if(String(attempt).trim() !== DEV_CP_CODE){ alert('Incorrect code.'); return; } const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1'); if(!raw){ alert('No save found.'); return; } const s = JSON.parse(raw); s.clanPoints = (Number(s.clanPoints) || 0) + 10000; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} const tabShop = document.getElementById('tabShop'); if(tabShop && tabShop.innerHTML && tabShop.innerHTML.indexOf('clanShopBalanceVal') !== -1){ try{ renderClanShopTab(); }catch(e){} } alert('Added 10,000 Clan Points (dev).'); } }catch(e){} }); }catch(e){} })();
 
   async function ensureEventConfig(){
     try{

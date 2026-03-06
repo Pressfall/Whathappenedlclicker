@@ -291,6 +291,44 @@
         </div>
         <div style="margin-left:auto" id="ach-5-card-blackjack-status">Locked</div>
       </div>
+
+      <!-- Clan achievements -->
+      <div class="ach" id="ach-clan-joined">
+        <div class="badge">C</div>
+        <div>
+          <div style="font-weight:700">Clan Member</div>
+          <div style="font-size:13px;color:#bbb">Join or create a clan to unlock. Title: Clan Recruit</div>
+          <div id="ach-clan-joined-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
+        </div>
+        <div style="margin-left:auto" id="ach-clan-joined-status">Locked</div>
+      </div>
+      <div class="ach" id="ach-clan-created">
+        <div class="badge">C</div>
+        <div>
+          <div style="font-weight:700">Clan Founder</div>
+          <div style="font-size:13px;color:#bbb">Create a clan to unlock. Title: Clan Founder</div>
+          <div id="ach-clan-created-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
+        </div>
+        <div style="margin-left:auto" id="ach-clan-created-status">Locked</div>
+      </div>
+      <div class="ach" id="ach-clan-coleader">
+        <div class="badge">C</div>
+        <div>
+          <div style="font-weight:700">Second in Command</div>
+          <div style="font-size:13px;color:#bbb">Become a co-leader of a clan. Title: Lieutenant</div>
+          <div id="ach-clan-coleader-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
+        </div>
+        <div style="margin-left:auto" id="ach-clan-coleader-status">Locked</div>
+      </div>
+      <div class="ach" id="ach-clan-owner">
+        <div class="badge">C</div>
+        <div>
+          <div style="font-weight:700">Warlord</div>
+          <div style="font-size:13px;color:#bbb">Become the owner of a clan. Title: Warlord</div>
+          <div id="ach-clan-owner-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
+        </div>
+        <div style="margin-left:auto" id="ach-clan-owner-status">Locked</div>
+      </div>
     </div>
 
     
@@ -379,6 +417,42 @@
       if (prog5) prog5.textContent = `${got5 ? 1 : 0} / 1`;
       if (got5){ if (el5) el5.classList.remove('locked'); if (status5) { status5.textContent = 'Unlocked'; status5.style.color = '#9f9'; } }
       else { if (el5) el5.classList.add('locked'); if (status5) { status5.textContent = 'Locked'; status5.style.color = '#f66'; } }
+
+      // Clan achievements
+      const clanId = localStorage.getItem('player_clanId') || '';
+      const hasClan = clanId && clanId !== 'undefined';
+      const gotClanJoined = isUnlocked('ach_clan_joined');
+      const elClanJoined = document.getElementById('ach-clan-joined');
+      const statusClanJoined = document.getElementById('ach-clan-joined-status');
+      const progClanJoined = document.getElementById('ach-clan-joined-progress');
+      if (progClanJoined) progClanJoined.textContent = hasClan ? 'In a clan' : 'Not in a clan';
+      if (gotClanJoined){ if (elClanJoined) elClanJoined.classList.remove('locked'); if (statusClanJoined) { statusClanJoined.textContent = 'Unlocked'; statusClanJoined.style.color = '#9f9'; } }
+      else { if (elClanJoined) elClanJoined.classList.add('locked'); if (statusClanJoined) { statusClanJoined.textContent = 'Locked'; statusClanJoined.style.color = '#f66'; } }
+
+      const gotClanCreated = isUnlocked('ach_clan_created');
+      const elClanCreated = document.getElementById('ach-clan-created');
+      const statusClanCreated = document.getElementById('ach-clan-created-status');
+      const progClanCreated = document.getElementById('ach-clan-created-progress');
+      if (progClanCreated) progClanCreated.textContent = gotClanCreated ? 'Created' : '—';
+      if (gotClanCreated){ if (elClanCreated) elClanCreated.classList.remove('locked'); if (statusClanCreated) { statusClanCreated.textContent = 'Unlocked'; statusClanCreated.style.color = '#9f9'; } }
+      else { if (elClanCreated) elClanCreated.classList.add('locked'); if (statusClanCreated) { statusClanCreated.textContent = 'Locked'; statusClanCreated.style.color = '#f66'; } }
+
+      const gotClanColeader = isUnlocked('ach_clan_coleader');
+      const elClanColeader = document.getElementById('ach-clan-coleader');
+      const statusClanColeader = document.getElementById('ach-clan-coleader-status');
+      const progClanColeader = document.getElementById('ach-clan-coleader-progress');
+      const clanRole = (localStorage.getItem('player_clanRole') || '').toLowerCase();
+      if (progClanColeader) progClanColeader.textContent = (clanRole === 'co-leader' || clanRole === 'coleader') ? 'Co-leader' : '—';
+      if (gotClanColeader){ if (elClanColeader) elClanColeader.classList.remove('locked'); if (statusClanColeader) { statusClanColeader.textContent = 'Unlocked'; statusClanColeader.style.color = '#9f9'; } }
+      else { if (elClanColeader) elClanColeader.classList.add('locked'); if (statusClanColeader) { statusClanColeader.textContent = 'Locked'; statusClanColeader.style.color = '#f66'; } }
+
+      const gotClanOwner = isUnlocked('ach_clan_owner');
+      const elClanOwner = document.getElementById('ach-clan-owner');
+      const statusClanOwner = document.getElementById('ach-clan-owner-status');
+      const progClanOwner = document.getElementById('ach-clan-owner-progress');
+      if (progClanOwner) progClanOwner.textContent = (clanRole === 'owner' || clanRole === 'leader') ? 'Owner' : '—';
+      if (gotClanOwner){ if (elClanOwner) elClanOwner.classList.remove('locked'); if (statusClanOwner) { statusClanOwner.textContent = 'Unlocked'; statusClanOwner.style.color = '#9f9'; } }
+      else { if (elClanOwner) elClanOwner.classList.add('locked'); if (statusClanOwner) { statusClanOwner.textContent = 'Locked'; statusClanOwner.style.color = '#f66'; } }
 
       // Prestige achievements
       const prestiges = Number(localStorage.getItem('whathappened_prestige_times')||0) || 0;
