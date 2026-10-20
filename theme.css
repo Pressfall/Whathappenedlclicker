@@ -1,0 +1,231 @@
+/**
+ * WHAT HAPPENED clicker — shared design tokens and base components.
+ * Loaded by every page before its own stylesheet. Change the look of the whole game here.
+ */
+:root {
+    /* surfaces (dark glass over the background art) */
+    --bg: #0b0d13;
+    --surface: rgba(15, 18, 27, 0.84);
+    --surface-solid: #131722;
+    --surface-2: #1a1f2d;
+    --surface-3: #232a3c;
+    --border: rgba(255, 255, 255, 0.08);
+    --border-strong: rgba(255, 255, 255, 0.16);
+
+    /* text */
+    --text: #f3f5fa;
+    --text-dim: #a7b0c4;
+    --text-faint: #6d7690;
+
+    /* accents */
+    --gold: #ffc83d;
+    --gold-deep: #ff9a1f;
+    --primary: #2fd07a;
+    --primary-deep: #19a35a;
+    --blue: #5aa9ff;
+    --divine: #a77dff;
+    --divine-deep: #7a4fe0;
+    --danger: #ff5b6b;
+
+    /* shape */
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 18px;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 24px 60px rgba(0, 0, 0, 0.6);
+
+    /* type */
+    --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+    --font-display: 'Bungee', 'Impact', 'Arial Black', system-ui, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+    font-family: var(--font);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+button, input, select, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+a { color: var(--blue); }
+
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+/* thin, dark scrollbars everywhere */
+* { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, 0.2) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.18); border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+/* ---------- panels ---------- */
+.glass-panel {
+    background: var(--surface);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow);
+}
+
+/* ---------- buttons ---------- */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    font-weight: 700;
+    font-size: 14px;
+    line-height: 1.1;
+    background: var(--surface-3);
+    color: var(--text);
+    transition: transform 120ms ease, filter 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+.btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(0); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: linear-gradient(180deg, var(--primary), var(--primary-deep)); color: #04170c; box-shadow: 0 6px 18px rgba(47, 208, 122, 0.25); }
+.btn-gold { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); color: #2a1600; box-shadow: 0 6px 18px rgba(255, 170, 40, 0.3); }
+.btn-ghost { background: rgba(255, 255, 255, 0.06); border-color: var(--border-strong); }
+.btn-danger { background: rgba(255, 91, 107, 0.12); border-color: rgba(255, 91, 107, 0.5); color: #ffb3bb; }
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-discord { background: #5865f2; color: #fff; }
+.btn-sm { padding: 7px 12px; font-size: 13px; }
+.btn-block { width: 100%; }
+.btn-chip { padding: 2px 8px; border-radius: 999px; background: rgba(0, 0, 0, 0.18); font-size: 12px; font-weight: 800; }
+
+/* round close (✕) button used in modals and panels */
+.modal-close {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-dim);
+    font-size: 15px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+.modal-close:hover { background: rgba(255, 255, 255, 0.14); color: var(--text); }
+
+/* ---------- form controls ---------- */
+input[type=text], input[type=number], input:not([type]), select, textarea {
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 9px 12px;
+    color: var(--text);
+    min-width: 0;
+}
+input::placeholder { color: var(--text-faint); }
+select option { background: var(--surface-solid); color: var(--text); }
+input[type=range] { accent-color: var(--gold); width: 100%; }
+
+/* ---------- secondary pages: back button + page header ---------- */
+.page-back {
+    position: fixed;
+    top: 14px;
+    left: 14px;
+    z-index: 1300;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: rgba(15, 18, 27, 0.8);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--text);
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    box-shadow: var(--shadow);
+}
+.page-back:hover { background: var(--surface-3); }
+
+.page-title {
+    font-family: var(--font-display);
+    font-weight: 400;
+    letter-spacing: 1px;
+    margin: 0 0 6px;
+    font-size: clamp(28px, 4vw, 40px);
+    background: linear-gradient(180deg, #fff3c4, var(--gold) 55%, var(--gold-deep));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
+.muted { color: var(--text-dim); font-size: 13px; }
+
+/* ---------- shared nav bar on the secondary pages (built by site.js) ---------- */
+.site-nav {
+    position: fixed;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1300;
+    display: flex;
+    gap: 4px;
+    padding: 5px;
+    border-radius: 999px;
+    background: rgba(15, 18, 27, 0.86);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow);
+    max-width: calc(100vw - 20px);
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.site-nav::-webkit-scrollbar { display: none; }
+.site-nav-link {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 13px;
+    border-radius: 999px;
+    color: var(--text-dim);
+    text-decoration: none;
+    font-weight: 700;
+    font-size: 13px;
+    white-space: nowrap;
+}
+.site-nav-link:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+.site-nav-link.home { color: var(--text); }
+.site-nav-link.current { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); color: #2a1600; }
+/* alert bubble (a count) or dot, used on these links and on the main game's nav buttons */
+.site-badge {
+    position: absolute;
+    top: 0;
+    right: 0;
+    min-width: 17px;
+    height: 17px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10.5px;
+    font-weight: 900;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 0 0 2px var(--bg);
+    pointer-events: none;
+}
+.site-badge.dot { min-width: 10px; width: 10px; height: 10px; padding: 0; top: 3px; right: 3px; }
+@media (max-width: 760px) {
+    .site-nav-link { padding: 8px 11px; font-size: 16px; }
+    .site-nav-link .sn-txt { display: none; }
+    .site-nav-link.current .sn-txt { display: inline; font-size: 13px; }
+}

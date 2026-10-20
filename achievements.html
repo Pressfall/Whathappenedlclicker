@@ -7,660 +7,193 @@
   <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
   <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
   <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7259344384263515" crossorigin="anonymous"></script>
   <style>
-    body{background:#0f0f12;color:#eee;font-family:Arial,Helvetica,sans-serif;padding:18px}
-    .card{background:#15151a;padding:12px;border-radius:8px;max-width:900px;margin:14px auto}
-    h1{margin:0 0 12px 0}
-    .ach{display:flex;align-items:center;gap:12px;padding:10px;border-bottom:1px solid #222}
-    .locked{opacity:.45}
-    .badge{width:48px;height:48px;border-radius:6px;background:#222;display:inline-flex;align-items:center;justify-content:center;font-weight:700}
-    button{padding:8px;border-radius:6px;border:none;background:#2a6;color:#fff}
+    body { margin: 0; min-height: 100vh; padding: 72px 18px 40px; background: radial-gradient(ellipse at 50% -10%, #24203a, #0b0d13 60%) fixed; }
+    .wrap { max-width: 1040px; margin: 0 auto; }
+    .head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+    .head p { margin: 0; color: var(--text-dim); }
+    .summary { padding: 18px; border-radius: var(--radius-lg); background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); display: grid; gap: 12px; margin-bottom: 14px; }
+    .sum-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .sum-top b { font-size: 26px; font-variant-numeric: tabular-nums; }
+    .sum-top span { color: var(--text-dim); }
+    .sum-bar { height: 12px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); overflow: hidden; }
+    .sum-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-deep)); border-radius: inherit; transition: width 0.5s ease; }
+    .rarity-row { display: flex; gap: 6px; flex-wrap: wrap; }
+    .r-chip { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; background: rgba(255, 255, 255, 0.05); border: 1px solid currentColor; }
+    .equipped { font-size: 13px; color: var(--text-dim); }
+    .equipped b { font-weight: 800; }
+
+    .toolbar { position: sticky; top: 62px; z-index: 5; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; padding: 10px; margin-bottom: 14px; border-radius: var(--radius); background: rgba(15, 18, 27, 0.92); backdrop-filter: blur(10px); border: 1px solid var(--border); }
+    .seg { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); }
+    .seg button { border: none; background: transparent; color: var(--text-dim); font-weight: 700; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+    .seg button[aria-pressed="true"] { background: var(--surface-3); color: var(--text); }
+    .cat-chips { display: flex; gap: 6px; flex: 1 1 100%; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+    .cat-chips::-webkit-scrollbar { display: none; }
+    .cat-chips a { padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; color: var(--text-dim); text-decoration: none; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--border); white-space: nowrap; }
+    .cat-chips a:hover { color: var(--text); border-color: var(--border-strong); }
+    #achSearch { flex: 1; min-width: 170px; max-width: 360px; }
+
+    .cat { margin-bottom: 18px; scroll-margin-top: 130px; }
+    .cat-head { display: flex; align-items: baseline; gap: 10px; margin: 0 0 8px; }
+    .cat-head h2 { margin: 0; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; color: var(--text); }
+    .cat-head span { color: var(--text-dim); font-size: 13px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; }
+    .ach { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+    .ach.done { border-color: color-mix(in srgb, var(--rc) 55%, transparent); background: linear-gradient(135deg, color-mix(in srgb, var(--rc) 12%, transparent), transparent 65%), var(--surface-2); }
+    .ach.is-new { box-shadow: 0 0 0 2px var(--gold), 0 0 22px rgba(255, 200, 61, 0.25); }
+    .badge { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; background: rgba(0, 0, 0, 0.35); border: 2px solid var(--border); }
+    .ach.done .badge { border-color: var(--rc); box-shadow: 0 0 14px color-mix(in srgb, var(--rc) 40%, transparent); }
+    .ach:not(.done) .badge { filter: grayscale(1); opacity: 0.6; }
+    .body { flex: 1; min-width: 0; display: grid; gap: 4px; }
+    .name { font-weight: 800; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+    .new-tag { padding: 1px 7px; border-radius: 999px; background: var(--gold); color: #2a1600; font-size: 10px; font-weight: 900; letter-spacing: 0.5px; }
+    .desc { font-size: 13px; color: var(--text-dim); }
+    .title-line { font-size: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .title-line .t { font-weight: 800; color: var(--rc); }
+    .title-line .r { color: var(--text-faint); text-transform: capitalize; }
+    .prog { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+    .prog .bar { flex: 1; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+    .prog .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-deep)); border-radius: inherit; }
+    .hint { font-size: 12px; color: var(--text-faint); font-style: italic; }
+    .equip { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: rgba(255, 255, 255, 0.06); color: var(--text); font-size: 11px; font-weight: 800; }
+    .equip:hover { background: rgba(255, 255, 255, 0.14); }
+    .equip.on { background: var(--gold); color: #2a1600; border-color: transparent; }
+    .empty { padding: 30px; text-align: center; color: var(--text-dim); }
+    @media (max-width: 560px) {
+      body { padding: 64px 10px 32px; }
+      .grid { grid-template-columns: 1fr; }
+      .toolbar { top: 58px; }
+      #achSearch { flex: 1; }
+    }
   </style>
 </head>
 <body>
-  <button id="achBackTopBtn" onclick="window.location.href='index.html'" title="Back to game" style="position:fixed;top:12px;left:12px;z-index:1300;background:#333;color:#fff;padding:8px 10px;border-radius:6px;border:none;">← Back</button>
-  <div class="card">
-    <h1>Achievements</h1>
-    <p class="muted">Your unlocked achievements are shown here.</p>
+  <a class="page-back" href="index.html">← Back to game</a>
+  <main class="wrap">
+    <header class="head">
+      <div>
+        <h1 class="page-title">Achievements</h1>
+        <p>Every achievement gives a title. Equip one here and it shows above your clicker, in chat and on the leaderboard.</p>
+      </div>
+    </header>
 
-    <div id="achList">
-      <div class="ach" id="ach-getting-started">
-        <div class="badge">G</div>
-        <div>
-          <div style="font-weight:700">Getting Started</div>
-          <div style="font-size:13px;color:#bbb">Click the main button 10 times to unlock.</div>
-          <div id="ach-getting-started-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 10</div>
-        </div>
-        <div style="margin-left:auto" id="ach-getting-started-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-something-happened">
-        <div class="badge">S</div>
-        <div>
-          <div style="font-weight:700">Something Happened</div>
-          <div style="font-size:13px;color:#bbb">Click the main button 1K times to unlock.</div>
-          <div id="ach-something-happened-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1K</div>
-        </div>
-        <div style="margin-left:auto" id="ach-something-happened-status">Locked</div>
-      </div>
+    <section class="summary" aria-live="polite">
+      <div class="sum-top"><b id="achSummary"></b><span id="achSummaryText"></span></div>
+      <div class="sum-bar"><i id="achSummaryFill"></i></div>
+      <div class="rarity-row" id="rarityRow"></div>
+      <div class="equipped" id="equippedLine"></div>
+    </section>
 
-      <!-- Click power achievements -->
-      <div class="ach" id="ach-cp-10">
-        <div class="badge">CP</div>
-        <div>
-          <div style="font-weight:700">Something Happened</div>
-          <div style="font-size:13px;color:#bbb">Reach 10 click power to unlock. Title: Manual Operator</div>
-          <div id="ach-cp-10-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 10</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cp-10-status">Locked</div>
+    <div class="toolbar">
+      <div class="seg" role="group" aria-label="Show">
+        <button type="button" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" data-filter="done" aria-pressed="false">Unlocked</button>
+        <button type="button" data-filter="todo" aria-pressed="false">Locked</button>
       </div>
-      <div class="ach" id="ach-cp-69">
-        <div class="badge">CP</div>
-        <div>
-          <div style="font-weight:700">The Funny Number</div>
-          <div style="font-size:13px;color:#bbb">Reach 69 click power to unlock. Title: Nice</div>
-          <div id="ach-cp-69-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 69</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cp-69-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-cp-5000">
-        <div class="badge">CP</div>
-        <div>
-          <div style="font-weight:700">Noticeable Impact</div>
-          <div style="font-size:13px;color:#bbb">Reach 5K click power to unlock. Title: Button Breaker</div>
-          <div id="ach-cp-5000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 5K</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cp-5000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-cp-1m">
-        <div class="badge">CP</div>
-        <div>
-          <div style="font-weight:700">The Button Fears You</div>
-          <div style="font-size:13px;color:#bbb">Reach 1M click power to unlock. Title: One Click Wonder</div>
-          <div id="ach-cp-1m-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1M</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cp-1m-status">Locked</div>
-      </div>
-
-      <!-- CPS achievements -->
-      <div class="ach" id="ach-cps-1">
-        <div class="badge">A</div>
-        <div>
-          <div style="font-weight:700">All Hands On Deck</div>
-          <div style="font-size:13px;color:#bbb">Reach 1 CPS to unlock. Title: The Automtor</div>
-          <div id="ach-cps-1-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cps-1-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-cps-1k">
-        <div class="badge">B</div>
-        <div>
-          <div style="font-weight:700">I Swear I'm Not Clicking</div>
-          <div style="font-size:13px;color:#bbb">Reach 1K CPS to unlock. Title: Automation Enjoyer</div>
-          <div id="ach-cps-1k-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1K</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cps-1k-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-cps-1b">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">It Clicks Itself</div>
-          <div style="font-size:13px;color:#bbb">Reach 1B CPS to unlock. Title: Observer Of Motion.</div>
-          <div id="ach-cps-1b-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1B</div>
-        </div>
-        <div style="margin-left:auto" id="ach-cps-1b-status">Locked</div>
-      </div>
-
-      <!-- Critical click achievements -->
-      <div class="ach" id="ach-got-crit">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">That wasn't supposed to happen</div>
-          <div style="font-size:13px;color:#bbb">Get a critical click to unlock.</div>
-          <div id="ach-got-crit-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1</div>
-        </div>
-        <div style="margin-left:auto" id="ach-got-crit-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-stat-unlikely">
-        <div class="badge">U</div>
-        <div>
-          <div style="font-weight:700">Statistically Unlikely</div>
-          <div style="font-size:13px;color:#bbb">Trigger two critical clicks in a row.</div>
-          <div id="ach-stat-unlikely-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 2</div>
-        </div>
-        <div style="margin-left:auto" id="ach-stat-unlikely-status">Locked</div>
-      </div>
-
-      <!-- Upgrade-level achievements (ordered by upgrade unlock index) -->
-      <div class="ach" id="ach-pirate-1000">
-        <div class="badge">L2</div>
-        <div>
-          <div style="font-weight:700">Pirates Life for me</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on Somali Pirate (upgrade 2). Title: Somali Captain</div>
-          <div id="ach-pirate-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-pirate-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-diddy-1000">
-        <div class="badge">L4</div>
-        <div>
-          <div style="font-weight:700">so much baby oil</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on Diddy Blud (upgrade 4). Title: partygoer</div>
-          <div id="ach-diddy-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-diddy-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-argon-1000">
-        <div class="badge">L5</div>
-        <div>
-          <div style="font-weight:700">1000 argonions</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on Argonian Autist (upgrade 5). Title: Argoonion</div>
-          <div id="ach-argon-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-argon-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-tribal-1000">
-        <div class="badge">L9</div>
-        <div>
-          <div style="font-weight:700">Keeper of the Camp</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on Tribal Camp (upgrade 9). Title: Camp Cheif</div>
-          <div id="ach-tribal-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-tribal-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-phonk-1000">
-        <div class="badge">L10</div>
-        <div>
-          <div style="font-weight:700">Phonk Aura</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on Phonk Man (upgrade 10). Title: Phonk Enjoyer</div>
-          <div id="ach-phonk-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-phonk-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-skibidi-1000">
-        <div class="badge">L14</div>
-        <div>
-          <div style="font-weight:700">Skibbidi Man</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on Skibbidi Scimitar (upgrade 14). Title: The Strongest</div>
-          <div id="ach-skibidi-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-skibidi-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-landon-1000">
-        <div class="badge">L20</div>
-        <div>
-          <div style="font-weight:700">1000 Levels of Landon</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on The Landon Stream (upgrade 20). Title: landon stream</div>
-          <div id="ach-landon-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-landon-1000-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-bass-1000">
-        <div class="badge">L21</div>
-        <div>
-          <div style="font-weight:700">The True Bass</div>
-          <div style="font-size:13px;color:#bbb">Reach level 1000 on The Bass (upgrade 21). Title: The Bass</div>
-          <div id="ach-bass-1000-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1000</div>
-        </div>
-        <div style="margin-left:auto" id="ach-bass-1000-status">Locked</div>
-      </div>
-
-      <!-- Prestige achievements -->
-      <div class="ach" id="ach-prestige-1">
-        <div class="badge">P1</div>
-        <div>
-          <div style="font-weight:700">Starting Over</div>
-          <div style="font-size:13px;color:#bbb">Prestige once to unlock. Title: Loop Initiater</div>
-          <div id="ach-prestige-1-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1</div>
-        </div>
-        <div style="margin-left:auto" id="ach-prestige-1-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-prestige-5">
-        <div class="badge">P5</div>
-        <div>
-          <div style="font-weight:700">What Happened... again</div>
-          <div style="font-size:13px;color:#bbb">Prestige 5 times to unlock. Title: Pattern Recognizer</div>
-          <div id="ach-prestige-5-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 5</div>
-        </div>
-        <div style="margin-left:auto" id="ach-prestige-5-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-prestige-10">
-        <div class="badge">P10</div>
-        <div>
-          <div style="font-weight:700">Time Loop Victim</div>
-          <div style="font-size:13px;color:#bbb">Prestige 10 times to unlock. Title: Loop Surviver</div>
-          <div id="ach-prestige-10-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 10</div>
-        </div>
-        <div style="margin-left:auto" id="ach-prestige-10-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-prestige-25">
-        <div class="badge">P25</div>
-        <div>
-          <div style="font-weight:700">I Remember Everything</div>
-          <div style="font-size:13px;color:#bbb">Prestige 25 times to unlock. Title: Keeper of the Loop</div>
-          <div id="ach-prestige-25-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 25</div>
-        </div>
-        <div style="margin-left:auto" id="ach-prestige-25-status">Locked</div>
-      </div>
-
-      <!-- Playtime achievements -->
-      <div class="ach" id="ach-play-2h">
-        <div class="badge">O</div>
-        <div>
-          <div style="font-weight:700">Go Outside</div>
-          <div style="font-size:13px;color:#bbb">Be logged in for 2 hours to unlock. Title: Indoor Specialist</div>
-          <div id="ach-play-2h-progress" style="font-size:12px;color:#9cf;margin-top:6px">0.00 / 2.00 hours</div>
-        </div>
-        <div style="margin-left:auto" id="ach-play-2h-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-play-24h">
-        <div class="badge">L</div>
-        <div>
-          <div style="font-weight:700">This Is My Life Now</div>
-          <div style="font-size:13px;color:#bbb">Accumulate 24 hours of playtime. Title: Chronically Online</div>
-          <div id="ach-play-24h-progress" style="font-size:12px;color:#9cf;margin-top:6px">0.00 / 24.00 hours</div>
-        </div>
-        <div style="margin-left:auto" id="ach-play-24h-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-play-1w">
-        <div class="badge">W</div>
-        <div>
-          <div style="font-weight:700">What Happened Forever</div>
-          <div style="font-size:13px;color:#bbb">Accumulate one week of playtime to unlock. Title: Permanently Online</div>
-          <div id="ach-play-1w-progress" style="font-size:12px;color:#9cf;margin-top:6px">0.00 / 168.00 hours</div>
-        </div>
-        <div style="margin-left:auto" id="ach-play-1w-status">Locked</div>
-      </div>
-      <!-- Casino achievement: Put it all on black -->
-      <div class="ach" id="ach-put-all-on-black">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">put it all on black</div>
-          <div style="font-size:13px;color:#bbb">Bet all your What Happeneds in the casino and win. Title: High Roller (rare)</div>
-          <div id="ach-put-all-on-black-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1</div>
-        </div>
-        <div style="margin-left:auto" id="ach-put-all-on-black-status">Locked</div>
-      </div>
-      <!-- 5-card blackjack achievement -->
-      <div class="ach" id="ach-5-card-blackjack">
-        <div class="badge">5</div>
-        <div>
-          <div style="font-weight:700">5 card blackjack</div>
-          <div style="font-size:13px;color:#bbb">Win a blackjack round with five cards in your hand. Title: playing with fire (epic)</div>
-          <div id="ach-5-card-blackjack-progress" style="font-size:12px;color:#9cf;margin-top:6px">0 / 1</div>
-        </div>
-        <div style="margin-left:auto" id="ach-5-card-blackjack-status">Locked</div>
-      </div>
-
-      <!-- Clan achievements -->
-      <div class="ach" id="ach-clan-joined">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">Clan Member</div>
-          <div style="font-size:13px;color:#bbb">Join or create a clan to unlock. Title: Clan Recruit</div>
-          <div id="ach-clan-joined-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
-        </div>
-        <div style="margin-left:auto" id="ach-clan-joined-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-clan-created">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">Clan Founder</div>
-          <div style="font-size:13px;color:#bbb">Create a clan to unlock. Title: Clan Founder</div>
-          <div id="ach-clan-created-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
-        </div>
-        <div style="margin-left:auto" id="ach-clan-created-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-clan-coleader">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">Second in Command</div>
-          <div style="font-size:13px;color:#bbb">Become a co-leader of a clan. Title: Lieutenant</div>
-          <div id="ach-clan-coleader-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
-        </div>
-        <div style="margin-left:auto" id="ach-clan-coleader-status">Locked</div>
-      </div>
-      <div class="ach" id="ach-clan-owner">
-        <div class="badge">C</div>
-        <div>
-          <div style="font-weight:700">Warlord</div>
-          <div style="font-size:13px;color:#bbb">Become the owner of a clan. Title: Warlord</div>
-          <div id="ach-clan-owner-progress" style="font-size:12px;color:#9cf;margin-top:6px">—</div>
-        </div>
-        <div style="margin-left:auto" id="ach-clan-owner-status">Locked</div>
-      </div>
+      <input id="achSearch" type="text" placeholder="Search achievements or titles" autocomplete="off" aria-label="Search achievements">
+      <nav class="cat-chips" id="catChips" aria-label="Categories"></nav>
     </div>
 
-    
-  </div>
+    <div id="achList"></div>
+  </main>
 
+  <script src="followers-data.js"></script>
+  <script src="achievements-data.js"></script>
+  <script src="site.js"></script>
   <script>
-    function isUnlocked(key){ try{ return localStorage.getItem(key) === '1'; }catch(e){return false} }
-    function render(){
-      const clicks = Number(localStorage.getItem('ach_clicks')||0);
+    const RARITY_ORDER = ['common', 'uncommon', 'rare', 'epic', 'legendary', 'mythic'];
+    const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const short = n => { n = Number(n) || 0; const u = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi']; let i = 0; while (Math.abs(n) >= 1000 && i < u.length - 1) { n /= 1000; i++; } return (i ? (Math.round(n * 100) / 100) : (Number.isInteger(n) ? n : Math.round(n * 10) / 10)).toLocaleString() + u[i]; };
+    let filter = 'all';
+    // achievements unlocked since the last visit are highlighted once, then cleared
+    const freshKeys = new Set(WHA.newKeys());
 
-      const got = isUnlocked('ach_gettingStarted');
-      const el = document.getElementById('ach-getting-started');
-      const status = document.getElementById('ach-getting-started-status');
-      const prog = document.getElementById('ach-getting-started-progress');
-      if (prog) prog.textContent = `${Math.min(clicks,10)} / 10`;
-      if (got){ el.classList.remove('locked'); status.textContent = 'Unlocked'; status.style.color = '#9f9'; }
-      else { el.classList.add('locked'); status.textContent = 'Locked'; status.style.color = '#f66'; }
-
-      const got2 = isUnlocked('ach_somethingHappened');
-      const el2 = document.getElementById('ach-something-happened');
-      const status2 = document.getElementById('ach-something-happened-status');
-      const prog2 = document.getElementById('ach-something-happened-progress');
-      if (prog2) prog2.textContent = `${abbrev(Math.min(clicks,1000))} / 1K`;
-      if (got2){ el2.classList.remove('locked'); status2.textContent = 'Unlocked'; status2.style.color = '#9f9'; }
-      else { el2.classList.add('locked'); status2.textContent = 'Locked'; status2.style.color = '#f66'; }
-
-      const got3 = isUnlocked('ach_gotCrit');
-      const el3 = document.getElementById('ach-got-crit');
-      const status3 = document.getElementById('ach-got-crit-status');
-      const prog3 = document.getElementById('ach-got-crit-progress');
-      if (prog3) prog3.textContent = `${got3 ? 1 : 0} / 1`;
-      if (got3){ el3.classList.remove('locked'); status3.textContent = 'Unlocked'; status3.style.color = '#9f9'; }
-      else { el3.classList.add('locked'); status3.textContent = 'Locked'; status3.style.color = '#f66'; }
-
-      const consec = Number(localStorage.getItem('consecutive_crits')||0) || 0;
-      const got4 = isUnlocked('ach_stat_unlikely');
-      const el4 = document.getElementById('ach-stat-unlikely');
-      const status4 = document.getElementById('ach-stat-unlikely-status');
-      const prog4 = document.getElementById('ach-stat-unlikely-progress');
-      if (prog4) prog4.textContent = `${Math.min(consec,2)} / 2`;
-      if (got4){ el4.classList.remove('locked'); status4.textContent = 'Unlocked'; status4.style.color = '#9f9'; }
-      else { el4.classList.add('locked'); status4.textContent = 'Locked'; status4.style.color = '#f66'; }
-
-      // Playtime-based achievements
-      const playSec = Number(localStorage.getItem('whathappened_playtime_seconds')||0) || 0;
-      const playHours = playSec / 3600;
-
-      const got2h = isUnlocked('ach_play_2h');
-      const el2h = document.getElementById('ach-play-2h');
-      const status2h = document.getElementById('ach-play-2h-status');
-      const prog2h = document.getElementById('ach-play-2h-progress');
-      if (prog2h) prog2h.textContent = `${playHours.toFixed(2)} / 2.00 hours`;
-      if (got2h){ el2h.classList.remove('locked'); status2h.textContent = 'Unlocked'; status2h.style.color = '#9f9'; }
-      else { el2h.classList.add('locked'); status2h.textContent = 'Locked'; status2h.style.color = '#f66'; }
-
-      const got24 = isUnlocked('ach_play_24h');
-      const el24 = document.getElementById('ach-play-24h');
-      const status24 = document.getElementById('ach-play-24h-status');
-      const prog24 = document.getElementById('ach-play-24h-progress');
-      if (prog24) prog24.textContent = `${playHours.toFixed(2)} / 24.00 hours`;
-      if (got24){ el24.classList.remove('locked'); status24.textContent = 'Unlocked'; status24.style.color = '#9f9'; }
-      else { el24.classList.add('locked'); status24.textContent = 'Locked'; status24.style.color = '#f66'; }
-
-      const got1w = isUnlocked('ach_play_1w');
-      const el1w = document.getElementById('ach-play-1w');
-      const status1w = document.getElementById('ach-play-1w-status');
-      const prog1w = document.getElementById('ach-play-1w-progress');
-      if (prog1w) prog1w.textContent = `${playHours.toFixed(2)} / 168.00 hours`;
-      if (got1w){ el1w.classList.remove('locked'); status1w.textContent = 'Unlocked'; status1w.style.color = '#9f9'; }
-      else { el1w.classList.add('locked'); status1w.textContent = 'Locked'; status1w.style.color = '#f66'; }
-
-      // Casino achievement: put it all on black
-      const gotCasino = isUnlocked('ach_put_all_on_black');
-      const elCasino = document.getElementById('ach-put-all-on-black');
-      const statusCasino = document.getElementById('ach-put-all-on-black-status');
-      const progCasino = document.getElementById('ach-put-all-on-black-progress');
-      if (progCasino) progCasino.textContent = `${gotCasino ? 1 : 0} / 1`;
-      if (gotCasino){ if (elCasino) elCasino.classList.remove('locked'); if (statusCasino) { statusCasino.textContent = 'Unlocked'; statusCasino.style.color = '#9f9'; } }
-      else { if (elCasino) elCasino.classList.add('locked'); if (statusCasino) { statusCasino.textContent = 'Locked'; statusCasino.style.color = '#f66'; } }
-
-      // 5-card blackjack achievement
-      const got5 = isUnlocked('ach_5_card_blackjack');
-      const el5 = document.getElementById('ach-5-card-blackjack');
-      const status5 = document.getElementById('ach-5-card-blackjack-status');
-      const prog5 = document.getElementById('ach-5-card-blackjack-progress');
-      if (prog5) prog5.textContent = `${got5 ? 1 : 0} / 1`;
-      if (got5){ if (el5) el5.classList.remove('locked'); if (status5) { status5.textContent = 'Unlocked'; status5.style.color = '#9f9'; } }
-      else { if (el5) el5.classList.add('locked'); if (status5) { status5.textContent = 'Locked'; status5.style.color = '#f66'; } }
-
-      // Clan achievements
-      const clanId = localStorage.getItem('player_clanId') || '';
-      const hasClan = clanId && clanId !== 'undefined';
-      const gotClanJoined = isUnlocked('ach_clan_joined');
-      const elClanJoined = document.getElementById('ach-clan-joined');
-      const statusClanJoined = document.getElementById('ach-clan-joined-status');
-      const progClanJoined = document.getElementById('ach-clan-joined-progress');
-      if (progClanJoined) progClanJoined.textContent = hasClan ? 'In a clan' : 'Not in a clan';
-      if (gotClanJoined){ if (elClanJoined) elClanJoined.classList.remove('locked'); if (statusClanJoined) { statusClanJoined.textContent = 'Unlocked'; statusClanJoined.style.color = '#9f9'; } }
-      else { if (elClanJoined) elClanJoined.classList.add('locked'); if (statusClanJoined) { statusClanJoined.textContent = 'Locked'; statusClanJoined.style.color = '#f66'; } }
-
-      const gotClanCreated = isUnlocked('ach_clan_created');
-      const elClanCreated = document.getElementById('ach-clan-created');
-      const statusClanCreated = document.getElementById('ach-clan-created-status');
-      const progClanCreated = document.getElementById('ach-clan-created-progress');
-      if (progClanCreated) progClanCreated.textContent = gotClanCreated ? 'Created' : '—';
-      if (gotClanCreated){ if (elClanCreated) elClanCreated.classList.remove('locked'); if (statusClanCreated) { statusClanCreated.textContent = 'Unlocked'; statusClanCreated.style.color = '#9f9'; } }
-      else { if (elClanCreated) elClanCreated.classList.add('locked'); if (statusClanCreated) { statusClanCreated.textContent = 'Locked'; statusClanCreated.style.color = '#f66'; } }
-
-      const gotClanColeader = isUnlocked('ach_clan_coleader');
-      const elClanColeader = document.getElementById('ach-clan-coleader');
-      const statusClanColeader = document.getElementById('ach-clan-coleader-status');
-      const progClanColeader = document.getElementById('ach-clan-coleader-progress');
-      const clanRole = (localStorage.getItem('player_clanRole') || '').toLowerCase();
-      if (progClanColeader) progClanColeader.textContent = (clanRole === 'co-leader' || clanRole === 'coleader') ? 'Co-leader' : '—';
-      if (gotClanColeader){ if (elClanColeader) elClanColeader.classList.remove('locked'); if (statusClanColeader) { statusClanColeader.textContent = 'Unlocked'; statusClanColeader.style.color = '#9f9'; } }
-      else { if (elClanColeader) elClanColeader.classList.add('locked'); if (statusClanColeader) { statusClanColeader.textContent = 'Locked'; statusClanColeader.style.color = '#f66'; } }
-
-      const gotClanOwner = isUnlocked('ach_clan_owner');
-      const elClanOwner = document.getElementById('ach-clan-owner');
-      const statusClanOwner = document.getElementById('ach-clan-owner-status');
-      const progClanOwner = document.getElementById('ach-clan-owner-progress');
-      if (progClanOwner) progClanOwner.textContent = (clanRole === 'owner' || clanRole === 'leader') ? 'Owner' : '—';
-      if (gotClanOwner){ if (elClanOwner) elClanOwner.classList.remove('locked'); if (statusClanOwner) { statusClanOwner.textContent = 'Unlocked'; statusClanOwner.style.color = '#9f9'; } }
-      else { if (elClanOwner) elClanOwner.classList.add('locked'); if (statusClanOwner) { statusClanOwner.textContent = 'Locked'; statusClanOwner.style.color = '#f66'; } }
-
-      // Prestige achievements
-      const prestiges = Number(localStorage.getItem('whathappened_prestige_times')||0) || 0;
-
-      const gotP1 = isUnlocked('ach_prestige1');
-      const elP1 = document.getElementById('ach-prestige-1');
-      const statusP1 = document.getElementById('ach-prestige-1-status');
-      const progP1 = document.getElementById('ach-prestige-1-progress');
-      if (progP1) progP1.textContent = `${Math.min(prestiges,1)} / 1`;
-      if (gotP1){ elP1.classList.remove('locked'); statusP1.textContent = 'Unlocked'; statusP1.style.color = '#9f9'; }
-      else { elP1.classList.add('locked'); statusP1.textContent = 'Locked'; statusP1.style.color = '#f66'; }
-
-      const gotP5 = isUnlocked('ach_prestige5');
-      const elP5 = document.getElementById('ach-prestige-5');
-      const statusP5 = document.getElementById('ach-prestige-5-status');
-      const progP5 = document.getElementById('ach-prestige-5-progress');
-      if (progP5) progP5.textContent = `${Math.min(prestiges,5)} / 5`;
-      if (gotP5){ elP5.classList.remove('locked'); statusP5.textContent = 'Unlocked'; statusP5.style.color = '#9f9'; }
-      else { elP5.classList.add('locked'); statusP5.textContent = 'Locked'; statusP5.style.color = '#f66'; }
-
-      const gotP10 = isUnlocked('ach_prestige10');
-      const elP10 = document.getElementById('ach-prestige-10');
-      const statusP10 = document.getElementById('ach-prestige-10-status');
-      const progP10 = document.getElementById('ach-prestige-10-progress');
-      if (progP10) progP10.textContent = `${Math.min(prestiges,10)} / 10`;
-      if (gotP10){ elP10.classList.remove('locked'); statusP10.textContent = 'Unlocked'; statusP10.style.color = '#9f9'; }
-      else { elP10.classList.add('locked'); statusP10.textContent = 'Locked'; statusP10.style.color = '#f66'; }
-
-      const gotP25 = isUnlocked('ach_prestige25');
-      const elP25 = document.getElementById('ach-prestige-25');
-      const statusP25 = document.getElementById('ach-prestige-25-status');
-      const progP25 = document.getElementById('ach-prestige-25-progress');
-      if (progP25) progP25.textContent = `${Math.min(prestiges,25)} / 25`;
-      if (gotP25){ elP25.classList.remove('locked'); statusP25.textContent = 'Unlocked'; statusP25.style.color = '#9f9'; }
-      else { elP25.classList.add('locked'); statusP25.textContent = 'Locked'; statusP25.style.color = '#f66'; }
-
-      // helper to abbreviate large numbers (K/M/B/T)
-      function abbrev(n){
-        try{
-          n = Number(n)||0;
-          const abs = Math.abs(n);
-          if (abs >= 1e12) return (n/1e12).toFixed(2).replace(/\.00$/,'') + 'T';
-          if (abs >= 1e9) return (n/1e9).toFixed(2).replace(/\.00$/,'') + 'B';
-          if (abs >= 1e6) return (n/1e6).toFixed(2).replace(/\.00$/,'') + 'M';
-          if (abs >= 1e3) return (n/1e3).toFixed(2).replace(/\.00$/,'') + 'K';
-          return Number.isInteger(n) ? String(n) : n.toFixed(2);
-        }catch(e){ return String(n); }
-      }
-
-      // Click power achievements
-      const cpVal = Number(localStorage.getItem('whathappened_current_clickpower') || 0) || 0;
-
-      const gotCP10 = isUnlocked('ach_cp_10');
-      const elCP10 = document.getElementById('ach-cp-10');
-      const statusCP10 = document.getElementById('ach-cp-10-status');
-      const progCP10 = document.getElementById('ach-cp-10-progress');
-      if (progCP10) progCP10.textContent = `${abbrev(cpVal)} / 10`;
-      if (gotCP10){ elCP10.classList.remove('locked'); statusCP10.textContent = 'Unlocked'; statusCP10.style.color = '#9f9'; }
-      else { elCP10.classList.add('locked'); statusCP10.textContent = 'Locked'; statusCP10.style.color = '#f66'; }
-
-      const gotCP69 = isUnlocked('ach_cp_69');
-      const elCP69 = document.getElementById('ach-cp-69');
-      const statusCP69 = document.getElementById('ach-cp-69-status');
-      const progCP69 = document.getElementById('ach-cp-69-progress');
-      if (progCP69) progCP69.textContent = `${abbrev(cpVal)} / 69`;
-      if (gotCP69){ elCP69.classList.remove('locked'); statusCP69.textContent = 'Unlocked'; statusCP69.style.color = '#9f9'; }
-      else { elCP69.classList.add('locked'); statusCP69.textContent = 'Locked'; statusCP69.style.color = '#f66'; }
-
-      const gotCP5k = isUnlocked('ach_cp_5000');
-      const elCP5k = document.getElementById('ach-cp-5000');
-      const statusCP5k = document.getElementById('ach-cp-5000-status');
-      const progCP5k = document.getElementById('ach-cp-5000-progress');
-      if (progCP5k) progCP5k.textContent = `${abbrev(cpVal)} / 5K`;
-      if (gotCP5k){ elCP5k.classList.remove('locked'); statusCP5k.textContent = 'Unlocked'; statusCP5k.style.color = '#9f9'; }
-      else { elCP5k.classList.add('locked'); statusCP5k.textContent = 'Locked'; statusCP5k.style.color = '#f66'; }
-
-      const gotCP1m = isUnlocked('ach_cp_1m');
-      const elCP1m = document.getElementById('ach-cp-1m');
-      const statusCP1m = document.getElementById('ach-cp-1m-status');
-      const progCP1m = document.getElementById('ach-cp-1m-progress');
-      if (progCP1m) progCP1m.textContent = `${abbrev(cpVal)} / 1M`;
-      if (gotCP1m){ elCP1m.classList.remove('locked'); statusCP1m.textContent = 'Unlocked'; statusCP1m.style.color = '#9f9'; }
-      else { elCP1m.classList.add('locked'); statusCP1m.textContent = 'Locked'; statusCP1m.style.color = '#f66'; }
-
-      // CPS achievements
-      const cpsVal = Number(localStorage.getItem('whathappened_current_cps') || 0) || 0;
-
-      const gotC1 = isUnlocked('ach_cps_1');
-      const elC1 = document.getElementById('ach-cps-1');
-      const statusC1 = document.getElementById('ach-cps-1-status');
-      const progC1 = document.getElementById('ach-cps-1-progress');
-      if (progC1) progC1.textContent = `${abbrev(cpsVal)} / 1`;
-      if (gotC1){ elC1.classList.remove('locked'); statusC1.textContent = 'Unlocked'; statusC1.style.color = '#9f9'; }
-      else { elC1.classList.add('locked'); statusC1.textContent = 'Locked'; statusC1.style.color = '#f66'; }
-
-      const gotC1k = isUnlocked('ach_cps_1k');
-      const elC1k = document.getElementById('ach-cps-1k');
-      const statusC1k = document.getElementById('ach-cps-1k-status');
-      const progC1k = document.getElementById('ach-cps-1k-progress');
-      if (progC1k) progC1k.textContent = `${abbrev(cpsVal)} / 1K`;
-      if (gotC1k){ elC1k.classList.remove('locked'); statusC1k.textContent = 'Unlocked'; statusC1k.style.color = '#9f9'; }
-      else { elC1k.classList.add('locked'); statusC1k.textContent = 'Locked'; statusC1k.style.color = '#f66'; }
-
-      const gotC1b = isUnlocked('ach_cps_1b');
-      const elC1b = document.getElementById('ach-cps-1b');
-      const statusC1b = document.getElementById('ach-cps-1b-status');
-      const progC1b = document.getElementById('ach-cps-1b-progress');
-      if (progC1b) progC1b.textContent = `${abbrev(cpsVal)} / 1B`;
-      if (gotC1b){ elC1b.classList.remove('locked'); statusC1b.textContent = 'Unlocked'; statusC1b.style.color = '#9f9'; }
-      else { elC1b.classList.add('locked'); statusC1b.textContent = 'Locked'; statusC1b.style.color = '#f66'; }
-
-      // Helper to read upgrade levels from saved game JSON (if available)
-      function getSavedUpgradeLevel(idx){
-        try{
-          const raw = localStorage.getItem('whathappened_save');
-          if (!raw) return 0;
-          const parsed = JSON.parse(raw);
-          const key = 'upgrade' + Number(idx) + 'Level';
-          const v = parsed && parsed.hasOwnProperty(key) ? parsed[key] : 0;
-          return Number(v) || 0;
-        }catch(e){ return 0; }
-      }
-
-      // Landon (upgrade 20) — 1000 levels
-      const landonLvl = getSavedUpgradeLevel(20);
-      const gotLandon = isUnlocked('ach_landon_1000');
-      const elLandon = document.getElementById('ach-landon-1000');
-      const statusLandon = document.getElementById('ach-landon-1000-status');
-      const progLandon = document.getElementById('ach-landon-1000-progress');
-      if (progLandon) progLandon.textContent = `${abbrev(landonLvl)} / 1000`;
-      if (gotLandon){ if (elLandon) elLandon.classList.remove('locked'); if (statusLandon) { statusLandon.textContent = 'Unlocked'; statusLandon.style.color = '#9f9'; } }
-      else { if (elLandon) elLandon.classList.add('locked'); if (statusLandon) { statusLandon.textContent = 'Locked'; statusLandon.style.color = '#f66'; } }
-
-      // The Bass (upgrade 21) — 1000 levels
-      const bassLvl = getSavedUpgradeLevel(21);
-      const gotBass = isUnlocked('ach_bass_1000');
-      const elBass = document.getElementById('ach-bass-1000');
-      const statusBass = document.getElementById('ach-bass-1000-status');
-      const progBass = document.getElementById('ach-bass-1000-progress');
-      if (progBass) progBass.textContent = `${abbrev(bassLvl)} / 1000`;
-      if (gotBass){ if (elBass) elBass.classList.remove('locked'); if (statusBass) { statusBass.textContent = 'Unlocked'; statusBass.style.color = '#9f9'; } }
-      else { if (elBass) elBass.classList.add('locked'); if (statusBass) { statusBass.textContent = 'Locked'; statusBass.style.color = '#f66'; } }
-
-      // Skibbidi Scimitar (upgrade 14) — 1000 levels
-      const skibidiLvl = getSavedUpgradeLevel(14);
-      const gotSkibidi = isUnlocked('ach_skibidi_1000');
-      const elSkibidi = document.getElementById('ach-skibidi-1000');
-      const statusSkibidi = document.getElementById('ach-skibidi-1000-status');
-      const progSkibidi = document.getElementById('ach-skibidi-1000-progress');
-      if (progSkibidi) progSkibidi.textContent = `${abbrev(skibidiLvl)} / 1000`;
-      if (gotSkibidi){ if (elSkibidi) elSkibidi.classList.remove('locked'); if (statusSkibidi) { statusSkibidi.textContent = 'Unlocked'; statusSkibidi.style.color = '#9f9'; } }
-      else { if (elSkibidi) elSkibidi.classList.add('locked'); if (statusSkibidi) { statusSkibidi.textContent = 'Locked'; statusSkibidi.style.color = '#f66'; } }
-
-      // Additional upgrade-based achievements
-
-      // Phonk Man (upgrade 10)
-      const phonkLvl = getSavedUpgradeLevel(10);
-      const gotPhonk = isUnlocked('ach_phonk_1000');
-      const elPhonk = document.getElementById('ach-phonk-1000');
-      const statusPhonk = document.getElementById('ach-phonk-1000-status');
-      const progPhonk = document.getElementById('ach-phonk-1000-progress');
-      if (progPhonk) progPhonk.textContent = `${abbrev(phonkLvl)} / 1000`;
-      if (gotPhonk){ if (elPhonk) elPhonk.classList.remove('locked'); if (statusPhonk) { statusPhonk.textContent = 'Unlocked'; statusPhonk.style.color = '#9f9'; } }
-      else { if (elPhonk) elPhonk.classList.add('locked'); if (statusPhonk) { statusPhonk.textContent = 'Locked'; statusPhonk.style.color = '#f66'; } }
-
-      // Tribal Camp (upgrade 9)
-      const tribalLvlUi = getSavedUpgradeLevel(9);
-      const gotTribal = isUnlocked('ach_tribal_1000');
-      const elTribal = document.getElementById('ach-tribal-1000');
-      const statusTribal = document.getElementById('ach-tribal-1000-status');
-      const progTribal = document.getElementById('ach-tribal-1000-progress');
-      if (progTribal) progTribal.textContent = `${abbrev(tribalLvlUi)} / 1000`;
-      if (gotTribal){ if (elTribal) elTribal.classList.remove('locked'); if (statusTribal) { statusTribal.textContent = 'Unlocked'; statusTribal.style.color = '#9f9'; } }
-      else { if (elTribal) elTribal.classList.add('locked'); if (statusTribal) { statusTribal.textContent = 'Locked'; statusTribal.style.color = '#f66'; } }
-
-      // Argonian Autist (upgrade 5)
-      const argonLvlUi = getSavedUpgradeLevel(5);
-      const gotArgon = isUnlocked('ach_argon_1000');
-      const elArgon = document.getElementById('ach-argon-1000');
-      const statusArgon = document.getElementById('ach-argon-1000-status');
-      const progArgon = document.getElementById('ach-argon-1000-progress');
-      if (progArgon) progArgon.textContent = `${abbrev(argonLvlUi)} / 1000`;
-      if (gotArgon){ if (elArgon) elArgon.classList.remove('locked'); if (statusArgon) { statusArgon.textContent = 'Unlocked'; statusArgon.style.color = '#9f9'; } }
-      else { if (elArgon) elArgon.classList.add('locked'); if (statusArgon) { statusArgon.textContent = 'Locked'; statusArgon.style.color = '#f66'; } }
-
-      // Diddy Blud (upgrade 4)
-      const diddyLvlUi = getSavedUpgradeLevel(4);
-      const gotDiddy = isUnlocked('ach_diddy_1000');
-      const elDiddy = document.getElementById('ach-diddy-1000');
-      const statusDiddy = document.getElementById('ach-diddy-1000-status');
-      const progDiddy = document.getElementById('ach-diddy-1000-progress');
-      if (progDiddy) progDiddy.textContent = `${abbrev(diddyLvlUi)} / 1000`;
-      if (gotDiddy){ if (elDiddy) elDiddy.classList.remove('locked'); if (statusDiddy) { statusDiddy.textContent = 'Unlocked'; statusDiddy.style.color = '#9f9'; } }
-      else { if (elDiddy) elDiddy.classList.add('locked'); if (statusDiddy) { statusDiddy.textContent = 'Locked'; statusDiddy.style.color = '#f66'; } }
-
-      // Somali Pirate (upgrade 2)
-      const pirateLvlUi = getSavedUpgradeLevel(2);
-      const gotPirate = isUnlocked('ach_pirate_1000');
-      const elPirate = document.getElementById('ach-pirate-1000');
-      const statusPirate = document.getElementById('ach-pirate-1000-status');
-      const progPirate = document.getElementById('ach-pirate-1000-progress');
-      if (progPirate) progPirate.textContent = `${abbrev(pirateLvlUi)} / 1000`;
-      if (gotPirate){ if (elPirate) elPirate.classList.remove('locked'); if (statusPirate) { statusPirate.textContent = 'Unlocked'; statusPirate.style.color = '#9f9'; } }
-      else { if (elPirate) elPirate.classList.add('locked'); if (statusPirate) { statusPirate.textContent = 'Locked'; statusPirate.style.color = '#f66'; } }
+    function equipped() { try { return localStorage.getItem('equipped_title') || ''; } catch (e) { return ''; } }
+    function setEquipped(t) {
+      try { if (t) localStorage.setItem('equipped_title', t); else localStorage.removeItem('equipped_title'); } catch (e) {}
+      render();
     }
-    document.addEventListener('DOMContentLoaded', render);
-    // also listen for storage events so opening from game will update status
+
+    function render() {
+      const snap = WHA.snapshot();
+      try { WHA.checkAll(snap); } catch (e) {}
+      const term = document.getElementById('achSearch').value.trim().toLowerCase();
+      const eq = equipped();
+      const all = WHA.ACHIEVEMENTS;
+      const done = all.filter(a => WHA.isUnlocked(a));
+      document.getElementById('achSummary').textContent = `${done.length} / ${all.length} unlocked`;
+      document.getElementById('achSummaryText').textContent = done.length === all.length ? 'Every single one. What happened?!' : `${Math.round(done.length / all.length * 100)}% complete`;
+      document.getElementById('achSummaryFill').style.width = (done.length / all.length * 100) + '%';
+      document.getElementById('rarityRow').innerHTML = RARITY_ORDER.map(r => {
+        const n = all.filter(a => a.rarity === r).length;
+        if (!n) return '';
+        return `<span class="r-chip" style="color:${WHA.RARITY_COLORS[r]}">${r[0].toUpperCase() + r.slice(1)} ${done.filter(a => a.rarity === r).length}/${n}</span>`;
+      }).join('');
+      const eqA = all.find(a => a.title === eq);
+      document.getElementById('equippedLine').innerHTML = eq
+        ? `Equipped title: <b style="color:${WHA.RARITY_COLORS[(eqA && eqA.rarity) || 'common']}">${esc(eq)}</b> <button type="button" class="equip" data-unequip>Unequip</button>`
+        : 'No title equipped. Pick one from an unlocked achievement below.';
+
+      const list = document.getElementById('achList');
+      let html = '', chips = '';
+      for (const cat of WHA.CATEGORIES) {
+        const items = all.filter(a => a.cat === cat.id).filter(a => {
+          const got = WHA.isUnlocked(a);
+          if (filter === 'done' && !got) return false;
+          if (filter === 'todo' && got) return false;
+          return !term || (a.name + ' ' + a.desc + ' ' + a.title).toLowerCase().includes(term);
+        });
+        if (!items.length) continue;
+        const catAll = all.filter(a => a.cat === cat.id);
+        const catDone = catAll.filter(a => WHA.isUnlocked(a)).length;
+        chips += `<a href="#cat-${cat.id}">${cat.icon} ${esc(cat.id)} ${catDone}/${catAll.length}</a>`;
+        html += `<section class="cat" id="cat-${cat.id}"><div class="cat-head"><h2>${cat.icon} ${esc(cat.id)}</h2><span>${catDone} / ${catAll.length}</span></div><div class="grid">`;
+        for (const a of items) {
+          const got = WHA.isUnlocked(a);
+          const pr = WHA.progress(a, snap);
+          const color = WHA.RARITY_COLORS[a.rarity] || '#bfc7c9';
+          const fmt = v => a.unit === 'h' ? (Math.round(v * 10) / 10) + 'h' : short(v);
+          let prog;
+          if (got) prog = '';
+          else if (a.event) prog = `<div class="hint">${esc(a.hint || 'Happens when it happens.')}</div>`;
+          else prog = `<div class="prog"><span class="bar"><i style="width:${Math.min(100, pr.value / pr.target * 100)}%"></i></span>${fmt(pr.value)} / ${fmt(pr.target)}</div>`;
+          const equipBtn = got ? (eq === a.title ? '<button type="button" class="equip on" data-unequip>Equipped</button>' : `<button type="button" class="equip" data-equip="${esc(a.title)}">Equip</button>`) : '';
+          html += `<article class="ach${got ? ' done' : ''}${freshKeys.has(a.key) && got ? ' is-new' : ''}" style="--rc:${color}">
+            <div class="badge" aria-hidden="true">${a.badge}</div>
+            <div class="body">
+              <div class="name">${esc(a.name)}${freshKeys.has(a.key) && got ? '<span class="new-tag">NEW</span>' : ''}</div>
+              <div class="desc">${esc(a.desc)}</div>
+              <div class="title-line"><span>Title:</span><span class="t">${esc(a.title)}</span><span class="r">${a.rarity}</span>${equipBtn}</div>
+              ${prog}
+            </div>
+          </article>`;
+        }
+        html += '</div></section>';
+      }
+      list.innerHTML = html || '<div class="empty">Nothing matches. Try another search.</div>';
+      document.getElementById('catChips').innerHTML = chips;
+    }
+
+    document.querySelectorAll('[data-filter]').forEach(b => b.addEventListener('click', () => {
+      filter = b.dataset.filter;
+      document.querySelectorAll('[data-filter]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
+      render();
+    }));
+    document.getElementById('achSearch').addEventListener('input', render);
+    document.addEventListener('click', e => {
+      const eq = e.target.closest('[data-equip]'), un = e.target.closest('[data-unequip]');
+      if (eq) setEquipped(eq.dataset.equip);
+      else if (un) setEquipped('');
+    });
     window.addEventListener('storage', render);
+    render();
+    // seen: clear the "new" list (the highlights stay until the page is left)
+    WHA.clearNew();
   </script>
 </body>
 </html>

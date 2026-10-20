@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Followers — What Happened</title>
+    <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
+    <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="theme.css">
+    <style>
+        [hidden] { display: none !important; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: radial-gradient(ellipse at 50% -10%, #23402c 0%, #0f1a14 45%, #07090d 100%) fixed;
+        }
+        .fl-wrap { max-width: 1180px; margin: 0 auto; padding: 72px 20px 60px; }
+        .fl-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+        .fl-sub { margin: 0; color: var(--text-dim); max-width: 560px; }
+        .balances { display: flex; gap: 8px; flex-wrap: wrap; }
+        .bal-chip { display: flex; flex-direction: column; padding: 8px 14px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); min-width: 104px; }
+        .bal-chip span:first-child { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+        .bal-chip span:last-child { font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums; }
+        .bal-chip--gold { border-color: rgba(255, 200, 61, 0.35); }
+        .bal-chip--gold span:last-child { color: var(--gold); }
+
+        .fl-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); width: max-content; max-width: 100%; overflow-x: auto; margin-bottom: 16px; }
+        .fl-tab { padding: 9px 18px; border-radius: 999px; border: none; background: transparent; color: var(--text-dim); font-weight: 800; font-size: 14px; white-space: nowrap; }
+        .fl-tab:hover { color: var(--text); }
+        .fl-tab.active { background: var(--gold); color: #2a1600; }
+
+        .fl-panel { padding: 18px; margin-bottom: 16px; }
+        .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+        .panel-head h2 { margin: 0; font-size: 18px; }
+        .panel-note { color: var(--text-dim); font-size: 13px; margin: 0; }
+        .empty { color: var(--text-dim); padding: 22px; text-align: center; border: 1px dashed var(--border-strong); border-radius: var(--radius); }
+
+        /* rarity colours */
+        .r0 { --rc: #b4bccd; } .r1 { --rc: #4fd27a; } .r2 { --rc: #4fa8ff; } .r3 { --rc: #b07dff; } .r4 { --rc: #ffc83d; } .r5 { --rc: #ff5bd0; }
+        .rar-text { color: var(--rc); font-weight: 800; }
+
+        /* follower cards */
+        .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+        .fcard {
+            position: relative; display: flex; flex-direction: column; gap: 6px; padding: 7px; text-align: left;
+            border-radius: var(--radius); background: var(--surface-2); color: var(--text);
+            border: 2px solid color-mix(in srgb, var(--rc) 55%, transparent);
+            transition: transform 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+        }
+        .fcard:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--rc); box-shadow: 0 8px 22px color-mix(in srgb, var(--rc) 30%, transparent); }
+        .fcard:disabled { opacity: 0.4; cursor: not-allowed; }
+        .fcard.r4, .fcard.r5 { box-shadow: 0 0 14px color-mix(in srgb, var(--rc) 30%, transparent); }
+        .fcard.r5 { background: linear-gradient(160deg, #3a1638, var(--surface-2) 60%); }
+        .fcard.selected { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(255, 91, 107, 0.35); }
+        .fcard.selected::after { content: '✓'; position: absolute; top: 10px; right: 10px; width: 24px; height: 24px; border-radius: 50%; background: var(--danger); color: #fff; font-weight: 900; display: grid; place-items: center; }
+        .fcard-art { display: block; border-radius: 9px; overflow: hidden; aspect-ratio: 1; }
+        .wf-art { width: 100%; height: 100%; display: block; }
+        .fcard-name { font-weight: 800; font-size: 13px; line-height: 1.2; min-height: 2.4em; }
+        .fcard-meta { display: flex; justify-content: space-between; align-items: center; font-size: 12px; }
+        .fcard-meta .rar { color: var(--rc); font-weight: 800; }
+        .fcard-meta .lv { padding: 1px 7px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); font-weight: 800; color: var(--text); }
+        .badges { position: absolute; top: 11px; left: 11px; display: flex; gap: 4px; flex-wrap: wrap; pointer-events: none; }
+        .badges span { padding: 1px 6px; border-radius: 999px; background: rgba(0, 0, 0, 0.65); font-size: 11px; font-weight: 800; }
+        .b-eq { color: var(--primary); }
+        .b-shiny { color: #ffe066; }
+        .b-gen { color: #9fd0ff; }
+        .fcard.shiny .fcard-art { box-shadow: inset 0 0 0 2px #ffe066; }
+
+        /* team */
+        .team-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+        .slot { min-height: 150px; border-radius: var(--radius); border: 2px dashed var(--border-strong); background: rgba(0, 0, 0, 0.2); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; color: var(--text-dim); text-align: center; }
+        button.slot:hover { border-color: var(--gold); color: var(--text); }
+        .slot--locked { opacity: 0.5; border-style: solid; }
+        .slot--buy { border-color: rgba(255, 200, 61, 0.5); color: var(--gold); font-weight: 800; }
+        .slot-plus { font-size: 30px; line-height: 1; }
+        .slot-filled { display: grid; grid-template-columns: 76px 1fr; gap: 10px; align-items: start; padding: 10px; border-radius: var(--radius); background: var(--surface-2); border: 2px solid color-mix(in srgb, var(--rc) 60%, transparent); }
+        .slot-filled .fcard-art { width: 76px; cursor: pointer; }
+        .slot-name { font-weight: 800; }
+        .buff-lines { margin: 4px 0 6px; padding: 0; list-style: none; font-size: 12.5px; color: var(--primary); font-weight: 700; }
+        .buff-lines li { line-height: 1.45; }
+        .buff-lines .syn { color: var(--text-faint); font-weight: 600; }
+        .team-totals { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+        .total-chip { padding: 6px 12px; border-radius: 999px; background: rgba(47, 208, 122, 0.12); border: 1px solid rgba(47, 208, 122, 0.35); color: var(--primary); font-weight: 800; font-size: 13px; }
+
+        .filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .filters select { padding: 7px 10px; font-size: 13px; }
+
+        /* packs */
+        .pack-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+        .pack { display: flex; flex-direction: column; gap: 10px; padding: 16px; }
+        .pack-top { display: flex; gap: 14px; align-items: center; }
+        .pack-box { flex: 0 0 74px; height: 92px; border-radius: 12px; display: grid; place-items: center; font-size: 34px; background: linear-gradient(160deg, var(--p1), var(--p2)); border: 2px solid rgba(255, 255, 255, 0.25); box-shadow: inset 0 0 0 4px rgba(0, 0, 0, 0.2), var(--shadow); position: relative; overflow: hidden; }
+        .pack-box::after { content: ''; position: absolute; inset: 0; background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.35) 45%, transparent 60%); transform: translateX(-100%); animation: shine 3.2s ease-in-out infinite; }
+        @keyframes shine { 60%, 100% { transform: translateX(100%); } }
+        .pack h3 { margin: 0; font-size: 17px; }
+        .pack-desc { margin: 0; color: var(--text-dim); font-size: 13px; }
+        .odds { display: flex; flex-wrap: wrap; gap: 5px; font-size: 12px; }
+        .odd { padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.06); border: 1px solid color-mix(in srgb, var(--rc) 35%, transparent); }
+        .odd b { font-variant-numeric: tabular-nums; }
+        .pack-fams { font-size: 13px; color: var(--text-dim); }
+        .pack .btn { margin-top: auto; }
+        .note-box { padding: 10px 14px; border-radius: var(--radius); background: rgba(255, 200, 61, 0.08); border: 1px solid rgba(255, 200, 61, 0.25); color: var(--text-dim); font-size: 13px; margin-bottom: 14px; }
+        .note-box b { color: var(--gold); }
+
+        /* breeding */
+        .breed-layout { display: grid; grid-template-columns: 1fr minmax(240px, 1.1fr) 1fr; gap: 16px; align-items: stretch; }
+        .parent-slot { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 260px; padding: 14px; border-radius: var(--radius-lg); border: 2px dashed var(--border-strong); background: rgba(0, 0, 0, 0.2); color: var(--text-dim); }
+        .parent-slot:hover { border-color: var(--gold); color: var(--text); }
+        .parent-slot.filled { border-style: solid; border-color: color-mix(in srgb, var(--rc) 60%, transparent); background: var(--surface-2); color: var(--text); }
+        .parent-slot .fcard-art { width: 150px; }
+        .breed-mid { display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: var(--radius-lg); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); }
+        .breed-mid h3 { margin: 0; font-size: 15px; }
+        .bar-row { display: grid; grid-template-columns: 82px 1fr 46px; gap: 8px; align-items: center; font-size: 12.5px; }
+        .bar { height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+        .bar > i { display: block; height: 100%; background: var(--rc); border-radius: 999px; }
+        .fam-odds { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12.5px; }
+        .fam-odds span { padding: 3px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); }
+        .breed-rules { margin: 14px 0 0; padding-left: 18px; color: var(--text-dim); font-size: 13px; line-height: 1.6; }
+
+        /* dex */
+        .dex-family { margin-bottom: 18px; }
+        .dex-family h3 { margin: 0 0 2px; font-size: 16px; }
+        .dex-family p { margin: 0 0 10px; color: var(--text-dim); font-size: 13px; }
+        .dex-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; }
+        .dex-tile { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: var(--radius); background: var(--surface-2); border: 2px solid color-mix(in srgb, var(--rc) 45%, transparent); text-align: left; color: var(--text); font-size: 12px; }
+        .dex-tile .fcard-art { border-radius: 8px; }
+                .dex-tile.unknown { border-color: var(--border); color: var(--text-faint); }
+        .dex-tile b { font-size: 12px; line-height: 1.2; }
+
+        /* modal */
+        .fl-backdrop { position: fixed; inset: 0; z-index: 2000; display: grid; place-items: center; padding: 16px; background: rgba(4, 6, 10, 0.72); backdrop-filter: blur(4px); }
+        .fl-backdrop[hidden] { display: none; }
+        .fl-modal { position: relative; width: min(760px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: 20px; background: var(--surface-solid); animation: pop 180ms ease; }
+        @keyframes pop { from { transform: scale(0.96); opacity: 0; } }
+        .fl-modal .modal-close { position: absolute; top: 12px; right: 12px; }
+        .detail { display: grid; grid-template-columns: 220px 1fr; gap: 20px; }
+        .detail .fcard-art { border: 3px solid var(--rc); border-radius: 16px; }
+        .detail h2 { margin: 0 0 4px; font-size: 22px; padding-right: 40px; }
+        .tagline { display: flex; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+        .xpbar { height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; margin: 6px 0 4px; }
+        .xpbar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-deep)); }
+        .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; margin: 12px 0; }
+        .kv dt { color: var(--text-dim); }
+        .kv dd { margin: 0; font-weight: 600; }
+        .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+        .replace-row { margin-top: 12px; padding: 10px; border-radius: var(--radius); background: rgba(255, 255, 255, 0.04); }
+        .replace-row .actions { margin-top: 8px; }
+        .feed-head { display: flex; gap: 14px; align-items: center; margin-bottom: 12px; }
+        .feed-head .fcard-art { width: 84px; flex: 0 0 84px; }
+        .feed-preview { font-weight: 800; color: var(--primary); }
+        .feed-tools { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+        .feed-grid { max-height: 46vh; overflow: auto; padding: 2px; }
+        .modal-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+        /* pack/breed reveal */
+        .reveal { position: fixed; inset: 0; z-index: 2100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 20px; background: radial-gradient(ellipse at center, rgba(40, 30, 70, 0.92), rgba(3, 4, 8, 0.97)); }
+        .reveal[hidden] { display: none; }
+        .reveal h2 { margin: 0; font-family: var(--font-display); font-weight: 400; color: var(--gold); font-size: clamp(22px, 4vw, 34px); text-align: center; }
+        .reveal-cards { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; perspective: 1200px; }
+        .rcard { width: 190px; height: 300px; position: relative; transform-style: preserve-3d; transition: transform 600ms cubic-bezier(.2, .8, .2, 1); cursor: pointer; border: none; background: none; padding: 0; color: var(--text); }
+        .rcard.flipped { transform: rotateY(180deg); cursor: default; }
+        .rface { position: absolute; inset: 0; border-radius: 16px; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden; }
+        .rback { display: grid; place-items: center; background: linear-gradient(160deg, var(--p1, #5a3ab8), var(--p2, #140a2a)); border: 3px solid rgba(255, 255, 255, 0.3); font-family: var(--font-display); font-size: 44px; color: rgba(255, 255, 255, 0.85); box-shadow: var(--shadow-lg); }
+        .rcard:not(.flipped):hover .rback { box-shadow: 0 0 30px rgba(255, 255, 255, 0.25); }
+        .rfront { transform: rotateY(180deg); background: var(--surface-solid); border: 3px solid var(--rc); display: flex; flex-direction: column; gap: 6px; padding: 8px; box-shadow: 0 0 34px color-mix(in srgb, var(--rc) 45%, transparent); text-align: center; }
+        .rfront .fcard-art { border-radius: 10px; flex: 0 0 auto; }
+        .rfront b { font-size: 14px; }
+        .new-badge { position: absolute; top: 14px; right: 14px; padding: 2px 8px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 900; letter-spacing: 0.5px; }
+        .shiny-badge { position: absolute; top: 14px; left: 14px; padding: 2px 8px; border-radius: 999px; background: #ffe066; color: #3a2a00; font-size: 11px; font-weight: 900; }
+        .rcard.flipped.r4 .rfront, .rcard.flipped.r5 .rfront { animation: glow 1.6s ease-in-out infinite alternate; }
+        @keyframes glow { to { box-shadow: 0 0 60px color-mix(in srgb, var(--rc) 70%, transparent); } }
+        .reveal-actions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        @keyframes wobble { from { transform: rotate(-8deg); } to { transform: rotate(8deg); } }
+
+        /* timers */
+        .tab-badge { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 900; vertical-align: 1px; }
+        .cd-bar { height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+        .cd-bar > i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--blue), var(--divine)); transition: width 1s linear; }
+        .pack-timer { display: flex; flex-direction: column; gap: 6px; margin-top: auto; }
+        .pack-timer .btn { opacity: 1; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+        .pack-cd { font-size: 12.5px; color: var(--blue); font-weight: 700; margin-top: 2px; }
+        .hatch-time { font-size: 13px; color: var(--text-dim); }
+        .hatch-time b { color: var(--blue); }
+        .nursery { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+        .nest { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; padding: 12px; border-radius: var(--radius); background: var(--surface-2); border: 2px solid color-mix(in srgb, var(--rc) 50%, transparent); }
+        .nest.ready { border-color: var(--gold); box-shadow: 0 0 18px rgba(255, 200, 61, 0.25); }
+        .nest--empty { display: grid; place-items: center; min-height: 100px; grid-template-columns: 1fr; border: 2px dashed var(--border-strong); background: rgba(0, 0, 0, 0.2); color: var(--text-faint); font-weight: 700; }
+        .nest-title { font-weight: 800; font-size: 13.5px; line-height: 1.25; }
+        .nest-parents { display: flex; gap: 4px; margin: 6px 0 8px; }
+        .nest-parents .fcard-art { width: 30px; border-radius: 7px; }
+        .egg-shape {
+            width: 50px; height: 64px; margin: 0 auto; border-radius: 50% 50% 46% 46% / 60% 60% 40% 40%;
+            background:
+                radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.95) 0 10%, transparent 11%),
+                radial-gradient(circle at 66% 58%, color-mix(in srgb, var(--rc) 75%, #ffffff) 0 9%, transparent 10%),
+                radial-gradient(circle at 30% 72%, color-mix(in srgb, var(--rc) 75%, #ffffff) 0 7%, transparent 8%),
+                radial-gradient(circle at 72% 30%, color-mix(in srgb, var(--rc) 75%, #ffffff) 0 6%, transparent 7%),
+                linear-gradient(160deg, #fffaf0, color-mix(in srgb, var(--rc) 40%, #f1e2c2));
+            box-shadow: inset -6px -8px 14px rgba(0, 0, 0, 0.25), 0 6px 14px rgba(0, 0, 0, 0.4);
+        }
+        .nest.ready .egg-shape { animation: wobble 0.45s ease-in-out infinite alternate; }
+
+        #flToast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 2200; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
+        .toast { padding: 10px 16px; border-radius: 999px; background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow); font-weight: 700; font-size: 14px; animation: pop 180ms ease; }
+        .toast--good { border-color: rgba(47, 208, 122, 0.5); }
+        .toast--bad { border-color: rgba(255, 91, 107, 0.6); }
+
+        @media (max-width: 860px) {
+            .breed-layout { grid-template-columns: 1fr 1fr; }
+            .breed-mid { grid-column: 1 / -1; order: 3; }
+            .detail { grid-template-columns: 1fr; }
+            .detail .fcard-art { max-width: 220px; }
+        }
+        @media (max-width: 520px) {
+            .fl-wrap { padding: 64px 12px 40px; }
+            .fgrid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); }
+            .rcard { width: 150px; height: 262px; }
+            .fl-tabs { width: 100%; justify-content: space-between; }
+            .fl-tab { padding: 8px 11px; font-size: 13px; }
+            .pack-grid { grid-template-columns: 1fr; }
+            .parent-slot .fcard-art { width: 110px; }
+            .odds { grid-template-columns: repeat(2, 1fr); }
+        }
+    </style>
+</head>
+<body>
+    <a class="page-back" href="index.html">← Back to game</a>
+    <main class="fl-wrap">
+        <header class="fl-header">
+            <div>
+                <h1 class="page-title">Followers</h1>
+                <p class="fl-sub">Open packs with Golden What Happeneds, equip followers for buffs that apply everywhere in the game, breed them and level them up.</p>
+            </div>
+            <div class="balances" aria-live="polite">
+                <div class="bal-chip bal-chip--gold"><span>Golden</span><span id="flGolden">0</span></div>
+                <div class="bal-chip"><span>Followers</span><span id="flCount">0</span></div>
+                <div class="bal-chip"><span>Discovered</span><span id="flDex">0</span></div>
+            </div>
+        </header>
+
+        <nav class="fl-tabs" role="tablist" aria-label="Followers sections">
+            <button class="fl-tab active" data-tab="team" role="tab">Team</button>
+            <button class="fl-tab" data-tab="packs" role="tab">Packs</button>
+            <button class="fl-tab" data-tab="breed" role="tab">Breeding<span class="tab-badge" id="breedBadge" hidden></span></button>
+            <button class="fl-tab" data-tab="dex" role="tab">Followerdex</button>
+        </nav>
+
+        <section id="tab-team">
+            <div class="glass-panel fl-panel">
+                <div class="panel-head">
+                    <h2>Active team</h2>
+                    <p class="panel-note">Equipped followers boost you on every page, even while this one is closed. Teammates from the same family give each other +10%.</p>
+                </div>
+                <div id="teamSlots" class="team-slots"></div>
+                <div id="teamTotals" class="team-totals"></div>
+            </div>
+            <div class="glass-panel fl-panel">
+                <div class="panel-head">
+                    <h2>Collection</h2>
+                    <div class="filters">
+                        <select id="fltFamily" aria-label="Filter by family"></select>
+                        <select id="fltRarity" aria-label="Filter by rarity"></select>
+                        <select id="fltSort" aria-label="Sort">
+                            <option value="rarity">Sort: rarity</option>
+                            <option value="level">Sort: level</option>
+                            <option value="newest">Sort: newest</option>
+                            <option value="family">Sort: family</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="collection" class="fgrid"></div>
+            </div>
+        </section>
+
+        <section id="tab-packs" hidden>
+            <div id="packNote" class="note-box"></div>
+            <div id="packGrid" class="pack-grid"></div>
+        </section>
+
+        <section id="tab-breed" hidden>
+            <div class="glass-panel fl-panel">
+                <div class="panel-head">
+                    <h2>Nursery</h2>
+                    <div class="filters">
+                        <p class="panel-note">Eggs hatch over time. Up to 3 can incubate at once.</p>
+                        <button type="button" class="btn btn-gold btn-sm" id="claimAllBtn" hidden>Claim all</button>
+                    </div>
+                </div>
+                <div id="nursery" class="nursery"></div>
+            </div>
+            <div class="glass-panel fl-panel">
+                <div class="panel-head">
+                    <h2>Breeding</h2>
+                    <p class="panel-note">Pick two followers to make a new one based on its parents. The parents are kept.</p>
+                </div>
+                <div class="breed-layout">
+                    <button type="button" class="parent-slot" data-parent="0"></button>
+                    <div id="breedMid" class="breed-mid"></div>
+                    <button type="button" class="parent-slot" data-parent="1"></button>
+                </div>
+                <ul class="breed-rules">
+                    <li>Each follower can breed <b>3</b> times. Breeding costs Golden, more for rarer parents.</li>
+                    <li>Eggs take time to hatch: each parent adds <b class="rar-text r0">2.5 min</b> (Common), <b class="rar-text r1">7.5 min</b>, <b class="rar-text r2">20 min</b>, <b class="rar-text r3">1 h</b>, <b class="rar-text r4">3 h</b> or <b class="rar-text r5">6 h</b> (Mythic). A parent can only be in one egg at a time.</li>
+                    <li>The baby's rarity is the average of its parents' rarities, with a chance to come out one rarity higher. Two Legendaries are the main way to get a <b class="rar-text r5">Mythic</b>.</li>
+                    <li>Same-species pairs (and higher-level parents) have better upgrade odds. Same-family pairs keep the family.</li>
+                    <li>Babies get a bloodline bonus of +3% to their buffs per generation (up to +30%), and shiny parents raise the shiny chance.</li>
+                </ul>
+            </div>
+        </section>
+
+        <section id="tab-dex" hidden>
+            <div class="glass-panel fl-panel">
+                <div class="panel-head">
+                    <h2>Followerdex</h2>
+                    <p class="panel-note" id="dexNote"></p>
+                </div>
+                <div id="dexBody"></div>
+            </div>
+        </section>
+    </main>
+
+    <div id="modal" class="fl-backdrop" hidden>
+        <div class="fl-modal glass-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+            <button type="button" class="modal-close" id="modalClose" aria-label="Close">✕</button>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <div id="reveal" class="reveal" hidden>
+        <h2 id="revealTitle"></h2>
+        <div id="revealCards" class="reveal-cards"></div>
+        <div class="reveal-actions">
+            <button type="button" id="revealAll" class="btn btn-ghost">Reveal all</button>
+            <button type="button" id="revealDone" class="btn btn-primary" hidden>Done</button>
+        </div>
+    </div>
+
+    <div id="flToast" aria-live="polite"></div>
+
+    <script src="followers-data.js"></script>
+    <script src="achievements-data.js"></script>
+    <script src="followers.js"></script>
+<script src="site.js"></script>
+</body>
+</html>

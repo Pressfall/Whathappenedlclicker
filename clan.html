@@ -5,72 +5,73 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Clans — What Happened</title>
   <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="clans.css">
 </head>
 <body>
-  <div class="card">
-    <div id="clanXpBarContainer" style="display:none;margin-bottom:16px;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;flex-wrap:wrap;gap:8px">
-        <strong style="font-size:16px">Clan Level <span id="clanLevelNum">1</span></strong>
-        <span class="muted" id="clanXpText">0 / 200 XP</span>
-        <button type="button" id="clanLevelBonusesToggle" class="btn" style="font-size:12px;padding:4px 8px;background:#2a4;color:#fff;border-radius:4px">Level bonuses ▼</button>
+  <a id="backToGameBtn" class="page-back" href="index.html">← Back to game</a>
+  <main class="clan-wrap">
+    <header class="clan-head">
+      <div>
+        <h1 class="page-title">Clans</h1>
+        <p class="clan-sub">Team up with other players: level your clan together, share buffs and take on weekly events.</p>
       </div>
-      <div style="height:24px;background:#1a1a1a;border-radius:6px;overflow:hidden;border:1px solid #222">
-        <div id="clanXpBarFill" style="height:100%;width:0%;background:linear-gradient(90deg,#164,#2a8);transition:width 0.3s ease"></div>
-      </div>
-      <div id="clanLevelBonusesDropdown" style="display:none;margin-top:10px;padding:10px;background:rgba(0,0,0,0.3);border-radius:6px;border:1px solid #355;max-height:240px;overflow-y:auto">
-        <div style="font-weight:700;margin-bottom:8px;color:#8c8">Bonuses per level</div>
-        <div id="clanLevelBonusesList"></div>
-      </div>
-    </div>
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <div style="display:flex;gap:8px;align-items:center">
-        <button id="tabClansBtn" class="btn" style="background:#164;color:#fff;padding:6px 10px;border-radius:6px">CLANS</button>
-        <button id="tabEventsBtn" class="btn" style="padding:6px 10px;border-radius:6px">EVENTS</button>
-        <button id="tabShopBtn" class="btn" style="padding:6px 10px;border-radius:6px">CLAN SHOP</button>
-      </div>
-      <div><a href = "index.html"><button id="backToGameBtn" class="btn">Back to game</button></a></div>
-    </div>
-    <p class="muted">Create or join clans, view members and clan chat. Clans unlock after your first prestige.</p>
+      <div id="playerClanStatus" class="me-chip"></div>
+    </header>
 
-    <div id="findArea" class="card" style="margin-top:12px;padding:14px">
-      <strong style="font-size:15px">Find clans</strong>
-      <div style="display:flex;gap:8px;margin-top:8px;margin-bottom:10px"><input id="searchClanName" placeholder="Search by name" style="flex:1"><button id="searchClanBtn" class="btn green">Search</button></div>
-      <div id="searchResults" class="card-inner" style="max-height:320px;overflow:auto;padding:10px;border-radius:8px"></div>
-      <div id="createArea" style="margin-top:16px;padding-top:14px;border-top:1px solid #333">
-        <strong style="font-size:15px">Create a clan</strong>
-        <p class="muted" style="margin:6px 0 10px;font-size:13px">Costs 10 Golden What Happeneds. Unlocks after your first prestige.</p>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-          <input id="newClanName" placeholder="Clan name" style="flex:1;min-width:140px;padding:8px;border-radius:6px;border:1px solid #333;background:#1a1a1a;color:#fff">
-          <button id="createClan" class="btn" style="background:#f49a1a;color:#fff;padding:8px 16px">Create clan</button>
+    <nav class="clan-tabs" aria-label="Clan sections">
+      <button id="tabClansBtn" class="clan-tab active">🛡️ Clan</button>
+      <button id="tabEventsBtn" class="clan-tab">🏆 Events</button>
+      <button id="tabShopBtn" class="clan-tab">🛒 Clan Shop</button>
+    </nav>
+
+    <div id="tabClans">
+      <div id="clanDetailArea"></div>
+
+      <section id="findArea" class="card">
+        <div id="clanLockNote" class="lock-note" hidden>🔒 Clans unlock after your first prestige. You can look around until then.</div>
+        <div class="find-head">
+          <h2>Find a clan</h2>
+          <div class="find-tools">
+            <input id="searchClanName" type="text" placeholder="Search clans by name" autocomplete="off" aria-label="Search clans">
+            <select id="clanSort" aria-label="Sort clans">
+              <option value="recommended">Recommended</option>
+              <option value="level">Highest level</option>
+              <option value="members">Most members</option>
+              <option value="open">Most open spots</option>
+              <option value="name">Name</option>
+            </select>
+          </div>
         </div>
-      </div>
+        <div id="searchResults" class="clan-grid" aria-live="polite"></div>
+        <div id="createArea" class="create-card">
+          <div>
+            <h3>Start your own clan</h3>
+            <p class="muted">Costs <b class="gold">10 Golden What Happeneds</b>. You'll be the leader, and you can invite up to 29 others.</p>
+          </div>
+          <div class="create-row">
+            <input id="newClanName" type="text" maxlength="24" placeholder="Clan name (3–24 characters)" autocomplete="off">
+            <button id="createClan" class="btn btn-gold">Create clan</button>
+          </div>
+          <div id="createHint" class="hint"></div>
+        </div>
+      </section>
     </div>
 
-    <hr style="border:none;border-top:1px solid #333;margin:16px 0">
-
-    <div id="clanDetailArea" class="card" style="min-height:120px">
-      <!-- Filled dynamically -->
+    <div id="tabEvents" style="display:none">
+      <div class="card"><div class="muted">Loading events…</div></div>
     </div>
 
+    <div id="tabShop" style="display:none">
+      <div class="card"><div class="muted">Loading the clan shop…</div></div>
     </div>
+  </main>
+  <div id="clanToasts" aria-live="polite"></div>
 
-    <div id="tabEvents" style="display:none;margin-top:12px">
-      <div class="card">
-        <div class="muted">No events yet. Coming soon.</div>
-      </div>
-    </div>
-
-    <div id="tabShop" style="display:none;margin-top:12px">
-      <div class="card">
-        <div id="clanShopBalance" style="margin-bottom:12px;font-size:18px;font-weight:700;padding:8px 0"></div>
-        <div class="muted">Clan shop coming soon. Spend Clan Points here when items are added.</div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:16px;padding:12px;text-align:right"><a href="index.html"><button id="backToGameBtn2" class="btn">Back to game</button></a></div>
-  </div>
-
+  <script src="achievements-data.js"></script>
   <script type="module">
   import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot, runTransaction, increment, deleteField } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
@@ -104,6 +105,73 @@
   }catch(e){}
   // Local helper: escape HTML to prevent XSS and ensure availability in this module
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
+  // Non-blocking toasts. alert() is routed here so the page's status messages (including event rewards) don't freeze
+  // the page; confirm() and prompt() stay native for real decisions.
+  function notify(msg, kind){
+    try{
+      const box = document.getElementById('clanToasts'); if(!box) return;
+      const text = String(msg == null ? '' : msg);
+      const tone = kind || (/fail|not enough|can't|cannot|must |only |not found|not in|error|denied|permission|full|kicked|no longer/i.test(text) ? 'bad' : '');
+      const el = document.createElement('div');
+      el.className = 'toast' + (tone ? ' toast-' + tone : '');
+      el.textContent = text;
+      el.title = 'Click to dismiss';
+      el.addEventListener('click', () => el.remove());
+      box.appendChild(el);
+      setTimeout(() => el.remove(), Math.min(12000, 3500 + text.length * 45));
+    }catch(e){}
+  }
+  window.alert = notify;
+  const $id = id => document.getElementById(id);
+  function fmtShort(v){
+    const n = Number(v) || 0; const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    let i = 0, x = Math.abs(n);
+    while(x >= 1000 && i < units.length - 1){ x /= 1000; i++; }
+    if(i === 0) return String(Math.floor(n));
+    if(x >= 1000) return n.toExponential(2);
+    return x.toFixed(x < 100 ? 2 : 0).replace(/\.0+$|(\.\d*[1-9])0+$/, '$1') + units[i];
+  }
+  function timeAgo(ms){
+    const s = Math.max(0, (Date.now() - ms) / 1000);
+    if(s < 45) return 'just now';
+    if(s < 3600) return Math.round(s / 60) + 'm ago';
+    if(s < 86400) return Math.round(s / 3600) + 'h ago';
+    if(s < 86400 * 30) return Math.round(s / 86400) + 'd ago';
+    return new Date(ms).toLocaleDateString();
+  }
+  function fmtLeft(ms){ const m = Math.max(1, Math.ceil(ms / 60000)); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
+  // check-ins reset at midnight UTC so the whole clan shares the same day
+  function utcDay(offsetDays){ return new Date(Date.now() + (offsetDays || 0) * 86400000).toISOString().slice(0, 10); }
+  function msUntilUtcMidnight(){ const d = new Date(); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1) - d.getTime(); }
+  const RARITY_HEX = { common: '#bfc7c9', uncommon: '#6bd26b', rare: '#4da6ff', epic: '#b86cff', legendary: '#ffb84d', mythic: '#ff5bd0' };
+  function titleColor(t){
+    let r = null;
+    try{ r = window.WHA && window.WHA.titleRarity(t); }catch(e){}
+    if(!r){ try{ const ul = JSON.parse(localStorage.getItem('unlocked_titles') || '[]'); const f = ul.find(x => String((x && x.name) || x).toLowerCase() === String(t).toLowerCase()); r = f && f.rarity; }catch(e){} }
+    return RARITY_HEX[r] || RARITY_HEX.common;
+  }
+  function lockedPanel(icon, title, text){ return `<div class="card locked-panel"><div class="lp-icon">${icon}</div><h2>${escapeHtml(title)}</h2><p class="muted">${escapeHtml(text)}</p></div>`; }
+  function readSaveObj(){ try{ return JSON.parse(localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1') || 'null'); }catch(e){ return null; } }
+  function writeSaveObj(s){ const out = JSON.stringify(s); localStorage.setItem('whathappened_save', out); try{ localStorage.setItem('whathappened_save_v1', out); }catch(e){} }
+  // add Clan Points to the game save (negative to spend); returns the new balance, or null when there isn't enough
+  function changeClanPoints(delta){
+    const s = readSaveObj(); if(!s) return null;
+    const have = Number(s.clanPoints) || 0;
+    if(have + delta < 0) return null;
+    s.clanPoints = have + delta; writeSaveObj(s);
+    return s.clanPoints;
+  }
+  function clansUnlocked(){ return (Number(localStorage.getItem('whathappened_prestige_times') || 0) || 0) >= 1 || (Number((readSaveObj() || {}).prestigeTimes) || 0) >= 1; }
+  function checkClanAchievements(){
+    try{
+      if(!window.WHA) return;
+      const fresh = window.WHA.checkAll(window.WHA.snapshot());
+      fresh.forEach((a, i) => setTimeout(() => notify(`🏆 ${a.name}: ${a.desc} Title: ${a.title}`, 'gold'), i * 700));
+    }catch(e){}
+  }
+  // clan page state (declared up here because the init code further down runs before the functions that fill it)
+  let _clanView = { id: null, member: false, shellFor: null, doc: null, viewerRole: 'member', membersSig: '', membersAt: 0, membersData: null, ui: {} };
+  let _clanList = { at: 0, list: [] };
   // Read Clan Points from game save (clan currency — rewards from events, spent in clan shop)
   function getClanPointsFromSave(){ try{ const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1'); if(!raw) return 0; const s = JSON.parse(raw); return Number(s.clanPoints) || 0; }catch(e){ return 0; } }
   const CLAN_SHOP_ITEMS = [
@@ -114,149 +182,107 @@
     { id: 'golden1', name: '1 Golden What', cost: 80, reward: { goldenWhat: 1 } },
     { id: 'golden3', name: '3 Golden Whats', cost: 220, reward: { goldenWhat: 3 } }
   ];
-  // Clan buffs: whole-clan temporary buffs; CP contributions fill a bar; when full, buff activates and decays over duration.
+  // Clan buffs: everyone chips in CP and when a bar fills the whole clan gets the buff. Different buffs run side by side
+  // (activeBuffs) and filling one that's already running adds its duration on top. main.js applies them.
   const CLAN_BUFFS = [
-    { id: 'cps_double_1h', name: 'Double CPS', description: 'Whole clan: 2× CPS for 1 hour.', cpCost: 800, durationMs: 60 * 60 * 1000, cpsMult: 2, clickMult: 1 },
-    { id: 'click_double_30m', name: 'Double Click Power', description: 'Whole clan: 2× click power for 30 minutes.', cpCost: 500, durationMs: 30 * 60 * 1000, cpsMult: 1, clickMult: 2 },
-    { id: 'both_triple_20m', name: 'Triple Everything', description: 'Whole clan: 3× CPS and 3× click power for 20 minutes.', cpCost: 1200, durationMs: 20 * 60 * 1000, cpsMult: 3, clickMult: 3 }
+    { id: 'cps_double_1h', icon: '⚡', name: 'Double CPS', description: '2× CPS for the whole clan for 1 hour.', cpCost: 800, durationMs: 60 * 60 * 1000, cpsMult: 2, clickMult: 1 },
+    { id: 'click_double_30m', icon: '👆', name: 'Double Click Power', description: '2× click power for the whole clan for 30 minutes.', cpCost: 500, durationMs: 30 * 60 * 1000, cpsMult: 1, clickMult: 2 },
+    { id: 'both_triple_20m', icon: '🔥', name: 'Triple Everything', description: '3× CPS and 3× click power for the whole clan for 20 minutes.', cpCost: 1200, durationMs: 20 * 60 * 1000, cpsMult: 3, clickMult: 3 }
   ];
-  function purchaseClanShopItem(item){
-    if(!item || typeof item.cost !== 'number') return;
-    const cost = item.cost;
-    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-    if(!raw){ alert('No save found.'); return; }
-    try{
-      const s = JSON.parse(raw);
-      const have = Number(s.clanPoints) || 0;
-      if(have < cost){ alert('Not enough Clan Points. You have ' + have.toLocaleString() + ', need ' + cost + '.'); renderClanShopTab(); return; }
-      s.clanPoints = Math.max(0, have - cost);
-      if(item.reward.diamonds) s.diamonds = (Number(s.diamonds)||0) + item.reward.diamonds;
-      if(item.reward.goldenWhat) s.goldenWhat = (Number(s.goldenWhat)||0) + item.reward.goldenWhat;
-      localStorage.setItem('whathappened_save', JSON.stringify(s));
-      try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
-      renderClanShopTab();
-      const rewardStr = item.reward.diamonds ? (item.reward.diamonds + ' Gems') : (item.reward.goldenWhat + ' Golden What(s)');
-      alert('Purchased: ' + item.name + '. +' + rewardStr + ' Remaining CP: ' + s.clanPoints.toLocaleString());
-    }catch(e){ alert('Purchase failed.'); }
+  const toMillis = v => typeof v === 'number' ? v : (v && typeof v.toMillis === 'function' ? v.toMillis() : 0);
+  // { buffId: expiresAtMs } for every clan buff still running (older clans only have the single activeBuff field)
+  function activeClanBuffs(d){
+    const out = {}, now = Date.now();
+    const map = (d && d.activeBuffs && typeof d.activeBuffs === 'object') ? d.activeBuffs : {};
+    for(const id in map){ const e = toMillis(map[id] && map[id].expiresAt); if(e > now) out[id] = e; }
+    const ab = d && d.activeBuff;
+    if(ab && ab.id && !out[ab.id]){ const e = toMillis(ab.expiresAt); if(e > now) out[ab.id] = e; }
+    return out;
   }
+  function purchaseClanShopItem(item){
+    if(!item) return;
+    const left = changeClanPoints(-item.cost);
+    if(left === null){ notify(`Not enough Clan Points. ${item.name} costs ${item.cost} CP.`, 'bad'); return; }
+    const s = readSaveObj();
+    if(item.reward.diamonds) s.diamonds = (Number(s.diamonds)||0) + item.reward.diamonds;
+    // Golden bought with clan points also counts toward the lifetime Golden stat
+    if(item.reward.goldenWhat){ s.goldenWhat = (Number(s.goldenWhat)||0) + item.reward.goldenWhat; s.totalGoldenEver = (Number(s.totalGoldenEver)||0) + item.reward.goldenWhat; }
+    writeSaveObj(s);
+    notify(`Bought ${item.name}. You have ${left.toLocaleString()} CP left.`, 'good');
+    renderClanShopTab();
+  }
+  let _shopTimer = null;
   async function renderClanShopTab(){
     const tabShop = document.getElementById('tabShop'); if(!tabShop) return;
-    const cp = getClanPointsFromSave();
+    clearTimeout(_shopTimer);
     const clanId = localStorage.getItem('player_clanId') || '';
-    let buffProgress = {};
-    let activeBuff = null;
-    let clanShopIconsUnlocked = [];
-    let isClanLeader = false;
-    if(clanId){
-      try{
-        const snap = await getDoc(doc(db,'clans',clanId));
-        if(snap.exists()){
-          const d = snap.data();
-          buffProgress = (d.buffProgress && typeof d.buffProgress === 'object') ? d.buffProgress : {};
-          const ab = d.activeBuff;
-          if(ab && ab.expiresAt){
-            const exp = typeof ab.expiresAt === 'number' ? ab.expiresAt : (ab.expiresAt.toMillis ? ab.expiresAt.toMillis() : 0);
-            if(exp > Date.now()) activeBuff = { id: ab.id, expiresAt: exp, cpsMult: ab.cpsMult || 1, clickMult: ab.clickMult || 1 };
-          }
-          clanShopIconsUnlocked = Array.isArray(d.clanShopIconsUnlocked) ? d.clanShopIconsUnlocked : [];
-          const me = localStorage.getItem('player_username') || '';
-          isClanLeader = (d.owner === me) || (Array.isArray(d.leaders) && d.leaders.indexOf(me) !== -1);
-        }
-      }catch(e){ console.warn('Clan buff fetch failed', e); }
+    if(!clanId){ tabShop.innerHTML = lockedPanel('🛒', 'Join a clan to use the clan shop', 'Clan Points come from clan events and daily check-ins. Spend them on buffs for your whole clan or rewards for yourself.'); return; }
+    let d = {};
+    try{ const snap = await getDoc(doc(db,'clans',clanId)); if(snap.exists()) d = snap.data() || {}; }catch(e){ console.warn('clan shop fetch failed', e); }
+    const cp = getClanPointsFromSave();
+    const me = localStorage.getItem('player_username') || '';
+    const isLeader = d.owner === me || (Array.isArray(d.leaders) && d.leaders.includes(me));
+    const progress = (d.buffProgress && typeof d.buffProgress === 'object') ? d.buffProgress : {};
+    const active = activeClanBuffs(d);
+    const owned = Array.isArray(d.clanShopIconsUnlocked) ? d.clanShopIconsUnlocked : [];
+    const level = clanLevelFromXp(d.clanXp).level;
+    const donors = Object.entries((d.cpDonated && typeof d.cpDonated === 'object') ? d.cpDonated : {}).filter(e => Number(e[1]) > 0).sort((a, b) => b[1] - a[1]).slice(0, 3);
+    let html = `<section class="card shop-top"><div class="cp-balance"><span>Your Clan Points</span><b id="clanShopBalanceVal">${cp.toLocaleString()}</b></div><p class="muted">Earn CP from clan events and your daily check-in. Spend it on buffs for the whole clan or on rewards for yourself.</p></section>`;
+    html += `<section class="card"><div class="sec-head"><h2>Clan buffs</h2>${donors.length ? `<span class="muted">Top donors: ${donors.map(([n, v]) => `<b>${escapeHtml(n)}</b> ${Number(v).toLocaleString()}`).join(' · ')}</span>` : ''}</div>`;
+    html += `<p class="muted">Everyone chips in CP. When a bar fills, the whole clan gets the buff. Different buffs stack, and filling one that's already running adds more time.</p><div class="buff-grid">`;
+    for(const b of CLAN_BUFFS){
+      const have = Number(progress[b.id]) || 0;
+      const need = Math.max(0, b.cpCost - have);
+      const exp = active[b.id];
+      const chips = [25, 100, 250].filter(n => n < need).map(n => `<button type="button" class="chip-btn" data-buff="${b.id}" data-amt="${n}"${cp >= n ? '' : ' disabled'}>+${n}</button>`).join('')
+        + `<button type="button" class="chip-btn fill" data-buff="${b.id}" data-amt="${need}"${cp >= need && need > 0 ? '' : ' disabled'}>Fill · ${need.toLocaleString()}</button>`;
+      html += `<article class="buff-card${exp ? ' is-active' : ''}"><div class="buff-icon">${b.icon}</div><div class="buff-body">`
+        + `<div class="buff-title"><b>${escapeHtml(b.name)}</b>${exp ? `<span class="tag good">Active · ${fmtLeft(exp - Date.now())} left</span>` : ''}</div>`
+        + `<p>${escapeHtml(b.description)}</p><div class="bar"><i style="width:${Math.min(100, have / b.cpCost * 100)}%"></i></div>`
+        + `<div class="buff-foot"><span class="muted">${have.toLocaleString()} / ${b.cpCost.toLocaleString()} CP</span><div class="chips">${chips}</div></div></div></article>`;
     }
-    let html = '<div class="card"><div id="clanShopBalance" style="margin-bottom:16px;font-size:18px;font-weight:700">Clan Points: <span id="clanShopBalanceVal">' + String(cp).replace(/\B(?=(\d{3})+(?!\d))/g, ',') + '</span></div>';
-    html += '<div class="muted" style="margin-bottom:12px">Spend Clan Points (earned from events) on personal rewards or contribute to clan buffs.</div>';
-    html += '<div id="clanShopItems" style="display:flex;flex-direction:column;gap:10px">';
+    html += `</div></section>`;
+    html += `<section class="card"><h2>Rewards for you</h2><div class="reward-grid">`;
     for(const item of CLAN_SHOP_ITEMS){
-      const canAfford = cp >= item.cost;
-      html += '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px;background:rgba(0,0,0,0.2);border-radius:8px;border:1px solid #333"><div><strong>' + escapeHtml(item.name) + '</strong> <span class="muted">— ' + item.cost + ' CP</span></div><button type="button" class="btn clan-shop-buy" data-id="' + escapeHtml(item.id) + '"' + (canAfford ? '' : ' disabled') + ' style="background:#2a6;color:#fff">Buy</button></div>';
+      const ok = cp >= item.cost;
+      html += `<article class="reward-card"><img src="${item.reward.diamonds ? 'mainimage/gem.png' : 'mainimage/thumbs/goldwh.webp'}" alt=""><b>${escapeHtml(item.name)}</b>`
+        + `<button type="button" class="btn btn-sm ${ok ? 'btn-primary' : 'btn-ghost'} clan-shop-buy" data-id="${item.id}"${ok ? '' : ' disabled'}>${item.cost} CP</button></article>`;
     }
-    html += '</div>';
-    if(clanId){
-      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #333"><strong style="font-size:16px">Clan buffs</strong><p class="muted" style="margin:8px 0">Contribute CP to fill the bar; when full, the whole clan gets the buff for the duration.</p>';
-      for(const b of CLAN_BUFFS){
-        const progress = Number(buffProgress[b.id]) || 0;
-        const isActive = activeBuff && activeBuff.id === b.id;
-        const pct = Math.min(100, (progress / b.cpCost) * 100);
-        html += '<div class="clan-buff-card" style="padding:12px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #444;margin-bottom:10px" data-buff-id="' + escapeHtml(b.id) + '">';
-        html += '<div><strong>' + escapeHtml(b.name) + '</strong> <span class="muted">— ' + escapeHtml(b.description) + '</span></div>';
-        html += '<div style="margin:8px 0;height:20px;background:#1a1a1a;border-radius:6px;overflow:hidden;border:1px solid #333"><div style="height:100%;width:' + pct + '%;background:linear-gradient(90deg,#164,#2a8);transition:width 0.3s"></div></div>';
-        html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
-        html += '<span class="muted">' + progress + ' / ' + b.cpCost + ' CP</span>';
-        if(isActive){
-          const left = Math.max(0, Math.ceil((activeBuff.expiresAt - Date.now()) / 60000));
-          html += '<span style="color:#8c8;font-weight:700">Active — expires in ' + left + ' min</span>';
-        } else {
-          html += '<input type="number" min="1" max="99999" placeholder="CP" class="clan-buff-amount" data-buff-id="' + escapeHtml(b.id) + '" style="width:80px;padding:4px 8px">';
-          html += '<button type="button" class="btn clan-buff-contribute" data-buff-id="' + escapeHtml(b.id) + '" style="background:#2a6;color:#fff">Contribute</button>';
-        }
-        html += '</div></div>';
-      }
-      html += '</div>';
-      // Clan Icons (buy with CP to unlock for the whole clan)
-      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #333"><strong style="font-size:16px">Clan Icons</strong><p class="muted" style="margin:8px 0">Unlock new icons for your clan.</p><div style="display:flex;flex-wrap:wrap;gap:10px">';
-      for(const ic of CLAN_SHOP_ICONS){
-        const owned = clanShopIconsUnlocked.indexOf(ic.id) !== -1;
-        const canAfford = cp >= ic.cost;
-        if(owned){
-          html += '<div style="padding:10px;background:rgba(0,80,0,0.2);border-radius:8px;border:1px solid #2a4" title="Owned"><span style="font-size:24px">' + (ic.emoji||'') + '</span> <span class="muted">' + escapeHtml(ic.label) + ' — Owned</span></div>';
-        } else {
-          html += '<div style="padding:10px;background:rgba(0,0,0,0.25);border-radius:8px;border:1px solid #444;display:flex;align-items:center;gap:8px"><span style="font-size:24px">' + (ic.emoji||'') + '</span><span>' + escapeHtml(ic.label) + ' — ' + ic.cost + ' CP</span><button type="button" class="btn clan-shop-icon-buy" data-icon-id="' + escapeHtml(ic.id) + '"' + (canAfford ? '' : ' disabled') + ' style="background:#2a6;color:#fff;padding:4px 10px">Buy</button></div>';
-        }
-      }
-      html += '</div></div>';
-      // Custom clan logo (leader only, 5000 CP — upload to Firebase Storage for moderation)
-      html += '<div style="margin-top:20px;padding-top:16px;border-top:1px solid #333"><strong style="font-size:16px">Custom Clan Logo</strong><p class="muted" style="margin:8px 0">Clan leaders: upload PNG, JPEG, GIF or WebP (max 5 MB). Image is resized to 512px and compressed for reliable upload.</p>';
-      if(isClanLeader){
-        html += '<input type="file" id="clanCustomLogoInput" accept="image/png,image/jpeg,image/gif,image/webp" style="display:none"><button type="button" id="clanCustomLogoBtn" class="btn" style="background:#f49a1a;color:#fff">Upload clan logo (5,000 CP)</button><span id="clanCustomLogoStatus" class="muted" style="margin-left:8px"></span>';
-      } else {
-        html += '<p class="muted">Only the clan leader can upload a custom logo.</p>';
-      }
-      html += '</div>';
+    html += `</div></section>`;
+    html += `<section class="card"><h2>Clan icons</h2><p class="muted">Level icons unlock as your clan grows. Shop icons are bought once for the whole clan. Leaders choose the clan's icon under ⚙️ Manage on the clan page.</p><div class="icon-grid">`;
+    for(const ic of CLAN_ICONS){ const ok = level >= ic.level; html += `<div class="icon-tile${ok ? ' owned' : ' locked'}"><span>${ic.emoji}</span><b>${escapeHtml(ic.label)}</b><small>${ok ? 'Unlocked' : '🔒 Clan level ' + ic.level}</small></div>`; }
+    for(const ic of CLAN_SHOP_ICONS){
+      const has = owned.includes(ic.id);
+      html += `<div class="icon-tile${has ? ' owned' : ''}"><span>${ic.emoji}</span><b>${escapeHtml(ic.label)}</b>`
+        + (has ? '<small>Owned</small>' : `<button type="button" class="btn btn-sm btn-ghost clan-shop-icon-buy" data-icon-id="${ic.id}"${cp >= ic.cost ? '' : ' disabled'}>${ic.cost} CP</button>`) + `</div>`;
     }
-    html += '</div>';
+    html += `</div></section>`;
+    html += `<section class="card"><h2>Custom clan logo</h2><p class="muted">Upload a PNG, JPEG, GIF or WebP (max 5 MB). It's resized and compressed before upload. Costs ${CUSTOM_LOGO_CP_COST.toLocaleString()} CP.</p>`
+      + (isLeader ? `<input type="file" id="clanCustomLogoInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden><div class="row-gap"><button type="button" id="clanCustomLogoBtn" class="btn btn-gold"${cp >= CUSTOM_LOGO_CP_COST ? '' : ' disabled'}>Upload clan logo (${CUSTOM_LOGO_CP_COST.toLocaleString()} CP)</button><span id="clanCustomLogoStatus" class="muted"></span></div>` : '<p class="muted">Only clan leaders can upload a logo.</p>')
+      + `</section>`;
     tabShop.innerHTML = html;
-    tabShop.querySelectorAll('.clan-shop-buy').forEach(btn => {
-      const id = btn.getAttribute('data-id');
-      const item = CLAN_SHOP_ITEMS.find(i => i.id === id);
-      if(item) btn.addEventListener('click', () => purchaseClanShopItem(item));
-    });
-    tabShop.querySelectorAll('.clan-buff-contribute').forEach(btn => {
-      const buffId = btn.getAttribute('data-buff-id');
-      const card = tabShop.querySelector('.clan-buff-card[data-buff-id="' + buffId + '"]');
-      const input = card ? card.querySelector('.clan-buff-amount') : null;
-      const buff = CLAN_BUFFS.find(x => x.id === buffId);
-      if(buff) btn.addEventListener('click', () => {
-        const raw = (input && input.value) ? input.value.trim() : '';
-        const amount = Math.floor(Number(raw)) || 0;
-        if(amount < 1){ alert('Enter a positive amount of CP to contribute.'); return; }
-        contributeClanBuff(buffId, amount);
-      });
-    });
-    tabShop.querySelectorAll('.clan-shop-icon-buy').forEach(btn => {
-      const iconId = btn.getAttribute('data-icon-id');
-      const shopIcon = CLAN_SHOP_ICONS.find(i => i.id === iconId);
-      if(shopIcon) btn.addEventListener('click', () => purchaseClanShopIcon(iconId, shopIcon.cost));
-    });
-    const customLogoBtn = tabShop.querySelector('#clanCustomLogoBtn');
-    const customLogoInput = tabShop.querySelector('#clanCustomLogoInput');
-    if(customLogoBtn && customLogoInput){
-      customLogoBtn.addEventListener('click', () => customLogoInput.click());
-      customLogoInput.addEventListener('change', async () => {
-        const file = customLogoInput.files && customLogoInput.files[0];
-        customLogoInput.value = '';
-        if(!file || !file.type.startsWith('image/')){ alert('Please select an image (PNG, JPEG, GIF or WebP).'); return; }
-        const maxSize = 5 * 1024 * 1024;
-        if(file.size > maxSize){ alert('Image must be under 5 MB. It will be resized and compressed for upload.'); return; }
+    tabShop.querySelectorAll('.clan-shop-buy').forEach(btn => btn.addEventListener('click', () => purchaseClanShopItem(CLAN_SHOP_ITEMS.find(i => i.id === btn.dataset.id))));
+    tabShop.querySelectorAll('.chip-btn[data-buff]').forEach(btn => btn.addEventListener('click', () => { btn.disabled = true; contributeClanBuff(btn.dataset.buff, Number(btn.dataset.amt)); }));
+    tabShop.querySelectorAll('.clan-shop-icon-buy').forEach(btn => btn.addEventListener('click', () => { const ic = CLAN_SHOP_ICONS.find(i => i.id === btn.dataset.iconId); if(ic) purchaseClanShopIcon(ic.id, ic.cost); }));
+    const logoBtn = tabShop.querySelector('#clanCustomLogoBtn'), logoInput = tabShop.querySelector('#clanCustomLogoInput');
+    if(logoBtn && logoInput){
+      logoBtn.addEventListener('click', () => logoInput.click());
+      logoInput.addEventListener('change', async () => {
+        const file = logoInput.files && logoInput.files[0];
+        logoInput.value = '';
+        if(!file || !file.type.startsWith('image/')){ notify('Please pick an image (PNG, JPEG, GIF or WebP).', 'bad'); return; }
+        if(file.size > 5 * 1024 * 1024){ notify('Images must be under 5 MB.', 'bad'); return; }
         const statusEl = tabShop.querySelector('#clanCustomLogoStatus');
-        if(statusEl) statusEl.textContent = 'Preparing...';
-        try {
+        if(statusEl) statusEl.textContent = 'Preparing…';
+        try{
           const blob = await compressImageForLogo(file);
-          if(statusEl) statusEl.textContent = 'Uploading...';
+          if(statusEl) statusEl.textContent = 'Uploading…';
           await uploadClanCustomLogo(clanId, blob, statusEl);
-        } catch(e){ alert('Upload failed: ' + (e.message || e)); if(statusEl) statusEl.textContent = ''; }
+        }catch(e){ notify('Upload failed: ' + (e.message || e), 'bad'); if(statusEl) statusEl.textContent = ''; }
       });
     }
+    // keep the "time left" on running buffs fresh while the shop is open
+    _shopTimer = setTimeout(() => { if(tabShop.style.display !== 'none') renderClanShopTab(); }, 60000);
   }
   // Resize and compress image for Firestore (max 384px, JPEG 0.7 — keeps data URL under ~150KB). Returns a Blob.
   function compressImageForLogo(file){
@@ -282,22 +308,14 @@
   }
   function blobToDataUrl(blob){ return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = () => reject(new Error('Read failed')); r.readAsDataURL(blob); }); }
   async function purchaseClanShopIcon(iconId, cost){
-    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ alert('You are not in a clan.'); return; }
-    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-    if(!raw){ alert('No save found.'); return; }
-    let s; try{ s = JSON.parse(raw); }catch(e){ alert('Save error.'); return; }
-    const have = Number(s.clanPoints) || 0;
-    if(have < cost){ alert('Not enough Clan Points. You have ' + have.toLocaleString() + ', need ' + cost + '.'); return; }
-    const clanRef = doc(db,'clans',clanId);
-    try{
-      await updateDoc(clanRef, { clanShopIconsUnlocked: arrayUnion(iconId) });
-      s.clanPoints = Math.max(0, have - cost);
-      localStorage.setItem('whathappened_save', JSON.stringify(s));
-      try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
-      await renderClanShopTab();
-      const ic = CLAN_SHOP_ICONS.find(i => i.id === iconId);
-      alert('Unlocked clan icon: ' + (ic ? ic.label : iconId) + '. Remaining CP: ' + s.clanPoints.toLocaleString());
-    }catch(e){ alert('Purchase failed: ' + (e.message || 'try again')); }
+    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ notify('You are not in a clan.', 'bad'); return; }
+    if(getClanPointsFromSave() < cost){ notify(`Not enough Clan Points. That icon costs ${cost} CP.`, 'bad'); return; }
+    try{ await updateDoc(doc(db,'clans',clanId), { clanShopIconsUnlocked: arrayUnion(iconId) }); }
+    catch(e){ notify('Purchase failed: ' + (e.message || 'try again'), 'bad'); return; }
+    const left = changeClanPoints(-cost);
+    const ic = CLAN_SHOP_ICONS.find(i => i.id === iconId);
+    notify(`Unlocked the ${ic ? ic.label : iconId} icon for your clan. ${Number(left || 0).toLocaleString()} CP left.`, 'good');
+    renderClanShopTab();
   }
   const CUSTOM_LOGO_CP_COST = 5000;
   // Store logo as data URL in Firestore (no Firebase Storage — one fast Firestore write).
@@ -316,35 +334,51 @@
     const area = document.getElementById('clanDetailArea'); if(area && area.innerHTML) loadClanDetail(clanId);
   }
   async function contributeClanBuff(buffId, amount){
-    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ alert('You are not in a clan.'); return; }
-    const buff = CLAN_BUFFS.find(b => b.id === buffId); if(!buff){ alert('Unknown buff.'); return; }
-    const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-    if(!raw){ alert('No save found.'); return; }
-    let s; try{ s = JSON.parse(raw); }catch(e){ alert('Save error.'); return; }
-    const have = Number(s.clanPoints) || 0;
-    if(have < amount){ alert('Not enough Clan Points. You have ' + have.toLocaleString() + ', need ' + amount + '.'); return; }
-    const clanRef = doc(db,'clans',clanId);
+    const clanId = localStorage.getItem('player_clanId'); if(!clanId){ notify('You are not in a clan.', 'bad'); return; }
+    const buff = CLAN_BUFFS.find(b => b.id === buffId); if(!buff) return;
+    amount = Math.floor(Number(amount)) || 0;
+    if(amount < 1) return;
+    const have = getClanPointsFromSave();
+    if(have < amount){ notify(`Not enough Clan Points. You have ${have.toLocaleString()}.`, 'bad'); renderClanShopTab(); return; }
+    const me = localStorage.getItem('player_username') || 'Someone';
+    let activated = false;
     try{
       await runTransaction(db, async (tx) => {
-        const snap = await tx.get(clanRef);
+        const ref = doc(db,'clans',clanId);
+        const snap = await tx.get(ref);
         if(!snap.exists()) throw new Error('Clan not found');
-        const d = snap.data();
-        const curProgress = Number((d.buffProgress && d.buffProgress[buffId]) || 0) || 0;
-        const newProgress = curProgress + amount;
-        const updates = { buffProgress: { ...(d.buffProgress || {}), [buffId]: newProgress } };
-        if(newProgress >= buff.cpCost){
-          const expiresAt = Date.now() + buff.durationMs;
+        const d = snap.data() || {};
+        const progress = Object.assign({}, d.buffProgress || {});
+        let next = (Number(progress[buffId]) || 0) + amount;
+        const updates = {};
+        if(next >= buff.cpCost){
+          next -= buff.cpCost;
+          const now = Date.now();
+          const map = {};
+          for(const k in (d.activeBuffs || {})){ if(toMillis(d.activeBuffs[k] && d.activeBuffs[k].expiresAt) > now) map[k] = d.activeBuffs[k]; }
+          const expiresAt = Math.max(now, toMillis(map[buffId] && map[buffId].expiresAt)) + buff.durationMs;
+          map[buffId] = { expiresAt, cpsMult: buff.cpsMult, clickMult: buff.clickMult };
+          updates.activeBuffs = map;
+          // older versions of the game only read activeBuff
           updates.activeBuff = { id: buffId, expiresAt, cpsMult: buff.cpsMult, clickMult: buff.clickMult };
-          updates.buffProgress = { ...(d.buffProgress || {}), [buffId]: newProgress - buff.cpCost };
+          activated = true;
         }
-        tx.update(clanRef, updates);
+        progress[buffId] = next;
+        updates.buffProgress = progress;
+        const donated = Object.assign({}, d.cpDonated || {});
+        donated[me] = (Number(donated[me]) || 0) + amount;
+        updates.cpDonated = donated;
+        tx.update(ref, updates);
       });
-    }catch(e){ alert('Contribution failed: ' + (e.message || 'try again')); return; }
-    s.clanPoints = Math.max(0, have - amount);
-    localStorage.setItem('whathappened_save', JSON.stringify(s));
-    try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){}
-    await renderClanShopTab();
-    alert('Contributed ' + amount + ' CP to ' + (buff.name) + '. Remaining CP: ' + s.clanPoints.toLocaleString());
+    }catch(e){ notify('Contribution failed: ' + (e.message || 'try again'), 'bad'); renderClanShopTab(); return; }
+    changeClanPoints(-amount);
+    try{ localStorage.setItem('whathappened_clan_donated', String((Number(localStorage.getItem('whathappened_clan_donated')) || 0) + amount)); }catch(e){}
+    if(activated){
+      try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${buff.icon} ${buff.name} is active for the whole clan! ${me} filled the bar.`, createdAt: serverTimestamp(), system: true, color: 'gold' }); }catch(e){}
+    }
+    notify(activated ? `${buff.name} is now active for the whole clan!` : `You put ${amount.toLocaleString()} CP into ${buff.name}.`, 'good');
+    checkClanAchievements();
+    renderClanShopTab();
   }
 
   // Clan XP and level (1–20, exponentially harder)
@@ -381,28 +415,28 @@
     if(fromLevel) return fromLevel;
     return CLAN_SHOP_ICONS.find(ic => ic.id === id) || CLAN_ICONS[0];
   }
-  const CLAN_LEVEL_BONUSES = [
-    { level: 1, bonus: 'Base — no bonus' },
-    { level: 2, bonus: '+2% CPS for all members' },
-    { level: 3, bonus: '+2% click power for all members' },
-    { level: 4, bonus: '+4% CPS, +1% event gem rewards' },
-    { level: 5, bonus: '+5% CPS, +2% click power' },
-    { level: 6, bonus: '+6% CPS, +3% click power, +2% event rewards' },
-    { level: 7, bonus: '+8% CPS, +4% click power' },
-    { level: 8, bonus: '+10% CPS, +5% click power, +3% event rewards' },
-    { level: 9, bonus: '+12% CPS, +6% click power' },
-    { level: 10, bonus: '+15% CPS, +8% click power, +5% event rewards' },
-    { level: 11, bonus: '+18% CPS, +10% click power' },
-    { level: 12, bonus: '+20% CPS, +12% click power, +6% event rewards' },
-    { level: 13, bonus: '+24% CPS, +14% click power' },
-    { level: 14, bonus: '+28% CPS, +16% click power, +8% event rewards' },
-    { level: 15, bonus: '+32% CPS, +18% click power' },
-    { level: 16, bonus: '+36% CPS, +20% click power, +10% event rewards' },
-    { level: 17, bonus: '+40% CPS, +22% click power' },
-    { level: 18, bonus: '+45% CPS, +25% click power, +12% event rewards' },
-    { level: 19, bonus: '+50% CPS, +28% click power' },
-    { level: 20, bonus: '+55% CPS, +30% click power, +15% event rewards (max)' }
+  // Clan level perks (% CPS, % click power, % event gems). main.js applies them: keep in sync with CLAN_LEVEL_PERKS there.
+  const CLAN_LEVEL_PERKS = [
+    null,
+    { cps: 0, click: 0, event: 0 }, { cps: 2, click: 0, event: 0 }, { cps: 2, click: 2, event: 0 }, { cps: 4, click: 2, event: 1 },
+    { cps: 5, click: 2, event: 1 }, { cps: 6, click: 3, event: 2 }, { cps: 8, click: 4, event: 2 }, { cps: 10, click: 5, event: 3 },
+    { cps: 12, click: 6, event: 3 }, { cps: 15, click: 8, event: 5 }, { cps: 18, click: 10, event: 5 }, { cps: 20, click: 12, event: 6 },
+    { cps: 24, click: 14, event: 6 }, { cps: 28, click: 16, event: 8 }, { cps: 32, click: 18, event: 8 }, { cps: 36, click: 20, event: 10 },
+    { cps: 40, click: 22, event: 10 }, { cps: 45, click: 25, event: 12 }, { cps: 50, click: 28, event: 12 }, { cps: 55, click: 30, event: 15 }
   ];
+  function perkParts(p){ const out = []; if(p && p.cps) out.push(`+${p.cps}% CPS`); if(p && p.click) out.push(`+${p.click}% click power`); if(p && p.event) out.push(`+${p.event}% event gems`); return out; }
+  function perkText(p){ return perkParts(p).join(', ') || 'No bonus yet'; }
+  const CLAN_LEVEL_BONUSES = CLAN_LEVEL_PERKS.slice(1).map((p, i) => ({ level: i + 1, bonus: perkText(p) + (i + 1 === 20 ? ' (max)' : '') }));
+  // "+% event gem rewards" by clan level (index = level)
+  const CLAN_LEVEL_EVENT_PCT = CLAN_LEVEL_PERKS.map(p => p ? p.event : 0);
+  async function withClanEventBonus(clanId, gems){
+    try{
+      if(!gems || !clanId) return gems;
+      const snap = await getDoc(doc(db,'clans',clanId));
+      const level = clanLevelFromXp(snap && snap.exists() ? snap.data().clanXp : 0).level;
+      return Math.round(gems * (1 + (CLAN_LEVEL_EVENT_PCT[level] || 0) / 100));
+    }catch(e){ return gems; }
+  }
   function fillClanLevelBonusesList(){
     const listEl = document.getElementById('clanLevelBonusesList'); if(!listEl || listEl._filled) return;
     listEl._filled = true;
@@ -444,8 +478,8 @@
         await setDoc(doc(db,'profiles',uname), { clanId: null, clanName: null, clanRole: null }, { merge: true });
       }
       if(uname === me){ localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole'); try{ updatePlayerClanStatus(); }catch(e){} }
-      alert('Member kicked.');
-      loadClanDetail(clanId);
+      notify(`${uname} was kicked from the clan.`);
+      reloadMembers(clanId);
     }catch(e){ console.error('kick failed', e); alert('Kick failed'); }
   }
 
@@ -462,38 +496,27 @@
       const username = localStorage.getItem('player_username') || '';
       if (!username) return;
       try { if (currentProfileUnsub) { currentProfileUnsub(); currentProfileUnsub = null; } } catch (e) {}
-      const ref = doc(db, 'profiles', username);
-      currentProfileUnsub = onSnapshot(ref, snap => {
+      currentProfileUnsub = onSnapshot(doc(db, 'profiles', username), snap => {
         try {
-          if (!snap.exists()) {
-            localStorage.removeItem('player_clanId');
-            localStorage.removeItem('player_clanName');
-            localStorage.removeItem('player_clanRole');
-            updatePlayerClanStatus();
-            const area = document.getElementById('clanDetailArea');
-            if (area) area.innerHTML = 'You are not in a clan.';
-            return;
-          }
-          const data = snap.data();
+          const data = snap.exists() ? (snap.data() || {}) : {};
           const cid = data.clanId || null;
           if (!cid) {
-            let msg = '';
-            try {
-              msg = (data.kickedMessage || '') + '';
-              if (msg && msg.trim()) {
-                try { alert('You were kicked from your clan!\n' + msg); } catch (e) {}
-                try { updateDoc(doc(db, 'profiles', username), { kickedMessage: null, kickedAt: null }); } catch (e) {}
-              }
-            } catch (e) {}
+            const wasInClan = !!localStorage.getItem('player_clanId');
+            const msg = String(data.kickedMessage || '').trim();
+            if (msg) {
+              notify('You were kicked from your clan.\n' + msg, 'bad');
+              try { updateDoc(doc(db, 'profiles', username), { kickedMessage: null, kickedAt: null }); } catch (e) {}
+            } else if (wasInClan) notify('You are no longer in your clan.', 'bad');
             localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
+            if (wasInClan && _clanView.member) { closeClanView(); showRecommendedClans(); }
             updatePlayerClanStatus();
-            const area = document.getElementById('clanDetailArea');
-            if (area) area.innerHTML = (msg && msg.trim()) ? 'You were kicked from the clan.' : 'You were removed from the clan.';
           } else {
+            const changed = localStorage.getItem('player_clanId') !== cid;
             localStorage.setItem('player_clanId', cid);
             if (typeof data.clanName !== 'undefined') localStorage.setItem('player_clanName', data.clanName || '');
             if (typeof data.clanRole !== 'undefined') localStorage.setItem('player_clanRole', data.clanRole || '');
             updatePlayerClanStatus();
+            if (changed && _clanView.id !== cid) loadClanDetail(cid);
           }
         } catch (e) { console.warn('profile snapshot error', e); }
       }, err => { console.warn('profile snapshot failed', err); });
@@ -577,48 +600,82 @@
       const cid = localStorage.getItem('player_clanId');
       const cname = localStorage.getItem('player_clanName') || '';
       const role = localStorage.getItem('player_clanRole') || '';
-      if(!status) return;
-      if(!me){ status.textContent = 'No username set.'; return; }
-      if(cid){
-        const label = role ? (role.charAt(0).toUpperCase() + role.slice(1)) : 'Member';
-        status.innerHTML = `In clan: <strong style="color:#9cf">${escapeHtml(cname||cid)}</strong> — ${escapeHtml(label)}`;
-      } else {
-        status.textContent = 'Not in a clan.';
+      if(status){
+        if(!me) status.innerHTML = '<span class="muted">No username yet</span><button type="button" class="btn btn-sm btn-ghost" id="ensureNameBtn">Pick a name</button>';
+        else status.innerHTML = `<span class="me-name">${escapeHtml(me)}</span>` + (cid ? `<span class="me-clan">${escapeHtml(cname || 'Your clan')} · ${escapeHtml(roleLabel(role || 'member'))}</span>` : '<span class="me-clan muted">Not in a clan</span>');
+        const nb = document.getElementById('ensureNameBtn');
+        if(nb) nb.addEventListener('click', () => { if(ensureUsername()){ updatePlayerClanStatus(); watchMyProfile(); } });
       }
-      // hide create/find UI when in a clan
-      try{ const ca = document.getElementById('createArea'); if(ca) ca.style.display = cid ? 'none' : ''; const fa = document.getElementById('findArea'); if(fa) fa.style.display = cid ? 'none' : ''; }catch(e){}
+      // the clan finder is only for players without a clan
+      const fa = document.getElementById('findArea'); if(fa) fa.style.display = cid ? 'none' : '';
+      const lock = document.getElementById('clanLockNote'); if(lock) lock.hidden = clansUnlocked();
+      updateCreateHint();
     }catch(e){ }
+  }
+
+  function validateClanName(name, list){
+    const n = String(name || '').trim();
+    if(n.length < 3) return 'Clan names need at least 3 characters.';
+    if(n.length > 24) return 'Clan names can be at most 24 characters.';
+    if((list || []).some(c => String(c.name || '').trim().toLowerCase() === n.toLowerCase())) return 'That name is already taken.';
+    return '';
+  }
+  function updateCreateHint(){
+    const hint = document.getElementById('createHint'), btn = document.getElementById('createClan'), inp = document.getElementById('newClanName');
+    if(!hint || !btn || !inp) return;
+    const golden = Number((readSaveObj() || {}).goldenWhat) || 0;
+    const typed = inp.value.trim();
+    let msg, bad = false;
+    if(!clansUnlocked()){ msg = 'Unlocks after your first prestige.'; bad = true; }
+    else if(golden < 10){ msg = `You have ${golden} Golden. You need 10.`; bad = true; }
+    else if(typed){ msg = validateClanName(typed, _clanList.list); bad = !!msg; if(!bad) msg = `Looks good. You have ${golden} Golden.`; }
+    else msg = `You have ${golden} Golden.`;
+    hint.textContent = msg;
+    hint.classList.toggle('bad', bad);
+    btn.disabled = !clansUnlocked() || golden < 10;
   }
 
   async function createClan(){
     try{
-      const username = ensureUsername(); if(!username){ alert('You must set a username.'); return; }
-      const p = Number(localStorage.getItem('whathappened_prestige_times') || 0) || 0;
-      if (p < 1) { alert('Clans unlock after you prestige once.'); return; }
-      const have = readGoldenCount();
-      if (Number(have) < 10) { alert('You need 10 Golden What Happeneds to start a clan.'); return; }
-      const nameInp = document.getElementById('newClanName'); if(!nameInp) return; const cname = (nameInp.value||'').trim().slice(0,64);
-      if (!cname) { alert('Enter a clan name.'); return; }
-      if(!confirm(`Create clan "${cname}" for 10 Golden What Happend?`)) return;
-      try{ const newVal = Math.max(0, readGoldenCount() - 10); try{ localStorage.setItem('whathappened_golden', String(newVal)); }catch(e){} try{ const el = document.getElementById('goldenCount'); if(el) el.textContent = String(newVal); }catch(e){} }catch(e){}
-      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default' });
+      const username = ensureUsername(); if(!username){ notify('You need a username first.', 'bad'); return; }
+      if (!clansUnlocked()) { notify('Clans unlock after you prestige once.', 'bad'); return; }
+      // Golden lives in the game save; charge it there (the old code wrote an unused key, so clans were free)
+      const save = readSaveObj();
+      if (!save) { notify('No save found. Play the game first.', 'bad'); return; }
+      const have = Number(save.goldenWhat) || 0;
+      if (have < 10) { notify('You need 10 Golden What Happeneds to start a clan. You have ' + have + '.', 'bad'); return; }
+      const nameInp = document.getElementById('newClanName'); if(!nameInp) return;
+      const cname = nameInp.value.trim();
+      let list = [];
+      try{ list = await fetchClanList(true); }catch(e){}
+      const err = validateClanName(cname, list);
+      if (err) { notify(err, 'bad'); updateCreateHint(); return; }
+      if(!confirm(`Create the clan "${cname}" for 10 Golden What Happeneds?`)) return;
+      const btn = document.getElementById('createClan'); if(btn) btn.disabled = true;
+      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default', clanXp: 0, description: '' });
+      // charge only after the clan exists, re-reading the save in case the game wrote to it meanwhile
+      try{ const fresh = readSaveObj() || save; fresh.goldenWhat = Math.max(0, (Number(fresh.goldenWhat) || 0) - 10); writeSaveObj(fresh); }catch(e){ console.warn('charging clan cost failed', e); }
       localStorage.setItem('player_clanId', docRef.id);
-      localStorage.setItem('player_clanName', cname || '');
+      localStorage.setItem('player_clanName', cname);
       localStorage.setItem('player_clanRole', 'leader');
-      try{ localStorage.setItem('ach_clan_created', '1'); }catch(e){}
+      try{ const ach = window.WHA && window.WHA.unlock('clan_created'); if(ach) setTimeout(() => notify(`🏆 ${ach.name}: ${ach.desc} Title: ${ach.title}`, 'gold'), 600); }catch(e){}
       try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname, clanRole: 'leader' }, { merge: true }); }catch(e){}
       try{ await setDoc(doc(db,'clans',docRef.id,'members',username), { mainClicks: 0, clanRole: 'leader' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
-      alert('Clan created.');
+      try{ await addDoc(collection(db,'clan_chat'), { clanId: docRef.id, name: 'SYSTEM', message: `🎉 ${username} founded ${cname}!`, createdAt: serverTimestamp(), system: true, color: 'gold' }); }catch(e){}
+      notify(`Welcome to ${cname}! You're the leader.`, 'good');
       nameInp.value = '';
+      _clanList.at = 0;
+      updatePlayerClanStatus();
       loadClanDetail(docRef.id);
-    }catch(e){ console.error('createClan failed', e); alert('Create failed'); }
+    }catch(e){ console.error('createClan failed', e); notify('Creating the clan failed. Try again.', 'bad'); updateCreateHint(); }
   }
 
   async function joinClan(clanId){
     try{
       const username = ensureUsername(); if(!username) return alert('Set username first');
-      const p = Number(localStorage.getItem('whathappened_prestige_times') || 0) || 0;
-      if (p < 1) { alert('Clans unlock after you prestige once.'); return; }
+      if (!clansUnlocked()) { notify('Clans unlock after you prestige once.', 'bad'); return; }
+      const currentClan = localStorage.getItem('player_clanId');
+      if (currentClan && currentClan !== clanId) { alert('Leave your current clan before joining another one.'); return; }
       const clanRef = doc(db,'clans',clanId);
       const snap = await getDoc(clanRef);
       if(!snap.exists()) { alert('Clan not found'); return; }
@@ -635,7 +692,8 @@
       localStorage.setItem('player_clanName', data.name || '');
       localStorage.setItem('player_clanRole', 'member');
       try{ updatePlayerClanStatus(); }catch(e){}
-      alert('Joined clan.');
+      _clanList.at = 0;
+      notify(`Welcome to ${data.name || 'the clan'}! Check in every day to level it up.`, 'good');
       loadClanDetail(clanId);
     }catch(e){ console.error('join failed', e); alert('Join failed'); }
   }
@@ -643,27 +701,38 @@
   // Attach UI listeners; handle case where script loads after DOMContentLoaded
   function initClanUI(){
     try{
-      const ensureBtn = document.getElementById('ensureNameBtn'); if(ensureBtn) ensureBtn.addEventListener('click', ()=>{ ensureUsername(); });
-      const openQuickChat = document.getElementById('openQuickChat'); if(openQuickChat) openQuickChat.addEventListener('click', ()=>{ try{ window.open('index.html','_self'); setTimeout(()=>{ const el = document.getElementById('chatToggle'); if(el) el.click(); },200); }catch(e){} });
-      const openQuickClan = document.getElementById('openQuickClan'); if(openQuickClan) openQuickClan.addEventListener('click', ()=>{ try{ window.open('index.html','_self'); setTimeout(()=>{ const el = document.getElementById('clanToggle'); if(el) el.click(); },200); }catch(e){} });
       const createBtn = document.getElementById('createClan'); if(createBtn) createBtn.addEventListener('click', createClan);
-      const searchBtn = document.getElementById('searchClanBtn'); if(searchBtn) searchBtn.addEventListener('click', searchClans);
-      // tab buttons
-      try{ const tabClansBtn = document.getElementById('tabClansBtn'); const tabEventsBtn = document.getElementById('tabEventsBtn'); const tabShopBtn = document.getElementById('tabShopBtn'); const tabClans = document.getElementById('tabClans') || document.getElementById('clanDetailArea'); const tabEvents = document.getElementById('tabEvents'); const tabShop = document.getElementById('tabShop');
-        function showTab(which){ if(!tabClans || !tabEvents || !tabShop) return; const inClan = !!(localStorage.getItem('player_clanId')); tabClans.style.display = which === 'clans' ? 'block' : 'none'; tabEvents.style.display = which === 'events' ? 'block' : 'none'; tabShop.style.display = which === 'shop' ? 'block' : 'none'; try{ if(tabClansBtn) tabClansBtn.style.background = which === 'clans' ? '#164' : ''; if(tabEventsBtn) tabEventsBtn.style.background = which === 'events' ? '#164' : ''; if(tabShopBtn) tabShopBtn.style.background = which === 'shop' ? '#164' : ''; }catch(e){}
-          // if viewer isn't in a clan, show locked message for events/shop
-          if(which === 'events' && !inClan){ try{ tabEvents.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
-          if(which === 'shop' && !inClan){ try{ tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; }catch(e){} return; }
-          if(which === 'shop' && inClan){ try{ renderClanShopTab(); }catch(e){} }
-        }
-        if(tabClansBtn) tabClansBtn.addEventListener('click', ()=> showTab('clans'));
-        if(tabEventsBtn) tabEventsBtn.addEventListener('click', ()=> showTab('events'));
-        if(tabShopBtn) tabShopBtn.addEventListener('click', ()=> showTab('shop'));
-        showTab('clans');
-      }catch(e){}
-      try{ updateClanXpBar(); }catch(e){}
-      // show recommended clans on load (only if viewer not in a clan)
-      try{ if(!localStorage.getItem('player_clanId')) showRecommendedClans(); }catch(e){}
+      const nameInp = document.getElementById('newClanName'); if(nameInp){ nameInp.addEventListener('input', updateCreateHint); nameInp.addEventListener('keydown', e => { if(e.key === 'Enter') createClan(); }); }
+      const search = document.getElementById('searchClanName'); if(search) search.addEventListener('input', () => renderClanBrowser());
+      const sort = document.getElementById('clanSort'); if(sort) sort.addEventListener('change', () => renderClanBrowser());
+      const results = document.getElementById('searchResults');
+      if(results) results.addEventListener('click', e => {
+        const view = e.target.closest('[data-view]'), join = e.target.closest('[data-join]');
+        if(view){ loadClanDetail(view.dataset.view); const area = document.getElementById('clanDetailArea'); if(area) area.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+        else if(join){ join.disabled = true; joinClan(join.dataset.join).finally(() => { join.disabled = false; }); }
+      });
+      const tabClansBtn = document.getElementById('tabClansBtn'), tabEventsBtn = document.getElementById('tabEventsBtn'), tabShopBtn = document.getElementById('tabShopBtn');
+      const tabClans = document.getElementById('tabClans'), tabEvents = document.getElementById('tabEvents'), tabShop = document.getElementById('tabShop');
+      function showTab(which){
+        if(!tabClans || !tabEvents || !tabShop) return;
+        const inClan = !!localStorage.getItem('player_clanId');
+        tabClans.style.display = which === 'clans' ? 'block' : 'none';
+        tabEvents.style.display = which === 'events' ? 'block' : 'none';
+        tabShop.style.display = which === 'shop' ? 'block' : 'none';
+        tabClansBtn.classList.toggle('active', which === 'clans');
+        tabEventsBtn.classList.toggle('active', which === 'events');
+        tabShopBtn.classList.toggle('active', which === 'shop');
+        if(which === 'events' && !inClan) tabEvents.innerHTML = lockedPanel('🏆', 'Join a clan to take part in events', 'Events run all week: boss fights, races, construction and more. They pay out Gems, Clan XP and Clan Points.');
+        if(which === 'shop') renderClanShopTab();
+      }
+      if(tabClansBtn) tabClansBtn.addEventListener('click', () => showTab('clans'));
+      if(tabEventsBtn) tabEventsBtn.addEventListener('click', () => showTab('events'));
+      if(tabShopBtn) tabShopBtn.addEventListener('click', () => showTab('shop'));
+      showTab('clans');
+      updateClanXpBar();
+      if(!localStorage.getItem('player_clanId')) showRecommendedClans();
+      // keep relative times ("5m ago") current
+      setInterval(() => { document.querySelectorAll('time[data-ts]').forEach(t => { t.textContent = timeAgo(Number(t.dataset.ts)); }); }, 60000);
     }catch(e){ console.warn('clans init listeners failed', e); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initClanUI);
@@ -677,342 +746,423 @@
       let bg = (typeof s.equippedBgImage === 'string') ? s.equippedBgImage : null;
       if(!bg) return;
       try{
-        if(bg && typeof bg === 'string' && bg.indexOf('/') === -1){
-          if(bg.toLowerCase() === 'mainbg.png') bg = 'mainimage/Mainbg.png';
-          else if(bg.toLowerCase() === 'vrillbg.png') bg = 'mainimage/Vrillbg.png';
-          else bg = 'bgimages/' + bg;
-        }
+        // older saves stored paths with different letter case; file names on the server are lower case
+        const base = String(bg).split('/').pop().toLowerCase();
+        bg = (base === 'mainbg.png' || base === 'vrillbg.png') ? ('mainimage/' + base) : ('bgimages/' + base);
       }catch(e){}
       try{ document.body.style.backgroundImage = "url('" + bg + "')"; }catch(e){}
     }catch(e){}
   })();
+  // ---------- clan page: your clan, or a preview of another one ----------
+  const CHECKIN_XP = 25;
+  const CHECKIN_CP_BASE = 5;
+  // CP for a check-in: 5, +2 for each day of your streak, up to 15
+  function checkinReward(streak){ return CHECKIN_CP_BASE + 2 * Math.min(Math.max(0, streak - 1), 5); }
+  function readCheckinState(){ try{ return JSON.parse(localStorage.getItem('whathappened_clan_checkin') || '{}') || {}; }catch(e){ return {}; } }
+  function roleSlug(role){ return String(roleLabel(role || 'member')).replace(/\s+/g, '-'); }
+  function clanIconHtml(c){
+    if(c.clanIcon === 'custom' && c.clanCustomLogoUrl) return `<img src="${escapeHtml(c.clanCustomLogoUrl)}" alt="">`;
+    const ic = c.clanIcon ? getClanIconById(c.clanIcon) : getClanIconForLevel(clanLevelFromXp(c.clanXp).level);
+    return `<span>${ic.emoji || '⚔'}</span>`;
+  }
+  function viewerRoleFor(c, me){
+    if(!me || !c) return 'member';
+    if(me === c.owner) return 'leader';
+    if(Array.isArray(c.leaders) && c.leaders.includes(me)) return 'co-leader';
+    const p = _clanView.membersData && _clanView.membersData.profiles[me];
+    const r = (p && p.clanRole) || localStorage.getItem('player_clanRole') || 'member';
+    return (r === 'leader' || r === 'co-leader') ? 'member' : r;
+  }
+  function closeClanView(){
+    try{ if(currentClanUnsub){ currentClanUnsub(); currentClanUnsub = null; } }catch(e){}
+    try{ if(typeof window.currentChatUnsub === 'function') window.currentChatUnsub(); }catch(e){}
+    window.currentChatUnsub = null;
+    _clanView = { id: null, member: false, shellFor: null, doc: null, viewerRole: 'member', membersSig: '', membersAt: 0, membersData: null, ui: {} };
+    const area = document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+  }
+
   async function loadClanDetail(clanId){
+    const area = document.getElementById('clanDetailArea'); if(!area || !clanId) return;
+    closeClanView();
+    _clanView.id = clanId;
+    area.innerHTML = '<div class="card"><div class="muted">Loading clan…</div></div>';
+    currentClanUnsub = onSnapshot(doc(db,'clans',clanId), async snap => {
+      try{
+        if(_clanView.id !== clanId) return;
+        if(!snap.exists()) return handleMissingClan(clanId);
+        const c = snap.data() || {};
+        const me = localStorage.getItem('player_username') || '';
+        const isMember = !!me && Array.isArray(c.members) && c.members.includes(me);
+        _clanView.doc = c;
+        _clanView.member = isMember;
+        if(isMember){ try{ localStorage.setItem('whathappened_clan_level', String(clanLevelFromXp(c.clanXp).level)); }catch(e){} }
+        _clanView.viewerRole = viewerRoleFor(c, me);
+        if(_clanView.shellFor !== (isMember ? 'member' : 'guest')) renderClanShell(clanId, isMember);
+        renderClanBanner(clanId, c, isMember);
+        renderCheckin(clanId, c);
+        await refreshMembers(clanId, c);
+        if(isMember) checkClanAchievements();
+      }catch(e){ console.error('clan snapshot render failed', e); }
+    }, err => { console.warn('clan snapshot failed', err); area.innerHTML = '<div class="card"><div class="muted">Couldn\'t load this clan. Try again in a moment.</div></div>'; });
+  }
+  async function handleMissingClan(clanId){
+    const me = String(localStorage.getItem('player_username') || '');
+    // the stored clan may be stale: follow the profile to the clan the player is really in
+    if(me && String(localStorage.getItem('player_clanId') || '') === String(clanId)){
+      try{
+        const prof = await getDoc(doc(db,'profiles',me));
+        const p = prof && prof.exists() ? (prof.data() || {}) : {};
+        if(p.clanId && p.clanId !== String(clanId)){
+          localStorage.setItem('player_clanId', String(p.clanId));
+          if(typeof p.clanName !== 'undefined') localStorage.setItem('player_clanName', p.clanName || '');
+          if(typeof p.clanRole !== 'undefined') localStorage.setItem('player_clanRole', p.clanRole || '');
+          updatePlayerClanStatus();
+          loadClanDetail(p.clanId);
+          return;
+        }
+      }catch(e){}
+      localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
+      updatePlayerClanStatus();
+      notify('Your clan no longer exists.', 'bad');
+      showRecommendedClans();
+    } else notify('That clan no longer exists.', 'bad');
+    closeClanView();
+  }
+
+  function renderClanShell(clanId, isMember){
+    const area = document.getElementById('clanDetailArea'); if(!area) return;
+    area.innerHTML = `
+      <section class="card clan-banner"><div id="bannerTop"></div><div class="manage-panel" id="managePanel" hidden></div><div id="bannerLevel"></div></section>
+      <div class="clan-cols">
+        <div class="clan-col">
+          ${isMember ? '<section class="card checkin-card" id="checkinCard"></section>' : ''}
+          <section class="card members-card">
+            <div class="sec-head"><h2>Members <span class="count" id="memberCount"></span></h2><span class="online-count" id="onlineCount"></span></div>
+            <div id="membersList" class="members-list"><div class="muted">Loading members…</div></div>
+          </section>
+        </div>
+        <section class="card chat-card">
+          <div class="sec-head"><h2>Clan chat</h2></div>
+          ${isMember
+            ? '<div id="clanChatPinned" class="pinned"></div><div id="clanChatBox" class="chat-box"></div><form class="chat-form" id="clanChatForm"><input id="clanChatInput" type="text" maxlength="500" placeholder="Say something to your clan…" autocomplete="off"><button id="clanChatSend" class="btn btn-primary" type="submit">Send</button></form>'
+            : '<div class="chat-locked"><span>💬</span><p class="muted">Join the clan to read and send messages.</p></div>'}
+        </section>
+      </div>`;
+    _clanView.shellFor = isMember ? 'member' : 'guest';
+    _clanView.ui.manage = false;
+    const list = document.getElementById('membersList');
+    if(list) list.addEventListener('click', e => onMemberListClick(e, clanId));
+    if(isMember){
+      const form = document.getElementById('clanChatForm');
+      if(form) form.addEventListener('submit', e => { e.preventDefault(); sendClanChat(clanId); });
+      const box = document.getElementById('clanChatBox'), pinned = document.getElementById('clanChatPinned');
+      [box, pinned].forEach(el => el && el.addEventListener('click', e => onChatClick(e, clanId)));
+      loadClanChat(clanId);
+    } else {
+      try{ if(typeof window.currentChatUnsub === 'function') window.currentChatUnsub(); }catch(e){}
+      window.currentChatUnsub = null;
+    }
+  }
+
+  function renderClanBanner(clanId, c, isMember){
+    const top = document.getElementById('bannerTop'), lvlEl = document.getElementById('bannerLevel');
+    if(!top || !lvlEl) return;
+    const me = localStorage.getItem('player_username') || '';
+    const role = _clanView.viewerRole;
+    const members = Array.isArray(c.members) ? c.members : [];
+    const max = c.maxMembers || 30;
+    const canManage = isMember && (canEditDescription(role) || me === c.owner);
+    const founded = toMillis(c.createdAt);
+    const myClan = localStorage.getItem('player_clanId');
+    const joinable = !isMember && !myClan && members.length < max && clansUnlocked();
+    const joinNote = isMember ? '' : myClan ? 'Leave your clan to join this one.' : members.length >= max ? 'This clan is full.' : !clansUnlocked() ? 'Clans unlock after your first prestige.' : '';
+    top.innerHTML = `
+      <div class="banner-main">
+        <div class="emblem">${clanIconHtml(c)}</div>
+        <div class="banner-text">
+          <div class="banner-title"><h2>${escapeHtml(c.name || 'Clan')}</h2><span class="lvl-badge">Lv ${clanLevelFromXp(c.clanXp).level}</span>${isMember ? '<span class="tag">Your clan</span>' : ''}</div>
+          <div class="banner-meta">👑 ${escapeHtml(c.owner || '?')} · 👥 ${members.length}/${max} members${founded ? ' · Founded ' + timeAgo(founded) : ''}</div>
+          <p class="banner-desc">${c.description ? escapeHtml(c.description) : (canManage ? '<span class="muted">No description yet. Add one under ⚙️ Manage so people know what your clan is about.</span>' : '')}</p>
+        </div>
+        <div class="banner-actions" id="clanHeaderActions">
+          ${isMember ? '' : `<button class="btn btn-primary" id="joinClanBtn"${joinable ? '' : ' disabled'}>Join clan</button>`}
+          ${isMember ? '' : '<button class="btn btn-ghost btn-sm" id="closeClanPreview">✕ Close</button>'}
+          ${canManage ? `<button class="btn btn-ghost btn-sm" id="manageClanBtn" aria-expanded="${_clanView.ui.manage ? 'true' : 'false'}">⚙️ Manage</button>` : ''}
+          ${isMember ? '<button class="btn btn-danger btn-sm" id="leaveClanBtn">Leave</button>' : ''}
+          ${joinNote ? `<span class="muted small">${escapeHtml(joinNote)}</span>` : ''}
+        </div>
+      </div>`;
+    const lvl = clanLevelFromXp(c.clanXp);
+    const perk = CLAN_LEVEL_PERKS[lvl.level], next = CLAN_LEVEL_PERKS[lvl.level + 1];
+    const pct = lvl.level >= CLAN_MAX_LEVEL ? 100 : Math.min(100, lvl.xpInLevel / lvl.xpNeededForNext * 100);
+    const active = activeClanBuffs(c);
+    lvlEl.innerHTML = `
+      <div class="banner-level">
+        <div class="lvl-row"><b>Level ${lvl.level}</b><span class="muted">${lvl.level >= CLAN_MAX_LEVEL ? 'Max level!' : `${Math.floor(lvl.xpInLevel).toLocaleString()} / ${Math.ceil(lvl.xpNeededForNext).toLocaleString()} XP to level ${lvl.level + 1}`}</span><button type="button" class="link-btn" id="perksToggle" aria-expanded="${_clanView.ui.perks ? 'true' : 'false'}">All level perks ${_clanView.ui.perks ? '▴' : '▾'}</button></div>
+        <div class="xp-bar"><i style="width:${pct}%"></i></div>
+        <div class="perk-row">
+          ${perkParts(perk).map(t => `<span class="perk">${escapeHtml(t)}</span>`).join('') || '<span class="perk dim">No level perks yet</span>'}
+          ${next ? `<span class="perk next">Level ${lvl.level + 1}: ${escapeHtml(perkText(next))}</span>` : ''}
+        </div>
+        ${Object.keys(active).length ? `<div class="perk-row">${Object.entries(active).map(([id, exp]) => { const b = CLAN_BUFFS.find(x => x.id === id); return `<span class="perk buff">${b ? b.icon + ' ' + escapeHtml(b.name) : 'Clan buff'} · ${fmtLeft(exp - Date.now())} left</span>`; }).join('')}</div>` : ''}
+        <div class="perk-list" id="perkList"${_clanView.ui.perks ? '' : ' hidden'}>${CLAN_LEVEL_BONUSES.map(r => `<div class="${r.level === lvl.level ? 'cur' : r.level < lvl.level ? 'done' : ''}"><span>Level ${r.level}</span><span>${escapeHtml(r.bonus)}</span></div>`).join('')}</div>
+      </div>`;
+    const on = (id, fn) => { const el = document.getElementById(id); if(el) el.addEventListener('click', fn); };
+    on('joinClanBtn', () => joinClan(clanId));
+    on('closeClanPreview', () => { closeClanView(); const fa = document.getElementById('findArea'); if(fa) fa.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+    on('leaveClanBtn', () => { if(confirm(me === c.owner ? 'Leave your clan? Leadership passes to the highest-ranked member (or the clan is deleted if you are the last one).' : `Leave ${c.name || 'this clan'}?`)) leaveClan(clanId); });
+    on('manageClanBtn', () => { _clanView.ui.manage = !_clanView.ui.manage; fillManagePanel(clanId); renderClanBanner(clanId, _clanView.doc, _clanView.member); });
+    on('perksToggle', () => { _clanView.ui.perks = !_clanView.ui.perks; renderClanBanner(clanId, _clanView.doc, _clanView.member); });
+  }
+
+  // built when opened (not on every update) so typing in it isn't wiped when the clan changes
+  function fillManagePanel(clanId){
+    const panel = document.getElementById('managePanel'); const c = _clanView.doc;
+    if(!panel || !c) return;
+    panel.hidden = !_clanView.ui.manage;
+    if(panel.hidden){ panel.innerHTML = ''; return; }
+    const me = localStorage.getItem('player_username') || '';
+    const role = _clanView.viewerRole;
+    const isOwner = me === c.owner;
+    const canEdit = canEditDescription(role);
+    const lvl = clanLevelFromXp(c.clanXp).level;
+    const icons = CLAN_ICONS.filter(ic => lvl >= ic.level).concat((Array.isArray(c.clanShopIconsUnlocked) ? c.clanShopIconsUnlocked : []).map(id => CLAN_SHOP_ICONS.find(ic => ic.id === id)).filter(Boolean));
+    if(c.clanCustomLogoUrl) icons.push({ id: 'custom', label: 'Custom logo', emoji: '🖼️' });
+    const curIcon = c.clanIcon || 'default';
+    panel.innerHTML = `
+      <div class="manage-grid">
+        ${canEdit ? `<label class="field"><span>Description</span><textarea id="descInput" maxlength="400" rows="3" placeholder="What's your clan about? Activity, goals, rules…">${escapeHtml(c.description || '')}</textarea></label>` : ''}
+        ${canEdit ? `<label class="field"><span>Clan icon</span><select id="clanIconSelect">${icons.map(ic => `<option value="${ic.id}"${ic.id === curIcon ? ' selected' : ''}>${ic.emoji} ${escapeHtml(ic.label)}</option>`).join('')}</select><small class="muted">More icons unlock with clan levels and in the Clan Shop.</small></label>` : ''}
+      </div>
+      <div class="manage-actions">
+        ${canEdit ? '<button class="btn btn-primary btn-sm" id="saveDescBtn">Save description</button>' : ''}
+        ${isOwner ? '<button class="btn btn-danger btn-sm" id="deleteClanBtn">Delete clan</button>' : ''}
+      </div>
+      ${isOwner ? '<p class="muted small">To hand the clan to someone else, open the ⋯ menu next to their name.</p>' : ''}`;
+    const save = document.getElementById('saveDescBtn');
+    if(save) save.addEventListener('click', async () => {
+      const val = (document.getElementById('descInput').value || '').trim().slice(0, 400);
+      save.disabled = true;
+      try{ await updateDoc(doc(db,'clans',clanId), { description: val }); notify('Description saved.', 'good'); _clanView.ui.manage = false; fillManagePanel(clanId); renderClanBanner(clanId, _clanView.doc, _clanView.member); }
+      catch(e){ notify('Saving the description failed.', 'bad'); save.disabled = false; }
+    });
+    const sel = document.getElementById('clanIconSelect');
+    if(sel) sel.addEventListener('change', async () => {
+      try{ await updateDoc(doc(db,'clans',clanId), { clanIcon: sel.value }); notify('Clan icon updated.', 'good'); }
+      catch(e){ notify('Changing the icon failed.', 'bad'); }
+    });
+    const del = document.getElementById('deleteClanBtn');
+    if(del) del.addEventListener('click', () => { if(confirm(`Delete ${c.name || 'this clan'} for everyone? This can't be undone.`)) deleteClan(clanId); });
+  }
+
+  function renderCheckin(clanId, c){
+    const card = document.getElementById('checkinCard'); if(!card) return;
+    const me = localStorage.getItem('player_username') || '';
+    const day = utcDay(), yesterday = utcDay(-1);
+    const names = (c.checkin && c.checkin.day === day && Array.isArray(c.checkin.names)) ? c.checkin.names : [];
+    const done = names.includes(me);
+    const st = readCheckinState();
+    const streak = st.day === day || st.day === yesterday ? (Number(st.streak) || 0) : 0;
+    const nextStreak = st.day === yesterday ? streak + 1 : 1;
+    const members = Array.isArray(c.members) ? c.members : [];
+    card.innerHTML = `
+      <div class="sec-head"><h2>Daily check-in</h2><span class="muted small">Resets in ${fmtLeft(msUntilUtcMidnight())}</span></div>
+      <p class="muted">Check in once a day: your clan gets <b>+${CHECKIN_XP} XP</b> and you get Clan Points. Keep a streak going for up to ${checkinReward(99)} CP a day.</p>
+      <div class="checkin-row">
+        ${done
+          ? `<div class="checked">✓ Checked in today${streak > 1 ? ` · 🔥 ${streak}-day streak` : ''}</div>`
+          : `<button class="btn btn-gold" id="checkinBtn">Check in · +${checkinReward(nextStreak)} CP</button>${nextStreak > 1 ? `<span class="muted">🔥 Day ${nextStreak} of your streak</span>` : ''}`}
+      </div>
+      <div class="checkin-who"><div class="bar"><i style="width:${members.length ? names.length / members.length * 100 : 0}%"></i></div><span class="muted small">${names.length} of ${members.length} member${members.length === 1 ? '' : 's'} checked in today</span></div>`;
+    const btn = document.getElementById('checkinBtn');
+    if(btn) btn.addEventListener('click', () => clanCheckIn(clanId));
+  }
+  async function clanCheckIn(clanId){
+    const me = ensureUsername(); if(!me) return;
+    const btn = document.getElementById('checkinBtn'); if(btn) btn.disabled = true;
+    const day = utcDay();
+    let already = false, before = 1, after = 1, clanName = '';
     try{
-      const area = document.getElementById('clanDetailArea'); if(area) area.innerHTML = 'Loading...';
-      // unsubscribe previous
-      try{ if(currentClanUnsub){ currentClanUnsub(); currentClanUnsub = null; } }catch(e){}
-      const ref = doc(db,'clans',clanId);
-      currentClanUnsub = onSnapshot(ref, async snapLive => {
-        try{
-          if(!snapLive.exists()){
-            try{
-              const me = String(localStorage.getItem('player_username') || '');
-              // If we have a signed-in username, check their profile for a current clanId
-              if(me){
-                try{
-                  const prof = await getDoc(doc(db,'profiles',me));
-                  if(prof && prof.exists()){
-                    const pdata = prof.data() || {};
-                    const profileClan = pdata.clanId || null;
-                    if(profileClan && profileClan !== String(clanId || '')){
-                      // profile indicates a different clan; update localStorage and load that clan
-                      try{ localStorage.setItem('player_clanId', String(profileClan)); if(typeof pdata.clanName !== 'undefined') localStorage.setItem('player_clanName', pdata.clanName || ''); if(typeof pdata.clanRole !== 'undefined') localStorage.setItem('player_clanRole', pdata.clanRole || ''); }catch(e){}
-                      try{ updatePlayerClanStatus(); }catch(e){}
-                      loadClanDetail(profileClan);
-                      return;
-                    }
-                  }
-                }catch(e){ /* ignore profile read errors */ }
-              }
-              // No profile clan or no signed-in user: clear stored clan and show not-in-clan message
-              try{ localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole'); }catch(e){}
-              try{ updatePlayerClanStatus(); }catch(e){}
-              if(area) area.innerHTML = 'You are not in a clan.';
-            }catch(e){ if(area) area.innerHTML = 'Clan not found.'; }
-            return;
-          }
-          const c = snapLive.data();
-          const owner = c.owner || '';
-          const name = c.name || '';
-          const members = Array.isArray(c.members) ? c.members.slice(0,100) : [];
-            let descriptionText = c.description || ''; 
-            const clanXp = Number(c.clanXp) || 0;
-            const clanLevelInfo = clanLevelFromXp(clanXp);
-            const currentIconId = c.clanIcon || 'default';
-            const clanCustomLogoUrl = c.clanCustomLogoUrl || '';
-            const useCustomLogo = (currentIconId === 'custom' && clanCustomLogoUrl);
-            const currentIcon = useCustomLogo ? null : (CLAN_ICONS.find(ic => ic.id === currentIconId) || getClanIconById(currentIconId) || getClanIconForLevel(clanLevelInfo.level));
-            const iconEmoji = currentIcon ? currentIcon.emoji : '⚔';
-            const iconDisplayHtml = useCustomLogo
-              ? `<img id="clanIconDisplay" src="${escapeHtml(clanCustomLogoUrl)}" alt="Clan" style="width:28px;height:28px;object-fit:contain;border-radius:4px;vertical-align:middle" title="Clan icon" />`
-              : `<span id="clanIconDisplay" style="font-size:28px" title="Clan icon">${iconEmoji}</span>`;
-            let html = `<div class="card" style="padding:16px;margin-bottom:0"><div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:12px"><div><h2 style="margin:0;font-size:22px;display:flex;align-items:center;gap:8px">${iconDisplayHtml}${escapeHtml(name)}</h2><div class="muted" style="margin-top:4px">Owner: ${escapeHtml(owner)} · Level ${clanLevelInfo.level}</div><div id="clanDescription" class="muted" style="margin-top:8px;max-width:480px">${escapeHtml(descriptionText)}</div></div>`;
-          const me = (localStorage.getItem('player_username')||'');
-          const canChangeIcon = me === owner || (Array.isArray(c.leaders) && c.leaders.indexOf(me) !== -1);
-          if(members.includes(me)) html += `<div id=\"clanHeaderActions\">${canChangeIcon ? '<select id="clanIconSelect" class="btn" style="margin-right:8px;padding:4px 8px" title="Clan icon (leaders only)"><option value="">Icon...</option></select>' : ''}<button id=\"leaveClanBtn\" class=\"btn\">Leave Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
-          else html += `<div id=\"clanHeaderActions\"><button id=\"joinClanBtn\" class=\"btn green\">Join Clan</button>${me===owner?'<button id=\"deleteClanBtn\" class=\"btn red\" style=\"margin-left:8px\">Delete Clan</button>':''}</div>`;
-          html += `</div></div><div class="card" style="margin-top:14px;padding:12px"><div style="display:flex;justify-content:space-between;align-items:center"><strong>Members (${members.length})</strong><button id=\"toggleMembersBtn\" class=\"btn\">Toggle</button></div><div id=\"membersList\" class=\"card-inner\" style=\"margin-top:10px;max-height:360px;overflow:auto;padding:10px;border-radius:8px\"></div></div>`;
-          if (members.includes(me)) {
-            html += `<div class="card" style="margin-top:14px;padding:12px"><strong>Clan Chat</strong><div id=\"clanChatBox\" class=\"card-inner\" style=\"height:220px;overflow:auto;padding:10px;border-radius:8px;margin-top:8px\"></div><div style=\"display:flex;gap:8px;margin-top:8px\"><input id=\"clanChatInput\" placeholder=\"Message...\" style=\"flex:1\"><button id=\"clanChatSend\" class=\"btn green\">Send</button></div></div>`;
-          } else {
-            html += `<div class="card" style="margin-top:14px;padding:12px"><strong>Clan Chat</strong><div class=\"muted\">Join the clan to view and send clan messages.</div></div>`;
-          }
-          if(area) area.innerHTML = html;
-          const iconSelect = document.getElementById('clanIconSelect');
-          if(iconSelect && canChangeIcon){
-            const levelUnlocked = CLAN_ICONS.filter(ic => clanLevelInfo.level >= ic.level);
-            const shopUnlocked = (Array.isArray(c.clanShopIconsUnlocked) ? c.clanShopIconsUnlocked : []).map(id => CLAN_SHOP_ICONS.find(ic => ic.id === id)).filter(Boolean);
-            const allUnlocked = [...levelUnlocked];
-            shopUnlocked.forEach(ic => { if(ic && !allUnlocked.find(x => x.id === ic.id)) allUnlocked.push(ic); });
-            if(clanCustomLogoUrl) allUnlocked.push({ id: 'custom', label: 'Custom logo', emoji: '🖼' });
-            allUnlocked.forEach(ic => { const o = document.createElement('option'); o.value = ic.id; o.textContent = ic.emoji + ' ' + ic.label; if(ic.id === (c.clanIcon || 'default')) o.selected = true; iconSelect.appendChild(o); });
-            iconSelect.addEventListener('change', async ()=>{
-              const v = iconSelect.value; if(!v) return;
-              try{
-                await updateDoc(doc(db,'clans',clanId), { clanIcon: v });
-                const disp = document.getElementById('clanIconDisplay');
-                if(!disp) return;
-                if(v === 'custom' && clanCustomLogoUrl){
-                  if(disp.tagName === 'IMG') disp.src = clanCustomLogoUrl;
-                  else { const img = document.createElement('img'); img.id = 'clanIconDisplay'; img.src = clanCustomLogoUrl; img.alt = 'Clan'; img.style.cssText = 'width:28px;height:28px;object-fit:contain;border-radius:4px;vertical-align:middle'; img.title = 'Clan icon'; disp.parentNode.replaceChild(img, disp); }
-                } else {
-                  const ic = getClanIconById(v);
-                  if(disp.tagName === 'IMG'){ const span = document.createElement('span'); span.id = 'clanIconDisplay'; span.style.fontSize = '28px'; span.title = 'Clan icon'; span.textContent = ic.emoji || '⚔'; disp.parentNode.replaceChild(span, disp); }
-                  else disp.textContent = ic.emoji || '⚔';
-                }
-              }catch(e){ console.warn('clan icon update failed', e); }
-            });
-          }
-          if(members.includes(me)){
-            const el = document.getElementById('leaveClanBtn'); if(el) el.addEventListener('click', ()=>leaveClan(clanId));
-            const delEl = document.getElementById('deleteClanBtn'); if(delEl) delEl.addEventListener('click', ()=>{ if(confirm('Delete this clan? This cannot be undone.')) deleteClan(clanId); });
-          } else {
-            const el = document.getElementById('joinClanBtn'); if(el) el.addEventListener('click', ()=>joinClan(clanId));
-            const delEl = document.getElementById('deleteClanBtn'); if(delEl) delEl.addEventListener('click', ()=>{ if(confirm('Delete this clan? This cannot be undone.')) deleteClan(clanId); });
-          }
-
-          // load profiles and render
-          const profilesCol = collection(db,'profiles');
-          const q = query(profilesCol, where('clanId','==',clanId), limit(200));
-          const snap = await getDocs(q);
-          const listEl = document.getElementById('membersList'); if(listEl) listEl.innerHTML = '';
-          const rows = [];
-          snap.forEach(ps => { const p = ps.data(); p._id = ps.id; rows.push(p); });
-          rows.sort((a,b)=>{ const na = profileNumeric(a,['score','points','totalScore']); const nb = profileNumeric(b,['score','points','totalScore']); return nb - na; });
-          // fetch titles for members
-          const names = rows.map(p => String(p.username || p._id || p.name || ''));
-          const titles = await getProfileTitlesForClan(names);
-          // determine viewer role
-          let viewerRole = 'member';
-          try{ const meProfileSnap = await getDoc(doc(db,'profiles',me)); if(me === owner) viewerRole = 'leader'; else if(Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1) viewerRole = 'co-leader'; else if(meProfileSnap && meProfileSnap.exists()) viewerRole = meProfileSnap.data().clanRole || 'member'; }catch(e){}
-
-          for(const p of rows){
-            try{
-              const uname = String(p.username || p._id || p.name || '');
-              let title = titles[uname.toLowerCase()] || '';
-              if(!title){ try{ const s = await getDoc(doc(db,'profiles',uname)); if(s && s.exists()) title = String((s.data() && s.data().title) || '') || ''; }catch(e){} }
-              const row = document.createElement('div'); row.style.display = 'flex'; row.style.justifyContent = 'space-between'; row.style.padding = '6px 0'; row.style.borderBottom = '1px solid #111';
-              const left = document.createElement('div');
-              left.innerHTML = `<div><strong style="color:#9cf">${escapeHtml(title ? (title + ' ' + uname) : uname)}</strong><div class="muted" style="font-size:12px">${escapeHtml(p.clanRole||'')}${uname === me ? ' (you)' : ''}</div></div>`;
-              const right = document.createElement('div');
-              const sc = profileNumeric(p,['score','points','totalScore']);
-              const go = profileNumeric(p,['golden','goldenWhat','totalGoldenEver','totalGolden']);
-              right.innerHTML = `<span class="scoreVal">${formatScientific(sc)}</span> <span class="goldenVal">G: ${formatScientific(go)}</span>`;
-              // actions depend on viewerRole and target role
-              try{
-                const targetRole = (p.clanRole || 'member');
-                if(uname !== me){
-                  try{ if(canKick(viewerRole, targetRole, uname === owner)){
-                    const btn = document.createElement('button'); btn.textContent = 'Kick'; btn.className='btn red'; btn.style.marginLeft='8px';
-                    btn.addEventListener('click', ()=>{ try{ if(confirm(`Kick ${uname} from clan?`)) kickMember(clanId, uname); }catch(e){ kickMember(clanId, uname); } });
-                    right.appendChild(btn);
-                  } }catch(e){}
-
-                  try{
-                    const allRanks = ['member','eleite member','elder','co-leader'];
-                    const allowed = allRanks.filter(r=> canAssignRole(viewerRole, r));
-                    if(allowed.length > 0){
-                      const sel = document.createElement('select'); sel.style.marginLeft='8px'; const currentRole = (p.clanRole || 'member');
-                      allowed.forEach(r => { const o = document.createElement('option'); o.value = r; o.textContent = r; if(r === currentRole) o.selected = true; sel.appendChild(o); });
-                      sel.addEventListener('change', ()=>{ try{ promoteMember(clanId, uname, sel.value); }catch(e){} });
-                      right.appendChild(sel);
-                    }
-                  }catch(e){}
-                }
-              }catch(e){}
-              row.appendChild(left); row.appendChild(right);
-              if(listEl) listEl.appendChild(row);
-            }catch(e){ console.warn('render member failed', e); }
-          }
-
-          // Attach members toggle, chat send handler and start live chat updates
-          try{
-            const toggleBtn = document.getElementById('toggleMembersBtn');
-            const membersListEl = document.getElementById('membersList');
-            try{
-              if(toggleBtn && membersListEl){
-                const isShown = membersListEl.style.display !== 'none';
-                toggleBtn.textContent = isShown ? '▴' : '▾';
-                toggleBtn.addEventListener('click', ()=>{
-                  try{
-                    const currentlyShown = membersListEl.style.display !== 'none';
-                    if(currentlyShown){ membersListEl.style.display = 'none'; toggleBtn.textContent = '▾'; }
-                    else { membersListEl.style.display = ''; toggleBtn.textContent = '▴'; }
-                  }catch(e){ console.warn('toggle members failed', e); }
-                });
-              }
-            }catch(e){ console.warn('init toggle failed', e); }
-
-            const sendBtn = document.getElementById('clanChatSend');
-            const inputEl = document.getElementById('clanChatInput');
-            if(sendBtn) sendBtn.addEventListener('click', async ()=>{
-              try{
-                const txt = (inputEl && inputEl.value ? inputEl.value : '').trim();
-                console.debug('clan: send clicked', { clanId, txt });
-                if(!txt) return;
-                const username = ensureUsername(); if(!username){ alert('Set username first'); return; }
-                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
-                if(inputEl) inputEl.value = '';
-                try { const boxNow = document.getElementById('clanChatBox'); if (boxNow) boxNow.scrollTop = boxNow.scrollHeight; } catch (e) {}
-                // allow Enter key to send (handled on input keydown below)
-                try{
-                  const colRef = collection(db,'clan_chat');
-                  const qAll = query(colRef, where('clanId','==',clanId));
-                  const snapAll = await getDocs(qAll);
-                  if(snapAll && snapAll.size > 100){
-                    const msgs = [];
-                    snapAll.forEach(s=> msgs.push({ id: s.id, data: s.data() }));
-                    msgs.sort((a,b)=>{ const ta = (a.data.createdAt && a.data.createdAt.toDate) ? a.data.createdAt.toDate().getTime() : 0; const tb = (b.data.createdAt && b.data.createdAt.toDate) ? b.data.createdAt.toDate().getTime() : 0; return ta - tb; });
-                    const toDelete = msgs.length - 100; const ops = [];
-                    for(let i=0;i<toDelete;i++) ops.push(deleteDoc(doc(db,'clan_chat', msgs[i].id)));
-                    if(ops.length) await Promise.all(ops);
-                  }
-                }catch(e){ console.warn('trim clan messages failed', e); }
-                try { if (!window.currentChatUnsub) loadClanChat(clanId); } catch (e) {}
-              }catch(e){ console.warn('clan send failed', e); alert('Send failed'); }
-            });
-            // start listening (only for members)
-            try{ if (members.includes(me)) loadClanChat(clanId); else { try{ if(typeof window.currentChatUnsub === 'function'){ try{ window.currentChatUnsub(); }catch(e){} window.currentChatUnsub = null; } }catch(e){} } }catch(e){ }
-
-          // header actions: edit description, transfer ownership (permission-checked)
-          try{
-            const hdr = document.getElementById('clanHeaderActions');
-            if(hdr){
-              // compute viewer role
-              let viewerRoleHdr = 'member';
-              try{ const meProf = await getDoc(doc(db,'profiles',me)); if(me === owner) viewerRoleHdr = 'leader'; else if(Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1) viewerRoleHdr = 'co-leader'; else if(meProf && meProf.exists()) viewerRoleHdr = meProf.data().clanRole || 'member'; }catch(e){}
-              if(canEditDescription(viewerRoleHdr)){
-                const editBtn = document.createElement('button'); editBtn.className='btn'; editBtn.style.marginLeft='8px'; editBtn.textContent='Edit Description';
-                editBtn.addEventListener('click', async ()=>{
-                  try{
-                    const cur = (c.description||'') + '';
-                    const val = prompt('Clan description (visible in search and clan header):', cur) || '';
-                    const trimmed = val.trim().slice(0,400);
-                    await updateDoc(doc(db,'clans',clanId), { description: trimmed });
-                    try{ const descEl = document.getElementById('clanDescription'); if(descEl) descEl.textContent = trimmed; }catch(e){}
-                  }catch(er){ console.warn('save clan description failed', er); alert('Save failed'); }
-                });
-                hdr.appendChild(editBtn);
-              }
-
-              if(canTransferOwnership(viewerRoleHdr) && me === owner){
-                const transferBtn = document.createElement('button'); transferBtn.className='btn'; transferBtn.style.marginLeft='8px'; transferBtn.textContent='Transfer Ownership';
-                transferBtn.addEventListener('click', async ()=>{
-                  try{
-                    const choice = prompt('Enter username to transfer ownership to (must be member):','')||''; const trimmed = choice.trim(); if(!trimmed) return;
-                    if(!members.includes(trimmed)) return alert('User not a member');
-                    if(!confirm(`Transfer ownership to ${trimmed}?`)) return;
-                    const cRef = doc(db,'clans',clanId);
-                    await updateDoc(cRef, { owner: trimmed, leaders: arrayUnion(trimmed) });
-                    try{ await setDoc(doc(db, 'profiles', trimmed), { clanRole: 'leader' }, { merge: true }); }catch(e){}
-                    try{ await setDoc(doc(db, 'profiles', me), { clanRole: 'co-leader' }, { merge: true }); }catch(e){}
-                    alert('Ownership transferred.');
-                  }catch(er){ console.warn('transfer failed', er); alert('Transfer failed'); }
-                });
-                hdr.appendChild(transferBtn);
-              }
-            }
-          }catch(e){}
-
-            // Enter-to-send binding
-            try{
-              if(inputEl && sendBtn){
-                inputEl.addEventListener('keydown', e=>{
-                  try{ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendBtn.click(); } }catch(er){}
-                });
-              }
-            }catch(e){ console.warn('enter-to-send bind failed', e); }
-          }catch(e){ console.warn('attach chat handlers failed', e); }
-
-        }catch(e){ console.error('clan snapshot render failed', e); }
+      await runTransaction(db, async tx => {
+        const ref = doc(db,'clans',clanId);
+        const snap = await tx.get(ref);
+        if(!snap.exists()) throw new Error('Clan not found');
+        const d = snap.data() || {};
+        clanName = d.name || '';
+        if(!(Array.isArray(d.members) && d.members.includes(me))) throw new Error('You are not in this clan');
+        const names = (d.checkin && d.checkin.day === day && Array.isArray(d.checkin.names)) ? d.checkin.names.slice() : [];
+        if(names.includes(me)){ already = true; return; }
+        names.push(me);
+        const xp = Number(d.clanXp) || 0;
+        before = clanLevelFromXp(xp).level;
+        after = clanLevelFromXp(xp + CHECKIN_XP).level;
+        tx.update(ref, { checkin: { day, names }, clanXp: xp + CHECKIN_XP });
       });
-    }catch(e){ console.error('loadClanDetail failed', e); const area=document.getElementById('clanDetailArea'); if(area) area.textContent = 'Load failed'; }
-  }
-            
-
-  // Render a list of clan objects into a container element
-  function renderClanResults(list, container){
-    try{
-      if(!container) return;
-      container.innerHTML = '';
-      if(!list || list.length === 0){ container.innerHTML = '<div class="muted">No clans found.</div>'; return; }
-      list.forEach(c => {
-        try{
-          const id = c.id || c._id || '';
-          const name = c.name || id;
-          const owner = c.owner || '';
-          const desc = (c.description||'').toString().slice(0,160);
-          const clanXp = Number(c.clanXp) || 0;
-          const lvl = clanLevelFromXp(clanXp).level;
-          const customLogoUrl = c.clanCustomLogoUrl || '';
-          const useCustomLogo = (c.clanIcon === 'custom' && customLogoUrl);
-          const iconObj = useCustomLogo ? null : (CLAN_ICONS.find(ic => ic.id === (c.clanIcon||'')) || getClanIconForLevel(lvl));
-          const iconPart = useCustomLogo
-            ? `<img src="${escapeHtml(customLogoUrl)}" alt="" style="width:24px;height:24px;object-fit:contain;border-radius:4px" />`
-            : `<span style="font-size:20px">${iconObj ? iconObj.emoji : '⚔'}</span>`;
-          const row = document.createElement('div');
-          row.style.padding = '8px';
-          row.style.borderBottom = '1px solid #111';
-          row.style.cursor = 'pointer';
-          row.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center"><div style="display:flex;align-items:center;gap:8px">${iconPart}<div><strong style="color:#9cf">${escapeHtml(name)}</strong><div class="muted">Owner: ${escapeHtml(owner)}</div><div class="muted" style="margin-top:6px">${escapeHtml(desc)}</div></div></div><div class="muted">Members: ${Array.isArray(c.members)?c.members.length:0}</div></div>`;
-          row.addEventListener('click', ()=>{ if(id) loadClanDetail(id); });
-          container.appendChild(row);
-        }catch(e){}
-      });
-    }catch(e){ console.warn('renderClanResults failed', e); }
+    }catch(e){ notify('Check-in failed: ' + (e.message || 'try again'), 'bad'); if(btn) btn.disabled = false; return; }
+    const st = readCheckinState();
+    const streak = st.day === day ? (Number(st.streak) || 1) : st.day === utcDay(-1) ? (Number(st.streak) || 0) + 1 : 1;
+    try{ localStorage.setItem('whathappened_clan_checkin', JSON.stringify({ day, streak, best: Math.max(Number(st.best) || 0, streak) })); }catch(e){}
+    if(already){ notify('You already checked in today.'); }
+    else {
+      const cp = checkinReward(streak);
+      changeClanPoints(cp);
+      notify(`Checked in! ${clanName || 'Your clan'} got +${CHECKIN_XP} XP and you got ${cp} CP.`, 'good');
+      if(after > before){ try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `🎉 ${clanName} reached level ${after}!`, createdAt: serverTimestamp(), system: true, color: 'gold' }); }catch(e){} }
+    }
+    if(_clanView.doc) renderCheckin(clanId, _clanView.doc);
+    checkClanAchievements();
   }
 
-  // Search clans by name (client-side filter over first N clans)
-  async function searchClans(){
+  async function refreshMembers(clanId, c, force){
+    const members = Array.isArray(c.members) ? c.members.slice(0, 100) : [];
+    const sig = JSON.stringify([members, c.owner, c.leaders]);
+    if(force || sig !== _clanView.membersSig || Date.now() - _clanView.membersAt > 60000 || !_clanView.membersData){
+      _clanView.membersSig = sig; _clanView.membersAt = Date.now();
+      const profiles = {}, stats = {};
+      try{ const ps = await getDocs(query(collection(db,'profiles'), where('clanId','==',clanId), limit(200))); ps.forEach(d => { profiles[d.id] = d.data() || {}; }); }catch(e){ console.warn('member profiles failed', e); }
+      try{ const ms = await getDocs(collection(db,'clans',clanId,'members')); ms.forEach(d => { stats[d.id] = d.data() || {}; }); }catch(e){ console.warn('member stats failed', e); }
+      if(_clanView.id !== clanId) return;
+      _clanView.membersData = { profiles, stats };
+      _clanView.viewerRole = viewerRoleFor(_clanView.doc || c, localStorage.getItem('player_username') || '');
+    }
+    renderMembers(clanId, _clanView.doc || c);
+  }
+  function reloadMembers(clanId){ if(_clanView.id === clanId && _clanView.doc) refreshMembers(clanId, _clanView.doc, true); }
+  function memberRole(c, name, p){
+    if(name === c.owner) return 'leader';
+    if(Array.isArray(c.leaders) && c.leaders.includes(name)) return 'co-leader';
+    const r = (p && p.clanRole) || 'member';
+    return (r === 'leader' || r === 'co-leader') ? 'member' : r;
+  }
+  function renderMembers(clanId, c){
+    const list = document.getElementById('membersList'); if(!list) return;
+    const me = localStorage.getItem('player_username') || '';
+    const data = _clanView.membersData || { profiles: {}, stats: {} };
+    const viewerRole = _clanView.viewerRole;
+    const isMember = _clanView.member;
+    const members = Array.isArray(c.members) ? c.members.slice(0, 100) : [];
+    const day = utcDay();
+    const checked = new Set((c.checkin && c.checkin.day === day && Array.isArray(c.checkin.names)) ? c.checkin.names : []);
+    const donated = (c.cpDonated && typeof c.cpDonated === 'object') ? c.cpDonated : {};
+    const now = Date.now();
+    const rows = members.map(name => {
+      const p = data.profiles[name] || {}, st = data.stats[name] || {};
+      return { name, role: memberRole(c, name, p), title: String(p.title || ''), cps: Number(st.lastCps) || 0,
+        golden: Number(st.gpoints != null ? st.gpoints : (p.goldenWhat != null ? p.goldenWhat : p.golden)) || 0,
+        seen: Number(st.lastUpdate) || 0, checked: checked.has(name), donated: Number(donated[name]) || 0 };
+    });
+    rows.sort((a, b) => roleRank(b.role) - roleRank(a.role) || b.cps - a.cps || a.name.localeCompare(b.name));
+    const online = rows.filter(r => now - r.seen < 120000).length;
+    const countEl = document.getElementById('memberCount'); if(countEl) countEl.textContent = `${members.length}/${c.maxMembers || 30}`;
+    const onEl = document.getElementById('onlineCount'); if(onEl) onEl.innerHTML = online ? `<span class="dot on"></span>${online} online` : '';
+    const openMenu = _clanView.ui.openMenu;
+    list.innerHTML = rows.map(r => {
+      const isOn = now - r.seen < 120000;
+      const seenText = isOn ? 'Online' : r.seen ? 'Seen ' + timeAgo(r.seen) : 'Not seen yet';
+      const actions = [];
+      if(isMember && r.name !== me){
+        ['co-leader', 'elder', 'eleite member', 'member'].forEach(role => {
+          if(role !== r.role && canAssignRole(viewerRole, role) && canKick(viewerRole, r.role, r.name === c.owner))
+            actions.push(`<button type="button" data-act="role" data-role="${role}">${roleRank(role) > roleRank(r.role) ? 'Promote' : 'Demote'} to ${escapeHtml(roleLabel(role))}</button>`);
+        });
+        if(me === c.owner) actions.push('<button type="button" data-act="owner">👑 Make clan leader</button>');
+        if(canKick(viewerRole, r.role, r.name === c.owner)) actions.push('<button type="button" data-act="kick" class="danger">Kick from clan</button>');
+      }
+      const stats = [r.cps ? `⚡ ${fmtShort(r.cps)} CPS` : '', `🪙 ${fmtShort(r.golden)} Golden`, r.donated ? `🤝 ${fmtShort(r.donated)} CP given` : ''].filter(Boolean).join(' · ');
+      return `<div class="member${r.name === me ? ' is-me' : ''}" data-name="${escapeHtml(r.name)}">
+        <span class="dot ${isOn ? 'on' : (r.seen && now - r.seen < 86400000 ? 'recent' : '')}" title="${escapeHtml(seenText)}"></span>
+        <div class="m-main">
+          <div class="m-name">${r.title ? `<span class="m-title" style="color:${titleColor(r.title)}">${escapeHtml(r.title)}</span>` : ''}<b>${escapeHtml(r.name)}</b>${r.name === me ? '<span class="muted small">(you)</span>' : ''}<span class="role role-${roleSlug(r.role)}">${escapeHtml(roleLabel(r.role))}</span>${r.checked ? '<span class="tag good" title="Checked in today">✓ in</span>' : ''}</div>
+          <div class="m-stats">${stats} · <span class="${isOn ? 'online' : 'muted'}">${escapeHtml(seenText)}</span></div>
+        </div>
+        ${actions.length ? `<div class="m-actions"><button type="button" class="icon-btn" data-act="menu" aria-label="Manage ${escapeHtml(r.name)}" aria-expanded="${openMenu === r.name}">⋯</button><div class="m-menu"${openMenu === r.name ? '' : ' hidden'}>${actions.join('')}</div></div>` : ''}
+      </div>`;
+    }).join('') || '<div class="muted">No members.</div>';
+  }
+  function onMemberListClick(e, clanId){
+    const btn = e.target.closest('[data-act]'); if(!btn) return;
+    const row = btn.closest('.member'); const name = row && row.dataset.name; if(!name) return;
+    const act = btn.dataset.act;
+    if(act === 'menu'){
+      _clanView.ui.openMenu = _clanView.ui.openMenu === name ? null : name;
+      document.querySelectorAll('#membersList .m-menu').forEach(m => { m.hidden = m.closest('.member').dataset.name !== _clanView.ui.openMenu; });
+      document.querySelectorAll('#membersList [data-act="menu"]').forEach(b => b.setAttribute('aria-expanded', String(b.closest('.member').dataset.name === _clanView.ui.openMenu)));
+      // open upward when there isn't room below inside the scrolling list
+      const menu = row.querySelector('.m-menu'), list = document.getElementById('membersList');
+      if(menu && !menu.hidden && list) menu.classList.toggle('up', row.getBoundingClientRect().bottom + menu.offsetHeight + 8 > list.getBoundingClientRect().bottom);
+      return;
+    }
+    _clanView.ui.openMenu = null;
+    if(act === 'role') promoteMember(clanId, name, btn.dataset.role);
+    else if(act === 'kick'){ if(confirm(`Kick ${name} from the clan?`)) kickMember(clanId, name); else reloadMembers(clanId); }
+    else if(act === 'owner'){ if(confirm(`Make ${name} the clan leader? You'll become a co-leader.`)) transferOwnership(clanId, name); else reloadMembers(clanId); }
+  }
+  // close an open member menu when clicking anywhere else
+  document.addEventListener('click', e => {
+    if(_clanView.ui.openMenu && !e.target.closest('.m-actions')){ _clanView.ui.openMenu = null; document.querySelectorAll('#membersList .m-menu').forEach(m => { m.hidden = true; }); }
+  });
+  async function transferOwnership(clanId, target){
+    const me = localStorage.getItem('player_username') || '';
     try{
-      const qInput = (document.getElementById('searchClanName') && document.getElementById('searchClanName').value) || '';
-      const term = (qInput||'').trim().toLowerCase();
-      const resultsEl = document.getElementById('searchResults'); if(!resultsEl) return;
-      resultsEl.innerHTML = 'Searching...';
-      const inClan = !!(localStorage.getItem('player_clanId'));
-      if(!term && inClan){ resultsEl.innerHTML = '<div class="muted">You are already in a clan.</div>'; return; }
-      const col = collection(db, 'clans');
-      const snap = await getDocs(query(col, limit(200)));
-      const arr = [];
-      snap.forEach(s => { const d = s.data(); d.id = s.id; arr.push(d); });
-      let filtered = arr;
-      if(term) filtered = arr.filter(c => (c.name||'').toLowerCase().includes(term));
-      // if empty search, fallback to recommended
-      if(!term){ showRecommendedClans(); return; }
-      renderClanResults(filtered, resultsEl);
-    }catch(e){ console.warn('searchClans failed', e); const resultsEl = document.getElementById('searchResults'); if(resultsEl) resultsEl.innerHTML = 'Search failed'; }
+      await updateDoc(doc(db,'clans',clanId), { owner: target, leaders: arrayUnion(target) });
+      try{ await setDoc(doc(db,'profiles',target), { clanRole: 'leader' }, { merge: true }); }catch(e){}
+      try{ await setDoc(doc(db,'profiles',me), { clanRole: 'co-leader' }, { merge: true }); }catch(e){}
+      localStorage.setItem('player_clanRole', 'co-leader');
+      try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `👑 ${me} handed the clan to ${target}.`, createdAt: serverTimestamp(), system: true, color: 'gold' }); }catch(e){}
+      notify(`${target} now leads the clan.`, 'good');
+      updatePlayerClanStatus();
+      reloadMembers(clanId);
+    }catch(e){ console.warn('transfer failed', e); notify('Handing over the clan failed.', 'bad'); }
   }
 
-  // Show a small list of random recommended clans
-  async function showRecommendedClans(){
-    try{
-      const resultsEl = document.getElementById('searchResults'); if(!resultsEl) return;
-      const inClan = !!(localStorage.getItem('player_clanId'));
-      if(inClan){ resultsEl.innerHTML = '<div class="muted">You are already in a clan.</div>'; return; }
-      resultsEl.innerHTML = '<div class="muted">Loading recommended clans...</div>';
-      const col = collection(db, 'clans');
-      const snap = await getDocs(query(col, limit(200)));
-      const arr = [];
-      snap.forEach(s => { const d = s.data(); d.id = s.id; arr.push(d); });
-      if(arr.length === 0){ resultsEl.innerHTML = '<div class="muted">No clans available.</div>'; return; }
-      // shuffle and pick up to 5
-      for(let i = arr.length - 1; i > 0; i--){ const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
-      const pick = arr.slice(0, Math.min(5, arr.length));
-      // add header
-      resultsEl.innerHTML = '<div style="margin-bottom:8px"><strong>Recommended clans</strong></div>';
-      renderClanResults(pick, resultsEl);
-    }catch(e){ console.warn('showRecommendedClans failed', e); const resultsEl = document.getElementById('searchResults'); if(resultsEl) resultsEl.innerHTML = 'Failed to load recommendations'; }
+  // ---------- finding clans ----------
+  async function fetchClanList(force){
+    if(!force && _clanList.list.length && Date.now() - _clanList.at < 60000) return _clanList.list;
+    const snap = await getDocs(query(collection(db,'clans'), limit(200)));
+    const arr = [];
+    snap.forEach(s => { const d = s.data() || {}; d.id = s.id; let bot = false; try{ bot = isBotClan(d); }catch(e){} if(!bot) arr.push(d); });
+    _clanList = { at: Date.now(), list: arr };
+    return arr;
   }
+  function clanCardHtml(r, unlocked, inClan){
+    const c = r.c, full = r.n >= r.max;
+    const desc = String(c.description || '').slice(0, 140);
+    return `<article class="clan-card${full ? ' is-full' : ''}">
+      <div class="emblem sm">${clanIconHtml(c)}</div>
+      <div class="cc-body">
+        <div class="cc-title"><b>${escapeHtml(c.name || c.id)}</b><span class="lvl-badge">Lv ${r.lvl}</span>${full ? '<span class="tag">Full</span>' : ''}</div>
+        <div class="cc-meta">👑 ${escapeHtml(c.owner || '?')} · 👥 ${r.n}/${r.max}</div>
+        <div class="bar thin"><i style="width:${Math.min(100, r.n / r.max * 100)}%"></i></div>
+        ${desc ? `<p class="cc-desc">${escapeHtml(desc)}</p>` : ''}
+      </div>
+      <div class="cc-actions"><button type="button" class="btn btn-ghost btn-sm" data-view="${escapeHtml(c.id)}">View</button><button type="button" class="btn btn-primary btn-sm" data-join="${escapeHtml(c.id)}"${full || !unlocked || inClan ? ' disabled' : ''}>Join</button></div>
+    </article>`;
+  }
+  async function renderClanBrowser(force){
+    const box = document.getElementById('searchResults'); if(!box) return;
+    if(!_clanList.list.length) box.innerHTML = '<div class="muted">Loading clans…</div>';
+    let list;
+    try{ list = await fetchClanList(force); }catch(e){ console.warn('clan list failed', e); box.innerHTML = '<div class="muted">Couldn\'t load clans. Check your connection and try again.</div>'; return; }
+    const term = ((document.getElementById('searchClanName') || {}).value || '').trim().toLowerCase();
+    const sort = (document.getElementById('clanSort') || {}).value || 'recommended';
+    const rows = list.filter(c => !term || String(c.name || '').toLowerCase().includes(term) || String(c.description || '').toLowerCase().includes(term))
+      .map(c => ({ c, lvl: clanLevelFromXp(c.clanXp).level, n: Array.isArray(c.members) ? c.members.length : 0, max: c.maxMembers || 30 }));
+    const full = r => (r.n >= r.max ? 1 : 0);
+    const sorters = {
+      level: (a, b) => b.lvl - a.lvl || b.n - a.n,
+      members: (a, b) => b.n - a.n || b.lvl - a.lvl,
+      open: (a, b) => (b.max - b.n) - (a.max - a.n) || b.lvl - a.lvl,
+      name: (a, b) => String(a.c.name || '').localeCompare(String(b.c.name || '')),
+      // open clans first, then active-looking ones (level counts more than size)
+      recommended: (a, b) => full(a) - full(b) || (b.lvl * 3 + Math.min(b.n, 20)) - (a.lvl * 3 + Math.min(a.n, 20)),
+    };
+    rows.sort(sorters[sort] || sorters.recommended);
+    if(!rows.length){ box.innerHTML = term ? `<div class="muted empty">No clans match “${escapeHtml(term)}”. Why not start one?</div>` : '<div class="muted empty">No clans yet. Start the first one!</div>'; return; }
+    box.innerHTML = rows.map(r => clanCardHtml(r, clansUnlocked(), !!localStorage.getItem('player_clanId'))).join('');
+    updateCreateHint();
+  }
+  async function searchClans(){ return renderClanBrowser(); }
+  async function showRecommendedClans(){ return renderClanBrowser(true); }
 
   async function leaveClan(clanId){
     try{
@@ -1032,7 +1182,7 @@
           localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
           try{ updatePlayerClanStatus(); }catch(e){}
           alert('You left and the clan was deleted (no members).');
-          const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+          closeClanView(); showRecommendedClans();
           return;
         } else {
           await transferLeadershipToBestCandidate(clanId, remaining);
@@ -1052,7 +1202,7 @@
             localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
             try{ updatePlayerClanStatus(); }catch(e){}
             alert('You left and the clan was deleted (no members).');
-            const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+            closeClanView(); showRecommendedClans();
             return;
           }
         }
@@ -1064,10 +1214,12 @@
       localStorage.removeItem('player_clanRole');
       try{ updatePlayerClanStatus(); }catch(e){}
       alert('Left clan.');
-      const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+      closeClanView(); showRecommendedClans();
     }catch(e){ console.error('leave failed', e); alert('Leave failed'); }
   }
 
+  // stored role keys stay as-is for existing Firestore data; this only fixes how they read on screen
+  function roleLabel(role){ return String(role||'') === 'eleite member' ? 'elite member' : String(role||''); }
   // promotion ranks priority (higher wins)
   const RANK_PRIORITY = { 'leader':5, 'co-leader':4, 'elder':3, 'eleite member':2, 'member':1 };
 
@@ -1104,7 +1256,8 @@
       const cSnap = await getDoc(cRef);
       if(!cSnap.exists()) return alert('Clan not found');
       const c = cSnap.data();
-      const myRole = (Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1) ? 'co-leader' : ((me === c.owner) ? 'leader' : (await (async()=>{ try{ const p = await getDoc(doc(db,'profiles',me)); if(p && p.exists()) return p.data().clanRole || 'member'; }catch(e){} return 'member'; })()));
+      // the owner is also in `leaders`, so check ownership first (otherwise owners counted as co-leaders and couldn't make co-leaders)
+      const myRole = (me === c.owner) ? 'leader' : (Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1) ? 'co-leader' : (await (async()=>{ try{ const p = await getDoc(doc(db,'profiles',me)); if(p && p.exists()) return p.data().clanRole || 'member'; }catch(e){} return 'member'; })());
       if(!canAssignRole(myRole, newRole)) return alert('You do not have permission to assign that role');
       // read previous role
       let prevRole = 'member';
@@ -1114,11 +1267,11 @@
       // announce promotion/demotion in clan chat
       try{
         const isPromotion = roleRank(newRole) > roleRank(prevRole);
-        const sysMsg = isPromotion ? `${me} promoted ${uname} to ${newRole}` : `${me} demoted ${uname} to ${newRole}`;
+        const sysMsg = isPromotion ? `${me} promoted ${uname} to ${roleLabel(newRole)}` : `${me} demoted ${uname} to ${roleLabel(newRole)}`;
         await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: sysMsg, createdAt: serverTimestamp(), system: true, color: isPromotion ? 'green' : 'red', scrollToBottom: true });
       }catch(e){}
-      alert('Promotion updated.');
-      loadClanDetail(clanId);
+      notify(`${uname} is now ${roleLabel(newRole)}.`, 'good');
+      reloadMembers(clanId);
     }catch(e){ console.error('promote failed', e); alert('Promote failed'); }
   }
 
@@ -1134,7 +1287,7 @@
       await deleteDoc(cRef);
       try{ const col = collection(db,'clan_chat'); const q = query(col, where('clanId','==',clanId)); const snap = await getDocs(q); const dels=[]; snap.forEach(s=> dels.push(deleteDoc(doc(db,'clan_chat', s.id)))); if(dels.length) await Promise.all(dels); }catch(e){}
       alert('Clan deleted.');
-      const area=document.getElementById('clanDetailArea'); if(area) area.innerHTML = '';
+      closeClanView(); showRecommendedClans();
     }catch(e){ console.error('deleteClan failed', e); alert('Delete failed'); }
   }
 
@@ -1153,152 +1306,89 @@
   
 
   async function loadClanChat(clanId){
-    try{
-      const box = document.getElementById('clanChatBox'); if(!box) return; box.innerHTML = 'Loading...';
-      // only allow viewing chat of the clan you belong to
-      try{ const myCid = localStorage.getItem('player_clanId') || null; if(String(myCid) !== String(clanId)){ box.innerHTML = '<div class="muted">Join the clan to view messages.</div>'; return; } }catch(e){}
-      try{ if(typeof window.currentChatUnsub === 'function'){ try{ window.currentChatUnsub(); }catch(e){} window.currentChatUnsub = null; } }catch(e){}
-      const col = collection(db,'clan_chat');
-      const q = query(col, where('clanId','==',clanId), limit(200));
-      // use global onSnapshot subscription to update in real time
-      window.currentChatUnsub = onSnapshot(q, async snap => {
-        try{
-          // determine if the user is actively viewing this chat pane
-          const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && box.offsetParent !== null && box.clientHeight > 0);
-          const wasNearBottom = (box.scrollHeight - box.scrollTop - box.clientHeight) <= 50;
-          const prevScrollTop = box.scrollTop;
-          box.innerHTML = '';
-          const msgs = [];
-          snap.forEach(s => msgs.push(Object.assign({ id: s.id }, s.data())));
-          // sort by time (oldest -> newest). Do not reorder pinned messages.
-          msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
-          // determine viewer role (fetch clan doc and profile)
-          let viewerRole = 'member';
-          try{ const cRef2 = doc(db,'clans',clanId); const cSnap2 = await getDoc(cRef2); const cdata2 = (cSnap2 && cSnap2.exists()) ? cSnap2.data() : {}; const me = localStorage.getItem('player_username')||''; const meProf = await getDoc(doc(db,'profiles',me)); if(me === (cdata2.owner||'')) viewerRole = 'leader'; else if(Array.isArray(cdata2.leaders) && cdata2.leaders.indexOf(me)!==-1) viewerRole = 'co-leader'; else if(meProf && meProf.exists()) viewerRole = meProf.data().clanRole || 'member'; }catch(e){}
-          const names = new Set();
-          msgs.forEach(m=>{ if(m && !m.system) names.add(String(m.name||'Anon')); });
-          const titles = await getProfileTitlesForClan(Array.from(names));
-          function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; // exact match
-            let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null;
-            // case-insensitive lookup
-            if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } }
-            // unlocked titles fallback
-            if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} }
-            if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
-          for(const m of msgs){
-            const when = m.createdAt && m.createdAt.toDate ? m.createdAt.toDate().toLocaleString() : '';
-            const el = document.createElement('div'); el.style.padding='6px 0';
-            if(m.pinned){ el.style.background = 'rgba(255,215,0,0.06)'; el.style.borderRadius = '6px'; }
-            try{
-              if(m && m.system){
-                const color = m.color || 'green';
-                el.innerHTML = `<div style=\"color:${escapeHtml(color)};font-weight:600\">${escapeHtml(m.message||'')}</div><div class=\"muted\" style=\"font-size:12px\">${escapeHtml(when)}</div>`;
-              } else {
-                const nameRaw = String(m.name||'Anon');
-                const lkey = nameRaw.toLowerCase();
-                // prefer title embedded in the message (sender included at send time)
-                let title = '';
-                try{ if(m && m.title) title = String(m.title||''); }catch(e){}
-                // for local viewer, prefer local equipped title for messages from yourself
-                try{ const me = localStorage.getItem('player_username')||''; if(!title && nameRaw === me){ title = localStorage.getItem('equipped_title') || ''; } }catch(e){}
-                if(!title){ try{ title = (titles[lkey] || ''); }catch(e){ title = ''; } }
-                const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
-                const displayName = titleHtml + nameHtml;
-                const pinBtnHtml = `<span class="pinHolder"></span>`;
-                const pinnedByText = m.pinned ? (`Pinned by: ${escapeHtml(m.pinnedBy||'')}`) : '';
-                // inline: left = name + message, right = time and pinnedBy
-                el.innerHTML = `<div style=\"display:flex;justify-content:space-between;align-items:center\"><div style=\"display:flex;gap:8px;align-items:center\"><strong style=\"color:#9cf\">${displayName}:</strong> <span>${escapeHtml(m.message||'')}</span></div><div style=\"text-align:right;min-width:140px\"><div class=\"muted\" style=\"font-size:12px\">${escapeHtml(when)}</div><div class=\"muted\" style=\"font-size:12px;margin-top:4px\">${escapeHtml(pinnedByText)}</div>${pinBtnHtml}</div></div>`;
-              }
-            }catch(e){ el.textContent = String(m.message||''); }
-            box.appendChild(el);
-            // wire pin/unpin holder (decide visibility asynchronously)
-            try{
-              const holder = el.querySelector('.pinHolder');
-              if(holder){
-                (async ()=>{
-                  try{
-                    const me = localStorage.getItem('player_username')||'';
-                    const viewerRankNum = roleRank(viewerRole);
-                    // if not pinned: only allow pinning to users who canPin
-                    if(!m.pinned){
-                      if(!canPinMessages(viewerRole)) { holder.remove(); return; }
-                      const btn = document.createElement('button'); btn.className='pinBtn small'; btn.textContent='Pin';
-                      btn.addEventListener('click', async ()=>{
-                        try{
-                          // fetch fresh
-                          const id = m.id; const cur = await getDoc(doc(db,'clan_chat', id)); if(!cur || !cur.exists()) return;
-                          const meNow = localStorage.getItem('player_username')||'';
-                          // store pinner role at time of pin
-                          await updateDoc(doc(db,'clan_chat', id), { pinned: true, pinnedBy: meNow, pinnedByRole: viewerRole });
-                        }catch(e){ console.warn('pin failed', e); }
-                      });
-                      holder.appendChild(btn);
-                      return;
-                    }
-                    // if pinned: check if viewer can unpin (equal or higher than pinner)
-                    const pinner = m.pinnedBy || '';
-                    let pinnerRole = (m.pinnedByRole || 'member');
-                    if(!pinnerRole && pinner){ try{ const ps = await getDoc(doc(db,'profiles',pinner)); if(ps && ps.exists()) pinnerRole = ps.data().clanRole || 'member'; }catch(e){} }
-                    const pinnerRank = roleRank(pinnerRole);
-                    if(viewerRankNum >= pinnerRank || canPinMessages(viewerRole) || roleRank(viewerRole) >= roleRank('leader')){
-                      const btn = document.createElement('button'); btn.className='pinBtn small'; btn.textContent='Unpin';
-                      btn.addEventListener('click', async ()=>{
-                        try{
-                          const id = m.id; const cur = await getDoc(doc(db,'clan_chat', id)); if(!cur || !cur.exists()) return;
-                          const data = cur.data(); const meNow = localStorage.getItem('player_username')||'';
-                          // recompute pinner role if needed
-                          const curPinnerRole = data.pinnedByRole || (data.pinnedBy ? ((await (async()=>{ try{ const ps = await getDoc(doc(db,'profiles',data.pinnedBy)); if(ps && ps.exists()) return ps.data().clanRole || 'member'; }catch(e){} return 'member'; })())) : 'member');
-                          if(roleRank(viewerRole) >= roleRank(curPinnerRole) || canPinMessages(viewerRole) || roleRank(viewerRole) >= roleRank('leader')){
-                            await updateDoc(doc(db,'clan_chat', id), { pinned: false, pinnedBy: null, pinnedByRole: null });
-                          } else {
-                            alert('You do not have permission to unpin this message');
-                          }
-                        }catch(e){ console.warn('unpin failed', e); }
-                      });
-                      holder.appendChild(btn);
-                    } else {
-                      holder.remove();
-                    }
-                  }catch(e){ try{ holder.remove(); }catch(_){} }
-                })();
-              }
-            }catch(e){}
+    const box = document.getElementById('clanChatBox'); if(!box) return;
+    // only the clan you belong to
+    if(String(localStorage.getItem('player_clanId') || '') !== String(clanId)){ box.innerHTML = '<div class="muted">Join the clan to view messages.</div>'; return; }
+    try{ if(typeof window.currentChatUnsub === 'function') window.currentChatUnsub(); }catch(e){}
+    window.currentChatUnsub = null;
+    box.innerHTML = '<div class="muted chat-empty">Loading messages…</div>';
+    let first = true;
+    const q = query(collection(db,'clan_chat'), where('clanId','==',clanId), limit(200));
+    window.currentChatUnsub = onSnapshot(q, snap => {
+      try{
+        const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight <= 60;
+        const msgs = [];
+        snap.forEach(s => msgs.push(Object.assign({ id: s.id }, s.data())));
+        const ts = m => toMillis(m.createdAt) || Date.now();
+        msgs.sort((a, b) => ts(a) - ts(b));
+        const me = localStorage.getItem('player_username') || '';
+        const role = _clanView.viewerRole || 'member';
+        const canPin = canPinMessages(role);
+        const pinnedEl = document.getElementById('clanChatPinned');
+        if(pinnedEl) pinnedEl.innerHTML = msgs.filter(m => m.pinned && !m.system).map(m =>
+          `<div class="pin-msg"><span>📌 <b>${escapeHtml(m.name || 'Anon')}</b>: ${escapeHtml(m.message || '')}</span>${canPin && roleRank(role) >= roleRank(m.pinnedByRole || 'member') ? `<button type="button" class="link-btn" data-unpin="${escapeHtml(m.id)}">Unpin</button>` : ''}</div>`).join('');
+        let html = '', prev = null;
+        for(const m of msgs){
+          const t = ts(m);
+          const when = `<time data-ts="${t}" title="${escapeHtml(new Date(t).toLocaleString())}">${timeAgo(t)}</time>`;
+          if(m.system){
+            const tone = ['green', 'red', 'gold'].includes(m.color) ? m.color : 'green';
+            html += `<div class="msg-sys sys-${tone}"><span>${escapeHtml(m.message || '')}</span>${when}</div>`;
+            prev = null; continue;
           }
-          // listen for local equipped title change to re-render names in this chat (keeps titles current for your past messages)
-          try{ window.removeEventListener('equippedTitleChanged', window._clanEquippedListener); }catch(e){}
-          window._clanEquippedListener = function(){ try{ const cid = localStorage.getItem('player_clanId') || null; if(String(cid) === String(clanId)) { try{ loadClanChat(clanId); }catch(e){} } }catch(e){} };
-          try{ window.addEventListener('equippedTitleChanged', window._clanEquippedListener); }catch(e){}
-          // if user is actively viewing the chat, always scroll to bottom on updates
-          const lastMsg = msgs && msgs.length ? msgs[msgs.length - 1] : null;
-          if (isViewing) box.scrollTop = box.scrollHeight;
-          else if (lastMsg && lastMsg.scrollToBottom) box.scrollTop = box.scrollHeight;
-          else if (wasNearBottom) box.scrollTop = box.scrollHeight;
-          else box.scrollTop = Math.min(prevScrollTop, Math.max(0, box.scrollHeight - box.clientHeight));
-        }catch(e){ console.warn('chat snapshot render failed', e); }
-      }, err=>{ console.warn('chat snapshot error', err); });
-    }catch(e){ console.warn('load clan chat failed', e); }
+          const name = String(m.name || 'Anon');
+          const mine = name === me;
+          const grouped = prev && prev.name === name && t - prev.t < 5 * 60000;
+          const title = m.title ? String(m.title) : (mine ? (localStorage.getItem('equipped_title') || '') : '');
+          html += `<div class="msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.pinned ? ' pinned' : ''}">`
+            + (grouped ? '' : `<div class="msg-head">${title ? `<span class="msg-title" style="color:${titleColor(title)}">${escapeHtml(title)}</span>` : ''}<b>${escapeHtml(name)}</b>${when}</div>`)
+            + `<div class="msg-text"><span>${escapeHtml(m.message || '')}</span>${canPin && !m.pinned ? `<button type="button" class="pin-btn" data-pin="${escapeHtml(m.id)}" title="Pin this message" aria-label="Pin this message">📌</button>` : ''}</div></div>`;
+          prev = { name, t };
+        }
+        box.innerHTML = html || '<div class="muted chat-empty">No messages yet. Say hi!</div>';
+        const last = msgs[msgs.length - 1];
+        if(first || nearBottom || (last && last.name === me)) box.scrollTop = box.scrollHeight;
+        first = false;
+      }catch(e){ console.warn('chat snapshot render failed', e); }
+    }, err => { console.warn('chat snapshot error', err); });
+  }
+  async function sendClanChat(clanId){
+    const input = document.getElementById('clanChatInput'), btn = document.getElementById('clanChatSend');
+    const txt = (input && input.value ? input.value : '').trim();
+    if(!txt) return;
+    const username = ensureUsername(); if(!username){ notify('Pick a username first.', 'bad'); return; }
+    if(btn) btn.disabled = true;
+    try{
+      await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0, 500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
+      if(input) input.value = '';
+      // keep the newest 100 messages per clan
+      try{
+        const snapAll = await getDocs(query(collection(db,'clan_chat'), where('clanId','==',clanId)));
+        if(snapAll && snapAll.size > 100){
+          const msgs = [];
+          snapAll.forEach(s => msgs.push({ id: s.id, t: toMillis((s.data() || {}).createdAt), pinned: !!(s.data() || {}).pinned }));
+          msgs.sort((a, b) => a.t - b.t);
+          const old = msgs.slice(0, msgs.length - 100).filter(m => !m.pinned);
+          await Promise.all(old.map(m => deleteDoc(doc(db,'clan_chat', m.id))));
+        }
+      }catch(e){ console.warn('trim clan messages failed', e); }
+    }catch(e){ console.warn('clan send failed', e); notify('Sending failed. Try again.', 'bad'); }
+    if(btn) btn.disabled = false;
+    if(input) input.focus();
+  }
+  async function onChatClick(e, clanId){
+    const pin = e.target.closest('[data-pin]'), unpin = e.target.closest('[data-unpin]');
+    const me = localStorage.getItem('player_username') || '';
+    try{
+      if(pin) await updateDoc(doc(db,'clan_chat', pin.dataset.pin), { pinned: true, pinnedBy: me, pinnedByRole: _clanView.viewerRole || 'member' });
+      else if(unpin) await updateDoc(doc(db,'clan_chat', unpin.dataset.unpin), { pinned: false, pinnedBy: null, pinnedByRole: null });
+    }catch(err){ notify('Pinning failed.', 'bad'); }
   }
 
   function formatNumber(n){ if(typeof n==='number') return n.toLocaleString(); try{ return Number(n).toLocaleString(); }catch(e){return String(n)} }
 
-  // on load: show current player's clan if any
-  (function(){ try{ const me = localStorage.getItem('player_username')||''; if(me){ const el=document.getElementById('meName'); if(el) el.textContent = ' — ' + me; } const cid = localStorage.getItem('player_clanId'); if(cid) loadClanDetail(cid); updatePlayerClanStatus(); try{ watchMyProfile(); }catch(e){} }catch(e){} })();
-
-  // ensure find/create areas are hidden on load when in a clan and rebind tabs (defensive)
-  (function(){
-    try{
-      const cid = localStorage.getItem('player_clanId');
-      try{ const ca = document.getElementById('createArea'); if(ca) ca.style.display = cid ? 'none' : ''; const fa = document.getElementById('findArea'); if(fa) fa.style.display = cid ? 'none' : ''; const sr = document.getElementById('searchResults'); if(sr) sr.style.display = cid ? 'none' : ''; }catch(e){}
-      try{
-        const tabClansBtn = document.getElementById('tabClansBtn'); const tabEventsBtn = document.getElementById('tabEventsBtn'); const tabShopBtn = document.getElementById('tabShopBtn');
-        const tabClans = document.getElementById('tabClans') || document.getElementById('clanDetailArea'); const tabEvents = document.getElementById('tabEvents'); const tabShop = document.getElementById('tabShop');
-        if(tabClansBtn) tabClansBtn.addEventListener('click', ()=>{ try{ if(tabClans) tabClans.style.display = 'block'; if(tabEvents) tabEvents.style.display = 'none'; if(tabShop) tabShop.style.display = 'none'; tabClansBtn.style.background='#164'; if(tabEventsBtn) tabEventsBtn.style.background=''; if(tabShopBtn) tabShopBtn.style.background=''; }catch(e){} });
-        if(tabEventsBtn) tabEventsBtn.addEventListener('click', ()=>{ try{ if(tabClans) tabClans.style.display = 'none'; if(tabEvents) tabEvents.style.display = 'block'; if(tabShop) tabShop.style.display = 'none'; if(tabClansBtn) tabClansBtn.style.background=''; tabEventsBtn.style.background='#164'; if(tabShopBtn) tabShopBtn.style.background=''; }catch(e){} });
-        if(tabShopBtn) tabShopBtn.addEventListener('click', ()=>{ try{ if(tabClans) tabClans.style.display = 'none'; if(tabEvents) tabEvents.style.display = 'none'; if(tabShop) tabShop.style.display = 'block'; if(tabClansBtn) tabClansBtn.style.background=''; if(tabEventsBtn) tabEventsBtn.style.background=''; tabShopBtn.style.background='#164'; }catch(e){} });
-      }catch(e){}
-    }catch(e){}
-  })();
+  // on load: show the player's clan if they have one
+  (function(){ try{ updatePlayerClanStatus(); const cid = localStorage.getItem('player_clanId'); if(cid) loadClanDetail(cid); try{ watchMyProfile(); }catch(e){} }catch(e){} })();
 
   // keep status updated when username or clan changes elsewhere
   window.addEventListener('storage', function(e){ if(e.key && (e.key.indexOf('player_clan')===0 || e.key==='player_username')) try{ updatePlayerClanStatus(); }catch(ex){} });
@@ -1337,7 +1427,7 @@
         stats.count = Number(s.count) || 0;
         stats.goldenWhat = Number(s.goldenWhat) || 0;
         stats.prestigeTimes = Number(s.prestigeTimes) || 0;
-        for(let i = 1; i <= 23; i++){ const L = s['upgrade' + i + 'Level'] || s['upgrade' + i]; stats.totalLevels += Number(L) || 0; }
+        for(let i = 1; i <= 24; i++){ const L = s['upgrade' + i + 'Level'] || s['upgrade' + i]; stats.totalLevels += Number(L) || 0; }
         const divNames = ['divineArgonLevel','divineSomalianLevel','divineAssassinLevel','divineCollectorLevel','divineMoneyManLevel','divineSpiritLevel','divineSimpleVillagerLevel'];
         for(const key of divNames){ stats.divineTotalLevels += Number(s[key]) || 0; }
         stats.casinoTotalWins = Number(s.casino_total_wins) || Number(localStorage.getItem('gamba_total_wins') || 0) || 0;
@@ -1751,11 +1841,12 @@
       for(let i = 0; i < top3.length; i++){ if(top3[i][0] === username){ const b = top3Bonus[i+1]; if(b){ bonusGems += b.gems; bonusCP += b.cp; } break; } }
       totalGems += bonusGems; totalCP += bonusCP;
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const bonusedGems = await withClanEventBonus(clanId, totalGems);
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
       if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'pp_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['pp_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['pp_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      let msg = 'The clan event has ended!\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP (added to your clan), ' + totalCP + ' Clan Points.';
+      let msg = 'The clan event has ended!\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP (added to your clan), ' + totalCP + ' Clan Points.';
       if(bonusGems || bonusCP) msg += '\n(Top contributor bonus: +' + bonusGems + ' Gems, +' + bonusCP + ' Clan Points)';
       alert(msg);
     }catch(e){ console.warn('processEndedPrestigePartyRewards failed', e); }
@@ -1792,11 +1883,12 @@
       for(let i = 0; i < top3.length; i++){ if(top3[i][0] === username){ const b = top3Bonus[i+1]; if(b){ bonusGems += b.gems; bonusCP += b.cp; } break; } }
       totalGems += bonusGems; totalCP += bonusCP;
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const bonusedGems = await withClanEventBonus(clanId, totalGems);
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
       if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'bf_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['bf_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['bf_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      let msg = 'The clan event has ended!\n\nBossfight rewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points. (Your clan dealt ' + clanDamage.toLocaleString() + ' damage.)';
+      let msg = 'The clan event has ended!\n\nBossfight rewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points. (Your clan dealt ' + clanDamage.toLocaleString() + ' damage.)';
       if(bonusGems || bonusCP) msg += '\n(Top contributor bonus: +' + bonusGems + ' Gems, +' + bonusCP + ' Clan Points)';
       alert(msg);
     }catch(e){ console.warn('processEndedBossfightRewards failed', e); }
@@ -1834,11 +1926,12 @@
       let totalGems = 0, totalClanXp = 0, totalCP = 0;
       for(let i = ENDLESS_BOSS_REWARDS.length - 1; i >= 0; i--){ const r = ENDLESS_BOSS_REWARDS[i]; if(defeated >= r.bosses){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const bonusedGems = await withClanEventBonus(clanId, totalGems);
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
       if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'eb_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const s = await getDoc(clanRef); const d = s && s.exists() ? s.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['eb_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['eb_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      alert('Endless Boss event ended!\n\nYour clan defeated ' + defeated + ' boss(es).\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      alert('Endless Boss event ended!\n\nYour clan defeated ' + defeated + ' boss(es).\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
     }catch(e){ console.warn('processEndedEndlessBossRewards failed', e); }
   }
 
@@ -1876,12 +1969,13 @@
       const totalClanXp = r.clanXp || 0;
       const totalCP = r.clanPoints || 0;
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const bonusedGems = await withClanEventBonus(clanId, totalGems);
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
       if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'cvc_' + eventStart; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['cvc_' + eventStart]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['cvc_' + eventStart]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       const resultText = isWinner ? 'Your clan won!' : (isLoser ? 'Your clan was defeated.' : 'Your clan participated (no matchup).');
-      alert('Clan v Clan event ended!\n\n' + resultText + '\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      alert('Clan v Clan event ended!\n\n' + resultText + '\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
     }catch(e){ console.warn('processEndedClanVClanRewards failed', e); }
   }
 
@@ -1923,12 +2017,13 @@
       const totalClanXp = r.clanXp || 0;
       const totalCP = r.clanPoints || 0;
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const bonusedGems = await withClanEventBonus(clanId, totalGems);
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
       if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'race_' + eventStart; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['race_' + eventStart]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['race_' + eventStart]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
       const placeStr = place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : place ? place + 'th' : 'participation';
-      alert('Clan Race event ended!\n\nYour clan placed ' + placeStr + ' in your group.\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      alert('Clan Race event ended!\n\nYour clan placed ' + placeStr + ' in your group.\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
     }catch(e){ console.warn('processEndedClanRaceRewards failed', e); }
   }
 
@@ -1947,16 +2042,27 @@
       let totalGems = 0, totalClanXp = 0, totalCP = 0;
       for(let i = CONSTRUCTION_REWARDS.length - 1; i >= 0; i--){ const r = CONSTRUCTION_REWARDS[i]; if(totalPoints >= r.points){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
       if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
+      const bonusedGems = await withClanEventBonus(clanId, totalGems);
       const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + totalGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
+      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
       if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'con_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap2 = await getDoc(clanRef); const d = snap2 && snap2.exists() ? snap2.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['con_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['con_' + eventStartKey]: true }) }); } }catch(e2){} } }
       try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      alert('Construction event ended!\n\nYour clan scored ' + totalPoints + ' points.\n\nRewards: ' + totalGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      alert('Construction event ended!\n\nYour clan scored ' + totalPoints + ' points.\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
     }catch(e){ console.warn('processEndedConstructionRewards failed', e); }
   }
 
+  // live listeners opened by the previous render; each re-render opens fresh ones, so close these first
+  function stopEventListeners(){
+    for(const key of ['_prestigePartyUnsub','_bossfightUnsub','_endlessBossUnsub','_constructionUnsub','_raceUnsub']){
+      try{ if(typeof window[key] === 'function') window[key](); }catch(e){}
+      window[key] = null;
+    }
+    try{ (window._eventMemberUnsubs || []).forEach(fn => { try{ fn(); }catch(e){} }); }catch(e){}
+    window._eventMemberUnsubs = [];
+  }
   async function renderEventsTab(state){
     try{
+      stopEventListeners();
       const area = document.getElementById('tabEvents'); if(!area) return;
       // locked if not in a clan
       try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div class="card"><div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div></div>'; return; } }catch(e){}
@@ -2530,7 +2636,7 @@
               if(!evKey || !cid || !uname) return;
               const isRace = block.getAttribute('data-progress-doc') === 'race';
               const progressDoc = isRace ? RACE_PROGRESS_DOC : CONSTRUCTION_PROGRESS_DOC;
-              const id = chooseBtn.getAttribute('data-id'); const name = chooseBtn.getAttribute('data-name'); const target = Number(chooseBtn.getAttribute('data-target')) || 0; const type = chooseBtn.getAttribute('data-type') || 'reach'; const stat = chooseBtn.getAttribute('data-stat') || 'count'; const points = Number(chooseBtn.getAttribute('data-points')) || 0;
+              const id = chooseBtn.getAttribute('data-id'); const name = chooseBtn.getAttribute('data-name'); const desc = chooseBtn.getAttribute('data-desc') || ''; const target = Number(chooseBtn.getAttribute('data-target')) || 0; const type = chooseBtn.getAttribute('data-type') || 'reach'; const stat = chooseBtn.getAttribute('data-stat') || 'count'; const points = Number(chooseBtn.getAttribute('data-points')) || 0;
               const baseline = getConstructionPlayerStats();
               try{
                 await runTransaction(db, async (tx) => {
@@ -2544,7 +2650,7 @@
                   let mem = bl.members[uname];
                   if(typeof mem !== 'object' || mem === null) mem = { points: 0, completedCount: 0 };
                   mem = Object.assign({}, mem);
-                  mem.currentChallenge = { id: id, name: name, target: target, type: type, stat: stat, points: points, baseline: baseline };
+                  mem.currentChallenge = { id: id, name: name, desc: desc, target: target, type: type, stat: stat, points: points, baseline: baseline };
                   bl = Object.assign({}, bl, { members: Object.assign({}, bl.members || {}) });
                   bl.members[uname] = mem;
                   events[evKey] = Object.assign({}, events[evKey] || {});
@@ -2798,7 +2904,7 @@
   }
 
   // refresh events/shop view when player clan membership changes
-  try{ window.addEventListener('storage', function(e){ try{ if(e.key === 'player_clanId'){ try{ renderEventsTab(window._lastEventState || {}); }catch(err){} try{ updateClanXpBar(); }catch(err){} const tabShop = document.getElementById('tabShop'); try{ if(!localStorage.getItem('player_clanId') && tabShop) tabShop.innerHTML = '<div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN SHOP UNLOCKED WHEN YOU JOIN A CLAN</div>'; else if(tabShop && localStorage.getItem('player_clanId')) renderClanShopTab(); }catch(err){} } }catch(err){} }); }catch(e){}
+  try{ window.addEventListener('storage', function(e){ try{ if(e.key === 'player_clanId'){ try{ renderEventsTab(window._lastEventState || {}); }catch(err){} try{ updateClanXpBar(); }catch(err){} const tabShop = document.getElementById('tabShop'); try{ if(!localStorage.getItem('player_clanId') && tabShop) renderClanShopTab(); else if(tabShop && localStorage.getItem('player_clanId')) renderClanShopTab(); }catch(err){} } }catch(err){} }); }catch(e){}
 
   // command: skip to next event/downtime (testing) — write last_ended_event so rewards can be claimed
   window.skipToNextEvent = async function(){
@@ -2893,5 +2999,6 @@
   try{ watchEventState(); }catch(e){}
   </script>
 
+  <script src="site.js"></script>
     </body>
     </html>

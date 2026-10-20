@@ -1,1001 +1,851 @@
 /**
- * WHAT HAPPENED clicker — main game styles (used by index.html, privacy.html)
- * Sections: loading overlay, left bar, upgrades, main content, stats/modals, shop, settings, chat, misc
+ * WHAT HAPPENED clicker — main game page styles (index.html). Tokens live in theme.css.
+ * Sections: page + background, loading overlay, upgrades sidebar, top bar, main area, stat card,
+ * modals, shop, settings, specials panel, floating widgets, effects, mobile.
  */
-/* ========== CSS variables ========== */
-/* Left vertical upgrades bar */
-:root{ --leftbar-width:320px; --leftbar-gap:24px; --bulk-height:64px; }
+:root {
+    --leftbar-width: 300px;
+    --topbar-height: 64px;
+}
 
-/* Loading overlay while app initializes */
+/* ========== Page + background ========== */
+html { background: var(--bg); }
+body {
+    margin: 0;
+    min-height: 100vh;
+    overflow-x: hidden;
+    background-color: var(--bg);
+    background-image: url('mainimage/mainbg.png');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+}
+/* soft vignette so panels and text stay readable on bright backgrounds */
+body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: radial-gradient(ellipse at 50% 40%, rgba(0, 0, 0, 0) 35%, rgba(0, 0, 0, 0.55) 100%);
+}
+body.transitions-enabled { transition: margin-left 240ms ease; }
+body.leftbar-open { margin-left: var(--leftbar-width); }
+body.leftbar-closed { margin-left: 0; }
+
+/* ========== Loading overlay ========== */
 #loadingOverlay {
     position: fixed;
     inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: radial-gradient(circle at 30% 30%, rgba(0,0,0,0.85), rgba(0,0,0,0.95));
-    color: #ffffff;
+    background: radial-gradient(circle at 50% 40%, #1a1f2d, #07080c);
     z-index: 99999;
-    -webkit-font-smoothing: antialiased;
 }
-#loadingOverlay .loader { text-align: center; font-family: Arial, Helvetica, sans-serif; display:flex;flex-direction:column;align-items:center;gap:12px; }
-#loadingOverlay .loader-text { font-weight:700; letter-spacing:0.4px; }
+#loadingOverlay .loader { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+#loadingOverlay .loader-text { font-family: var(--font-display); letter-spacing: 2px; color: var(--gold); }
+.shapes { position: relative; width: 160px; height: 120px; pointer-events: none; }
+.shape { position: absolute; top: 50%; left: 50%; width: 22px; height: 22px; border-radius: 6px; transform: translate(-50%, -50%); opacity: 0.95; }
+.shape.square { width: 36px; height: 36px; border-radius: 6px; background: linear-gradient(180deg, #ffe08a, var(--gold-deep)); animation: square-rotate 700ms cubic-bezier(.19, 1, .22, 1) infinite; }
+.shape:nth-child(2) { background: linear-gradient(180deg, #9fe3ff, #53b9ff); border-radius: 50%; }
+.shape:nth-child(3) { background: linear-gradient(180deg, #c8f7a9, #2fd07a); }
+.shape:nth-child(4) { background: linear-gradient(180deg, #e4c8ff, var(--divine)); border-radius: 50%; }
+.shape:nth-child(5) { background: linear-gradient(180deg, #ffd9b3, #ff8a5c); }
+@keyframes square-rotate { from { transform: translate(-50%, -50%) rotate(0); } to { transform: translate(-50%, -50%) rotate(90deg); } }
 
-/* Loading overlay shapes */
-.shapes { position: relative; width: 160px; height: 80px; pointer-events: none; }
-.shape { position: absolute; width: 22px; height: 22px; border-radius:6px; top:50%; left:50%; transform: translate(-50%,-50%); mix-blend-mode: screen; opacity: 0.95; box-shadow: 0 8px 18px rgba(0,0,0,0.25); }
-.shape.square { width: 36px; height: 36px; border-radius:4px; background: linear-gradient(180deg,#ffd86b,#ffb24a); }
-.shape:nth-child(2){ background: linear-gradient(180deg,#9fe3ff,#53b9ff); }
-.shape:nth-child(3){ background: linear-gradient(180deg,#c8f7a9,#79e36b); }
-.shape:nth-child(4){ background: linear-gradient(180deg,#f7c8f1,#e36bdf); }
-.shape:nth-child(5){ background: linear-gradient(180deg,#ffd9b3,#ffb38a); }
-
-@keyframes square-rotate {
-    0% { transform: translate(-50%,-50%) rotate(0deg); }
-    100% { transform: translate(-50%,-50%) rotate(90deg); }
-}
-.shape.square { animation: square-rotate 700ms cubic-bezier(.19,1,.22,1) infinite; }
-
-
-/* Animated shapes powered by anime.js */
-.shapes { position: relative; width: 160px; height: 160px; pointer-events: none; }
-.shape { position: absolute; width: 22px; height: 22px; border-radius:6px; top:50%; left:50%; transform: translate(-50%,-50%); mix-blend-mode: screen; opacity: 0.95; box-shadow: 0 8px 18px rgba(0,0,0,0.25); }
-.shape:nth-child(1){ border-radius: 50%; }
-.shape:nth-child(2){ border-radius: 4px; }
-.shape:nth-child(3){ border-radius: 8px; }
-.shape:nth-child(4){ border-radius: 6px; }
-.shape:nth-child(5){ border-radius: 10px; }
-.shape:nth-child(6){ border-radius: 4px; }
-
-
-/* Left Bar styling — shared between regular and divine menus */
+/* ========== Upgrades sidebar (normal + divine) ========== */
 #leftBar,
 #divineLeftBar.left-bar-clone {
-    list-style: none;
-    margin: 0;
-    padding: 12px 8px;
     position: fixed;
-    left: 0;
     top: 0;
+    left: 0;
     bottom: 0;
     width: var(--leftbar-width);
-    background-color: #333;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
-    z-index: 1000;
-    transition: transform 240ms ease-in-out;
-}
-#divineLeftBar.left-bar-clone { overflow-y: auto; }
-
-#leftBar.collapsed,
-#divineLeftBar.left-bar-clone.collapsed { transform: translateX(-100%); }
-body.leftbar-collapsed { margin-left: 0 !important; }
-
-/* Left Bar list items and buttons */
-#leftBar li,
-#divineLeftBar.left-bar-clone li { width: 100%; }
-
-#leftBar button,
-#divineLeftBar.left-bar-clone button {
-    display: block;
-    width: 100%;
-    color: #fff;
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.08);
-    padding: 8px 10px;
-    text-align: left;
-    cursor: pointer;
-    border-radius: 4px;
-}
-#leftBar button:hover,
-#divineLeftBar.left-bar-clone button:hover { background-color: #444; }
-/* Hide all numbered upgrade buttons by default; JS will reveal them when unlocked */
-#leftBar button[id^="upgrade"] { display: none; }
-#leftBar button#upgrade1 { display: block !important; }
-/* Base page layout: don't apply a default left margin so content doesn't shift
-   during JS initialization. Layout is controlled by the body state classes
-   `leftbar-open` / `leftbar-closed` which are toggled by UI actions. */
-body {
-    font-family: Arial, sans-serif;
     margin: 0;
     padding: 0;
-    background-image: url('mainimage/Mainbg.png');
-    background-repeat: no-repeat;
-    background-size: cover;
-    background-position: center;
-    margin-left: 0; /* default: no extra left offset to avoid layout jump */
-    overflow-x: hidden;
-    min-height: 100vh; /* avoid forcing extra scroll */
-}
-
-/* Re-center main UI when left upgrades menu opens/closes */
-/* Enable margin transitions only when JS has signaled the page is ready.
-    This prevents an initial animated jump caused by class toggles during load. */
-body.transitions-enabled { transition: margin-left 220ms ease; }
-/* When the leftbar is in the 'closed' visual state we offset the page
-    slightly to keep the toggle button aligned. When the leftbar is 'open'
-    offset by the full leftbar width. The JS UI toggles these body classes
-    in response to user actions; CSS handles the actual centering. */
-body.leftbar-closed { margin-left: calc(var(--leftbar-gap) + 12px); }
-body.leftbar-open { margin-left: calc(var(--leftbar-width) + var(--leftbar-gap)); }
-
-/* Make the leftBar content scroll independently while footer stays fixed inside the menu */
-#leftBar .leftBarScroll { overflow-y: auto; flex: 1 1 auto; padding-right: 6px; padding-bottom: calc(var(--bulk-height) + 12px); max-height: calc(100vh - 40px); box-sizing: border-box; }
-#leftBar .leftBarScroll ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-
-/* Reduce forced extra vertical space so users don't get extra empty scroll area */
-#mainContent { min-height: auto; padding-bottom: 20px; }
-/* Special upgrades menu on the right */
-.special-menu {
-    position: fixed;
-    right: 10px;
-    top: 90px;
-    width: 260px;
-    background: #f4f4f4cc;
-    border: 1px solid #999;
-    padding: 10px;
-    border-radius: 6px;
-    box-shadow: 0 8px 28px rgba(0,0,0,0.18);
-    font-size: 14px;
-    z-index: 1100; /* below chat (1300) and side panel (1400) so chat always appears in front */
-    /* start hidden off-canvas to the right; toggled by adding `open` */
-    transform: translateX(110%);
-    transform-origin: right center;
-    transition: transform 280ms cubic-bezier(.2,.9,.2,1), opacity 220ms ease;
-    opacity: 0;
-    pointer-events: none;
-}
-.special-menu,
-#leftBar,
-#divineLeftBar,
-#mainContent,
-#leftQuickBtns,
-.left-bar-clone {
-    /* smooth movement when menus open/close */
-    transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease, margin 260ms cubic-bezier(.2,.9,.2,1);
-}
-.special-menu.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
-
-/* Floating toggle button on the right edge that opens the special menu (below chat/side panel) */
-#specialMenuBtn {
-    position: fixed;
-    right: 12px;
-    top: 90px;
-    z-index: 1250; /* above special menu (1100), below chat button/menu (1300+/1400+) */
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    border: none;
-    background: linear-gradient(180deg,#ffd86b,#ffb24a);
-    color: #111;
-    font-size: 20px;
-    box-shadow: 0 8px 28px rgba(0,0,0,0.28);
-    cursor: pointer;
+    list-style: none;
+    z-index: 1000;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: auto;
+    flex-direction: column;
+    background: rgba(11, 13, 19, 0.9);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-right: 1px solid var(--border);
+    box-shadow: 8px 0 30px rgba(0, 0, 0, 0.35);
+    transition: transform 240ms ease;
 }
-#specialMenuBtn:active { transform: translateY(1px); }
-.special-menu h3 { margin: 0 0 8px 0; font-size: 16px; }
-.special-menu button { width: 100%; margin: 6px 0; }
-
-/* Dropdown behaviour */
-.special-header { margin-bottom: 8px; }
-.special-header button {
-    width: 100%;
-    text-align: left;
-    padding: 8px 10px;
-    font-weight: 600;
-    background: #333;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
+#divineLeftBar.left-bar-clone {
+    overflow-y: auto;
+    padding: 0 12px 16px;
+    gap: 10px;
+    background: linear-gradient(180deg, rgba(28, 16, 52, 0.95), rgba(11, 13, 19, 0.95));
 }
-/* internal close button (hidden until menu opens) */
-/* previously had an in-menu close button; removed to avoid duplicate controls */
-.save-controls { display: flex; gap: 6px; margin-top: 8px; }
-.save-controls button { flex: 1; padding: 6px; font-size: 12px; border-radius: 4px; background:#666; color:#fff; border:none; cursor:pointer; }
-.save-controls button:hover { background:#777; }
-.settings-btn { margin-top:8px; width: 100%; background:#444; color:#fff; border:none; padding:8px; border-radius:4px; cursor:pointer; }
-.settings-btn:hover { background:#555; }
+#leftBar.collapsed,
+#divineLeftBar.left-bar-clone.collapsed { transform: translateX(-100%); }
 
-/* Ensure Shop toggle placed next to Settings doesn't stretch full width */
-#shopToggle {
-    width: auto !important;
-    padding: 8px 12px !important;
-    display: inline-flex !important;
-    align-items: center !important;
-    gap: 6px !important;
-}
+#leftBar .leftBarScroll { flex: 1 1 auto; overflow-y: auto; padding: 0 12px 12px; }
+#leftBar ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+#leftBar li, #divineLeftBar li { width: 100%; }
 
-/* Fixed settings toggle in the top-right corner */
-#settingsToggle {
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    width: auto;
-    padding: 8px 12px;
-    z-index: 1300;
-}
-
-/* Left-bar toggle: default (desktop) styling */
-#leftBarToggle {
-    position: fixed;
-    top: 10px;
-    left: calc(var(--leftbar-width) + var(--leftbar-gap));
-    z-index: 2600;
-    background: #2a6;
-    color: #072;
-    border: none;
-    padding: 12px 14px;
-    border-radius: 10px;
-    font-size: 20px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.4);
-    transition: left 220ms ease, transform 160ms ease;
-}
-
-/* Body classes to control toggle placement explicitly */
-body.leftbar-open #leftBarToggle { left: calc(var(--leftbar-width) + var(--leftbar-gap)); }
-body.leftbar-closed #leftBarToggle { left: 12px !important; }
-
-/* When overlays (shop/settings) are open, put the toggle behind them */
-body.overlay-open-shop #leftBarToggle,
-body.overlay-open-settings #leftBarToggle { z-index: 1000; }
-
-/* bulk bar is embedded in the menu; no global transform required */
-
-/* Quick buttons: desktop placement (moved right so they don't overlap the toggle) */
-/* Quick buttons position when leftbar is open */
-body.leftbar-open #leftQuickBtns { position: fixed; left: calc(var(--leftbar-width) + var(--leftbar-gap) + 12px); top:64px; z-index:1100; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
-/* Quick buttons when leftbar is closed */
-body.leftbar-closed #leftQuickBtns { position: fixed; left: 12px; top:64px; z-index:1100; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
-
-/* Merch button should move with the leftBar like other UI elements */
-#merchPageBtn {
-    position: fixed;
-    bottom: 12px;
-    left: 12px; /* default when leftbar is closed */
-    z-index: 100;
-    transition: left 220ms ease, transform 160ms ease;
-    cursor: pointer;
-}
-body.leftbar-open #merchPageBtn { left: calc(var(--leftbar-width) + var(--leftbar-gap) + 12px); }
-body.leftbar-closed #merchPageBtn { left: 12px; }
-
-/* Settings menu styling (separate panel) */
-.settings-menu {
-    position: fixed;
-    right: 10px;
-    top: 320px;
-    width: 220px;
-    background: #f8f8f8cc;
-    border: 1px solid #999;
-    padding: 10px;
-    border-radius: 6px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-    font-size: 14px;
-    display: none;
-}
-.settings-menu .settings-header button { width: 100%; text-align: left; padding: 8px; background:#333; color:#fff; border:none; border-radius:4px; cursor:pointer; }
-.settings-menu .settings-content { margin-top:8px; display:flex; flex-direction:column; gap:8px; }
-.settings-menu .settings-content button { padding:8px; border-radius:4px; background:#c44; color:#fff; border:none; cursor:pointer; }
-.settings-menu .settings-content button:hover { opacity:0.95; }
-.settings-menu.open { display: block; }
-.settings-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1210; }
-.settings-overlay.open { display: block; }
-
-/* Shop overlay/menu (full screen) */
-.shop-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 1400; }
-.shop-overlay.open { display: block; }
-/* centered translucent white card for shop */
-.shop-menu { display: none; position: fixed; z-index: 1405; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(92vw, 980px); max-height: 97vh; overflow: hidden; border-radius: 12px; box-shadow: 0 14px 40px rgba(0,0,0,0.45); pointer-events: none; }
-.shop-menu.open { display: block; pointer-events: auto; }
-.shop-menu .shop-header { display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background: rgba(255,255,255,0.85); border-bottom: 1px solid rgba(0,0,0,0.06); color: #111; }
-.shop-menu .shop-header img { display:inline-block; }
-.shop-menu .shop-header button { background:transparent;border:none;color:#111;font-size:22px;cursor:pointer; }
-.shop-menu .shop-content { padding:20px; color:#111; background: rgba(255,255,255,0.9); max-height: calc(97vh - 60px); overflow-y: auto; padding-bottom: 40px; }
-
-/* Shop items grid and item footer actions */
-.shop-items-row { display:flex; flex-wrap:wrap; gap:14px; }
-.shop-item { background: rgba(255,255,255,0.98); border: 1px solid rgba(0,0,0,0.06); padding:14px; border-radius:12px; width: 220px; box-sizing: border-box; position: relative; padding-bottom: 96px; min-height: 220px; box-shadow: 0 6px 18px rgba(12,20,40,0.06); }
-.shop-item-title { font-weight:700; margin-bottom:8px; color:#0b1724; }
-.shop-item-img { width: 100%; height: 140px; object-fit: cover; border-radius:10px; display:block; box-shadow: 0 4px 12px rgba(12,20,40,0.08); }
-.shop-item-info { margin-top:8px; color:#333; font-size:13px; }
-.shop-item-status { font-weight:700; color:#000; margin-left:6px; align-self:center; }
-.shop-item-footer { position: absolute; left: 12px; right: 12px; bottom: 12px; display:flex; gap:8px; align-items:center; }
-.shop-item-footer button { flex: 1 1 auto; padding:10px 12px; border-radius:10px; cursor:pointer; border: none; background: linear-gradient(180deg,#f5f7fb,#e6eefc); transition: transform 140ms ease, box-shadow 140ms ease; }
-.shop-item-footer button:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(10,30,80,0.08); }
-.shop-item-footer button, .shop-item-footer button[id^="buy"], .shop-item-footer button[id^="equip"] { border-radius: 999px !important; padding: 10px 14px !important; }
-
-/* Buy buttons: orange */
-.shop-menu button[id^="buy"], .shop-item-footer button[id^="buy"], #shopTabMusic button[id^="buyMusic_"] {
-    background: linear-gradient(180deg,#ffb347,#ff8c00) !important;
-    color: #2b1500 !important;
-    box-shadow: 0 6px 18px rgba(255,138,18,0.12);
-}
-
-/* Equip buttons: blue */
-.shop-menu button[id^="equip"], .shop-item-footer button[id^="equip"], #shopTabMusic button[id^="equipMusic_"] {
-    background: linear-gradient(180deg,#9fe3ff,#53b9ff) !important;
-    color: #042 !important;
-    box-shadow: 0 6px 18px rgba(40,150,255,0.08);
-}
-
-/* Music preview/sample buttons: subtle neutral rounded style */
-#shopTabMusic button[id^="previewMusic_"] {
-    background: linear-gradient(180deg,#ffffff,#f0f4f8) !important;
-    color: #13314a !important;
-    border-radius: 999px !important;
-    padding: 8px 12px !important;
-    box-shadow: 0 4px 10px rgba(8,18,30,0.04);
-}
-
-/* Make shop-item cards slightly larger and more airy */
-.shop-items-row { gap: 18px; justify-content: flex-start; }
-.shop-item { width: 240px; }
-.shop-item-title { font-size: 15px; }
-.shop-item-footer .shop-equip-btn { background: linear-gradient(180deg,#9fe3ff,#53b9ff); color: #042; }
-.shop-item-footer .shop-buy-btn { background: linear-gradient(180deg,#ffd59a,#ffb24a); color:#321; }
-.shop-item.equipped { box-shadow: 0 0 0 4px rgba(42,166,255,0.10); }
-
-/* Ensure buy/equip buttons are easily distinguishable on mobile */
-@media (max-width:560px) {
-    .shop-item { width: calc(50% - 12px); }
-    .shop-item-footer button { padding: 10px !important; }
-}
-.shop-item-footer button:disabled {
-    opacity: 0.55;
-    cursor: not-allowed;
-    filter: grayscale(70%);
-    box-shadow: none;
-}
-.shop-item-footer .shop-equip-btn:disabled { background: linear-gradient(180deg,#e6e9ec,#cfd4d8); color: #666; }
-
-@media (max-width:560px) { .shop-item { width: calc(50% - 12px); } }
-@media (max-width:380px) { .shop-item { width: 100%; } }
-
-/* Shop tab buttons */
-.shop-tab-btn {
-    padding:6px 10px;
-    border-radius:6px;
-    background: transparent;
-    border: 1px solid rgba(0,0,0,0.06);
-    cursor: pointer;
-    transition: all 180ms ease;
-}
-.shop-tab-btn:not(.active):hover { background: rgba(0,0,0,0.03); }
-.shop-tab-btn.active {
-    background: linear-gradient(180deg, #d6dbe9, #b0bfdc);
-    color: #070718;
-    box-shadow: 0 10px 30px rgba(8,12,30,0.22), inset 0 -8px 16px rgba(0,0,0,0.08);
-    border: 1px solid rgba(0,0,0,0.18);
-}
-
-/* Center modal when open */
-.settings-menu.open {
-    right: auto;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 420px;
-    z-index: 1220;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.45);
-}
-.menu-content { display: none; }
-.special-menu.open .menu-content { display: block; }
-/* Special menu below chat (1300) and side panel (1400) so chat is always in front */
-.special-menu { z-index: 1100; }
-.settings-menu { z-index: 1100; }
-/* Make the menu content behave normally (drop down) and scroll when large */
-.special-menu { max-height: 80vh; overflow: hidden; }
-.special-menu .menu-content { max-height: calc(80vh - 56px); overflow-y: auto; padding-right: 6px; background: transparent; padding:0; box-shadow:none; }
-/*special menu color*/
-
-
-/* Section toggles inside the special menu */
-.section-toggle {
-    width: 100%;
-    text-align: left;
-    padding: 6px 8px;
-    font-weight: 600;
-    background: #555;
-    color: #fff;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-bottom: 6px;
-}
-.section-complete .section-toggle {
-    background: linear-gradient(180deg,#666,#555);
-    color: #ccc;
-    filter: grayscale(60%);
-    opacity: 0.7;
-}
-.section-content { display: none; margin-left: 4px; }
-.section.open .section-content { display: block; }
-
-.centered-image { text-align:center; margin:20px 0; }
-.image-button { background:none;border:none;padding:0;cursor:pointer; }
-.section-center { text-align: center; }
-
-/* falling image effect used when clicking the main image */
-.falling-image {
-    position: fixed;
+/* Upgrades / Divine segmented switch */
+.menu-tabs {
+    position: sticky;
     top: 0;
-    pointer-events: none;
-    transform: translateY(0);
-    will-change: transform, opacity;
+    z-index: 2;
+    display: flex;
+    gap: 4px;
+    margin: 0 -12px;
+    padding: 14px 12px 10px;
 }
-
-/* Responsive main image: scale with available viewport but reserve space for side UI */
-.main-image {
-    display: block;
-    margin: 0 auto;
-    height: auto;
-    width: 100%;
-    /* Conservative max-width: keep room for left bar (220px) and right menu (~260px) */
-    max-width: calc(100vw - 480px);
-    /* allow the image to grow larger on very wide screens while capping absolute size */
-    width: min(calc(100vw - 480px), 1200px);
-}
-
-/* subtle floating animation for the main image (gentle movement) */
-@keyframes floaty {
-    0% { transform: translateY(0) scale(1); }
-    50% { transform: translateY(-6px) scale(1.01); }
-    100% { transform: translateY(0) scale(1); }
-}
-.main-image {
-    animation: floaty 6s ease-in-out infinite;
-    transform-origin: center center;
-}
-
-/* Add a subtle shadow around the main click image */
-.main-image {
-    box-shadow: 0 20px 50px rgba(0,0,0,0.55), 0 6px 18px rgba(0,0,0,0.35);
-    border-radius: 8px;
-}
-
-/* Info card for counters and quick actions (contrasts over backgrounds) */
-.info-card {
-    display: block;
-    background: rgba(0,0,0,0.55);
-    color: #fff;
-    padding: 14px 18px;
-    border-radius: 10px;
-    box-shadow: 0 12px 30px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
-    border: 1px solid rgba(255,255,255,0.04);
-    text-align: center;
-    max-width: 720px;
-    margin: 8px auto;
-}
-.info-row { margin: 6px 0; font-size: 16px; }
-.info-label { font-weight:700; margin-right:8px; font-size:18px; }
-.info-row span { vertical-align: middle; }
-.info-golden .info-label { color: #e6b800; }
-.info-actions { display:flex; gap:10px; justify-content:center; margin-top:8px; }
-.info-btn { padding:8px 12px; border-radius:7px; background: rgba(255,255,255,0.06); color: #fff; border: 1px solid rgba(255,255,255,0.06); cursor:pointer; }
-.info-btn.primary { background: linear-gradient(180deg,#2a9,#1e7); color: #062; border:none; }
-.info-btn:hover { opacity:0.95; }
-
-@media (max-width:700px) {
-    .info-card { width: calc(100vw - 40px); box-sizing: border-box; }
-    .main-image { max-width: calc(100vw - 40px); }
-}
-
-/* ensure the image and info card stack vertically and are centered */
-.main-image-wrap { display:flex; flex-direction:column; align-items:center; gap:12px; }
-
-/* pulsate applied on click: short scale + glow */
-@keyframes pulsateAnim {
-    0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
-    40% { transform: scale(1.12); filter: drop-shadow(0 8px 18px rgba(255,255,200,0.25)); }
-    100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(255,255,255,0)); }
-}
-.main-image.pulsate {
-    animation: pulsateAnim 650ms cubic-bezier(.2,.9,.2,1) !important;
-}
-
-/* Leaderboard panel placed below the main image with comfortable spacing */
-.leaderboard-panel {
-    margin: 32px auto 0; /* reduce large gap from the content above */
-    width: min(92%, 760px);
-    background: rgba(0,0,0,0.95);
-    color: #fff;
-    padding: 18px 18px 14px;
-    border-radius: 8px;
-    font-size: 14px;
-    box-shadow: 0 6px 24px rgba(0,0,0,0.6);
-    z-index: 600;
-    border-top: 6px solid rgba(255,255,255,0.06); /* clear separator from content above */
-    padding-top: 40px; /* extra padding so content doesn't sit on the border */
-}
-
-
-/* On small screens, only reserve space for the left bar so image can still be visible */
-@media (max-width: 900px) {
-    .main-image { max-width: calc(100vw - 240px); }
-}
-
-/* Hard cap so image never grows too huge on very wide displays */
-@media (min-width: 1400px) {
-    .main-image { width: min(calc(100vw - 480px), 1100px); }
-}
-
-/* For very large displays, allow a larger cap */
-@media (min-width: 2000px) {
-    .main-image { width: min(calc(100vw - 480px), 1400px); }
-}
-
-/* Container for falling images; sits behind main content but below upgrade UI */
-#falling-container {
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    overflow: hidden;
-    z-index: 200;
-}
-
-/* Make main content stack above the falling images but below the side menus */
-#mainContent {
-    position: relative;
-    z-index: 500;
-}
-
-/* enable GPU-accelerated transforms for smoother movement */
-#mainContent { will-change: transform, opacity, margin; }
-
-/* Smoothly translate key visible elements when the left upgrades menu opens/closes.
-   These rules only provide transitions; the page already shifts via
-   `body.leftbar-open` / `body.leftbar-closed` margin changes. */
-body.transitions-enabled h1,
-body.transitions-enabled .main-image,
-body.transitions-enabled .info-card,
-body.transitions-enabled #leftQuickBtns,
-body.transitions-enabled .main-image-wrap {
-    transition: transform 260ms cubic-bezier(.2,.9,.2,1), margin 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease;
-    will-change: transform, margin, opacity;
-}
-
-/* Critical click indicator */
-.crit-indicator {
-    position: fixed;
-    transform: translate(-50%, -50%);
-    background: rgba(220,20,60,0.95);
-    color: #fff;
+#leftBar .menu-tabs { background: rgba(11, 13, 19, 0.97); }
+#divineLeftBar .menu-tabs { background: rgba(28, 16, 52, 0.98); }
+.menu-tab {
+    flex: 1;
+    padding: 9px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
     font-weight: 700;
-    padding: 8px 12px;
-    border-radius: 8px;
-    z-index: 1600;
-    pointer-events: none;
-    font-size: 26px;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    animation: crit-pop 900ms ease-out forwards;
+    font-size: 13px;
 }
+.menu-tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.08); }
+.menu-tab.active { background: var(--gold); border-color: transparent; color: #2a1600; }
+.menu-tab--divine.active { background: linear-gradient(180deg, var(--divine), var(--divine-deep)); color: #fff; }
 
-@keyframes crit-pop {
-    0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
-    50% { transform: translate(-50%, -120%) scale(1.25); opacity: 1; }
-    100% { transform: translate(-50%, -180%) scale(1.05); opacity: 0; }
-}
+.divine-intro { color: var(--text-dim); font-size: 13px; line-height: 1.4; padding: 2px 4px 4px; }
 
-/* Shop items grid */
-.shop-items-row { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; }
-.shop-item {
-    width: 220px;
-    background: rgba(255,255,255,0.96);
-    border: 1px solid rgba(0,0,0,0.08);
-    padding: 14px;
-    border-radius: 8px;
-    box-sizing: border-box;
-    position: relative;
-    padding-bottom: 96px;
-    min-height: 220px;
-    text-align: center;
-}
-.shop-item-title { font-weight: 700; margin-bottom: 8px; }
-.shop-item-img { width: 100%; height: 140px; object-fit: cover; border-radius: 6px; display: block; margin-bottom: 8px; }
-.shop-item-info { font-size: 13px; color: #333; margin-top: 8px; }
-
-/* Outline equipped shop items with a subtle gray ring */
-.shop-item.equipped {
-    outline: 3px solid rgba(120,120,120,0.18);
-    box-shadow: 0 4px 14px rgba(0,0,0,0.06), inset 0 0 0 1px rgba(120,120,120,0.04);
-}
-
-/* Bulk buy button group inside upgrades menu */
-.bulk-bar { margin-top: 6px; margin-top: auto; position: absolute; left: 0; right: 0; bottom: 0; width: 100%; z-index: 2200; background: #000; border-top: 1px solid rgba(255,255,255,0.03); height: var(--bulk-height); display: flex; align-items:center; pointer-events: auto; }
-.bulk-bar > div { padding: 6px 8px; width:100%; }
-.bulk-bar .bulk-btn {
-    background: transparent;
-    color: #fff;
-    border: 1px solid rgba(255,255,255,0.08);
-    padding: 6px 6px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight:700;
-    flex: 0 1 auto; /* allow shrinking so all fit on one line */
-    white-space: nowrap;
-    transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
-    font-size: 12px;
-    min-width: 28px;
-    line-height: 1;
-}
-.bulk-bar .bulk-btn.active { background: #ffd86b !important; color: #111 !important; box-shadow: 0 10px 30px rgba(0,0,0,0.45); }
-.bulk-bar .bulk-btn:active { transform: translateY(1px); }
-.bulk-bar div::-webkit-scrollbar { height: 8px; }
-
-/* compact horizontal row so all buttons fit without scrolling */
-.bulk-bar .bulk-row { gap: 6px; overflow-x: visible; justify-content: center; align-items:center; }
-.bulk-bar { padding-bottom: 6px; }
-
-/* Larger tap targets on small screens */
-@media (max-width: 700px) {
-    .bulk-bar .bulk-btn { padding: 12px 14px; font-size: 16px; }
-}
-
-/* Disabled/unaffordable upgrade visual */
-.upgrade-disabled {
-        opacity: 0.6 !important;
-        filter: grayscale(60%) !important;
-        pointer-events: none !important;
-}
-
-/* Layout upgrade buttons: image occupies full left column; label fills the rest */
-#leftBar button,
-#divineLeftBar.left-bar-clone button,
-.special-menu button {
-    position: relative;
-    display: flex;
-    align-items: stretch; /* default for generic left-bar buttons */
-    gap: 0; /* no gap: image occupies left, text takes the rest */
-    min-height: 32px; /* consistent button height to fit image + text */
-    padding: 8px 12px; /* keep left padding so text is always encased */
-    box-sizing: border-box;
-}
-/*special menu button exclusive*/
-.special-menu button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    box-sizing: border-box;
-    background-color: rgba(211, 232, 29, 0.189);
-    color:#000
-}
-.special-menu button:hover {
-    background-color: rgba(211, 232, 29, 0.3);
-}
-
-/* Some buttons (divine clone) set inline `display:block` in HTML; override that to ensure flex layout */
-#divineLeftBar.left-bar-clone button {
-    display: flex !important;
-    align-items: stretch !important;
-    gap: 0 !important;
-    padding-left: 12px !important;
-}
-
-/* Full-width upgrade button that encloses image + info */
-.upgrade-full-btn {
-    display: flex;
+/* Upgrade cards (both bars) */
+#leftBar button[id^="upgrade"] { display: none; }
+#leftBar button#upgrade1 { display: flex; }
+.upgrade-full-btn,
+#divineLeftBar button[id^="divine"]:not(.menu-tab) {
+    width: 100%;
     align-items: center;
     gap: 12px;
-    width: 100%;
-    padding: 8px 12px;
-    box-sizing: border-box;
+    margin: 0 !important;
+    padding: 8px 12px 8px 8px !important;
     text-align: left;
-    background: transparent;
-    border: 1px solid rgba(255,255,255,0.06);
-    color: #fff;
-    border-radius: 6px;
+    color: var(--text) !important;
+    background: var(--surface-2) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    transition: background 120ms ease, border-color 120ms ease, transform 120ms ease, opacity 120ms ease;
+    position: relative;
 }
-.upgrade-full-btn:hover { background-color: #444 !important; }
+#divineLeftBar button[id^="divine"]:not(.menu-tab) { display: flex !important; }
+.upgrade-full-btn:hover,
+#divineLeftBar button[id^="divine"]:not(.menu-tab):hover { background: var(--surface-3) !important; border-color: var(--border-strong) !important; }
+.upgrade-full-btn:active { transform: scale(0.985); }
+#divineLeftBar button[id^="divine"]:not(.menu-tab) { background: rgba(167, 125, 255, 0.1) !important; border-color: rgba(167, 125, 255, 0.28) !important; }
+#divineLeftBar button[id^="divine"]:not(.menu-tab):hover { background: rgba(167, 125, 255, 0.2) !important; }
 
-/* Make upgrade image sit inside the button and not overflow */
-.upgrade-full-btn .upgrade-img { margin: 0 !important; height: 64px !important; width: 64px !important; flex: 0 0 64px !important; border-radius: 6px 0 0 6px !important; }
-.upgrade-full-btn .upgrade-info { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; padding-left:8px; }
-
-/* Hide only intentionally-locked upgrades (use `li.locked`) — don't hide unaffordable buttons */
-#leftBar li.locked { display: none !important; }
-
-/* By default hide all upgrade buttons in the left bar; JS `updateDisplays()` will reveal them by toggling `.unlocked`.
-   Use `.unlocked` with `!important` so it overrides inline styles when the layout routine rebuilds elements. */
-#leftBar button[id^="upgrade"] { display: none; }
-#leftBar button.unlocked { display: flex !important; }
-/* Keep the first upgrade visible by default (OP mouse) */
-#leftBar button#upgrade1 { display: flex !important; }
-
-/* Ensure the label grows to take available space and is vertically centered */
+.upgrade-img {
+    order: 0;
+    flex: 0 0 52px;
+    width: 52px !important;
+    height: 52px !important;
+    margin: 0 !important;
+    border-radius: 10px !important;
+    object-fit: cover;
+    pointer-events: none;
+    background: #fff;
+}
 .upgrade-label {
     order: 1;
     flex: 1 1 auto;
-    text-align: left;
-    padding-left: 12px; /* breathing room between image and text */
-    display: flex;
-    align-items: center;
-}
-
-/* Make the upgrade image occupy the full left column of the button */
-
-/* Divine upgrades: stack name, effect, level, cost on separate lines */
-.divine-info { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:4px; }
-.divine-info .divine-name { font-weight:700; }
-.divine-info .divine-effect { font-size:13px; color:#ddd; }
-.divine-info .divine-level { font-size:13px; color:#cfc; }
-.divine-info .divine-cost { font-size:13px; color:#ffd; }
-
-/* Tooltip for divine upgrades (hidden by default, shown on hover) */
-#divineLeftBar button, #divineLeftBar li button { position: relative; }
-.divine-tooltip {
-    display: none;
-    position: absolute;
-    left: calc(100% + 8px);
-    top: 6px;
-    max-width: 260px;
-    background: rgba(20,20,30,0.95);
-    color: #eee;
-    padding: 8px 10px;
-    border-radius: 6px;
-    box-shadow: 0 6px 18px rgba(0,0,0,0.5);
-    z-index: 2400;
-    font-size: 13px;
-    line-height: 1.3;
-}
-.divine-tooltip::after {
-    content: '';
-    position: absolute;
-    left: -6px;
-    top: 10px;
-    width: 0; height: 0;
-    border-top: 6px solid transparent;
-    border-bottom: 6px solid transparent;
-    border-right: 6px solid rgba(20,20,30,0.95);
-}
-/* show tooltip when hovering or when focused (keyboard) */
-#divineLeftBar button:focus .divine-tooltip,
-#divineLeftBar button:hover .divine-tooltip { display: block; }
-/* also show tooltips for special buttons in the special menu */
-#specialMenu button:focus .divine-tooltip,
-#specialMenu button:hover .divine-tooltip { display: block; }
-.upgrade-img {
-    order: 0;
-    width: 64px;           /* fixed column width */
-    flex: 0 0 64px;       /* prevent shrinking/growing */
-    height: 64px;         /* fixed image height so label centers vertically */
-    margin: 0;            /* no negative pull so layout is stable */
-    pointer-events: none;
-    object-fit: cover;    /* cover so image fills the column */
-    border-radius: 6px 0 0 6px; /* match rounded corner on left side */
-}
-
-/* Ensure upgrade-full buttons inside the left bar vertically center their content (higher specificity) */
-#leftBar button.upgrade-full-btn,
-#divineLeftBar.left-bar-clone button.upgrade-full-btn {
-    align-items: center;
-}
-
-/* Purchase animation: scale down then back */
-@keyframes bought-scale {
-    0% { transform: scale(1); }
-    40% { transform: scale(0.92); }
-    100% { transform: scale(1); }
-}
-.bought-anim {
-    animation: bought-scale 260ms cubic-bezier(.2,.9,.2,1) 1;
-}
-
-/* Ensure any actual disabled buttons are visually styled even if scripts toggle inline styles */
-button[disabled],
-#leftBar button[disabled],
-#divineLeftBar button[disabled],
-#specialMenu button[disabled],
-.section-content button[disabled] {
-        opacity: 0.6 !important;
-        filter: grayscale(60%) !important;
-        pointer-events: none !important;
-}
-
-/* Welcome back modal styling (small, centered) */
-#welcomeBackModal { max-width: 420px; }
-#welcomeBackModal strong { color: #ffd86b; }
-#welcomeBackModal button { cursor: pointer; }
-
-/* Cookie consent banner */
-#cookie-consent-banner {
-    position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: 14px;
-    z-index: 2500;
-    display: flex;
-    justify-content: center;
-    pointer-events: auto;
-}
-
-/* Mobile-specific adjustments: collapse left-bar, scale main image, add toggle/overlay support */
-@media (max-width: 700px) {
-    body,
-    body.leftbar-open,
-    body.leftbar-closed { margin-left: 0 !important; }
-    /* left bar hidden by default off-canvas */
-    #leftBar {
-        width: 80vw;
-        max-width: 360px;
-        transform: translateX(-100%);
-        transition: transform 240ms ease-in-out;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        position: fixed;
-        background-color: #222;
-        z-index: 2500;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-    }
-    /* when open, slide in */
-    #leftBar.open { transform: translateX(0); }
-
-    /* Divine left-bar should behave identically on small screens */
-    #divineLeftBar.left-bar-clone {
-        width: 80vw;
-        max-width: 360px;
-        transform: translateX(-100%);
-        transition: transform 240ms ease-in-out;
-        left: 0;
-        top: 0;
-        bottom: 0;
-        position: fixed;
-        background-color: #222;
-        z-index: 2500;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-    }
-    #divineLeftBar.left-bar-clone.open { transform: translateX(0); }
-
-    /* Toggle button small-screen tweak */
-    #leftBarToggle { padding: 10px 12px; }
-
-    /* overlay when left bar is open */
-    #leftBarOverlay { display:block; position:fixed; inset:0; z-index:2400; background: rgba(0,0,0,0); pointer-events:none; transition: background 220ms ease; }
-    #leftBarOverlay.active { background: rgba(0,0,0,0.45); pointer-events:auto; }
-
-    /* scale main image to viewport width */
-    .main-image { max-width: 90vw !important; width: auto !important; box-shadow: 0 10px 28px rgba(0,0,0,0.5); }
-
-    /* make quick buttons less intrusive on small screens */
-    #leftQuickBtns { position: fixed; left: 16px !important; top: 64px !important; z-index:1100; display:flex; flex-direction:column; gap:8px; align-items:flex-start; }
-
-
-/* If the left bar is collapsed, move quick buttons back to the edge */
-body.leftbar-collapsed #leftQuickBtns { left: 16px; }
-
-/* When left bar is collapsed, move the toggle back near the edge */
-body.leftbar-collapsed #leftBarToggle { left: 12px !important; }
-
-/* Small screens: always keep toggle near edge */
-@media (max-width:700px) {
-    #leftBarToggle { left: 12px !important; }
-}
-    /* On small screens, make special menu a bottom sheet so it's accessible
-       Start hidden by translating it down; when `.open` is added it slides up */
-    .special-menu {
-        display: block;
-        position: fixed;
-        left: 50%;
-        transform: translateX(-50%) translateY(120%);
-        right: auto;
-        top: auto;
-        bottom: 12px;
-        width: min(92vw, 360px);
-        max-height: 60vh;
-        overflow-y: auto;
-        z-index: 1100;
-        box-shadow: 0 10px 40px rgba(0,0,0,0.6);
-        background: rgba(244,244,244,0.98);
-        opacity: 0;
-        pointer-events: none;
-        transition: transform 260ms cubic-bezier(.2,.9,.2,1), opacity 200ms ease;
-    }
-    .special-menu.open {
-        transform: translateX(-50%) translateY(0);
-        opacity: 1;
-        pointer-events: auto;
-    }
-
-    /* Position floating special button on mobile higher up to avoid covering chat/clan buttons */
-    #specialMenuBtn { right: 12px; top: auto; bottom: 100px; }
-
-    /* Streamline upgrades menu on mobile: larger tap targets, compact images, sticky bulk bar */
-    #leftBar { width: 90vw; max-width: 360px; padding: 8px; }
-    #leftBar .leftBarScroll { padding-right: 6px; padding-bottom: calc(var(--bulk-height) + 18px); }
-    .upgrade-full-btn { min-height: 56px; padding: 10px 12px; gap: 10px; border-radius: 8px; }
-    .upgrade-full-btn .upgrade-img { width: 48px !important; height: 48px !important; flex: 0 0 48px !important; margin-left: 0 !important; border-radius: 6px !important; }
-    .upgrade-label { padding-left: 10px; font-size: 15px; }
-
-    /* Make the bulk-bar sticky at the bottom of the leftBar for quick access */
-    #leftBar .bulk-bar { position: absolute; left: 8px; right: 8px; bottom: 10px; display:flex; gap:6px; background: rgba(0,0,0,0.08); padding:8px; border-radius:8px; box-sizing: border-box; }
-    #leftBar .bulk-bar .bulk-row { width: 100%; justify-content: space-between; }
-
-    /* Ensure the leftBarToggle doesn't overlap the leftBar on mobile */
-    #leftBarToggle { left: 12px !important; top: 10px; }
-
-    /* shop menu and settings should stay usable but not overlap toggle */
-    .shop-menu { width: 96vw; left: 50%; transform: translateX(-50%); top: 8vh; max-height: 90vh; }
-    /* ensure shop content scrolls within modal height */
-    .shop-menu .shop-content { max-height: calc(90vh - 60px); overflow-y: auto; padding-bottom: 32px; }
-
-    /* responsive shop item widths for smaller screens */
-    .shop-item { width: calc(50% - 22px); }
-    @media (max-width:420px) {
-        .shop-item { width: calc(100% - 20px); }
-    }
-}
-#cookie-consent-banner .cookie-consent-inner {
-    max-width: 980px;
-    width: 100%;
-    background: rgba(18,18,18,0.92);
-    color: #eee;
-    padding: 12px 14px;
-    border-radius: 8px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.6);
-    display: flex;
-    gap: 12px;
-    align-items: center;
-}
-/* Upgrade row layout: left info column + right action button */
-.upgrade-row {
-    display: flex;
-    gap: 8px;
-    align-items: stretch;
-}
-.upgrade-img-col {
-    flex: 0 0 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding-left: 6px;
-    box-sizing: border-box;
-}
-.upgrade-info {
-    flex: 0 0 180px;
+    min-width: 0;
     display: flex;
     flex-direction: column;
-    justify-content: center;
     gap: 4px;
-    padding: 6px 8px;
-    box-sizing: border-box;
+    font-size: 13px;
+    line-height: 1.25;
+}
+.up-name { font-weight: 700; font-size: 14px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.up-effect { color: var(--text-dim); font-size: 12px; }
+.up-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.up-cost { color: var(--primary); font-weight: 700; font-variant-numeric: tabular-nums; }
+.up-cost--gold { color: var(--gold); }
+.up-cost--max { color: var(--divine); }
+.up-level {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.up-level--new { background: rgba(255, 200, 61, 0.16); color: var(--gold); }
+
+/* can't afford yet: dimmed, cost turns muted (still hoverable so the tooltip works) */
+#leftBar button.cant-afford { opacity: 0.55; }
+#leftBar button.cant-afford .up-cost { color: var(--text-dim); }
+#leftBar button.cant-afford:hover { opacity: 0.85; }
+
+/* disabled buttons (divine/special upgrades the player can't buy right now) */
+.upgrade-disabled,
+button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
+
+/* Bulk-buy bar pinned to the bottom of the upgrades bar */
+.bulk-bar {
+    flex: 0 0 auto;
+    border-top: 1px solid var(--border);
+    background: rgba(8, 9, 13, 0.95);
+    padding: 10px 12px 12px;
+}
+.bulk-inner { display: flex; align-items: center; gap: 8px; }
+.bulk-label { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-faint); }
+.bulk-row { flex: 1; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.bulk-btn {
+    padding: 7px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    font-weight: 700;
+    font-size: 12px;
+}
+.bulk-btn:hover { color: var(--text); background: rgba(255, 255, 255, 0.1); }
+.bulk-btn.active { background: var(--gold); color: #2a1600; border-color: transparent; }
+
+/* ========== Top bar ========== */
+#topBar {
+    position: sticky;
+    top: 0;
+    z-index: 900;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: var(--topbar-height);
+    padding: 10px 20px;
+    background: linear-gradient(180deg, rgba(8, 9, 13, 0.72), rgba(8, 9, 13, 0));
+}
+.icon-btn {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+    border-radius: 12px;
+    border: 1px solid var(--border-strong);
+    background: rgba(15, 18, 27, 0.85);
+    color: var(--text);
+    font-size: 18px;
+    box-shadow: var(--shadow);
+}
+.icon-btn:hover { background: var(--surface-3); }
+.top-nav {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+.nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 40px;
+    padding: 0 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: rgba(15, 18, 27, 0.85);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    color: var(--text);
+    font-weight: 600;
+    font-size: 14px;
+    white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+    transition: background 120ms ease, transform 120ms ease;
+}
+.nav-btn:hover { background: var(--surface-3); transform: translateY(-1px); }
+.nav-btn.active { border-color: var(--gold); }
+.nav-ico { font-size: 15px; line-height: 1; }
+.nav-img { width: 18px; height: 18px; filter: brightness(0) saturate(100%); }
+.nav-btn--gold { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); border-color: transparent; color: #2a1600; font-weight: 800; }
+.nav-btn--gold:hover { background: linear-gradient(180deg, #ffd66b, var(--gold-deep)); }
+.nav-btn--special .nav-ico { color: var(--gold); }
+
+/* ========== Main area ========== */
+#mainContent {
+    position: relative;
+    z-index: 500;
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 20px 24px;
+    text-align: center;
+}
+.game-title {
+    margin: 4px 0 0;
+    font-family: var(--font-display);
+    font-weight: 400;
+    font-size: clamp(30px, 5vw, 60px);
+    letter-spacing: 1px;
+    line-height: 1.05;
     color: #fff;
+    text-shadow: 0 3px 0 #1d1300, 0 6px 22px rgba(0, 0, 0, 0.55);
 }
-.upgrade-info-line { font-size: 13px; line-height: 1.1; }
-.upgrade-info-line strong { font-weight: 700; }
-.upgrade-action { flex: 1 1 auto; display: flex; align-items: center; }
-.upgrade-action button { width: 100%; height: 64px; box-sizing: border-box; margin: 0; padding: 8px 12px; display: flex; align-items: center; }
+.game-title-bang { color: var(--gold); }
+#equippedTitleDisplay {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: rgba(15, 18, 27, 0.8);
+    border: 1px solid var(--border-strong);
+    font-size: 13px;
+}
+#equippedTitleDisplay:empty { display: none; }
 
-/* keep the original `.upgrade-label` element for scripts but hide it inside the action */
-.upgrade-action .upgrade-label { display: none; }
-
-/* Ensure uniform visuals for divine clone buttons that had margins */
-#divineLeftBar.left-bar-clone li, #leftBar li { display: block; }
-#divineLeftBar.left-bar-clone li .upgrade-row, #leftBar li .upgrade-row { width: 100%; }
-
-/* Style images when moved into the image column */
-.upgrade-img-col img.upgrade-img {
-    width: 56px;
-    height: 56px;
-    object-fit: cover;
-    border-radius: 6px;
+.main-image-wrap { display: flex; flex-direction: column; align-items: center; gap: 20px; margin: 18px 0 8px; }
+.main-image-btn {
+    padding: 0;
+    border: none;
+    background: none;
+    border-radius: 20px;
+    max-width: 100%;
+    -webkit-tap-highlight-color: transparent;
+}
+.main-image-btn:focus-visible { outline-offset: 6px; }
+.main-image {
     display: block;
+    height: auto;
+    max-width: 100% !important;
+    border-radius: 20px;
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08), 0 24px 60px rgba(0, 0, 0, 0.55);
+    animation: floaty 6s ease-in-out infinite;
+    transition: box-shadow 160ms ease;
+    user-select: none;
+    -webkit-user-drag: none;
 }
-#cookie-consent-banner .cookie-consent-text { flex: 1; font-size: 13px; line-height:1.3; }
-#cookie-consent-banner .cookie-consent-text a { color: #ffd86b; text-decoration: underline; }
-#cookie-consent-banner .cookie-consent-actions { display:flex; gap:8px; align-items:center; }
-#cookie-consent-banner .btn { background:#2a8; border:none; color:#022; padding:8px 12px; border-radius:6px; cursor:pointer; font-weight:700; }
-#cookie-consent-banner .btn-link { background:transparent; color:#ddd; text-decoration:underline; padding:6px 8px; border-radius:6px; }
+.main-image-btn:hover .main-image { box-shadow: 0 0 0 3px rgba(255, 200, 61, 0.55), 0 24px 60px rgba(0, 0, 0, 0.55); }
+@keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+.main-image.pulsate { animation: pulsateAnim 600ms cubic-bezier(.2, .9, .2, 1) !important; }
+@keyframes pulsateAnim { 0% { transform: scale(1); } 35% { transform: scale(1.05); } 100% { transform: scale(1); } }
 
-@media (max-width:600px) {
+/* Counters card */
+.info-card { width: min(600px, 100%); padding: 18px 20px 20px; text-align: center; }
+.stat-hero { display: flex; flex-direction: column; align-items: center; gap: 2px; margin-bottom: 14px; }
+.stat-label { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+.stat-hero-value {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 46px);
+    line-height: 1.1;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+}
+.stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.stat-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 10px 8px;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+}
+.stat-value { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stat-tile--gold { background: rgba(255, 200, 61, 0.08); border-color: rgba(255, 200, 61, 0.3); }
+.stat-tile--gold .stat-label, .stat-tile--gold .stat-value { color: var(--gold); }
+.info-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 16px; }
+/* equipped followers (followers.html) and the buffs they give */
+.follower-strip {
+    display: flex; align-items: center; gap: 10px; margin-top: 12px; padding: 8px 12px;
+    border-radius: var(--radius); background: rgba(47, 208, 122, 0.08); border: 1px solid rgba(47, 208, 122, 0.28);
+    color: var(--text); text-decoration: none; text-align: left; font-size: 13px; font-weight: 600;
+}
+.follower-strip:hover { background: rgba(47, 208, 122, 0.14); }
+.follower-strip.is-empty { background: rgba(255, 255, 255, 0.04); border-color: var(--border); color: var(--text-dim); }
+.fs-avatars { display: flex; flex: 0 0 auto; }
+.fs-avatars:empty { display: none; }
+.fs-avatar { width: 34px; height: 34px; border-radius: 9px; overflow: hidden; border: 2px solid var(--rc, #b4bccd); margin-left: -6px; background: #111; }
+.fs-avatar:first-child { margin-left: 0; }
+.fs-avatar .wf-art { width: 100%; height: 100%; display: block; }
+.fs-text { flex: 1; line-height: 1.35; }
+.fs-text b { color: var(--primary); }
+.fs-egg { display: inline-block; margin-left: 4px; padding: 0 8px; border-radius: 999px; background: rgba(255, 200, 61, 0.15); color: var(--gold); font-weight: 800; }
+.nav-btn { position: relative; }
+
+/* ========== Modals (stats, welcome back) ========== */
+.modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2300;
+    width: min(92vw, 380px);
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+    animation: modal-in 180ms ease-out;
+}
+@keyframes modal-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.modal-head h3 { margin: 0; font-size: 18px; }
+.stat-list { margin: 0; display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
+.stat-list > div { display: flex; justify-content: space-between; gap: 16px; }
+.stat-list dt { color: var(--text-dim); }
+.stat-list dd { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat-list hr { width: 100%; border: none; border-top: 1px solid var(--border); margin: 4px 0; }
+.welcome-body { display: flex; flex-direction: column; gap: 4px; font-size: 15px; color: var(--text-dim); margin-bottom: 16px; }
+.welcome-body strong { color: var(--gold); font-size: 15px; }
+#welcomeBackGained { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0 6px; text-align: center; }
+.wb-amount { font-family: var(--font-display); font-size: 34px; color: var(--gold); text-shadow: 0 3px 14px rgba(255, 170, 40, 0.35); line-height: 1.1; }
+.wb-label { font-size: 13px; }
+#welcomeBackFor { text-align: center; font-size: 13px; }
+
+/* ========== Shop ========== */
+.shop-overlay, .settings-overlay { display: none; position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); backdrop-filter: blur(3px); }
+.shop-overlay { z-index: 1400; }
+.shop-overlay.open, .settings-overlay.open { display: block; }
+.shop-menu {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1405;
+    width: min(94vw, 1040px);
+    max-height: 92vh;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+}
+.shop-menu.open { display: flex; }
+.shop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+}
+.shop-left { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; min-width: 0; }
+.gem-balance {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px 6px 8px;
+    border-radius: 999px;
+    background: rgba(90, 169, 255, 0.12);
+    border: 1px solid rgba(90, 169, 255, 0.35);
+    font-weight: 800;
+}
+.shop-tabs { display: flex; gap: 4px; padding: 4px; border-radius: 999px; background: rgba(0, 0, 0, 0.3); }
+.shop-tab-btn { padding: 8px 14px; border-radius: 999px; border: none; background: transparent; color: var(--text-dim); font-weight: 700; font-size: 13px; }
+.shop-tab-btn:hover { color: var(--text); }
+.shop-tab-btn.active { background: var(--gold); color: #2a1600; }
+.shop-content { flex: 1; overflow-y: auto; padding: 18px; }
+.shop-items-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; }
+.shop-item {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border-radius: var(--radius);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    text-align: left;
+    transition: border-color 120ms ease, transform 120ms ease;
+}
+.shop-item:hover { border-color: var(--border-strong); transform: translateY(-2px); }
+.shop-item.equipped { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 8px 24px rgba(255, 200, 61, 0.15); }
+.shop-item-title { font-weight: 700; font-size: 14px; }
+.shop-item-img { width: 100%; aspect-ratio: 4 / 3; height: auto; object-fit: cover; border-radius: 10px; background: #000; display: block; }
+.shop-item-info { color: var(--text-dim); font-size: 13px; }
+.shop-item-info strong { color: var(--text); }
+.shop-item > div:last-child { margin-top: auto; flex-wrap: wrap; }
+.shop-item button,
+#shopTabMusic button {
+    border: 1px solid var(--border-strong) !important;
+    border-radius: 999px !important;
+    padding: 7px 12px !important;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    font-weight: 700;
+    font-size: 13px;
+}
+.shop-menu button[id^="buy"] { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); color: #2a1600; border-color: transparent !important; }
+.shop-menu button[id^="equip"]:not(:disabled) { background: rgba(90, 169, 255, 0.16); border-color: rgba(90, 169, 255, 0.45) !important; color: #cfe5ff; }
+.shop-menu button:disabled { opacity: 0.45; }
+.shop-item div[id^="shopMusicStatus_"] { color: var(--gold) !important; font-size: 12px; }
+
+/* ========== Settings ========== */
+.settings-overlay { z-index: 1210; }
+.settings-menu {
+    display: none;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1220;
+    width: min(94vw, 460px);
+    max-height: 90vh;
+    overflow-y: auto;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+}
+.settings-menu.open { display: block; }
+.settings-content { display: flex; flex-direction: column; gap: 14px; }
+.settings-group { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+.settings-group h4 { margin: 0; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-faint); }
+.setting-row { display: flex; flex-direction: column; gap: 6px; }
+.setting-row > label { display: flex; justify-content: space-between; font-weight: 600; font-size: 14px; }
+.setting-value { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
+.setting-inline { display: flex; align-items: center; gap: 8px; }
+.setting-inline input[type=range], .setting-inline select, .setting-inline input[type=text] { flex: 1; }
+.setting-help { font-size: 12px; color: var(--text-dim); }
+.setting-help:empty { display: none; }
+.settings-footer { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+
+/* ========== Special upgrades panel (right side) ========== */
+.special-menu {
+    position: fixed;
+    top: calc(var(--topbar-height) + 8px);
+    right: 16px;
+    z-index: 1100;
+    width: 360px;
+    max-height: calc(100vh - var(--topbar-height) - 28px);
+    display: flex;
+    flex-direction: column;
+    padding: 14px;
+    border-radius: var(--radius-lg);
+    background: rgba(15, 18, 27, 0.95);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+    transform: translateX(calc(100% + 30px));
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 260ms cubic-bezier(.2, .9, .2, 1), opacity 200ms ease;
+}
+.special-menu.open { transform: translateX(0); opacity: 1; pointer-events: auto; }
+.special-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.special-title { font-weight: 800; font-size: 16px; }
+.special-hint { margin: 6px 0 10px; color: var(--text-dim); font-size: 12px; line-height: 1.4; }
+.menu-content { display: none; overflow-y: auto; margin: 0 -6px; padding: 0 6px 6px; }
+.special-menu.open .menu-content { display: block; }
+.special-menu [hidden] { display: none !important; }
+.sp-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.sp-filter { display: flex; gap: 3px; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); }
+.sp-filter button { padding: 5px 12px; border-radius: 999px; border: none; background: transparent; color: var(--text-dim); font-weight: 800; font-size: 12px; }
+.sp-filter button:hover { color: var(--text); }
+.sp-filter button.active { background: var(--gold); color: #2a1600; }
+.sp-count { display: inline-block; min-width: 18px; margin-left: 2px; padding: 0 5px; border-radius: 999px; background: rgba(255, 255, 255, 0.12); font-size: 11px; text-align: center; }
+.sp-filter button.active .sp-count { background: rgba(0, 0, 0, 0.18); }
+.sp-progress { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; font-size: 12px; font-weight: 700; color: var(--text-dim); white-space: nowrap; }
+.sp-bar { flex: 1; height: 6px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.sp-bar i { display: block; width: 0; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold), var(--gold-deep)); transition: width 400ms ease; }
+
+.sp-group { margin-bottom: 10px; padding: 10px; border-radius: var(--radius); background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border); }
+.sp-group.is-complete { border-color: rgba(47, 208, 122, 0.35); }
+.sp-group-head { display: flex; align-items: center; gap: 8px; margin-bottom: 9px; }
+.sp-group-head img { width: 24px; height: 24px; border-radius: 6px; object-fit: cover; }
+.sp-group-name { flex: 1; font-weight: 800; font-size: 13px; }
+.sp-group-count { padding: 1px 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.07); color: var(--text-dim); font-size: 11px; font-weight: 800; }
+.sp-group.is-complete .sp-group-count { background: rgba(47, 208, 122, 0.14); color: var(--primary); }
+.sp-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 8px; }
+
+/* one tile per special: the upgrade's picture in a frame coloured by tier */
+.sp-tile {
+    --tc: #b08d57;
+    position: relative;
+    aspect-ratio: 1;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    border: 2px solid var(--tc);
+    background: #0b0d13;
+    cursor: pointer;
+    transition: transform 120ms ease, box-shadow 160ms ease, filter 160ms ease;
+}
+.sp-tile img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.sp-tier-1 { --tc: #b08d57; } .sp-tier-2 { --tc: #c9d1dc; } .sp-tier-3 { --tc: #ffc83d; } .sp-tier-4 { --tc: #5ad1ff; }
+.sp-tier-5 { --tc: #b07dff; } .sp-tier-6 { --tc: #ff5bd0; } .sp-tier-7 { --tc: #ff6b3d; } .sp-tier-8 { --tc: #ffffff; }
+.sp-numeral { position: absolute; left: 3px; bottom: 3px; padding: 0 5px; border-radius: 6px; background: rgba(0, 0, 0, 0.75); color: var(--tc); font: 900 10px/16px var(--font); letter-spacing: 0.5px; }
+.sp-mark { position: absolute; top: 3px; right: 3px; width: 18px; height: 18px; border-radius: 50%; display: none; place-items: center; font-size: 11px; font-weight: 900; }
+.sp-tile:hover, .sp-tile:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5); }
+.sp-tile.is-locked { filter: grayscale(1) brightness(0.45); border-color: rgba(255, 255, 255, 0.14); }
+.sp-tile.is-locked .sp-numeral { color: var(--text-dim); }
+.sp-tile.is-locked .sp-mark { display: grid; background: rgba(0, 0, 0, 0.6); }
+.sp-tile.is-locked .sp-mark::before { content: '🔒'; font-size: 9px; }
+.sp-tile.is-poor { filter: saturate(0.55) brightness(0.8); }
+.sp-tile.is-ready { box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.35), 0 0 16px rgba(255, 200, 61, 0.45); animation: spReady 1.8s ease-in-out infinite; }
+@keyframes spReady { 50% { box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.6), 0 0 24px rgba(255, 200, 61, 0.7); } }
+.sp-tile.is-owned .sp-mark { display: grid; background: var(--primary); color: #04170c; }
+.sp-tile.is-owned .sp-mark::before { content: '✓'; }
+.sp-tile.sp-shake { animation: spShake 320ms ease; }
+@keyframes spShake { 20%, 60% { transform: translateX(-3px); } 40%, 80% { transform: translateX(3px); } }
+.sp-tile.sp-just-bought { animation: spPop 600ms cubic-bezier(.2, .9, .2, 1.2); }
+@keyframes spPop { 40% { transform: scale(1.18); } }
+.sp-empty, .sp-more { margin: 8px 2px; font-size: 12px; color: var(--text-dim); text-align: center; }
+
+/* hover card for a special */
+.sp-tip {
+    position: fixed;
+    z-index: 1300;
+    width: 280px;
+    padding: 12px;
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+    pointer-events: none;
+    animation: spTipIn 120ms ease;
+}
+.sp-tip[hidden] { display: none; }
+.sp-tip--pinned { pointer-events: auto; }
+@keyframes spTipIn { from { opacity: 0; transform: translateY(4px); } }
+.sp-tip-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.sp-tip-head img { width: 42px; height: 42px; border-radius: 10px; object-fit: cover; border: 2px solid rgba(255, 255, 255, 0.15); }
+.sp-tip-head b { display: block; font-size: 15px; line-height: 1.2; }
+.sp-tip-head span { font-size: 11.5px; color: var(--text-dim); }
+.sp-tip-close { margin-left: auto; align-self: flex-start; width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--border-strong); background: transparent; color: var(--text-dim); }
+.sp-tip-effect { font-size: 14px; font-weight: 800; color: var(--primary); }
+.sp-tip-status { margin: 4px 0 8px; font-size: 12.5px; font-weight: 700; }
+.sp-st--ready { color: var(--gold); }
+.sp-st--poor { color: #ff8a95; }
+.sp-st--locked { color: var(--text-dim); }
+.sp-st--locked em { font-style: normal; opacity: 0.7; }
+.sp-st--owned { color: var(--primary); }
+.sp-tip-flavor { margin: 0; padding-top: 8px; border-top: 1px solid var(--border); color: #d6c9ae; font-size: 12.5px; font-style: italic; line-height: 1.45; }
+.sp-tip-note { margin-top: 6px; font-size: 11px; color: var(--text-faint); }
+.sp-tip-buy { margin-top: 10px; }
+@media (hover: none) {
+    .sp-tip--pinned { top: 12px; left: 12px; right: 12px; width: auto; }
+}
+
+/* count of specials ready to buy, on the Specials nav button */
+.nav-count { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--gold); color: #2a1600; font-size: 10.5px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--bg); pointer-events: none; }
+
+/* ========== Floating widgets ========== */
+#chatFab { position: fixed; right: 18px; bottom: 18px; z-index: 1300; }
+.fab-btn {
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: linear-gradient(180deg, #2b3350, #1a1f2d);
+    color: #fff;
+    font-size: 22px;
+    box-shadow: var(--shadow-lg);
+}
+.fab-btn:hover { filter: brightness(1.15); }
+#chatUnreadBadge {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 5px;
+    border-radius: 10px;
+    background: var(--danger);
+    border: 2px solid var(--bg);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 800;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+#buffPanel { position: fixed; right: 18px; bottom: 86px; z-index: 1150; min-width: 220px; padding: 12px 14px; font-size: 13px; }
+#buffPanel .buff-title { font-weight: 800; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--gold); margin-bottom: 6px; }
+
+#toastContainer {
+    position: fixed;
+    left: 50%;
+    bottom: 24px;
+    transform: translateX(-50%);
+    z-index: 10001;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+    max-width: min(92vw, 520px);
+}
+#toastContainer .toast {
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: rgba(15, 18, 27, 0.95);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow);
+    font-size: 14px;
+    text-align: center;
+    animation: toast-in 180ms ease-out;
+}
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+/* ========== Effects ========== */
+/* achievement unlock popup (positioned under the Achievements button by main.js) */
+#achievementPopupContainer { position: fixed; top: calc(var(--topbar-height, 64px) + 10px); right: 16px; z-index: 3000; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none; }
+.achievement-popup {
+    display: flex; flex-direction: column; gap: 2px;
+    width: max-content; max-width: min(320px, calc(100vw - 32px));
+    padding: 10px 14px; border-radius: var(--radius);
+    background: var(--surface-solid); border: 1px solid rgba(255, 200, 61, 0.45); box-shadow: var(--shadow-lg);
+    color: var(--text); text-decoration: none; pointer-events: auto;
+    opacity: 0; transform: translateX(24px); transition: opacity 260ms ease, transform 260ms ease;
+}
+.achievement-popup.in { opacity: 1; transform: none; }
+/* chat side panel (index.html builds it) */
+.side-panel {
+    position: fixed; right: 0; top: 0; z-index: 1400;
+    height: 100%; width: 400px; max-width: 100vw;
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 14px;
+    background: var(--surface-solid);
+    border-left: 1px solid var(--border-strong);
+    box-shadow: -16px 0 40px rgba(0, 0, 0, 0.55);
+    transition: transform 260ms ease;
+    overflow: hidden;
+}
+.side-head { display: flex; align-items: center; gap: 10px; }
+.side-tabs { display: inline-flex; padding: 3px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); }
+.side-tab { border: none; background: transparent; color: var(--text-dim); font-weight: 700; font-size: 13px; padding: 7px 14px; border-radius: 999px; }
+.side-tab.active { background: var(--surface-3); color: var(--text); box-shadow: inset 0 0 0 1px var(--border-strong); }
+.side-safe { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; color: var(--text-dim); font-size: 12px; cursor: pointer; }
+.side-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.side-area { flex: 1; min-height: 0; flex-direction: column; gap: 8px; }
+.side-area[style*="block"] { display: flex !important; }
+.chat-log { flex: 1; min-height: 0; overflow: auto; padding: 10px 12px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); font-size: 13px; line-height: 1.45; color: var(--text); }
+.chat-log > div { padding: 5px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); word-break: break-word; }
+.chat-log > div:last-child { border-bottom: none; }
+.chat-empty { color: var(--text-dim); text-align: center; padding: 24px 8px; border: none !important; }
+.chat-input-row { display: flex; gap: 8px; }
+.chat-input-row input { flex: 1; }
+.side-clan-info { font-size: 13px; color: var(--text-dim); }
+.side-clan-info b { color: var(--gold); }
+.side-clan-info a { color: var(--blue); font-weight: 700; text-decoration: none; }
+@media (max-width: 520px) { .side-panel { width: 100vw; padding: 12px 10px; } }
+.stats-extra { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: grid; gap: 6px; font-size: 14px; }
+.stats-extra h4 { margin: 0 0 2px; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-dim); }
+.stats-extra-row { display: flex; justify-content: space-between; gap: 12px; }
+.stats-extra-row span { color: var(--text-dim); }
+.stats-extra-row a, .stats-extra-row b { color: var(--text); font-weight: 700; text-align: right; text-decoration: none; }
+.stats-extra-row a:hover { color: var(--gold); text-decoration: underline; }
+.achievement-popup:hover { border-color: var(--gold); }
+.achievement-popup--summary { background: linear-gradient(135deg, rgba(255, 200, 61, 0.16), transparent 70%), var(--surface-solid); }
+.ap-kicker { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; color: var(--gold); font-weight: 800; }
+.ap-title { font-size: 14px; font-weight: 800; }
+.ap-msg { font-size: 12px; color: var(--text-dim); line-height: 1.35; }
+#falling-container { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 200; }
+/* "+N" numbers that float up from the click */
+#clickFloatLayer { position: fixed; inset: 0; pointer-events: none; z-index: 1500; overflow: hidden; }
+.click-float {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    font-family: var(--font-display);
+    font-size: 22px;
+    color: #fff;
+    text-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 0 12px rgba(0, 0, 0, 0.45);
+    white-space: nowrap;
+    animation: click-float-up 900ms cubic-bezier(.2, .7, .3, 1) forwards;
+}
+.click-float.crit { font-size: 32px; color: #ff6a85; animation-duration: 1200ms; }
+@keyframes click-float-up {
+    0% { opacity: 0; transform: translate(-50%, -30%) scale(0.7); }
+    15% { opacity: 1; transform: translate(-50%, -70%) scale(1.08); }
+    100% { opacity: 0; transform: translate(-50%, -280%) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { .click-float { animation-duration: 500ms; } }
+.falling-image { position: fixed; top: 0; pointer-events: none; will-change: transform, opacity; border-radius: 6px; }
+.crit-indicator {
+    position: fixed;
+    z-index: 1600;
+    transform: translate(-50%, -50%);
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #ff4d6a, #d61f45);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 24px;
+    pointer-events: none;
+    box-shadow: 0 8px 24px rgba(214, 31, 69, 0.45);
+    animation: crit-pop 900ms ease-out forwards;
+}
+@keyframes crit-pop {
+    0% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+    50% { opacity: 1; transform: translate(-50%, -120%) scale(1.2); }
+    100% { opacity: 0; transform: translate(-50%, -180%) scale(1); }
+}
+.bought-anim { animation: bought-scale 260ms cubic-bezier(.2, .9, .2, 1); }
+@keyframes bought-scale { 0% { transform: scale(1); } 40% { transform: scale(0.95); } 100% { transform: scale(1); } }
+
+/* ========== Footer, ads, cookie banner ========== */
+.site-footer { position: relative; z-index: 1; text-align: center; padding: 12px 0 90px; font-size: 13px; }
+.site-footer a { color: var(--text-dim); }
+#adWrapper { position: relative; z-index: 1; text-align: center; margin: 12px 0; }
+#cookie-consent-banner { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 2500; justify-content: center; }
+#cookie-consent-banner .cookie-consent-inner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    max-width: 900px;
+    padding: 12px 16px;
+    border-radius: var(--radius);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+}
+#cookie-consent-banner .cookie-consent-text { flex: 1; font-size: 13px; line-height: 1.4; color: var(--text-dim); }
+#cookie-consent-banner .cookie-consent-text a { color: var(--gold); }
+#cookie-consent-banner .cookie-consent-actions { display: flex; gap: 8px; align-items: center; }
+#cookie-consent-banner .btn { padding: 8px 14px; border-radius: 999px; border: none; font-weight: 700; }
+#cookie-consent-banner #cookie-accept-btn { background: var(--primary); color: #04170c; }
+#cookie-consent-banner .btn-link { background: transparent; color: var(--text-dim); text-decoration: underline; }
+
+/* ========== Responsive ========== */
+@media (max-width: 1180px) {
+    .nav-btn { padding: 0 11px; }
+    .nav-btn:not(.nav-btn--gold) .nav-txt { display: none; }
+}
+
+#leftBarOverlay { display: none; }
+@media (max-width: 760px) {
+    body, body.leftbar-open, body.leftbar-closed { margin-left: 0; }
+    #leftBar,
+    #divineLeftBar.left-bar-clone {
+        width: min(88vw, 340px);
+        z-index: 2500;
+        transform: translateX(-100%);
+    }
+    #leftBar.open, #divineLeftBar.left-bar-clone.open { transform: translateX(0); }
+    #leftBarOverlay { display: block; position: fixed; inset: 0; z-index: 2400; background: rgba(0, 0, 0, 0); pointer-events: none; transition: background 220ms ease; }
+    #leftBarOverlay.active { background: rgba(0, 0, 0, 0.55); pointer-events: auto; }
+
+    #topBar { padding: 10px 12px; gap: 8px; }
+    .top-nav { flex-wrap: nowrap; overflow-x: auto; gap: 5px; padding-bottom: 2px; }
+    .nav-btn { height: 38px; padding: 0 10px; flex: 0 0 auto; }
+    .nav-btn--gold .nav-txt { display: none; }
+    #mainContent { padding: 0 12px 24px; }
+    .stat-tile { padding: 8px 4px; }
+    .stat-value { font-size: 16px; }
+
+    /* specials become a bottom sheet */
+    .special-menu {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: auto;
+        max-height: 70vh;
+        border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+        transform: translateY(105%);
+    }
+    .special-menu.open { transform: translateY(0); }
     #cookie-consent-banner .cookie-consent-inner { flex-direction: column; align-items: stretch; }
-    #cookie-consent-banner .cookie-consent-actions { justify-content: flex-end; }
 }
-

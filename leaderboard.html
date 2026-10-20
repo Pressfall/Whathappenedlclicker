@@ -4,38 +4,60 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Global Leaderboard — What Happened</title>
-  <link rel="icon" type="image/png" href="mainimage/upgradesargoonion.png">
+  <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
   <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
   <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
   <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7259344384263515" crossorigin="anonymous"></script>
   <style>
-    body { background:#0f0f12;color:#eee;font-family:Arial,Helvetica,sans-serif;padding:18px; }
-    .card{background:#15151a;padding:12px;border-radius:8px;max-width:900px;margin:14px auto}
-    h1{margin:0 0 12px 0}
-    table{width:100%;border-collapse:collapse}
-    th,td{padding:8px;border-bottom:1px solid #222;text-align:left}
-    .muted{color:#bbb;font-size:13px}
-    .form-row{display:flex;gap:8px;margin-bottom:8px}
-    input,button{padding:8px;border-radius:6px;border:1px solid #333;background:#0f0f12;color:#fff}
-    button{cursor:pointer}
+    body{margin:0;min-height:100vh;padding:72px 18px 40px;background:radial-gradient(ellipse at 50% -10%,#1f2a44,#0b0d13 60%) fixed}
+    .card{max-width:900px;margin:0 auto;padding:22px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow)}
+    .lb-head{display:flex;align-items:center;gap:16px}
+    .lb-head img{height:64px;width:auto}
+    table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+    th{padding:10px;text-align:left;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;color:var(--text-faint);border-bottom:1px solid var(--border)}
+    td{padding:10px;border-bottom:1px solid var(--border)}
+    tbody tr:hover{background:rgba(255,255,255,0.03)}
+    tbody tr:nth-child(-n+3) td:first-child{font-weight:800;color:var(--gold)}
+    td:nth-child(4){font-weight:700}
+    .lb-tabs{display:flex;gap:4px;padding:4px;border-radius:999px;background:rgba(0,0,0,0.3)}
+    .lb-tabs button{padding:8px 16px;border-radius:999px;border:none!important;background:transparent!important;color:var(--text-dim)!important;font-weight:700}
+    .lb-tabs button.active{background:var(--gold)!important;color:#2a1600!important}
+    #loadAllBtn{border-radius:999px;border:1px solid var(--border-strong);background:rgba(255,255,255,0.06);padding:8px 14px;font-weight:700}
+    tbody tr.me td{background:rgba(255,200,61,0.1)}
+    tbody tr.me td:first-child{box-shadow:inset 3px 0 0 var(--gold)}
+    .you{margin-left:6px;padding:1px 7px;border-radius:999px;background:var(--gold);color:#2a1600;font-size:10px;font-weight:900;vertical-align:middle}
+    #myRank{margin:4px 0 10px;padding:10px 14px;border-radius:var(--radius);background:rgba(0,0,0,0.25);border:1px solid var(--border);font-size:14px}
+    #myRank:empty{display:none}
+    #myRank b{color:var(--gold)}
+    td.when{color:var(--text-dim);font-size:13px;white-space:nowrap}
+    @media (max-width:600px){ body{padding:64px 10px 32px} .card{padding:14px} th:nth-child(5),td.when{display:none} th:nth-child(3),td:nth-child(3){display:none} td,th{padding:8px 6px} .lb-head img{height:48px} }
   </style>
 </head>
 <body>
   <div class="card">
-    <h1>Global Leaderboard</h1>
-    <p class="muted">View and submit top What Happened scores. Submissions are public.</p>
-    <img src = "mainimage/lbicon.png" alt = "Leaderboard Icon" style = "height: 100px; float: center; margin-bottom: 10px;">
+    <div class="lb-head">
+      <img src="mainimage/lbicon.png" alt="">
+      <div>
+        <h1 class="page-title">Leaderboard</h1>
+        <p class="muted" style="margin:0">Each player's best submitted score. Submit yours from the game.</p>
+      </div>
+    </div>
 
     <div style="margin:12px 0;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <div style="flex:1;color:#9cf;align-self:center;">Submissions are only possible from the game — use the in-game "Submit To Leaderboard" button.</div>
-        <div style="display:flex;gap:6px;">
-          <button id="monthlyTab" data-type="monthly" style="padding:8px;border-radius:6px;border:1px solid #345;background:#164;color:#fff">Monthly</button>
-          <button id="alltimeTab" data-type="alltime" style="padding:8px;border-radius:6px;border:1px solid #333;background:transparent;color:#ddd">All Time</button>
-          <button id="loadAllBtn" title="Diagnostic: load all entries without type filter">Reload</button>
+        <div class="lb-tabs">
+          <button id="monthlyTab" data-type="monthly">This month</button>
+          <button id="alltimeTab" data-type="alltime">All time</button>
         </div>
+        <div style="flex:1"></div>
+        <button id="loadAllBtn" title="Reload the leaderboard">↻ Refresh</button>
       </div>
       <div id="status" class="muted"></div>
+      <div id="myRank"></div>
     </div>
 
     <div style="margin-top:12px;overflow:auto;">
@@ -101,7 +123,10 @@
       epic: '#b86cff',
       legendary: '#ffb84d'
     };
-    function rarityColorFor(title){ try{ const r = TITLE_RARITIES[String(title)] || 'common'; return RARITY_COLORS[r] || ''; }catch(e){return ''} }
+    // achievements-data.js knows every title's rarity; the map above covers older titles
+    function rarityColorFor(title){ try{ const r = (window.WHA && window.WHA.titleRarity(String(title))) || TITLE_RARITIES[String(title)] || 'common'; return (window.WHA && window.WHA.RARITY_COLORS[r]) || RARITY_COLORS[r] || ''; }catch(e){return ''} }
+    function timeAgo(d){ const s = Math.max(0, (Date.now() - d.getTime()) / 1000); if (s < 3600) return Math.max(1, Math.round(s / 60)) + 'm ago'; if (s < 86400) return Math.round(s / 3600) + 'h ago'; if (s < 86400 * 30) return Math.round(s / 86400) + 'd ago'; return d.toLocaleDateString(); }
+    const myName = String(localStorage.getItem('player_username') || '').trim().toLowerCase();
 
     const statusEl = document.getElementById('status');
     const tbody = document.querySelector('#board tbody');
@@ -126,8 +151,12 @@
       } catch (e) { n = NaN; }
       try {
         if (Number.isFinite(n)) {
-          if (Math.abs(n) < 1e12) return formatNumber(n);
-          return n.toExponential(3);
+          const units = ['K','M','B','T','Q','Qi','Sx','Sp','Oc','No','Dc'];
+          let v = Math.abs(n), u = -1;
+          while (v >= 1000 && u < units.length - 1) { v /= 1000; u++; }
+          if (u < 0) return formatNumber(Math.round(n));
+          if (v >= 1000) return n.toExponential(3);
+          return (n < 0 ? '-' : '') + v.toFixed(v < 100 ? 2 : 0) + units[u];
         }
       } catch (e) {}
       try { return String(raw); } catch (e) { return '' + raw; }
@@ -149,56 +178,46 @@
         tbody.innerHTML = '';
         const now = new Date();
         let i=1;
+        // the game writes one 'monthly' and one 'alltime' doc per submission, so show only this tab's copy,
+        // and only each player's best score (results are already sorted by score)
+        const seenNames = new Set();
+        let myRow = null;
         snap.forEach(doc => {
           const d = doc.data();
-          // Monthly: only include entries whose timestamp is in the current month
+          const docType = d && d.type ? d.type : 'alltime';
           if (type === 'monthly'){
+            if (docType !== 'monthly') return;
             let created = null;
             if (d && d.createdAt && typeof d.createdAt.toDate === 'function') created = d.createdAt.toDate();
             else if (d && d.createdAt instanceof Date) created = d.createdAt;
             if (!created || !isSameMonth(created, now)) return;
-          }
-          // For alltime, include everything (no additional filtering)
+          } else if (docType !== 'alltime') return;
+          const nameKey = String(d.name || '').trim().toLowerCase();
+          if (seenNames.has(nameKey)) return;
+          seenNames.add(nameKey);
           const tr = document.createElement('tr');
-          const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : (d.createdAt || '');
+          const created = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
           const scoreFormatted = formatLeaderboardScore(d.score || 0);
           const title = d.title || '';
           const titleEsc = escapeHtml(String(title));
           const color = rarityColorFor(title);
           const titleHtml = color ? `<span style="color:${color};font-weight:700">${titleEsc}</span>` : titleEsc;
-          tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(String(d.name||''))}</td><td>${titleHtml}</td><td>${escapeHtml(String(scoreFormatted))}</td><td>${escapeHtml(when)}</td>`;
+          const rank = i++;
+          const medal = rank === 1 ? '🥇 ' : rank === 2 ? '🥈 ' : rank === 3 ? '🥉 ' : '';
+          const isMe = !!myName && nameKey === myName;
+          if (isMe) { tr.className = 'me'; myRow = { rank, score: scoreFormatted }; }
+          tr.innerHTML = `<td>${medal}${rank}</td><td>${escapeHtml(String(d.name||''))}${isMe ? '<span class="you">YOU</span>' : ''}</td><td>${titleHtml}</td><td>${escapeHtml(String(scoreFormatted))}</td>` +
+            `<td class="when" title="${created ? escapeHtml(created.toLocaleString()) : ''}">${created ? escapeHtml(timeAgo(created)) : ''}</td>`;
           tbody.appendChild(tr);
         });
-        statusEl.textContent = '';
+        statusEl.textContent = (i === 1) ? (type === 'monthly' ? 'No scores submitted this month yet. Be the first: submit yours from the game.' : 'No scores yet.') : '';
+        const total = i - 1;
+        document.getElementById('myRank').innerHTML = !myName ? '' : myRow
+          ? `You're <b>#${myRow.rank}</b> of ${total} ${type === 'monthly' ? 'this month' : 'all time'} with ${escapeHtml(String(myRow.score))}.`
+          : (total ? `You're not on this board yet. Hit <b>Submit score</b> in the game to join.` : '');
+        if (myRow && myRow.rank > 8) { const row = tbody.querySelector('tr.me'); if (row) row.scrollIntoView({ block: 'center' }); }
       } catch (err) {
         console.error('loadBoard error', err);
-        statusEl.textContent = 'Error loading leaderboard: ' + (err && err.message ? err.message : String(err));
-      }
-    }
-
-    async function loadBoardAll(){
-      statusEl.textContent = 'Loading all entries...';
-      try{
-        const col = collection(db,'leaderboard');
-        const q = query(col, orderBy('score','desc'), limit(500));
-        const snap = await getDocs(q);
-        tbody.innerHTML = '';
-        let i=1;
-        snap.forEach(doc => {
-          const d = doc.data();
-          const tr = document.createElement('tr');
-          const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : (d.createdAt || '');
-          const scoreFormatted = formatLeaderboardScore(d.score || 0);
-          const title = d.title || '';
-          const titleEsc = escapeHtml(String(title));
-          const color = rarityColorFor(title);
-          const titleHtml = color ? `<span style="color:${color};font-weight:700">${titleEsc}</span>` : titleEsc;
-          tr.innerHTML = `<td>${i++}</td><td>${escapeHtml(String(d.name||''))}</td><td>${titleHtml}</td><td>${escapeHtml(String(scoreFormatted))}</td><td>${escapeHtml(when)}</td>`;
-          tbody.appendChild(tr);
-        });
-        statusEl.textContent = '';
-      } catch (err) {
-        console.error('loadBoardAll error', err);
         statusEl.textContent = 'Error loading leaderboard: ' + (err && err.message ? err.message : String(err));
       }
     }
@@ -209,13 +228,8 @@
     const alltimeTab = document.getElementById('alltimeTab');
     function setActiveTab(t){
       activeTab = t;
-      if (t === 'monthly'){
-        monthlyTab.style.background = '#164'; monthlyTab.style.color = '#fff'; monthlyTab.style.borderColor = '#345';
-        alltimeTab.style.background = 'transparent'; alltimeTab.style.color = '#ddd'; alltimeTab.style.borderColor = '#333';
-      } else {
-        alltimeTab.style.background = '#164'; alltimeTab.style.color = '#fff'; alltimeTab.style.borderColor = '#345';
-        monthlyTab.style.background = 'transparent'; monthlyTab.style.color = '#ddd'; monthlyTab.style.borderColor = '#333';
-      }
+      monthlyTab.classList.toggle('active', t === 'monthly');
+      alltimeTab.classList.toggle('active', t !== 'monthly');
       loadBoard(t).catch(e=>console.warn('load failed', e));
     }
     monthlyTab.addEventListener('click', ()=>setActiveTab('monthly'));
@@ -226,6 +240,8 @@
     setActiveTab('monthly');
   </script>
   <!-- Top-left Back to game button -->
-  <button id="backToGameBtn" onclick="window.location.href='index.html'" title="Back to game" style="position:fixed;top:8px;left:8px;z-index:1000;background:#2a6;color:#fff;padding:6px;border-radius:6px;border:none;">Back to game</button>
+  <a id="backToGameBtn" class="page-back" href="index.html">← Back to game</a>
+  <script src="achievements-data.js"></script>
+  <script src="site.js"></script>
 </body>
 </html>

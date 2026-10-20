@@ -7,10 +7,20 @@
   <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
   <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
   <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="theme.css">
+  <style>
+    body{max-width:860px;margin:0 auto;padding:80px 22px 40px;background:var(--bg);line-height:1.6}
+    h1{font-family:var(--font-display);font-weight:400;color:var(--gold)}
+    h2{margin-top:28px;font-size:18px}
+    p,li{color:var(--text-dim)}
+    code{background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:6px;color:var(--text)}
+  </style>
 </head>
-<body style="max-width:900px;margin:28px auto;font-family:system-ui,Segoe UI,Roboto,Arial,sans-serif;color:#eee;background:#111;padding:20px;border-radius:8px;">
-  <button onclick="window.location.href='index.html'" style="position:fixed;top:12px;left:12px;z-index:1300;background:#333;color:#fff;padding:8px 10px;border-radius:6px;border:none;">← Back</button>
+<body>
+  <a class="page-back" href="index.html">← Back to game</a>
   <h1>Privacy Policy</h1>
   <p>Effective date: January 9, 2026</p>
 
@@ -105,5 +115,6 @@
   <hr style="border-color:#333;margin:24px 0;">
   <p style="font-size:13px;color:#bbb;">This privacy notice describes practices for the <em>WHAT HAPPENED clicker</em> site. It may be updated occasionally; please check back for changes.</p>
 
+<script src="site.js"></script>
 </body>
 </html>

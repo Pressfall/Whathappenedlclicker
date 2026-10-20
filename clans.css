@@ -1,113 +1,296 @@
-body{
-    background-image: url('mainimage/Mainbg.png');
-    background-repeat: no-repeat;
+/* Clans page (clan.html). Tokens and base components come from theme.css. */
+body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 72px 18px 40px;
+    background-color: var(--bg);
+    background-image: linear-gradient(rgba(8, 9, 13, 0.55), rgba(8, 9, 13, 0.75)), url('mainimage/mainbg.png');
     background-size: cover;
     background-position: center;
     background-attachment: fixed;
-    color:#eee;
-    font-family:Arial,Helvetica,sans-serif;
-    padding:18px;
-    margin:0;
-    min-height:100vh;
 }
-.card{
-    background:rgba(21,21,26,0.95);
-    padding:18px;
-    border-radius:12px;
-    max-width:1000px;
-    margin:14px auto;
-    box-shadow:0 8px 32px rgba(0,0,0,0.4);
-    border:1px solid rgba(255,255,255,0.1);
+.clan-wrap { max-width: 1120px; margin: 0 auto; }
+
+.card {
+    margin: 0 0 14px;
+    padding: 18px;
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow);
 }
-h1{
-    margin:0 0 12px 0;
-    color:#fff;
-    font-size:28px;
+/* cards nested inside a card (the events tab builds these) are flat sub-panels */
+.card .card {
+    margin: 0;
+    background: var(--surface-2);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    box-shadow: none;
 }
-.muted{color:#bbb;font-size:13px}
-table{width:100%;border-collapse:collapse}
-th,td{padding:8px;border-bottom:1px solid #222;text-align:left}
-input,button,select{
-    padding:10px 12px;
-    border-radius:8px;
-    border:1px solid rgba(255,255,255,0.2);
-    background:rgba(15,15,18,0.8);
-    color:#fff;
-    font-size:14px;
-    transition:all 0.2s ease;
+.card-inner {
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
 }
-input:focus,button:focus,select:focus{
-    outline:none;
-    border-color:#9cf;
-    box-shadow:0 0 0 2px rgba(153,204,255,0.2);
+h1, h2, h3 { margin: 0 0 12px; }
+.card h2 { font-size: 17px; }
+strong { color: var(--text); }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 8px; border-bottom: 1px solid var(--border); text-align: left; }
+.small { font-size: 12px; }
+.gold { color: var(--gold); }
+[hidden] { display: none !important; }
+
+/* header */
+.clan-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 14px; }
+.clan-sub { margin: 0; color: var(--text-dim); }
+.me-chip { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; padding: 8px 14px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); }
+.me-chip:empty { display: none; }
+.me-name { font-weight: 800; }
+.me-clan { font-size: 13px; color: var(--gold); }
+
+/* top tabs */
+.clan-tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.clan-tab {
+    padding: 9px 16px;
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    background: rgba(15, 18, 27, 0.75);
+    color: var(--text-dim);
+    font-weight: 700;
+    font-size: 14px;
 }
-.btn{
-    cursor:pointer;
-    font-weight:600;
-    transition:transform 0.1s ease,box-shadow 0.2s ease;
+.clan-tab:hover { color: var(--text); background: rgba(255, 255, 255, 0.1); }
+.clan-tab.active { background: var(--gold); border-color: transparent; color: #2a1600; }
+
+/* buttons used across the page (the events tab creates many) */
+.btn { border-radius: 999px; }
+button.btn:not(.btn-primary):not(.btn-gold):not(.btn-ghost):not(.btn-danger) {
+    background-color: rgba(255, 255, 255, 0.07);
+    border: 1px solid var(--border-strong);
 }
-.btn:hover{
-    transform:translateY(-1px);
-    box-shadow:0 4px 12px rgba(0,0,0,0.3);
+.green, button.btn.green { background: linear-gradient(180deg, var(--primary), var(--primary-deep)) !important; color: #04170c !important; border: none !important; }
+.orange, button.btn.orange { background: linear-gradient(180deg, var(--gold), var(--gold-deep)) !important; color: #2a1600 !important; border: none !important; }
+.red, button.btn.red { background: rgba(255, 91, 107, 0.15) !important; color: #ffb3bb !important; border: 1px solid rgba(255, 91, 107, 0.5) !important; }
+.red:hover { background: var(--danger) !important; color: #fff !important; }
+.note { color: var(--blue); }
+input, select { font-size: 14px; }
+.link-btn { background: none; border: none; color: var(--blue); font-weight: 700; font-size: 13px; padding: 2px 4px; }
+.link-btn:hover { text-decoration: underline; }
+.icon-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border-strong); background: rgba(255, 255, 255, 0.05); color: var(--text); font-weight: 900; line-height: 1; }
+.icon-btn:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* small shared pieces */
+.sec-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.sec-head h2 { margin: 0; }
+.sec-head .count { color: var(--text-dim); font-weight: 600; font-size: 14px; }
+.tag { padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; background: rgba(255, 255, 255, 0.08); color: var(--text-dim); white-space: nowrap; }
+.tag.good { background: rgba(47, 208, 122, 0.16); color: #9ff0c4; }
+.lvl-badge { padding: 2px 9px; border-radius: 999px; background: linear-gradient(180deg, var(--gold), var(--gold-deep)); color: #2a1600; font-weight: 900; font-size: 12px; white-space: nowrap; }
+.bar { height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-deep)); border-radius: inherit; transition: width 0.4s ease; }
+.bar.thin { height: 5px; }
+.hint { font-size: 12px; color: var(--text-dim); min-height: 15px; }
+.hint.bad { color: #ffb3bb; }
+.row-gap { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 9px; background: #4a5266; display: inline-block; }
+.dot.on { background: var(--primary); box-shadow: 0 0 8px var(--primary); }
+.dot.recent { background: #c9a43a; }
+
+/* ---------- clan banner ---------- */
+.clan-banner { position: relative; background: linear-gradient(135deg, rgba(255, 200, 61, 0.1), rgba(167, 125, 255, 0.08) 60%, transparent), var(--surface); }
+.banner-main { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.emblem {
+    width: 76px; height: 76px; flex: 0 0 76px;
+    border-radius: 20px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 42px;
+    background: radial-gradient(circle at 30% 25%, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.35));
+    border: 2px solid rgba(255, 200, 61, 0.45);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
 }
-.btn:active{
-    transform:translateY(0);
+.emblem img { width: 100%; height: 100%; object-fit: cover; }
+.emblem.sm { width: 52px; height: 52px; flex-basis: 52px; font-size: 28px; border-radius: 14px; border-width: 1px; }
+.banner-text { flex: 1; min-width: 220px; }
+.banner-title { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.banner-title h2 { margin: 0; font-size: 26px; font-family: var(--font-display); font-weight: 400; letter-spacing: 0.5px; }
+.banner-meta { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+.banner-desc { margin: 8px 0 0; max-width: 620px; line-height: 1.45; }
+.banner-desc:empty { display: none; }
+.banner-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; max-width: 340px; }
+.banner-level { margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.lvl-row { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 8px; }
+.lvl-row .link-btn { margin-left: auto; }
+.xp-bar { height: 14px; border-radius: 999px; background: rgba(0, 0, 0, 0.35); border: 1px solid var(--border); overflow: hidden; }
+.xp-bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--gold-deep)); box-shadow: 0 0 12px rgba(255, 200, 61, 0.5); transition: width 0.5s ease; }
+.perk-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.perk { padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; background: rgba(47, 208, 122, 0.12); color: #9ff0c4; border: 1px solid rgba(47, 208, 122, 0.3); }
+.perk.next { background: transparent; color: var(--text-dim); border-style: dashed; border-color: var(--border-strong); }
+.perk.buff { background: rgba(255, 200, 61, 0.14); color: var(--gold); border-color: rgba(255, 200, 61, 0.4); }
+.perk.dim { background: transparent; color: var(--text-faint); border-color: var(--border); }
+.perk-list { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 2px 14px; font-size: 12px; }
+.perk-list div { display: flex; justify-content: space-between; gap: 10px; padding: 5px 8px; border-radius: 8px; color: var(--text-dim); }
+.perk-list div span:first-child { font-weight: 800; color: var(--text-faint); white-space: nowrap; }
+.perk-list .done { color: #9ff0c4; }
+.perk-list .cur { background: rgba(255, 200, 61, 0.12); color: var(--gold); }
+.perk-list .cur span:first-child { color: var(--gold); }
+
+.manage-panel { margin-top: 14px; padding: 14px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border); }
+.manage-grid { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: var(--text-dim); }
+.field textarea { resize: vertical; color: var(--text); font-weight: 400; }
+.field small { font-weight: 400; }
+.manage-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.manage-panel p { margin: 8px 0 0; }
+
+/* ---------- columns: check-in + members | chat ---------- */
+.clan-cols { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); gap: 14px; align-items: start; }
+.clan-col { display: grid; gap: 14px; }
+.clan-col > .card, .clan-cols > .card { margin: 0; }
+
+.checkin-card { background: linear-gradient(135deg, rgba(255, 200, 61, 0.08), transparent 60%), var(--surface); }
+.checkin-card p { margin: 0; }
+.checkin-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin: 12px 0; }
+.checked { font-weight: 800; color: #9ff0c4; }
+.checkin-who { display: grid; gap: 6px; }
+
+.online-count { font-size: 12px; color: #9ff0c4; display: flex; align-items: center; gap: 6px; }
+.members-list { display: grid; gap: 4px; max-height: 520px; overflow: auto; padding: 2px; }
+.member { position: relative; display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 10px; background: rgba(0, 0, 0, 0.22); border: 1px solid transparent; }
+.member.is-me { border-color: rgba(255, 200, 61, 0.3); }
+.m-main { flex: 1; min-width: 0; }
+.m-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.m-title { font-size: 12px; font-weight: 800; }
+.m-stats { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+.m-stats .online { color: #9ff0c4; }
+.role { padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 800; text-transform: capitalize; background: rgba(255, 255, 255, 0.08); color: var(--text-dim); }
+.role-leader { background: rgba(255, 200, 61, 0.18); color: var(--gold); }
+.role-co-leader { background: rgba(167, 125, 255, 0.18); color: #cbb3ff; }
+.role-elder { background: rgba(90, 169, 255, 0.16); color: #9ccaff; }
+.role-elite-member { background: rgba(47, 208, 122, 0.14); color: #9ff0c4; }
+.m-actions { position: relative; }
+.m-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; min-width: 220px; display: flex; flex-direction: column; padding: 6px; border-radius: var(--radius); background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); }
+.m-menu.up { top: auto; bottom: calc(100% + 6px); }
+.m-menu button { text-align: left; padding: 8px 10px; border-radius: 8px; border: none; background: transparent; color: var(--text); font-size: 13px; font-weight: 600; }
+.m-menu button:hover { background: rgba(255, 255, 255, 0.08); }
+.m-menu button.danger { color: #ffb3bb; }
+
+/* chat */
+.chat-card { display: flex; flex-direction: column; }
+.chat-box { height: 440px; overflow: auto; padding: 10px 12px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border); display: flex; flex-direction: column; }
+.msg { max-width: 85%; align-self: flex-start; margin-top: 10px; display: flex; flex-direction: column; align-items: flex-start; }
+.msg.grouped { margin-top: 3px; }
+.msg.mine { align-self: flex-end; align-items: flex-end; }
+.msg-head { display: flex; gap: 6px; align-items: baseline; font-size: 12px; margin: 0 4px 3px; }
+.msg-head b { color: #9cf; }
+.msg.mine .msg-head b { color: var(--gold); }
+.msg-title { font-size: 11px; font-weight: 800; }
+time { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
+.msg-text { display: inline-flex; gap: 6px; align-items: flex-start; padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: var(--surface-3); line-height: 1.4; word-break: break-word; }
+.msg.mine .msg-text { border-radius: 14px 14px 4px 14px; background: linear-gradient(180deg, rgba(255, 200, 61, 0.24), rgba(255, 154, 31, 0.16)); }
+.msg.pinned .msg-text { box-shadow: inset 0 0 0 1px rgba(255, 200, 61, 0.55); }
+.pin-btn { border: none; background: none; padding: 0; font-size: 12px; opacity: 0; transition: opacity 0.15s ease; }
+.msg:hover .pin-btn, .pin-btn:focus-visible { opacity: 0.8; }
+.msg-sys { align-self: center; margin: 12px 0 2px; font-size: 12px; font-weight: 700; padding: 4px 12px; border-radius: 999px; background: rgba(255, 255, 255, 0.05); display: flex; gap: 8px; align-items: baseline; text-align: center; }
+.sys-green { color: #9ff0c4; }
+.sys-red { color: #ffb3bb; }
+.sys-gold { color: var(--gold); }
+.chat-empty { margin: auto; }
+.pinned { display: grid; gap: 4px; margin-bottom: 8px; }
+.pinned:empty { display: none; }
+.pin-msg { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 6px 10px; border-radius: 10px; background: rgba(255, 200, 61, 0.08); border: 1px solid rgba(255, 200, 61, 0.25); font-size: 13px; }
+.chat-form { display: flex; gap: 8px; margin-top: 10px; }
+.chat-form input { flex: 1; }
+.chat-locked { text-align: center; padding: 40px 10px; }
+.chat-locked span { font-size: 36px; }
+
+/* ---------- finding / creating clans ---------- */
+.find-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.find-head h2 { margin: 0; }
+.find-tools { display: flex; gap: 8px; flex: 1; justify-content: flex-end; min-width: 260px; }
+.find-tools input { flex: 1; max-width: 340px; }
+.lock-note { padding: 10px 14px; border-radius: var(--radius); background: rgba(255, 200, 61, 0.1); border: 1px solid rgba(255, 200, 61, 0.35); color: var(--gold); font-weight: 700; margin-bottom: 12px; }
+.clan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; max-height: 620px; overflow: auto; padding: 2px; }
+.clan-grid > .muted { grid-column: 1 / -1; padding: 20px; text-align: center; }
+.clan-card { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); transition: border-color 0.15s ease, transform 0.15s ease; }
+.clan-card:hover { border-color: rgba(255, 200, 61, 0.4); transform: translateY(-1px); }
+.clan-card.is-full { opacity: 0.7; }
+.cc-body { flex: 1; min-width: 0; display: grid; gap: 5px; }
+.cc-title { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.cc-title b { font-size: 15px; }
+.cc-meta { font-size: 12px; color: var(--text-dim); }
+.cc-desc { margin: 0; font-size: 12px; color: var(--text-dim); line-height: 1.4; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cc-actions { display: flex; flex-direction: column; gap: 6px; }
+.create-card { margin-top: 16px; padding: 16px; border-radius: var(--radius); background: linear-gradient(135deg, rgba(255, 200, 61, 0.1), transparent 70%), rgba(0, 0, 0, 0.2); border: 1px dashed rgba(255, 200, 61, 0.4); display: grid; gap: 10px; }
+.create-card h3 { margin: 0 0 4px; }
+.create-card p { margin: 0; }
+.create-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.create-row input { flex: 1; min-width: 180px; }
+
+/* ---------- clan shop ---------- */
+.shop-top { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+.shop-top p { margin: 0; flex: 1; min-width: 220px; }
+.cp-balance { display: flex; flex-direction: column; padding: 10px 18px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 200, 61, 0.35); }
+.cp-balance span { font-size: 11px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+.cp-balance b { font-size: 26px; color: var(--gold); font-variant-numeric: tabular-nums; }
+.buff-grid { display: grid; gap: 10px; margin-top: 10px; }
+.buff-card { display: flex; gap: 14px; padding: 14px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); }
+.buff-card.is-active { border-color: rgba(47, 208, 122, 0.45); box-shadow: 0 0 24px rgba(47, 208, 122, 0.12); }
+.buff-icon { font-size: 30px; width: 52px; height: 52px; flex: 0 0 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; background: rgba(255, 255, 255, 0.06); }
+.buff-body { flex: 1; min-width: 0; display: grid; gap: 6px; }
+.buff-body p { margin: 0; font-size: 13px; color: var(--text-dim); }
+.buff-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.buff-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-btn { padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border-strong); background: rgba(255, 255, 255, 0.06); color: var(--text); font-weight: 800; font-size: 12px; }
+.chip-btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); }
+.chip-btn.fill { border-color: rgba(255, 200, 61, 0.5); color: var(--gold); }
+.chip-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+.reward-grid, .icon-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
+.reward-card, .icon-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--border); text-align: center; }
+.reward-card img { width: 46px; height: 46px; object-fit: contain; }
+.icon-tile span { font-size: 30px; }
+.icon-tile small { color: var(--text-dim); font-size: 11px; }
+.icon-tile.owned { border-color: rgba(47, 208, 122, 0.4); }
+.icon-tile.owned small { color: #9ff0c4; }
+.icon-tile.locked { opacity: 0.55; }
+
+/* events / shop before joining a clan */
+.locked-panel { text-align: center; padding: 40px 20px; }
+.lp-icon { font-size: 44px; }
+.locked-panel h2 { margin: 8px 0; font-size: 20px; }
+.locked-panel p { margin: 0 auto; max-width: 460px; }
+
+/* toasts (alert() is routed here) */
+#clanToasts { position: fixed; top: 64px; right: 16px; z-index: 3000; display: flex; flex-direction: column; gap: 8px; max-width: min(380px, calc(100vw - 32px)); }
+.toast { padding: 12px 14px; border-radius: var(--radius); background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); font-size: 14px; line-height: 1.4; white-space: pre-line; cursor: pointer; animation: toastIn 0.24s ease both; }
+.toast-good { border-color: rgba(47, 208, 122, 0.55); }
+.toast-bad { border-color: rgba(255, 91, 107, 0.6); }
+.toast-gold { border-color: rgba(255, 200, 61, 0.6); }
+@keyframes toastIn { from { opacity: 0; transform: translateX(30px); } }
+
+.pinBtn { padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border-strong); background: rgba(255, 255, 255, 0.06); font-size: 12px; }
+
+@media (max-width: 860px) {
+    .clan-cols { grid-template-columns: 1fr; }
+    .manage-grid { grid-template-columns: 1fr; }
+    .chat-box { height: 360px; }
+    .banner-actions { max-width: none; justify-content: flex-start; width: 100%; }
 }
-.green{background:#2a6;color:#fff;border:none}
-.green:hover{background:#2d7;box-shadow:0 4px 12px rgba(42,102,102,0.4);}
-.orange{background:#f49a1a;color:#fff;border:none}
-.orange:hover{background:#f5a82b;box-shadow:0 4px 12px rgba(244,154,26,0.4);}
-.red{background:#c33;color:#fff;border:none}
-.red:hover{background:#d44;box-shadow:0 4px 12px rgba(204,51,51,0.4);}
-.note{color:#9cf}
-#searchResults{
-    max-height:320px;
-    overflow:auto;
-    background:rgba(12,12,15,0.8);
-    padding:8px;
-    border-radius:8px;
-    border:1px solid rgba(255,255,255,0.1);
-}
-#membersList{
-    margin-top:8px;
-    max-height:360px;
-    overflow:auto;
-    background:rgba(12,12,15,0.8);
-    padding:12px;
-    border-radius:8px;
-    border:1px solid rgba(255,255,255,0.1);
-}
-#clanChatBox{
-    height:220px;
-    overflow:auto;
-    background:rgba(12,12,15,0.8);
-    padding:12px;
-    border-radius:8px;
-    border:1px solid rgba(255,255,255,0.1);
-    margin-top:6px;
-}
-#clanChatBox::-webkit-scrollbar,#searchResults::-webkit-scrollbar,#membersList::-webkit-scrollbar{
-    width:8px;
-}
-#clanChatBox::-webkit-scrollbar-track,#searchResults::-webkit-scrollbar-track,#membersList::-webkit-scrollbar-track{
-    background:rgba(0,0,0,0.2);
-    border-radius:4px;
-}
-#clanChatBox::-webkit-scrollbar-thumb,#searchResults::-webkit-scrollbar-thumb,#membersList::-webkit-scrollbar-thumb{
-    background:rgba(255,255,255,0.2);
-    border-radius:4px;
-}
-#clanChatBox::-webkit-scrollbar-thumb:hover,#searchResults::-webkit-scrollbar-thumb:hover,#membersList::-webkit-scrollbar-thumb:hover{
-    background:rgba(255,255,255,0.3);
-}
-.card-inner{
-    background:rgba(12,12,15,0.9);
-    border:1px solid rgba(255,255,255,0.08);
-    border-radius:8px;
-}
-#clanDetailArea.card{
-    padding:20px;
-}
-#findArea .card-inner{
-    min-height:80px;
+@media (max-width: 560px) {
+    body { padding: 64px 10px 32px; }
+    .card { padding: 14px; }
+    .emblem { width: 60px; height: 60px; flex-basis: 60px; font-size: 32px; }
+    .banner-title h2 { font-size: 21px; }
+    .clan-grid { grid-template-columns: 1fr; }
+    .clan-card { flex-wrap: wrap; }
+    .cc-actions { flex-direction: row; width: 100%; }
+    .cc-actions .btn { flex: 1; }
+    .find-tools { min-width: 0; width: 100%; }
+    .find-tools input { max-width: none; }
+    .me-chip { align-items: flex-start; width: 100%; }
+    .msg { max-width: 92%; }
 }

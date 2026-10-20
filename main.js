@@ -188,7 +188,7 @@ async function syncClanStats() {
 
 // ========== Main image size (settings) ==========
 // Main image max-width (px) controlled by settings slider
-let mainImageMaxWidth = 700;
+let mainImageMaxWidth = 560;
 
 function applyMainImageMaxWidth() {
     const img = document.querySelector('.main-image');
@@ -230,6 +230,9 @@ function setMainImageMaxWidth(px) {
     applyMainImageMaxWidth();
 }
 
+// Short-scale suffixes, one per power of 1000 starting at thousand (Q = quadrillion, Qi = quintillion, ...)
+const NUMBER_SUFFIXES = ['K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid'];
+
 function formatNumber(n) {
     if (n === undefined || n === null) return '0';
     // Decimal-aware formatting
@@ -240,7 +243,7 @@ function formatNumber(n) {
             if (abs.lt(1000)) {
                 return dec.round().toNumber().toLocaleString();
             }
-            const units = ['K', 'M', 'B', 'T', 'Q', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+            const units = NUMBER_SUFFIXES;
             let v = dec;
             let unitIndex = -1;
             while (v.gte(1000)) {
@@ -263,7 +266,7 @@ function formatNumber(n) {
     if (abs < 1000) {
         return Math.round(num).toLocaleString();
     }
-    const units = ['K', 'M', 'B', 'T', 'Q', 'Qa', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const units = NUMBER_SUFFIXES;
     const sign = num < 0 ? '-' : '';
     let v = abs;
     let unitIndex = -1;
@@ -282,261 +285,123 @@ function formatNumber(n) {
     return sign + v.toFixed(decimals) + (unitIndex >= 0 ? units[unitIndex] : '');
 }
 
-// ========== Achievements (popups, playtime, CPS, click power, upgrade levels) ==========
-// Show a small popup near the Achievements button when an achievement unlocks
-function showAchievementPopup(title, message) {
+// Non-blocking toast for routine messages ("not enough", "unlocks at ..."). alert() froze the game until dismissed.
+function notify(message, durationMs) {
     try {
-        const containerId = 'achievementPopupContainer';
-        let container = document.getElementById(containerId);
+        const text = String(message);
+        const ms = durationMs || 2600;
+        let box = document.getElementById('toastContainer');
+        if (!box) {
+            box = document.createElement('div');
+            box.id = 'toastContainer';
+            box.setAttribute('role', 'status');
+            box.setAttribute('aria-live', 'polite');
+            document.body.appendChild(box);
+        }
+        // collapse repeats (e.g. spam-clicking an upgrade you can't afford) into one toast with a counter
+        const last = box.lastElementChild;
+        if (last && last.dataset.msg === text) {
+            last.dataset.repeat = String((Number(last.dataset.repeat) || 1) + 1);
+            last.textContent = text + ' (x' + last.dataset.repeat + ')';
+            clearTimeout(last._hideTimer);
+            last._hideTimer = setTimeout(() => last.remove(), ms);
+            return;
+        }
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.dataset.msg = text;
+        toast.textContent = text;
+        box.appendChild(toast);
+        while (box.children.length > 4) box.firstElementChild.remove();
+        toast._hideTimer = setTimeout(() => toast.remove(), ms);
+    } catch (e) { try { console.warn(message); } catch (e2) {} }
+}
+
+// Cost text for "not enough" messages, with how long current CPS needs to earn the difference
+function needText(cost) {
+    const need = Number(cost) || 0;
+    const missing = need - (Number(count) || 0);
+    const rate = Number(cps) || 0;
+    const eta = (missing > 0 && rate > 0) ? ' (~' + formatSecondsHuman(Math.ceil(missing / rate)) + ' at your CPS)' : '';
+    return formatNumber(need) + eta;
+}
+
+// ========== Achievements (popups, playtime, CPS, click power, upgrade levels) ==========
+// Achievement popups stack in the top-right corner. Calls are collected for a moment so a burst (e.g. several unlocks
+// on load) shows at most two popups plus a "+N more" summary instead of a wall of them.
+let _achPopupQueue = [];
+let _achPopupTimer = null;
+function showAchievementPopup(title, message) {
+    _achPopupQueue.push({ title: String(title || ''), message: String(message || '') });
+    if (!_achPopupTimer) _achPopupTimer = setTimeout(flushAchievementPopups, 250);
+}
+function flushAchievementPopups() {
+    _achPopupTimer = null;
+    const batch = _achPopupQueue.splice(0);
+    if (!batch.length) return;
+    const shown = batch.length > 3 ? batch.slice(0, 2) : batch;
+    shown.forEach((b, i) => setTimeout(() => renderAchievementPopup(b.title, b.message), i * 500));
+    if (batch.length > 3) {
+        const rest = batch.slice(2);
+        setTimeout(() => renderAchievementPopup(`+${rest.length} more achievements`, rest.map(b => b.title).join(', ') + '. See them all on the Achievements page.', true), 1000);
+    }
+}
+function renderAchievementPopup(title, message, summary) {
+    try {
+        let container = document.getElementById('achievementPopupContainer');
         if (!container) {
             container = document.createElement('div');
-            container.id = containerId;
-            container.style.position = 'fixed';
-            container.style.top = '0';
-            container.style.left = '0';
-            container.style.pointerEvents = 'none';
+            container.id = 'achievementPopupContainer';
+            container.setAttribute('aria-live', 'polite');
             document.body.appendChild(container);
         }
-        const popup = document.createElement('div');
-        popup.className = 'achievement-popup';
-        popup.style.position = 'absolute';
-        popup.style.background = 'linear-gradient(180deg,#243,#135)';
-        popup.style.color = '#fff';
-        popup.style.padding = '8px 12px';
-        popup.style.borderRadius = '8px';
-        popup.style.boxShadow = '0 8px 24px rgba(0,0,0,0.6)';
-        popup.style.opacity = '0';
-        popup.style.transform = 'translateY(6px)';
-        popup.style.transition = 'opacity 260ms ease, transform 260ms ease';
-        popup.style.pointerEvents = 'auto';
-        // color title according to rarity if known
-        let titleText = String(title || '');
-        try {
-            const rarity = TITLE_RARITIES[titleText] || (getUnlockedTitles().find(x=>x.name===titleText) || {}).rarity || 'common';
-            const color = RARITY_COLORS[rarity] || '#fff';
-            titleText = `<span style="color:${color};font-weight:700">${titleText}</span>`;
-        } catch (e) {}
-        popup.innerHTML = `<div style="font-size:14px">${titleText}</div><div style="font-size:12px;margin-top:4px;color:#ddf">${String(message||'')}</div>`;
-
-        // position near achievements button if available
-        try {
-            const btn = document.getElementById('achievementsTopBtn');
-            if (btn) {
-                const r = btn.getBoundingClientRect();
-                // place popup above the button
-                popup.style.left = (Math.max(8, r.left)) + 'px';
-                popup.style.top = (Math.max(8, r.bottom + 6)) + 'px';
-            } else {
-                // default top-right
-                popup.style.right = '12px';
-                popup.style.top = '12px';
-            }
-        } catch (e) {
-            popup.style.right = '12px';
-            popup.style.top = '12px';
-        }
-
+        // never more than 4 on screen: drop the oldest
+        while (container.children.length >= 4) container.firstElementChild.remove();
+        const popup = document.createElement('a');
+        popup.className = 'achievement-popup' + (summary ? ' achievement-popup--summary' : '');
+        popup.href = 'achievements.html';
+        popup.title = 'Open achievements';
+        const rarity = (window.WHA && window.WHA.titleRarity(title)) || TITLE_RARITIES[title] || null;
+        const esc = t => String(t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+        popup.innerHTML = `<span class="ap-kicker">🏆 Achievement</span><span class="ap-title"${rarity ? ` style="color:${RARITY_COLORS[rarity]}"` : ''}>${esc(title)}</span><span class="ap-msg">${esc(message)}</span>`;
         container.appendChild(popup);
-        // animate in
-        requestAnimationFrame(() => { popup.style.opacity = '1'; popup.style.transform = 'translateY(0)'; });
-        // remove after timeout
-        setTimeout(() => {
-            try { popup.style.opacity = '0'; popup.style.transform = 'translateY(-6px)'; } catch (e) {}
-            setTimeout(() => { try { popup.remove(); } catch (e) {} }, 300);
-        }, 3000);
-    } catch (e) { try { console.warn('showAchievementPopup failed', e); } catch (e) {} }
+        requestAnimationFrame(() => popup.classList.add('in'));
+        setTimeout(() => { popup.classList.remove('in'); setTimeout(() => { try { popup.remove(); } catch (e) {} }, 300); }, summary ? 7000 : 5000);
+    } catch (e) { try { console.warn('achievement popup failed', e); } catch (e2) {} }
+}
+// Unlock an event achievement (crit, click count...) by its key in achievements-data.js and announce it
+function unlockAchievement(key) {
+    try {
+        const a = window.WHA && window.WHA.unlock(key);
+        if (a) { showAchievementPopup(a.name, `${a.desc} Title: ${a.title}`); try { populateTitleSelect(); } catch (e) {} }
+    } catch (e) {}
 }
 
-// Check and unlock playtime-based achievements
-function checkPlaytimeAchievements() {
+// All achievements live in achievements-data.js; check them against the live game every couple of seconds.
+let _lastDataAchCheck = 0;
+function checkDataAchievements(force) {
+    if (!window.WHA) return;
+    const now = Date.now();
+    if (!force && now - _lastDataAchCheck < 2000) return;
+    _lastDataAchCheck = now;
     try {
-        const s = Number(localStorage.getItem('whathappened_playtime_seconds') || 0) || 0;
-        // 2 hours
-        if (s >= 7200 && !localStorage.getItem('ach_play_2h')) {
-            try { localStorage.setItem('ach_play_2h', '1'); } catch (e) {}
-            try { addUnlockedTitle('Indoor Specialist'); } catch (e) {}
-            try { showAchievementPopup('Go Outside', 'Playtime 2 hours — Title: Indoor Specialist'); } catch (e) {}
-        }
-        // 24 hours
-        if (s >= 86400 && !localStorage.getItem('ach_play_24h')) {
-            try { localStorage.setItem('ach_play_24h', '1'); } catch (e) {}
-            try { addUnlockedTitle('Chronically Online'); } catch (e) {}
-            try { showAchievementPopup('This Is My Life Now', 'Playtime 24 hours — Title: Chronically Online'); } catch (e) {}
-        }
-        // 1 week (7 days)
-        if (s >= 604800 && !localStorage.getItem('ach_play_1w')) {
-            try { localStorage.setItem('ach_play_1w', '1'); } catch (e) {}
-            try { addUnlockedTitle('Permanently Online'); } catch (e) {}
-            try { showAchievementPopup('What Happened Forever', 'Playtime 1 week — Title: Permanently Online'); } catch (e) {}
-        }
-    } catch (e) { try { console.warn('checkPlaytimeAchievements failed', e); } catch (e) {} }
-}
-
-// Check and unlock CPS-based achievements
-function checkCpsAchievements() {
-    try {
-        // derive numeric cps value regardless of Decimal usage
-        let cpsVal = 0;
-        try { cpsVal = (isDecimalInstance(cps) ? cps.toNumber() : Number(cps)) || 0; } catch (e) { cpsVal = Number(cps) || 0; }
-        // 1 cps
-        if (cpsVal >= 1 && !localStorage.getItem('ach_cps_1')) {
-            try { localStorage.setItem('ach_cps_1', '1'); } catch (e) {}
-            try { addUnlockedTitle('The Automtor'); } catch (e) {}
-            try { showAchievementPopup('All Hands On Deck', 'Reach 1 CPS — Title: The Automtor'); } catch (e) {}
-        }
-        // 1k cps
-        if (cpsVal >= 1000 && !localStorage.getItem('ach_cps_1k')) {
-            try { localStorage.setItem('ach_cps_1k', '1'); } catch (e) {}
-            try { addUnlockedTitle('Automation Enjoyer'); } catch (e) {}
-            try { showAchievementPopup('I Swear I\'m Not Clicking', 'Reach 1,000 CPS — Title: Automation Enjoyer'); } catch (e) {}
-        }
-        // 1B cps
-        if (cpsVal >= 1000000000 && !localStorage.getItem('ach_cps_1b')) {
-            try { localStorage.setItem('ach_cps_1b', '1'); } catch (e) {}
-            try { addUnlockedTitle('Observer Of Motion.'); } catch (e) {}
-            try { showAchievementPopup('It Clicks Itself', 'Reach 1,000,000,000 CPS — Title: Observer Of Motion.'); } catch (e) {}
-        }
-    } catch (e) { try { console.warn('checkCpsAchievements failed', e); } catch (e) {} }
-}
-
-// Check and unlock Click Power-based achievements
-function checkClickPowerAchievements() {
-    try {
-        let cpVal = 0;
-        try { cpVal = (isDecimalInstance(clickPower) ? clickPower.toNumber() : Number(clickPower)) || 0; } catch (e) { cpVal = Number(clickPower) || 0; }
-        // 10 click power
-        if (cpVal >= 10 && !localStorage.getItem('ach_cp_10')) {
-            try { localStorage.setItem('ach_cp_10', '1'); } catch (e) {}
-            try { addUnlockedTitle('Manual Operator'); } catch (e) {}
-            try { showAchievementPopup('Something Happened', 'Reach 10 click power — Title: Manual Operator'); } catch (e) {}
-        }
-        // 69 click power
-        if (cpVal >= 69 && !localStorage.getItem('ach_cp_69')) {
-            try { localStorage.setItem('ach_cp_69', '1'); } catch (e) {}
-            try { addUnlockedTitle('Nice'); } catch (e) {}
-            try { showAchievementPopup('The Funny Number', 'Reach 69 click power — Title: Nice'); } catch (e) {}
-        }
-        // 5,000 click power
-        if (cpVal >= 5000 && !localStorage.getItem('ach_cp_5000')) {
-            try { localStorage.setItem('ach_cp_5000', '1'); } catch (e) {}
-            try { addUnlockedTitle('Button Breaker'); } catch (e) {}
-            try { showAchievementPopup('Noticeable Impact', 'Reach 5,000 click power — Title: Button Breaker'); } catch (e) {}
-        }
-        // 1,000,000 click power
-        if (cpVal >= 1000000 && !localStorage.getItem('ach_cp_1m')) {
-            try { localStorage.setItem('ach_cp_1m', '1'); } catch (e) {}
-            try { addUnlockedTitle('One Click Wonder'); } catch (e) {}
-            try { showAchievementPopup('The Button Fears You', 'Reach 1,000,000 click power — Title: One Click Wonder'); } catch (e) {}
-        }
-    } catch (e) { try { console.warn('checkClickPowerAchievements failed', e); } catch (e) {} }
-}
-
-// Check upgrade-level achievements (e.g., reach level 1000 on specific upgrades)
-function checkUpgradeLevelAchievements() {
-    try {
-        // Landon Stream -> upgrade 20
-        const landonLvl = Number(getUpgradeLevel(20) || 0) || 0;
-        if (landonLvl >= 1000 && !localStorage.getItem('ach_landon_1000')) {
-            try { localStorage.setItem('ach_landon_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('landon stream'); } catch (e) {}
-            try { showAchievementPopup('1000 Levels of Landon', 'Get Landon Stream to level 1000 — Title: landon stream'); } catch (e) {}
-        }
-
-        // The Bass -> upgrade 21
-        const bassLvl = Number(getUpgradeLevel(21) || 0) || 0;
-        if (bassLvl >= 1000 && !localStorage.getItem('ach_bass_1000')) {
-            try { localStorage.setItem('ach_bass_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('The Bass'); } catch (e) {}
-            try { showAchievementPopup('The True Bass', 'Get The Bass to level 1000 — Title: The Bass'); } catch (e) {}
-        }
-
-        // Skibbidi Scimitar -> upgrade 14
-        const skibidiLvl = Number(getUpgradeLevel(14) || 0) || 0;
-        if (skibidiLvl >= 1000 && !localStorage.getItem('ach_skibidi_1000')) {
-            try { localStorage.setItem('ach_skibidi_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('The Strongest'); } catch (e) {}
-            try { showAchievementPopup('Skibbidi Man', 'Get skibbidi scimitar to level 1000 — Title: The Strongest'); } catch (e) {}
-        }
-        // Phonk Man -> upgrade 10
-        const phonkLvl = Number(getUpgradeLevel(10) || 0) || 0;
-        if (phonkLvl >= 1000 && !localStorage.getItem('ach_phonk_1000')) {
-            try { localStorage.setItem('ach_phonk_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('Phonk Enjoyer'); } catch (e) {}
-            try { showAchievementPopup('Phonk Aura', 'Get Phonk Man to level 1000 — Title: Phonk Enjoyer'); } catch (e) {}
-        }
-
-        // Tribal Camp -> upgrade 9
-        const tribalLvl = Number(getUpgradeLevel(9) || 0) || 0;
-        if (tribalLvl >= 1000 && !localStorage.getItem('ach_tribal_1000')) {
-            try { localStorage.setItem('ach_tribal_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('Camp Cheif'); } catch (e) {}
-            try { showAchievementPopup('Keeper of the Camp', 'Get Tribal Camp to level 1000 — Title: Camp Cheif'); } catch (e) {}
-        }
-
-        // Argonian Autist -> upgrade 5
-        const argonLvl = Number(getUpgradeLevel(5) || 0) || 0;
-        if (argonLvl >= 1000 && !localStorage.getItem('ach_argon_1000')) {
-            try { localStorage.setItem('ach_argon_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('Argoonion'); } catch (e) {}
-            try { showAchievementPopup('1000 argonions', 'Get Argonian Autist to level 1000 — Title: Argoonion'); } catch (e) {}
-        }
-
-        // Diddy Blud -> upgrade 4
-        const diddyLvl = Number(getUpgradeLevel(4) || 0) || 0;
-        if (diddyLvl >= 1000 && !localStorage.getItem('ach_diddy_1000')) {
-            try { localStorage.setItem('ach_diddy_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('partygoer'); } catch (e) {}
-            try { showAchievementPopup('so much baby oil', 'Get Diddy Blud to level 1000 — Title: partygoer'); } catch (e) {}
-        }
-
-        // Somali Pirate -> upgrade 2
-        const pirateLvl = Number(getUpgradeLevel(2) || 0) || 0;
-        if (pirateLvl >= 1000 && !localStorage.getItem('ach_pirate_1000')) {
-            try { localStorage.setItem('ach_pirate_1000', '1'); } catch (e) {}
-            try { addUnlockedTitle('Somali Captain'); } catch (e) {}
-            try { showAchievementPopup('Pirates Life for me', 'Get Somali Pirate to level 1000 — Title: Somali Captain'); } catch (e) {}
-        }
-    } catch (e) { try { console.warn('checkUpgradeLevelAchievements failed', e); } catch (e) {} }
-}
-
-// Check and unlock clan-based achievements
-function checkClanAchievements() {
-    try {
-        const clanId = localStorage.getItem('player_clanId') || '';
-        const clanRole = (localStorage.getItem('player_clanRole') || '').toLowerCase();
-
-        // Join a clan (have a clan ID)
-        if (clanId && clanId !== 'undefined' && !localStorage.getItem('ach_clan_joined')) {
-            try { localStorage.setItem('ach_clan_joined', '1'); } catch (e) {}
-            try { addUnlockedTitle('Clan Recruit'); } catch (e) {}
-            try { showAchievementPopup('Clan Member', 'Join or create a clan — Title: Clan Recruit'); } catch (e) {}
-        }
-
-        // Create a clan (flag set from clan.html when user creates a clan)
-        if (localStorage.getItem('ach_clan_created') === '1') {
-            try { addUnlockedTitle('Clan Founder'); } catch (e) {}
-        }
-
-        // Created a clan (achievement popup only once)
-        if (localStorage.getItem('ach_clan_created') === '1' && !localStorage.getItem('ach_clan_created_shown')) {
-            try { localStorage.setItem('ach_clan_created_shown', '1'); } catch (e) {}
-            try { showAchievementPopup('Clan Founder', 'Create a clan — Title: Clan Founder'); } catch (e) {}
-        }
-
-        // Be co-leader of a clan
-        if ((clanRole === 'co-leader' || clanRole === 'coleader') && !localStorage.getItem('ach_clan_coleader')) {
-            try { localStorage.setItem('ach_clan_coleader', '1'); } catch (e) {}
-            try { addUnlockedTitle('Lieutenant'); } catch (e) {}
-            try { showAchievementPopup('Second in Command', 'Become a co-leader of a clan — Title: Lieutenant'); } catch (e) {}
-        }
-
-        // Be owner/leader of a clan
-        if ((clanRole === 'owner' || clanRole === 'leader') && !localStorage.getItem('ach_clan_owner')) {
-            try { localStorage.setItem('ach_clan_owner', '1'); } catch (e) {}
-            try { addUnlockedTitle('Warlord'); } catch (e) {}
-            try { showAchievementPopup('Warlord', 'Become the owner of a clan — Title: Warlord'); } catch (e) {}
-        }
-    } catch (e) { try { console.warn('checkClanAchievements failed', e); } catch (e) {} }
+        const upgrades = [0];
+        for (let i = 1; i <= 24; i++) upgrades.push(numericLevel(getUpgradeLevel(i)));
+        const owned = (window.SPECIAL_UPGRADES || []).filter(sp => { try { return !!(new Function('return ' + sp.owned))(); } catch (e) { return false; } }).length;
+        const live = {
+            cps: Number(cps) || 0, clickPower: Number(clickPower) || 0,
+            prestiges: Number(prestigeTimes) || 0, goldenEver: Math.max(Number(totalGoldenEver) || 0, Number(goldenWhat) || 0), gems: Number(diamonds) || 0,
+            upgrades,
+            divineArgon: Number(divineArgonLevel) || 0, divineSomalian: Number(divineSomalianLevel) || 0,
+            divineAssassin: Number(divineAssassinLevel) || 0, divineCollector: Number(divineCollectorLevel) || 0,
+            divineMoneyMan: Number(divineMoneyManLevel) || 0, divineSpirit: Number(divineSpiritLevel) || 0,
+            divineVillager: Number(divineSimpleVillagerLevel) || 0,
+        };
+        if (window.SPECIAL_UPGRADES) { live.specialsOwned = owned; live.specialsTotal = window.SPECIAL_UPGRADES.length; }
+        const fresh = window.WHA.checkAll(window.WHA.snapshot(live));
+        fresh.forEach(a => showAchievementPopup(a.name, `${a.desc} Title: ${a.title}`));
+        if (fresh.length) { try { populateTitleSelect(); } catch (e) {} }
+    } catch (e) { try { console.warn('checkDataAchievements failed', e); } catch (e2) {} }
 }
 
 // ========== Titles (unlock, equip, display) ==========
@@ -573,23 +438,27 @@ const TITLE_RARITIES = {
     'Warlord': 'rare'
 };
 
+// every achievement title (achievements-data.js) gets its rarity here too, so chat and lists color them correctly
+try { if (window.WHA) window.WHA.ACHIEVEMENTS.forEach(a => { if (a.title && !TITLE_RARITIES[a.title]) TITLE_RARITIES[a.title] = a.rarity; }); } catch (e) {}
+
 // Color map for rarities
 const RARITY_COLORS = {
     common: '#bfc7c9',
     uncommon: '#6bd26b',
     rare: '#4da6ff',
     epic: '#b86cff',
-    legendary: '#ffb84d'
+    legendary: '#ffb84d',
+    mythic: '#ff5bd0'
 };
 
 function normalizeTitleObj(item) {
     // accept either a string (legacy) or an object {name,rarity}
     if (!item) return null;
     if (typeof item === 'string') {
-        return { name: item, rarity: TITLE_RARITIES[item] || 'common' };
+        return { name: item, rarity: (window.WHA && window.WHA.titleRarity(item)) || TITLE_RARITIES[item] || 'common' };
     }
     if (typeof item === 'object' && item.name) {
-        return { name: item.name, rarity: item.rarity || TITLE_RARITIES[item.name] || 'common' };
+        return { name: item.name, rarity: (window.WHA && window.WHA.titleRarity(item.name)) || item.rarity || TITLE_RARITIES[item.name] || 'common' };
     }
     return null;
 }
@@ -1119,6 +988,11 @@ UPGRADE_DESCRIPTIONS.upgrade22 = 'We eating good noodles every day';
 UPGRADE_DESCRIPTIONS.upgrade23 = 'Mobile Man 38: A mobile service that produces large passive output (500Q cps per level).';
 UPGRADE_DESCRIPTIONS.upgrade24 = 'Easton Bundy: An exceptional operator who provides powerful passive cps generation (1,000Q cps per level).';
 
+// Display names for upgrades 1..24 (index 0 unused), used in the left-bar button labels
+const UPGRADE_NAMES = [null, 'OP mouse', 'Somalian Pirate', 'Goonsaw Man', 'Diddy blud', 'Argonian Autist', 'Grape God', 'Skippie Toilet', 'Mysterious Island',
+    'Tribal Camp', 'The Phonk Man', 'Jonathan', 'CR lurker', 'ropingnecurse', 'skibbidi scimitar', 'What Happened Beats', 'ez villager', 'scp wish I knew.',
+    'The Goatis', 'goatises raw liver', 'The Landon Stream', 'The Bass', 'Good Noodles', 'Mobile Man 38', 'Easton Bundy'];
+
 // currently hovered upgrade id (e.g. 'upgrade3') — used to refresh tooltip content live
 let currentHoveredUpgradeId = null;
 
@@ -1138,7 +1012,7 @@ function getTooltipHtmlForUpgrade(id) {
                 const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
                 const ezMultLocal = D(typeof ezOtherMultiplier !== 'undefined' ? ezOtherMultiplier : 1);
                 const globalSectionMultLocal = D(typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1).times(D(typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1)).times(D(typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1)).times(D(typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1)).times(D(typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1)).times(D(typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1)).times(D(typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1)).times(D(typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1));
-                const goldenMultLocal = D(1).plus(D(goldenWhat || 0).times(D(0.1)));
+                const goldenMultLocal = D(1).plus(D(getGoldenBonusCount()).times(D(0.1)));
                 const divineArgonMultLocal = (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) ? D(1).plus(D(DIVINE_ARGON_BASE_PERCENT).times(D(2).pow(Math.max(0, (divineArgonLevel||0)-1))).div(D(100))) : D(1);
                 cpsVal = eff.times(goon).times(ezMultLocal).times(globalSectionMultLocal).times(goldenMultLocal).times(divineArgonMultLocal);
             } else {
@@ -1149,7 +1023,7 @@ function getTooltipHtmlForUpgrade(id) {
                 const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
                 const ezMultLocal = (typeof ezOtherMultiplier !== 'undefined' ? ezOtherMultiplier : 1);
                 const globalSectionMultLocal = (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1) * (typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1);
-                const goldenMultLocal = 1 + (goldenWhat * 0.1);
+                const goldenMultLocal = 1 + (getGoldenBonusCount() * 0.1);
                 // apply Divine Argonian multiplier if purchased
                 let divineArgonMultLocal = 1;
                 if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
@@ -1232,13 +1106,11 @@ function initTooltips() {
     // Additional tooltips for key UI elements
     const extras = [
         {id: 'goonCount', text: 'What Happeneds: your current total of the primary currency.'},
-        {id: 'goldenCount', text: 'Golden What Happeneds: prestige currency used to buy Divine upgrades.'},
+        {id: 'goldenCount', text: 'Golden What Happeneds: each one you hold adds +10% CPS and click power. Spending them on Divine upgrades or followers lowers that bonus.'},
         {id: 'cps', text: 'CPS: What Happeneds per second (passive income).'},
         {id: 'clickPower', text: 'Click Power: how much each manual click gives you.'},
         {id: 'leaderboardTopBtn', text: 'Open the global leaderboard to view top players.'},
         {id: 'submitLeaderboardBtn', text: 'Submit your current score to the global leaderboard.'},
-        {id: 'prestigeTopBtn', text: 'Claim prestige (Golden What Happeneds) when eligible.'},
-        {id: 'prestigeBtnCr', text: 'Claim prestige (CR section).'},
         {id: 'achievementsTopBtn', text: 'Open the achievements screen to view unlocks.'},
         {id: 'shopToggle', text: 'Open the Shop to buy skins and items.'},
         {id: 'settingsToggle', text: 'Open Settings to change options and preferences.'}
@@ -1262,7 +1134,7 @@ function getUpgradeCps(upgradeId) {
             const divineArgonMult = (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) ? D(1).plus(D(DIVINE_ARGON_BASE_PERCENT).times(D(2).pow(Math.max(0, (divineArgonLevel||0)-1))).div(D(100))) : D(1);
             // include ez multiplier in global section multipliers
             const globalSectionMult = D(typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1).times(D(typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1)).times(D(typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1)).times(D(typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1)).times(D(typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1)).times(D(typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1)).times(D(typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1)).times(D(typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1));
-            const goldenMult = D(1).plus(D(goldenWhat || 0).times(D(0.1)));
+            const goldenMult = D(1).plus(D(getGoldenBonusCount()).times(D(0.1)));
 
             if (upgradeId === 'upgrade1') {
                 const divineSomalianMultLocal = (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) ? D(11).times(D(5).pow(Math.max(0, (divineSomalianLevel||0)-1))) : D(1);
@@ -1443,7 +1315,7 @@ function getUpgradeCps(upgradeId) {
             // original numeric branch
             const divineArgonMult = (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) ? (1 + (DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel-1)))/100) : 1;
             const globalSectionMult = (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1) * (typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1);
-            const goldenMult = 1 + (typeof goldenWhat === 'number' ? goldenWhat * 0.1 : 0);
+            const goldenMult = 1 + getGoldenBonusCount() * 0.1;
 
             if (upgradeId === 'upgrade1') {
                 const divineSomalianMultLocal = (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) ? (11 * Math.pow(5, Math.max(0, divineSomalianLevel - 1))) : 1;
@@ -1692,20 +1564,22 @@ let eastonBundy1Purchased = false, eastonBundy2Purchased = false, eastonBundy3Pu
 let eastonBundy4Cost = 3600000000000000000000; // 3600000Q
 let eastonBundy4Purchased = false;
 // Landon Stream specials (one-time multipliers that apply to upgrade20 contribution)
-let landon1Cost = 50000000000000; // 50T
-let landon2Cost = 200000000000000; // 200T
-let landon3Cost = 1000000000000000; // 1Q
-let landon4Cost = 5000000000000000; // 5Q
+// Priced like the other late-game tiers: 2x / 8x / 30x / 120x the base upgrade cost (1Q)
+let landon1Cost = 2000000000000000; // 2Q
+let landon2Cost = 8000000000000000; // 8Q
+let landon3Cost = 30000000000000000; // 30Q
+let landon4Cost = 120000000000000000; // 120Q
 let landon1Purchased = false;
 let landon2Purchased = false;
 let landon3Purchased = false;
 let landon4Purchased = false;
 let landonMultiplier = 1;
 // The Bass specials (one-time multipliers that apply to upgrade21 contribution)
-let theBass1Cost = 50000000000000; // 50T
-let theBass2Cost = 200000000000000; // 200T
-let theBass3Cost = 1000000000000000; // 1Q
-let theBass4Cost = 5000000000000000; // 5Q
+// 2x / 8x / 30x / 120x the base upgrade cost (200Q)
+let theBass1Cost = 400000000000000000; // 400Q
+let theBass2Cost = 1600000000000000000; // 1,600Q
+let theBass3Cost = 6000000000000000000; // 6,000Q
+let theBass4Cost = 24000000000000000000; // 24,000Q
 let theBass1Purchased = false;
 let theBass2Purchased = false;
 let theBass3Purchased = false;
@@ -1884,19 +1758,19 @@ let goonSpec4Cost = 150000; // lvl 100
 let goonSpec4Purchased = false;
 const goonSpec4Multiplier = 2.5;
 // The Goatis specials (upgrade18)
-let goatis1Cost = 50000000000; // 50B
+let goatis1Cost = 10000000000000; // 10T (2x base upgrade cost)
 let goatis1Purchased = false;
 const goatis1Multiplier = 1.5;
 
-let goatis2Cost = 200000000000; // 200B
+let goatis2Cost = 40000000000000; // 40T
 let goatis2Purchased = false;
 const goatis2Multiplier = 2;
 
-let goatis3Cost = 1000000000000; // 1T
+let goatis3Cost = 150000000000000; // 150T
 let goatis3Purchased = false;
 const goatis3Multiplier = 2;
 
-let goatis4Cost = 5000000000000; // 5T
+let goatis4Cost = 600000000000000; // 600T
 let goatis4Purchased = false;
 const goatis4Multiplier = 2.25;
 // Landon Stream specials multipliers
@@ -1915,19 +1789,19 @@ const theBass4Multiplier = 2.25;
 let goatisMultiplier = 1;
 
 // goatises raw liver specials (upgrade19)
-let raw1Cost = 50000000000; // 50B
+let raw1Cost = 400000000000000; // 400T (2x base upgrade cost)
 let raw1Purchased = false;
 const raw1Multiplier = 1.5;
 
-let raw2Cost = 200000000000; // 200B
+let raw2Cost = 1600000000000000; // 1.6Q
 let raw2Purchased = false;
 const raw2Multiplier = 2;
 
-let raw3Cost = 1000000000000; // 1T
+let raw3Cost = 6000000000000000; // 6Q
 let raw3Purchased = false;
 const raw3Multiplier = 2;
 
-let raw4Cost = 5000000000000; // 5T
+let raw4Cost = 24000000000000000; // 24Q
 let raw4Purchased = false;
 const raw4Multiplier = 2.25;
 
@@ -2083,7 +1957,9 @@ const cr5Multiplier = 2; // total cps
 // Prestige / Golden What Happend system
 let goldenWhat = 0; // prestige currency
 let goldenThreshold = 1000; // first golden awarded at 1K count
-let goldenMultiplier = 1; // computed as 1 + goldenWhat * 0.1
+let goldenMultiplier = 1; // computed as 1 + getGoldenBonusCount() * 0.1
+// Each Golden you are holding adds +10% to CPS and click power, so spending Golden trades some of that bonus away.
+function getGoldenBonusCount() { return Math.max(0, Number(goldenWhat) || 0); }
 
 // Diamonds: rare collectible currency (1 in 2500 chance per click)
 let diamonds = 0;
@@ -2095,6 +1971,23 @@ let musicMuted = false;
 let bgMusicElement = null;
 // currently-playing preview audio (separate from bgMusicElement)
 let previewAudio = null;
+let previewTimeout = null;
+// Music shop tracks: id is the save key, file is the exact (case-sensitive) name in audio/
+const MUSIC_TRACKS = [
+    { id: 'mainTheme', name: 'Default Theme', cost: 0, file: 'maintheme.mp3' },
+    { id: 'BassInsanity', name: 'Bass Insanity', cost: 20, file: 'bassinsanity.mp3' },
+    { id: 'MaximumAgro', name: 'Maximum Agro', cost: 20, file: 'maximumagro.mp3' },
+    { id: 'MetalSlam', name: 'Metal Slam', cost: 20, file: 'metalslam.mp3' },
+    { id: 'UltraTwang', name: 'Ultra Twang', cost: 20, file: 'ultratwang.mp3' },
+    { id: 'ThroatSing', name: 'Throat Sing', cost: 20, file: 'throatsing.mp3' },
+    { id: 'Hardstyle_whathappened', name: 'Hardstyle — What Happened', cost: 20, file: 'HardstyleWhat Happened.mp3' },
+    { id: 'EDMWhatHappened', name: 'EDM — What Happened', cost: 20, file: 'EDMWhatHappened.mp3' },
+    { id: 'SimpleAndEasy', name: 'Simple and Easy', cost: 50, file: 'Simple and Easy.mp3' }
+];
+function musicSrcFor(trackId) {
+    const t = MUSIC_TRACKS.find(x => x.id === trackId) || MUSIC_TRACKS[0];
+    return 'audio/' + t.file;
+}
 // Music shop state
 let musicOwned = { mainTheme: true, BassInsanity: false, MaximumAgro: false, MetalSlam: false, UltraTwang: false, ThroatSing: false, Hardstyle_whathappened: false, EDMWhatHappened: false, SimpleAndEasy: false };
 let currentMusicTrack = 'mainTheme';
@@ -2124,6 +2017,15 @@ let shopDivineWHPurchased = false;
 let shopWHVrillPurchased = false;
 // WH Nature skin (whnature.webp)
 let shopWHNaturePurchased = false;
+// voidWH, fireWH, iceWH skins (mainimage)
+let shopVoidWHPurchased = false;
+let shopFireWHPurchased = false;
+let shopIceWHPurchased = false;
+// WHhacker, WHchad, WHbread, WHlightning skins (mainimage)
+let shopWHhackerPurchased = false;
+let shopWHchadPurchased = false;
+let shopWHbreadPurchased = false;
+let shopWHlightningPurchased = false;
 // Mobile Man skin (new)
 let shopMobileManPurchased = false;
 // Shop: collection background purchase state (collectionbg.png)
@@ -2133,9 +2035,43 @@ let shopWHBWPurchased = false;
 // Shop: Silver and Gold WH skins
 let shopSilverPurchased = false;
 let shopGoldPurchased = false;
+// Casino Dealer skin: unlocked by winning 10 blackjack hands (gamba.js sets it in the save), not sold for gems
+let shopCasinoDealerPurchased = false;
 // currently equipped main-image filename (defaults to original)
-let equippedShopImage = 'mainimage/whathappened.jpeg';
-// Background shop images (folder: bgimages)
+const DEFAULT_SHOP_IMAGE = 'mainimage/whathappened.jpeg';
+let equippedShopImage = DEFAULT_SHOP_IMAGE;
+// Main-image skins sold in the shop. `owned`/`grant` wrap the save flags above so the shop renders from this table.
+// `path` must match the file name exactly (web hosts are case-sensitive); `color` tints the placeholder if the image is missing.
+const SHOP_SKINS = [
+    { id: 'Divine', title: 'Divine Spirit', path: 'mainimage/divinespirit.png', cost: 20, color: '#b9a3ff', owned: () => shopDivinePurchased, grant: () => { shopDivinePurchased = true; } },
+    { id: 'Collection', title: 'Collection Background', path: 'mainimage/collectionbg.png', cost: 20, color: '#d0d0d0', owned: () => shopCollectionBgPurchased, grant: () => { shopCollectionBgPurchased = true; } },
+    { id: 'WHBW', title: 'WH Black & White', path: 'mainimage/whblackandwhite.png', cost: 5, color: '#888888', owned: () => shopWHBWPurchased, grant: () => { shopWHBWPurchased = true; } },
+    { id: 'WHVrill', title: 'WH Vrill', path: 'mainimage/whvrill.png', cost: 50, color: '#90c0ff', owned: () => shopWHVrillPurchased, grant: () => { shopWHVrillPurchased = true; } },
+    { id: 'MobileMan', title: 'Mobile Man Skin', path: 'mainimage/mobilemanskin.png', cost: 50, color: '#f0f0f0', owned: () => shopMobileManPurchased, grant: () => { shopMobileManPurchased = true; } },
+    { id: 'Silver', title: 'Silver WH', path: 'mainimage/silverwh.png', cost: 100, color: '#c0c0c0', owned: () => shopSilverPurchased, grant: () => { shopSilverPurchased = true; } },
+    { id: 'Platinum', title: 'Platinum WH', path: 'mainimage/platinumwh.png', cost: 100, color: '#e5e4e2', owned: () => shopPlatinumPurchased, grant: () => { shopPlatinumPurchased = true; } },
+    { id: 'DivineWH', title: 'Divine WH', path: 'mainimage/divinewh.png', cost: 500, color: '#ffd700', owned: () => shopDivineWHPurchased, grant: () => { shopDivineWHPurchased = true; } },
+    { id: 'Gold', title: 'Gold WH', path: 'mainimage/goldwh.png', cost: 500, color: '#ffd700', owned: () => shopGoldPurchased, grant: () => { shopGoldPurchased = true; } },
+    { id: 'WHNature', title: 'WH Nature', path: 'mainimage/whnature.webp', cost: 20, color: '#80c080', owned: () => shopWHNaturePurchased, grant: () => { shopWHNaturePurchased = true; } },
+    { id: 'VoidWH', title: 'Void WH', path: 'mainimage/voidWH.png', cost: 75, color: '#1a0a2e', owned: () => shopVoidWHPurchased, grant: () => { shopVoidWHPurchased = true; } },
+    { id: 'FireWH', title: 'Fire WH', path: 'mainimage/FireWH.png', cost: 75, color: '#cc3300', owned: () => shopFireWHPurchased, grant: () => { shopFireWHPurchased = true; } },
+    { id: 'IceWH', title: 'Ice WH', path: 'mainimage/WHice.png', cost: 75, color: '#aad4ee', owned: () => shopIceWHPurchased, grant: () => { shopIceWHPurchased = true; } },
+    { id: 'WHhacker', title: 'WH Hacker', path: 'mainimage/WHhacker.png', cost: 50, color: '#003300', owned: () => shopWHhackerPurchased, grant: () => { shopWHhackerPurchased = true; } },
+    { id: 'WHchad', title: 'WH Chad', path: 'mainimage/WHchad.png', cost: 50, color: '#f0e68c', owned: () => shopWHchadPurchased, grant: () => { shopWHchadPurchased = true; } },
+    { id: 'WHbread', title: 'WH Bread', path: 'mainimage/WHbread.png', cost: 50, color: '#deb887', owned: () => shopWHbreadPurchased, grant: () => { shopWHbreadPurchased = true; } },
+    { id: 'WHlightning', title: 'WH Lightning', path: 'mainimage/WHlightning.png', cost: 50, color: '#2a2a4a', owned: () => shopWHlightningPurchased, grant: () => { shopWHlightningPurchased = true; } },
+    { id: 'CasinoDealer', title: 'Casino Dealer', path: 'mainimage/casinoDeal.png', cost: null, unlockText: 'Win 10 blackjack hands', color: '#8b0000', owned: () => shopCasinoDealerPurchased, grant: () => { shopCasinoDealerPurchased = true; } }
+];
+function findShopSkin(path) {
+    const base = String(path || '').split('/').pop().toLowerCase();
+    return SHOP_SKINS.find(s => s.path.split('/').pop().toLowerCase() === base) || null;
+}
+// Older saves stored skin paths with different letter case; map them to the real file
+function canonicalSkinPath(path) {
+    const skin = findShopSkin(path);
+    return skin ? skin.path : DEFAULT_SHOP_IMAGE;
+}
+// Background shop images (folder: bgimages, except vrillbg which lives in mainimage)
 const BG_IMAGES = [
     'cloudtreefield.png',
     'grassyfieldbg.png',
@@ -2144,16 +2080,29 @@ const BG_IMAGES = [
     'oceanviewbg.png',
     'stonghengebg.png',
     'treesbg.png',
-    'Vrillbg.png',
+    'vrillbg.png',
     'stormbg.png',
     'volcanobg.png',
     'blizardbg.png',
     'burningcitybg.png'
 ];
-// purchased state for background images (keyed by filename)
+const DEFAULT_BG_IMAGE = 'mainimage/mainbg.png';
+function bgPathFor(fn) { return (fn === 'vrillbg.png') ? ('mainimage/' + fn) : ('bgimages/' + fn); }
+function bgCostFor(fn) {
+    if (fn === 'vrillbg.png') return 20;
+    if (fn === 'stormbg.png' || fn === 'volcanobg.png' || fn === 'blizardbg.png' || fn === 'burningcitybg.png') return 50;
+    return 10;
+}
+// Map a saved background path (any letter case, with or without folder) to the real file path
+function canonicalBgPath(path) {
+    const base = String(path || '').split('/').pop().toLowerCase();
+    const fn = BG_IMAGES.find(f => f.toLowerCase() === base);
+    return fn ? bgPathFor(fn) : DEFAULT_BG_IMAGE;
+}
+// purchased state for background images (keyed by path)
 let shopBgPurchased = {};
-// currently equipped background image (defaults to Mainbg.png used by CSS)
-let equippedBgImage = 'mainimage/Mainbg.png';
+// currently equipped background image (defaults to mainbg.png used by CSS)
+let equippedBgImage = DEFAULT_BG_IMAGE;
 
 // Stats: track how many times the player has prestiged and total golden ever received
 let prestigeTimes = 0;
@@ -2202,6 +2151,33 @@ let divineSpiritCost = 1; // next cost in golden; follows Fibonacci-like progres
 let divineSimpleVillagerLevel = 0;
 let divineSimpleVillagerCost = 1; // cost in golden currency; doubles each purchase
 // Price is divided by (1 + 10% per level), so it never goes to zero (e.g. level 10 => 1/2 price, level 90 => 1/10 price)
+// Golden cost of the next level of each Divine upgrade, from its current level.
+//  Argonian / Somalian: x3 per level (each level roughly doubles CPS / multiplies click power by 5)
+//  Assassin: level n costs n (+5% crit chance per level, max 19). It used to double, so the last levels cost 260K+.
+//  Collector / Simple Villager: x1.6 per level (their bonuses are additive and shrink relative to what you have)
+//  Money Man: 1, 2, 3, 5, 9, 17... (each level is a x10 bigger head start)
+//  Spirit: Fibonacci 1, 2, 3, 5, 8... (each level doubles crit damage)
+function divineCostFor(kind, level) {
+    const L = Math.max(0, Math.floor(Number(level) || 0));
+    switch (kind) {
+        case 'argon': case 'somalian': return Math.pow(3, L);
+        case 'assassin': return L + 1;
+        case 'collector': case 'villager': return Math.ceil(Math.pow(1.6, L));
+        case 'moneyMan': return L === 0 ? 1 : Math.pow(2, L - 1) + 1;
+        case 'spirit': return fibNumber(L + 1);
+        default: return 1;
+    }
+}
+// Recompute every next-cost from the levels (fixes saves made under the old cost curves)
+function syncDivineCostsFromLevels() {
+    divineArgonCost = divineCostFor('argon', divineArgonLevel);
+    divineSomalianCost = divineCostFor('somalian', divineSomalianLevel);
+    divineAssassinCost = divineCostFor('assassin', divineAssassinLevel);
+    divineCollectorCost = divineCostFor('collector', divineCollectorLevel);
+    divineSimpleVillagerCost = divineCostFor('villager', divineSimpleVillagerLevel);
+    divineMoneyManCost = divineCostFor('moneyMan', divineMoneyManLevel);
+    divineSpiritCost = divineCostFor('spirit', divineSpiritLevel);
+}
 function getSimpleVillagerMultiplier() { const lvl = typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0; return 1 / (1 + 0.1 * Math.max(0, lvl)); }
 function effectiveUpgradeCost(baseCost) {
     if (baseCost === undefined || baseCost === null) return baseCost;
@@ -2239,12 +2215,28 @@ function fibNumber(n) {
     }
 }
 
-// bulk purchase amount (1,5,10,25,50,100)
+// bulk purchase amount (1,5,10,25,50,100) or 'max' (as many levels as affordable)
 let purchaseBatch = 1;
+function parseBulkValue(v) { return (String(v) === 'max') ? 'max' : (Number(v) || 1); }
+// iterations a buy function attempts; buy loops stop at the first level the player can't afford
+function bulkLoopCount() { return purchaseBatch === 'max' ? 100000 : purchaseBatch; }
+// levels the next purchase covers (for labels): the selected batch, or the affordable count in Max mode
+function bulkLevelsFor(currentCost, rate) {
+    if (purchaseBatch !== 'max') return purchaseBatch;
+    const mult = getSimpleVillagerMultiplier();
+    const have = Number(count) || 0;
+    let n = 0, total = 0, temp = Number(currentCost) || 0;
+    while (n < 1000) {
+        total += temp * mult;
+        if (total > have) break;
+        temp = Math.ceil(temp * rate);
+        n++;
+    }
+    return Math.max(1, n);
+}
 
 function setBulkPurchase(v) {
-    const n = Number(v) || 1;
-    purchaseBatch = n;
+    purchaseBatch = parseBulkValue(v);
     // reflect selection in localStorage for persistence
     try { localStorage.setItem('whathappened_bulk', String(purchaseBatch)); } catch (e) {}
     try { updateDisplays(); } catch (e) {}
@@ -2252,7 +2244,7 @@ function setBulkPurchase(v) {
     try{
         const btns = document.querySelectorAll('.bulk-btn');
         btns.forEach(b=>{
-            try{ b.classList.toggle('active', Number(b.dataset.value) === purchaseBatch); }catch(e){}
+            try{ b.classList.toggle('active', String(b.dataset.value) === String(purchaseBatch)); }catch(e){}
         });
     }catch(e){}
 }
@@ -2260,7 +2252,7 @@ function setBulkPurchase(v) {
 // restore bulk selection on load (if available)
 try {
     const bv = localStorage.getItem('whathappened_bulk');
-    if (bv) purchaseBatch = Number(bv) || 1;
+    if (bv) purchaseBatch = parseBulkValue(bv);
 } catch (e) {}
 
 function toggleDivineMenu() {
@@ -2280,12 +2272,164 @@ function showNormalMenu() {
     updateDisplays();
 }
 
+// Clan level perks: % bonus to CPS, click power and event gem rewards.
+// Keep in sync with CLAN_LEVEL_BONUSES (the text shown on clan.html).
+const CLAN_LEVEL_PERKS = [
+    null,
+    { cps: 0, click: 0, event: 0 },
+    { cps: 2, click: 0, event: 0 },
+    { cps: 2, click: 2, event: 0 },
+    { cps: 4, click: 2, event: 1 },
+    { cps: 5, click: 2, event: 1 },
+    { cps: 6, click: 3, event: 2 },
+    { cps: 8, click: 4, event: 2 },
+    { cps: 10, click: 5, event: 3 },
+    { cps: 12, click: 6, event: 3 },
+    { cps: 15, click: 8, event: 5 },
+    { cps: 18, click: 10, event: 5 },
+    { cps: 20, click: 12, event: 6 },
+    { cps: 24, click: 14, event: 6 },
+    { cps: 28, click: 16, event: 8 },
+    { cps: 32, click: 18, event: 8 },
+    { cps: 36, click: 20, event: 10 },
+    { cps: 40, click: 22, event: 10 },
+    { cps: 45, click: 25, event: 12 },
+    { cps: 50, click: 28, event: 12 },
+    { cps: 55, click: 30, event: 15 }
+];
+// Same curve as clan.html: level 2 needs 200 XP, each further level costs 1.55x the previous one, max level 20
+function clanLevelFromXp(clanXp) {
+    let need = 200, total = 0, level = 1;
+    const xp = Number(clanXp) || 0;
+    while (level < 20 && xp >= total + need) { total += need; need *= 1.55; level++; }
+    return level;
+}
+function getClanLevelPerk() {
+    try {
+        if (!localStorage.getItem('player_clanId')) return CLAN_LEVEL_PERKS[1];
+        const lvl = Number(window.clanLevel || localStorage.getItem('whathappened_clan_level')) || 1;
+        return CLAN_LEVEL_PERKS[Math.max(1, Math.min(20, Math.floor(lvl)))];
+    } catch (e) { return CLAN_LEVEL_PERKS[1]; }
+}
+
+// The casino page records the active daily-spin buff in the save. Re-read it at most every 2s
+// instead of parsing the whole save on every UI refresh.
+let _casinoBuffCache = { at: 0, buff: null };
+// ---------- Followers (followers.html): equipped followers give permanent buffs on every page ----------
+// Bonuses are percentages (crit chance in percentage points); see computeBonuses in followers-data.js.
+const NO_FOLLOWER_BONUS = { cps: 0, click: 0, offline: 0, critChance: 0, critDmg: 0, gems: 0, golden: 0, count: 0 };
+let _followerBonusCache = { at: 0, bonus: NO_FOLLOWER_BONUS };
+function getFollowerBonuses() {
+    const now = Date.now();
+    if (now - _followerBonusCache.at > 3000) {
+        let bonus = NO_FOLLOWER_BONUS;
+        try { if (window.WHF) bonus = window.WHF.computeBonuses(window.WHF.loadState()); } catch (e) { bonus = NO_FOLLOWER_BONUS; }
+        _followerBonusCache = { at: now, bonus };
+    }
+    return _followerBonusCache.bonus;
+}
+// Equipped followers + their totals under the stats card; only rebuilt when the team changes.
+let _followerStripKey = null;
+function renderFollowerStrip() {
+    const strip = document.getElementById('followerStrip');
+    if (!strip || !window.WHF) return;
+    let st;
+    try { st = window.WHF.loadState(); } catch (e) { return; }
+    const team = window.WHF.equippedFollowers(st);
+    const eggsReady = (st.nursery || []).filter(window.WHF.eggReady).length;
+    const key = team.map(f => f.id + ':' + f.lvl + ':' + f.sp).join(',') + '|' + st.slots + '|' + st.list.length + '|' + eggsReady;
+    if (key === _followerStripKey) return;
+    _followerStripKey = key;
+    // (the Followers nav badge for ready eggs comes from site.js)
+    const eggNote = eggsReady ? ` <span class="fs-egg">🐣 ${eggsReady} egg${eggsReady > 1 ? 's' : ''} ready</span>` : '';
+    const avatars = document.getElementById('followerStripAvatars');
+    const text = document.getElementById('followerStripText');
+    if (!team.length) {
+        strip.classList.add('is-empty');
+        if (avatars) avatars.innerHTML = '';
+        if (text) text.innerHTML = (st.list.length ? 'No followers on your team. <b>Equip some →</b>' : '🦎 Get <b>followers</b> with Golden for permanent buffs →') + eggNote;
+        return;
+    }
+    strip.classList.remove('is-empty');
+    if (avatars) avatars.innerHTML = team.map(f => {
+        const sp = window.WHF.SPECIES_BY_ID[f.sp];
+        return `<span class="fs-avatar" style="--rc:${window.WHF.RARITIES[sp.rarity].color}" title="${sp.name} (Lv ${f.lvl})">${window.WHF.art(f.sp, { shiny: f.shiny })}</span>`;
+    }).join('');
+    const b = window.WHF.computeBonuses(st);
+    const pctTxt = v => (v < 1e6 ? Math.round(v).toLocaleString() : formatNumber(v));
+    const parts = [];
+    if (b.cps) parts.push(`+${pctTxt(b.cps)}% CPS`);
+    if (b.click) parts.push(`+${pctTxt(b.click)}% click`);
+    if (b.offline) parts.push(`+${pctTxt(b.offline)}% offline`);
+    if (b.critChance) parts.push(`+${Math.round(b.critChance * 10) / 10}% crit`);
+    if (b.critDmg) parts.push(`+${pctTxt(b.critDmg)}% crit dmg`);
+    if (b.gems) parts.push(`+${pctTxt(b.gems)}% gems`);
+    if (b.golden) parts.push(`+${pctTxt(b.golden)}% Golden`);
+    if (text) text.innerHTML = `Followers: <b>${parts.join(' · ')}</b>${eggNote}`;
+}
+// Followers page in another tab: pick up team changes, and apply Golden it spent so our autosave
+// doesn't write the old Golden count back over it.
+const _appliedGoldenDeltas = new Set();
+try {
+    window.addEventListener('storage', (ev) => {
+        if (!window.WHF) return;
+        if (ev.key === window.WHF.STORAGE_KEY) {
+            _followerBonusCache.at = 0; _followerStripKey = null;
+            try { updateDisplays(); } catch (e) {}
+        } else if (ev.key === window.WHF.GOLDEN_DELTA_KEY && ev.newValue) {
+            try {
+                const d = JSON.parse(ev.newValue);
+                if (!d || !d.id || _appliedGoldenDeltas.has(d.id)) return;
+                _appliedGoldenDeltas.add(d.id);
+                goldenWhat = Math.max(0, (Number(goldenWhat) || 0) + (Number(d.delta) || 0));
+                updateDisplays();
+            } catch (e) {}
+        }
+    });
+} catch (e) {}
+// Returning with the browser Back button can restore this page from the back/forward cache with the
+// Golden and other values from before the visit to another page. Reload instead, without saving the stale copy.
+try {
+    window.addEventListener('pageshow', (ev) => {
+        if (ev.persisted) { suppressAutosave = true; location.reload(); }
+    });
+} catch (e) {}
+
+function getActiveCasinoBuff() {
+    const now = Date.now();
+    if (now - _casinoBuffCache.at > 2000) {
+        let buff = null;
+        try {
+            const raw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY);
+            const s = raw ? JSON.parse(raw) : null;
+            buff = (s && s.casinoSpin && s.casinoSpin.buff) || null;
+            // daily-spin boosts won on the casino page start counting down when you come back to the game
+            if (buff && buff.pending) {
+                buff = Object.assign({}, buff, { pending: false, expiresAt: now + (Number(buff.durationMs) || 60000) });
+                s.casinoSpin.buff = buff;
+                const out = JSON.stringify(s);
+                localStorage.setItem(SAVE_KEY, out);
+                try { localStorage.setItem(SAVE_KEY_LEGACY, out); } catch (e2) {}
+            }
+        } catch (e) { buff = null; }
+        _casinoBuffCache = { at: now, buff };
+    }
+    const b = _casinoBuffCache.buff;
+    return (b && b.expiresAt && Number(b.expiresAt) > now) ? b : null;
+}
+
+// Label markup for a Divine upgrade card: name + level badge, what it does now/next, and the golden cost
+function divineCardHtml(name, lvl, effect, cost) {
+    const costHtml = (cost === null) ? '<span class="up-cost up-cost--max">MAX</span>' : `<span class="up-cost up-cost--gold">${formatNumber(cost)} Golden</span>`;
+    return `<span class="up-name">${name}</span><span class="up-effect">${effect}</span>` +
+        `<span class="up-meta">${costHtml}<span class="up-level">Lv ${lvl}</span></span>`;
+}
+// Only touch the DOM when the label actually changed (keeps hover states stable)
+function setHtmlIfChanged(el, html) { if (el && el.innerHTML !== html) el.innerHTML = html; }
+
 function updateDisplays() {
     // updateDisplays: UI refresh (debug logs removed)
     document.getElementById('goonCount').innerText = formatNumber(count);
-    // When mystery buff is active, casino/gamba.js owns cps and clickPower; do not overwrite them
-    const mysteryBuffActive = !!(window._gambaMystery && window._gambaMystery.active);
-    if (!mysteryBuffActive) {
     if (hasDecimal) {
         // recompute current click power from base and multipliers using Decimal math
         // include Divine Somalian multiplier: level 0 -> x1, level1 -> x11, subsequent levels multiply by 5 each
@@ -2309,15 +2453,6 @@ function updateDisplays() {
         // apply section multipliers to non-phonk other
         const nonPhonkOther = nonPhonkOtherBase.times(D(diddyOtherMultiplier || 1)).times(D(argonOtherMultiplier || 1)).times(D(grapeOtherMultiplier || 1)).times(D(skippieOtherMultiplier || 1)).times(D(islandOtherMultiplier || 1)).times(D(tribalOtherMultiplier || 1));
         let otherCps = nonPhonkOther.plus(jonathanContribution).plus(crContribution).plus(phonkContribution);
-        // Fallback: ensure The Goatis contribution is included (in case computeEffectiveCpsParts misses it)
-        try {
-            const lvl18 = D(upgrade18Level || 0);
-            const per18Local = D(150000000000);
-            if (lvl18.gt(0) && per18Local.gt(0)) {
-                const goatisEff = per18Local.times(lvl18).times(D(computeLevelMultiplier(Number(lvl18)))).times(D(typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1));
-                otherCps = otherCps.plus(goatisEff);
-            }
-        } catch (e) {}
         // Ensure Easton Bundy contribution is present — sometimes the parts object
         // can be zeroed by save/restore bugs; compute and add it as a safety net
         try {
@@ -2335,7 +2470,7 @@ function updateDisplays() {
             }
         } catch (e) {}
         // apply prestige golden multiplier (10% per golden by default)
-        goldenMultiplier = D(1).plus(D(goldenWhat || 0).times(D(0.1)));
+        goldenMultiplier = D(1).plus(D(getGoldenBonusCount()).times(D(0.1)));
 
         // recompute pirate effective value now
         const pirateEffective = parts.pirateEffective;
@@ -2364,17 +2499,8 @@ function updateDisplays() {
         // apply section multipliers to non-phonk other
         const nonPhonkOther = nonPhonkOtherBase * diddyOtherMultiplier * argonOtherMultiplier * grapeOtherMultiplier * skippieOtherMultiplier * islandOtherMultiplier * tribalOtherMultiplier;
         let otherCps = nonPhonkOther + jonathanContribution + crContribution + phonkContribution;
-        // Fallback: ensure The Goatis contribution is included (numeric branch)
-        try {
-            const lvl18 = upgrade18Level || 0;
-            const per18Local = 150000000000;
-            if (lvl18 > 0 && per18Local > 0) {
-                const goatisEff = per18Local * lvl18 * computeLevelMultiplier(lvl18) * (typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1);
-                otherCps += goatisEff;
-            }
-        } catch (e) {}
         // apply prestige golden multiplier (10% per golden by default)
-        goldenMultiplier = 1 + (goldenWhat * 0.1);
+        goldenMultiplier = 1 + (getGoldenBonusCount() * 0.1);
 
         // recompute pirate effective value now
         const pirateEffective = parts.pirateEffective;
@@ -2400,54 +2526,74 @@ function updateDisplays() {
             cps = cps * divineMult;
         }
     }
-    // Clan buff: whole-clan temporary multipliers from clan shop (CPS and click power)
+    // Clan buff (temporary, bought in the clan shop) and clan level perks (permanent, from clan XP)
     try {
+        applyClanBuffMults();
         const cpsMult = (typeof window.clanBuffCpsMult === 'number' && window.clanBuffCpsMult > 0) ? window.clanBuffCpsMult : 1;
         const clickMult = (typeof window.clanBuffClickMult === 'number' && window.clanBuffClickMult > 0) ? window.clanBuffClickMult : 1;
+        const perk = getClanLevelPerk();
+        const totalCpsMult = cpsMult * (1 + perk.cps / 100);
+        const totalClickMult = clickMult * (1 + perk.click / 100);
         if (hasDecimal) {
-            cps = cps.times(D(cpsMult));
-            clickPower = clickPower.times(D(clickMult));
+            cps = cps.times(D(totalCpsMult));
+            clickPower = clickPower.times(D(totalClickMult));
         } else {
-            cps = cps * cpsMult;
-            clickPower = clickPower * clickMult;
+            cps = cps * totalCpsMult;
+            clickPower = clickPower * totalClickMult;
         }
     } catch (e) {}
-    // Casino buff: apply active spin buffs from save (clickBoost/cpsBoost) so they persist across updateDisplays
+    // Casino buff: apply the active daily-spin buff (clickBoost/cpsBoost/crit) recorded in the save by the casino page
     try {
-        const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-        if (raw) {
-            let s = {};
-            try { s = JSON.parse(raw); } catch (e) {}
-            const spin = s.casinoSpin;
-            const buff = spin && spin.buff;
-            const now = Date.now();
-            if (buff && buff.expiresAt && Number(buff.expiresAt) > now) {
-                if (buff.type === 'crit') {
-                    try { window.casinoCritBonus = buff.value || 0.15; window.casinoCritExpires = buff.expiresAt; } catch (e) {}
-                } else {
-                    try { window.casinoCritBonus = 0; window.casinoCritExpires = null; } catch (e) {}
-                }
-                if (buff.type === 'clickBoost' && buff.mult) {
-                    if (hasDecimal) clickPower = (isDecimalInstance(clickPower) ? clickPower : D(clickPower)).times(D(buff.mult));
-                    else clickPower = clickPower * (buff.mult || 10);
-                }
-                if (buff.type === 'cpsBoost' && buff.mult) {
-                    if (hasDecimal) cps = (isDecimalInstance(cps) ? cps : D(cps)).times(D(buff.mult));
-                    else cps = cps * (buff.mult || 10);
-                }
-            } else if (buff && buff.type === 'crit') {
-                try { if (window.casinoCritExpires && Number(window.casinoCritExpires) <= now) { window.casinoCritBonus = 0; window.casinoCritExpires = null; } } catch (e) {}
-            }
+        const buff = getActiveCasinoBuff();
+        if (buff && buff.type === 'crit') {
+            window.casinoCritBonus = buff.value || 0.15;
+            window.casinoCritExpires = buff.expiresAt;
+        } else if (window.casinoCritExpires && Number(window.casinoCritExpires) <= Date.now()) {
+            window.casinoCritBonus = 0;
+            window.casinoCritExpires = null;
+        }
+        if (buff && buff.type === 'clickBoost') {
+            if (hasDecimal) clickPower = (isDecimalInstance(clickPower) ? clickPower : D(clickPower)).times(D(buff.mult || 10));
+            else clickPower = clickPower * (buff.mult || 10);
+        }
+        if (buff && buff.type === 'cpsBoost') {
+            if (hasDecimal) cps = (isDecimalInstance(cps) ? cps : D(cps)).times(D(buff.mult || 10));
+            else cps = cps * (buff.mult || 10);
         }
     } catch (e) {}
-    }
+    // Mystery buff (the "???" daily-spin prize): index.html updates these multipliers while it is active
+    try {
+        const mysteryCps = Number(window._mysteryCpsMult) || 1;
+        const mysteryClick = Number(window._mysteryClickMult) || 1;
+        if (hasDecimal) {
+            cps = cps.times(D(mysteryCps));
+            clickPower = clickPower.times(D(mysteryClick));
+        } else {
+            cps = cps * mysteryCps;
+            clickPower = clickPower * mysteryClick;
+        }
+    } catch (e) {}
+    // Followers: equipped followers' CPS and click power bonuses
+    try {
+        const fb = getFollowerBonuses();
+        const fCps = 1 + (fb.cps || 0) / 100, fClick = 1 + (fb.click || 0) / 100;
+        if (hasDecimal) {
+            cps = cps.times(D(fCps));
+            clickPower = clickPower.times(D(fClick));
+        } else {
+            cps = cps * fCps;
+            clickPower = clickPower * fClick;
+        }
+    } catch (e) {}
+    try { renderFollowerStrip(); } catch (e) {}
     // persist latest cps for achievements UI to read when opened in separate tab
-    try { localStorage.setItem('whathappened_current_cps', String(isDecimalInstance(cps) ? cps.toNumber() : Number(cps) || 0)); } catch (e) {}
-    try { checkCpsAchievements(); } catch (e) {}
-    try { localStorage.setItem('whathappened_current_clickpower', String(isDecimalInstance(clickPower) ? clickPower.toNumber() : Number(clickPower) || 0)); } catch (e) {}
-    try { checkClickPowerAchievements(); } catch (e) {}
-    try { checkUpgradeLevelAchievements(); } catch (e) {}
-    try { checkClanAchievements(); } catch (e) {}
+    // (written at most once a second: updateDisplays runs many times a second and localStorage writes are slow)
+    if (Date.now() - (window._lastRatePersist || 0) > 1000) {
+        window._lastRatePersist = Date.now();
+        try { localStorage.setItem('whathappened_current_cps', String(isDecimalInstance(cps) ? cps.toNumber() : Number(cps) || 0)); } catch (e) {}
+        try { localStorage.setItem('whathappened_current_clickpower', String(isDecimalInstance(clickPower) ? clickPower.toNumber() : Number(clickPower) || 0)); } catch (e) {}
+    }
+    try { checkDataAchievements(); } catch (e) {}
     // ------------------ Stats panel fields ------------------
     try {
         // total playtime (seconds -> human readable)
@@ -2488,7 +2634,7 @@ function updateDisplays() {
             }
             const nextMult = (typeof divineSomalianLevel === 'number' && divineSomalianLevel > 0) ? (hasDecimal ? curMult.times(5) : curMult * 5) : (hasDecimal ? D(11) : 11);
             const labelEl = somBtn.querySelector('.upgrade-label');
-            if (labelEl) labelEl.innerHTML = `Divine Somalian — lvl ${divineSomalianLevel || 0} — click x${formatNumber(curMult)} (next x${formatNumber(nextMult)}) — cost: <span id="divineSomalianCost">${divineSomalianCost || 1}</span> golden`;
+            setHtmlIfChanged(labelEl, divineCardHtml('Divine Somalian', divineSomalianLevel || 0, `Click power x${formatNumber(curMult)} → x${formatNumber(nextMult)}`, divineSomalianCost || 1));
             try {
                 const afford = !!goldenCanAfford(divineSomalianCost);
                 try { somBtn.disabled = !afford; } catch (e) {}
@@ -2516,211 +2662,8 @@ function updateDisplays() {
             try { up19Btn.style.display = (numericLevel(upgrade18Level) >= 1) ? '' : 'none'; } catch (e) {}
         }
     } catch (e) {}
-    // Reveal special sections and buttons when Special Upgrades menu is open.
-    try {
-        const specialMenuEl = document.getElementById('specialMenu');
-        const specialsVisible = specialMenuEl && specialMenuEl.classList && specialMenuEl.classList.contains('open');
-            // List of section IDs to show/hide when specials menu is toggled (include ezSection and scpSection)
-            const sectionIds = ['opSection','pirateSection','goonSection','goatisSection','rawSection','diddySection','argonSection','grapeSection','skippieSection','islandSection','tribalSection','phonkSection','jonathanSection','crSection','ropingSection','skibbidiSection','beatsSection','ezSection','scpSection','landonSection','theBassSection','goodNoodlesSection','mobileMan38Section'];
-        for (const sid of sectionIds) {
-            try {
-                const s = document.getElementById(sid);
-                if (!s) continue;
-                // beats and ez sections remain hidden until their base upgrades are purchased
-                let show = !!specialsVisible;
-                if (sid === 'beatsSection') show = show && (numericLevel(upgrade15Level) >= 1);
-                if (sid === 'ezSection') show = show && (numericLevel(upgrade16Level) >= 1);
-                // raw specials should remain hidden until upgrade19 (goatises raw liver) has been unlocked
-                if (sid === 'rawSection') show = show && (numericLevel(upgrade19Level) >= 1);
-                s.style.display = show ? '' : 'none';
-            } catch (e) {}
-        }
-
-        // mapping of individual special buttons to their unlock upgrade index and required level + purchased flag name
-        const specialsMap = [
-            // OP mouse specials (upgrade1)
-            {id:'special1', up:1, lvl:10, purchased:'special1Purchased'}, {id:'special2', up:1, lvl:25, purchased:'special2Purchased'}, {id:'special3', up:1, lvl:50, purchased:'special3Purchased'}, {id:'special4', up:1, lvl:100, purchased:'special4Purchased'}, {id:'special5', up:1, lvl:150, purchased:'special5Purchased'}, {id:'special6', up:1, lvl:200, purchased:'special6Purchased'}, {id:'special7', up:1, lvl:250, purchased:'special7Purchased'}, {id:'special8', up:1, lvl:300, purchased:'special8Purchased'},
-            // Landon Stream specials (upgrade20)
-            {id:'landon1', up:20, lvl:10, purchased:'landon1Purchased'}, {id:'landon2', up:20, lvl:25, purchased:'landon2Purchased'}, {id:'landon3', up:20, lvl:50, purchased:'landon3Purchased'}, {id:'landon4', up:20, lvl:100, purchased:'landon4Purchased'},
-            // The Bass specials (upgrade21)
-            {id:'theBass1', up:21, lvl:10, purchased:'theBass1Purchased'}, {id:'theBass2', up:21, lvl:25, purchased:'theBass2Purchased'}, {id:'theBass3', up:21, lvl:50, purchased:'theBass3Purchased'}, {id:'theBass4', up:21, lvl:100, purchased:'theBass4Purchased'},
-            // Good Noodles (upgrade22)
-            {id:'goodNoodles1', up:22, lvl:10, purchased:'goodNoodles1Purchased'}, {id:'goodNoodles2', up:22, lvl:25, purchased:'goodNoodles2Purchased'}, {id:'goodNoodles3', up:22, lvl:50, purchased:'goodNoodles3Purchased'}, {id:'goodNoodles4', up:22, lvl:100, purchased:'goodNoodles4Purchased'},
-            // Mobile Man 38 (upgrade23)
-            {id:'mobileMan381', up:23, lvl:10, purchased:'mobileMan381Purchased'}, {id:'mobileMan382', up:23, lvl:25, purchased:'mobileMan382Purchased'}, {id:'mobileMan383', up:23, lvl:50, purchased:'mobileMan383Purchased'}, {id:'mobileMan384', up:23, lvl:100, purchased:'mobileMan384Purchased'},
-            // Easton Bundy (upgrade24)
-            {id:'eastonBundy1', up:24, lvl:10, purchased:'eastonBundy1Purchased'}, {id:'eastonBundy2', up:24, lvl:25, purchased:'eastonBundy2Purchased'}, {id:'eastonBundy3', up:24, lvl:50, purchased:'eastonBundy3Purchased'}, {id:'eastonBundy4', up:24, lvl:100, purchased:'eastonBundy4Purchased'},
-            // Pirate (upgrade2)
-            {id:'pirate1', up:2, lvl:10, purchased:'pirateSpec1Purchased'}, {id:'pirate2', up:2, lvl:25, purchased:'pirateSpec2Purchased'}, {id:'pirate3', up:2, lvl:50, purchased:'pirateSpec3Purchased'}, {id:'pirate4', up:2, lvl:100, purchased:'pirateSpec4Purchased'},
-            // Goonsaw (upgrade3)
-            {id:'goon1', up:3, lvl:10, purchased:'goonSpec1Purchased'}, {id:'goon2', up:3, lvl:25, purchased:'goonSpec2Purchased'}, {id:'goon3', up:3, lvl:50, purchased:'goonSpec3Purchased'}, {id:'goon4', up:3, lvl:100, purchased:'goonSpec4Purchased'},
-            // The Goatis (upgrade18)
-            {id:'goatis1', up:18, lvl:10, purchased:'goatis1Purchased'}, {id:'goatis2', up:18, lvl:25, purchased:'goatis2Purchased'}, {id:'goatis3', up:18, lvl:50, purchased:'goatis3Purchased'}, {id:'goatis4', up:18, lvl:100, purchased:'goatis4Purchased'},
-            // goatises raw liver (upgrade19)
-            {id:'raw1', up:19, lvl:10, purchased:'raw1Purchased'}, {id:'raw2', up:19, lvl:25, purchased:'raw2Purchased'}, {id:'raw3', up:19, lvl:50, purchased:'raw3Purchased'}, {id:'raw4', up:19, lvl:100, purchased:'raw4Purchased'},
-            // Diddy (upgrade4)
-            {id:'diddy1', up:4, lvl:10, purchased:'diddy1Purchased'}, {id:'diddy2', up:4, lvl:25, purchased:'diddy2Purchased'}, {id:'diddy3', up:4, lvl:50, purchased:'diddy3Purchased'}, {id:'diddy4', up:4, lvl:100, purchased:'diddy4Purchased'},
-            // Argonian (upgrade5)
-            {id:'argon1', up:5, lvl:10, purchased:'argon1Purchased'}, {id:'argon2', up:5, lvl:25, purchased:'argon2Purchased'}, {id:'argon3', up:5, lvl:50, purchased:'argon3Purchased'}, {id:'argon4', up:5, lvl:100, purchased:'argon4Purchased'},
-            // Grape (upgrade6)
-            {id:'grape1', up:6, lvl:10, purchased:'grape1Purchased'}, {id:'grape2', up:6, lvl:25, purchased:'grape2Purchased'}, {id:'grape3', up:6, lvl:50, purchased:'grape3Purchased'}, {id:'grape4', up:6, lvl:100, purchased:'grape4Purchased'},
-            // Skippie (upgrade7)
-            {id:'skippie1', up:7, lvl:10, purchased:'skippie1Purchased'}, {id:'skippie2', up:7, lvl:25, purchased:'skippie2Purchased'}, {id:'skippie3', up:7, lvl:50, purchased:'skippie3Purchased'}, {id:'skippie4', up:7, lvl:100, purchased:'skippie4Purchased'},
-            // Island (upgrade8)
-            {id:'island1', up:8, lvl:10, purchased:'island1Purchased'}, {id:'island2', up:8, lvl:25, purchased:'island2Purchased'}, {id:'island3', up:8, lvl:50, purchased:'island3Purchased'}, {id:'island4', up:8, lvl:100, purchased:'island4Purchased'},
-            // Tribal (upgrade9)
-            {id:'tribal1', up:9, lvl:10, purchased:'tribal1Purchased'}, {id:'tribal2', up:9, lvl:25, purchased:'tribal2Purchased'}, {id:'tribal3', up:9, lvl:50, purchased:'tribal3Purchased'}, {id:'tribal4', up:9, lvl:100, purchased:'tribal4Purchased'},
-            // Phonk (upgrade10)
-            {id:'phonk1', up:10, lvl:10, purchased:'phonk1Purchased'}, {id:'phonk2', up:10, lvl:25, purchased:'phonk2Purchased'}, {id:'phonk3', up:10, lvl:50, purchased:'phonk3Purchased'}, {id:'phonk4', up:10, lvl:75, purchased:'phonk4Purchased'}, {id:'phonk5', up:10, lvl:100, purchased:'phonk5Purchased'},
-            // Jonathan (upgrade11)
-            {id:'jonathan1', up:11, lvl:10, purchased:'jonathan1Purchased'}, {id:'jonathan2', up:11, lvl:25, purchased:'jonathan2Purchased'}, {id:'jonathan3', up:11, lvl:50, purchased:'jonathan3Purchased'}, {id:'jonathan4', up:11, lvl:75, purchased:'jonathan4Purchased'},
-            // CR (upgrade12)
-            {id:'cr1', up:12, lvl:10, purchased:'cr1Purchased'}, {id:'cr2', up:12, lvl:25, purchased:'cr2Purchased'}, {id:'cr3', up:12, lvl:50, purchased:'cr3Purchased'}, {id:'cr4', up:12, lvl:75, purchased:'cr4Purchased'}, {id:'cr5', up:12, lvl:100, purchased:'cr5Purchased'},
-            // Roping (upgrade13)
-            {id:'roping1', up:13, lvl:10, purchased:'roping1Purchased'}, {id:'roping2', up:13, lvl:25, purchased:'roping2Purchased'}, {id:'roping3', up:13, lvl:50, purchased:'roping3Purchased'}, {id:'roping4', up:13, lvl:75, purchased:'roping4Purchased'},
-            // Skibbidi (upgrade14)
-            {id:'skibidi1', up:14, lvl:10, purchased:'skibidi1Purchased'}, {id:'skibidi2', up:14, lvl:25, purchased:'skibidi2Purchased'}, {id:'skibidi3', up:14, lvl:50, purchased:'skibidi3Purchased'}, {id:'skibidi4', up:14, lvl:75, purchased:'skibidi4Purchased'},
-            // Beats (upgrade15)
-            {id:'beats1', up:15, lvl:10, purchased:'beats1Purchased'}, {id:'beats2', up:15, lvl:25, purchased:'beats2Purchased'}, {id:'beats3', up:15, lvl:50, purchased:'beats3Purchased'},
-            // EZ Villager specials (upgrade16)
-            {id:'ez1', up:16, lvl:10, purchased:'ez1Purchased'}, {id:'ez2', up:16, lvl:25, purchased:'ez2Purchased'}, {id:'ez3', up:16, lvl:50, purchased:'ez3Purchased'}, {id:'ez4', up:16, lvl:100, purchased:'ez4Purchased'}
-            ,
-            // SCP specials (upgrade17)
-            {id:'scp1', up:17, lvl:10, purchased:'scp1Purchased'}, {id:'scp2', up:17, lvl:25, purchased:'scp2Purchased'}, {id:'scp3', up:17, lvl:50, purchased:'scp3Purchased'}, {id:'scp4', up:17, lvl:75, purchased:'scp4Purchased'}
-        ];
-
-        // compute next special unlock level per upgrade (choose the next unpurchased special)
-        const __ns_local = {};
-        for (const s of specialsMap) {
-            try {
-                // attempt to read the purchased flag from global properties first
-                let purchasedFlag = (typeof window[s.purchased] !== 'undefined') ? !!window[s.purchased] : false;
-                // fall back to evaluating the variable name if it exists in scope (handles top-level `let` bindings)
-                if (!purchasedFlag) {
-                    try { purchasedFlag = !!eval(s.purchased); } catch (e) { purchasedFlag = false; }
-                }
-                if (purchasedFlag) continue; // already bought this special
-                // pick the lowest-level unpurchased special for this upgrade (store as Number)
-                const lvlNum = Number(s.lvl);
-                if (!__ns_local[s.up] || lvlNum < __ns_local[s.up]) __ns_local[s.up] = lvlNum;
-            } catch (e) {}
-        }
-        window.__nextSpecialFor = __ns_local;
-        window.__nextSpecialText = upIdx => {
-            try {
-                if (!(window.__nextSpecialFor && Object.prototype.hasOwnProperty.call(window.__nextSpecialFor, upIdx))) return '';
-                const target = Number(window.__nextSpecialFor[upIdx]);
-                const curr = numericLevel(getUpgradeLevel(upIdx));
-                const diff = Math.max(0, target - curr);
-                if (diff > 0) return ` (next special in ${diff} level${diff === 1 ? '' : 's'})`;
-                // unlocked but not purchased yet
-                return ` (special available at lvl ${target})`;
-            } catch (e) { return ''; }
-        };
-
-        // SCP specials visibility and button states (show when upgrade17 purchased at least once)
-        try {
-            const scpContent = document.getElementById('scpContent');
-            const scpUnlocked = numericLevel(upgrade17Level) >= 1;
-            if (scpContent) scpContent.style.display = (scpUnlocked && specialsVisible) ? '' : 'none';
-            const b1 = document.getElementById('scp1'); if (b1) { b1.style.display = (specialsVisible ? '' : 'none'); b1.disabled = scp1Purchased || numericLevel(upgrade17Level) < 10; }
-            const b2 = document.getElementById('scp2'); if (b2) { b2.style.display = (specialsVisible ? '' : 'none'); b2.disabled = scp2Purchased || numericLevel(upgrade17Level) < 25; }
-            const b3 = document.getElementById('scp3'); if (b3) { b3.style.display = (specialsVisible ? '' : 'none'); b3.disabled = scp3Purchased || numericLevel(upgrade17Level) < 50; }
-            const b4 = document.getElementById('scp4'); if (b4) { b4.style.display = (specialsVisible ? '' : 'none'); b4.disabled = scp4Purchased || numericLevel(upgrade17Level) < 75; }
-        } catch (e) {}
-
-        // Landon specials visibility and button states (show when Landon purchased at least once)
-        try {
-            const landonSectionEl = document.getElementById('landonSection');
-            const landonContent = document.getElementById('landonContent');
-            const landonUnlocked = numericLevel(upgrade20Level) >= 1;
-            if (landonSectionEl) landonSectionEl.style.display = (landonUnlocked && specialsVisible) ? '' : 'none';
-            if (landonContent) landonContent.style.display = (landonUnlocked && specialsVisible) ? '' : 'none';
-            const ld1 = document.getElementById('landon1'); if (ld1) { ld1.style.display = (specialsVisible && landonUnlocked ? '' : 'none'); ld1.disabled = landon1Purchased || numericLevel(upgrade20Level) < 10; }
-            const ld2 = document.getElementById('landon2'); if (ld2) { ld2.style.display = (specialsVisible && landonUnlocked ? '' : 'none'); ld2.disabled = landon2Purchased || numericLevel(upgrade20Level) < 25; }
-            const ld3 = document.getElementById('landon3'); if (ld3) { ld3.style.display = (specialsVisible && landonUnlocked ? '' : 'none'); ld3.disabled = landon3Purchased || numericLevel(upgrade20Level) < 50; }
-            const ld4 = document.getElementById('landon4'); if (ld4) { ld4.style.display = (specialsVisible && landonUnlocked ? '' : 'none'); ld4.disabled = landon4Purchased || numericLevel(upgrade20Level) < 100; }
-        } catch (e) {}
-
-        // The Bass specials visibility and button states (show when The Bass purchased at least once)
-        try {
-            const theBassSectionEl = document.getElementById('theBassSection');
-            const theBassContent = document.getElementById('theBassContent');
-            const theBassUnlocked = numericLevel(upgrade21Level) >= 1;
-            if (theBassSectionEl) theBassSectionEl.style.display = (theBassUnlocked && specialsVisible) ? '' : 'none';
-            if (theBassContent) theBassContent.style.display = (theBassUnlocked && specialsVisible) ? '' : 'none';
-            const tb1 = document.getElementById('theBass1'); if (tb1) { tb1.style.display = (specialsVisible && theBassUnlocked ? '' : 'none'); tb1.disabled = theBass1Purchased || numericLevel(upgrade21Level) < 10; }
-            const tb2 = document.getElementById('theBass2'); if (tb2) { tb2.style.display = (specialsVisible && theBassUnlocked ? '' : 'none'); tb2.disabled = theBass2Purchased || numericLevel(upgrade21Level) < 25; }
-            const tb3 = document.getElementById('theBass3'); if (tb3) { tb3.style.display = (specialsVisible && theBassUnlocked ? '' : 'none'); tb3.disabled = theBass3Purchased || numericLevel(upgrade21Level) < 50; }
-            const tb4 = document.getElementById('theBass4'); if (tb4) { tb4.style.display = (specialsVisible && theBassUnlocked ? '' : 'none'); tb4.disabled = theBass4Purchased || numericLevel(upgrade21Level) < 100; }
-        } catch (e) {}
-
-        // Good Noodles specials visibility and button states (show when Good Noodles purchased at least once)
-        try {
-            const gnSectionEl = document.getElementById('goodNoodlesSection');
-            const gnContent = document.getElementById('goodNoodlesContent');
-            const gnUnlocked = numericLevel(upgrade22Level) >= 1;
-            if (gnSectionEl) gnSectionEl.style.display = (gnUnlocked && specialsVisible) ? '' : 'none';
-            if (gnContent) gnContent.style.display = (gnUnlocked && specialsVisible) ? '' : 'none';
-            const gn1 = document.getElementById('goodNoodles1'); if (gn1) { gn1.style.display = (specialsVisible && gnUnlocked ? '' : 'none'); gn1.disabled = goodNoodles1Purchased || numericLevel(upgrade22Level) < 10; document.getElementById('goodNoodles1Cost').innerText = formatNumber(goodNoodles1Cost); }
-            const gn2 = document.getElementById('goodNoodles2'); if (gn2) { gn2.style.display = (specialsVisible && gnUnlocked ? '' : 'none'); gn2.disabled = goodNoodles2Purchased || numericLevel(upgrade22Level) < 25; document.getElementById('goodNoodles2Cost').innerText = formatNumber(goodNoodles2Cost); }
-            const gn3 = document.getElementById('goodNoodles3'); if (gn3) { gn3.style.display = (specialsVisible && gnUnlocked ? '' : 'none'); gn3.disabled = goodNoodles3Purchased || numericLevel(upgrade22Level) < 50; document.getElementById('goodNoodles3Cost').innerText = formatNumber(goodNoodles3Cost); }
-            const gn4 = document.getElementById('goodNoodles4'); if (gn4) { gn4.style.display = (specialsVisible && gnUnlocked ? '' : 'none'); gn4.disabled = goodNoodles4Purchased || numericLevel(upgrade22Level) < 100; document.getElementById('goodNoodles4Cost').innerText = formatNumber(goodNoodles4Cost); }
-        } catch (e) {}
-
-        // Mobile Man 38 specials visibility and button states (show when Mobile Man 38 purchased at least once)
-        try {
-            const mmSectionEl = document.getElementById('mobileMan38Section');
-            const mmContent = document.getElementById('mobileMan38Content');
-            const mmUnlocked = numericLevel(upgrade23Level) >= 1;
-            if (mmSectionEl) mmSectionEl.style.display = (mmUnlocked && specialsVisible) ? '' : 'none';
-            if (mmContent) mmContent.style.display = (mmUnlocked && specialsVisible) ? '' : 'none';
-            const mm1 = document.getElementById('mobileMan381'); if (mm1) { mm1.style.display = (specialsVisible && mmUnlocked ? '' : 'none'); mm1.disabled = mobileMan381Purchased || numericLevel(upgrade23Level) < 10; document.getElementById('mobileMan381Cost').innerText = formatNumber(mobileMan381Cost); }
-            const mm2 = document.getElementById('mobileMan382'); if (mm2) { mm2.style.display = (specialsVisible && mmUnlocked ? '' : 'none'); mm2.disabled = mobileMan382Purchased || numericLevel(upgrade23Level) < 25; document.getElementById('mobileMan382Cost').innerText = formatNumber(mobileMan382Cost); }
-            const mm3 = document.getElementById('mobileMan383'); if (mm3) { mm3.style.display = (specialsVisible && mmUnlocked ? '' : 'none'); mm3.disabled = mobileMan383Purchased || numericLevel(upgrade23Level) < 50; document.getElementById('mobileMan383Cost').innerText = formatNumber(mobileMan383Cost); }
-            const mm4 = document.getElementById('mobileMan384'); if (mm4) { mm4.style.display = (specialsVisible && mmUnlocked ? '' : 'none'); mm4.disabled = mobileMan384Purchased || numericLevel(upgrade23Level) < 100; document.getElementById('mobileMan384Cost').innerText = formatNumber(mobileMan384Cost); }
-        } catch (e) {}
-
-        try {
-            // Easton Bundy specials section (upgrade24). IDs live in index.html as eastonSection/eastonContent.
-            const ebSectionEl = document.getElementById('eastonSection');
-            const ebContent = document.getElementById('eastonContent');
-            const ebUnlocked = numericLevel(upgrade24Level) >= 1;
-            if (ebSectionEl) ebSectionEl.style.display = (ebUnlocked && specialsVisible) ? '' : 'none';
-            if (ebContent) ebContent.style.display = (ebUnlocked && specialsVisible) ? '' : 'none';
-            const eb1 = document.getElementById('eastonBundy1'); if (eb1) { eb1.style.display = (specialsVisible && ebUnlocked ? '' : 'none'); eb1.disabled = eastonBundy1Purchased || numericLevel(upgrade24Level) < 10; document.getElementById('eastonBundy1Cost').innerText = formatNumber(eastonBundy1Cost); const eb1Effect = document.getElementById('eastonBundy1Effect'); if (eb1Effect) eb1Effect.innerHTML = 'x1.5 CPS<br>Unlocks at lvl 10<br>Cost: ' + formatNumber(eastonBundy1Cost); }
-            const eb2 = document.getElementById('eastonBundy2'); if (eb2) { eb2.style.display = (specialsVisible && ebUnlocked ? '' : 'none'); eb2.disabled = eastonBundy2Purchased || numericLevel(upgrade24Level) < 25; document.getElementById('eastonBundy2Cost').innerText = formatNumber(eastonBundy2Cost); const eb2Effect = document.getElementById('eastonBundy2Effect'); if (eb2Effect) eb2Effect.innerHTML = 'x2 CPS<br>Unlocks at lvl 25<br>Cost: ' + formatNumber(eastonBundy2Cost); }
-            const eb3 = document.getElementById('eastonBundy3'); if (eb3) { eb3.style.display = (specialsVisible && ebUnlocked ? '' : 'none'); eb3.disabled = eastonBundy3Purchased || numericLevel(upgrade24Level) < 50; document.getElementById('eastonBundy3Cost').innerText = formatNumber(eastonBundy3Cost); const eb3Effect = document.getElementById('eastonBundy3Effect'); if (eb3Effect) eb3Effect.innerHTML = 'x2.5 CPS<br>Unlocks at lvl 50<br>Cost: ' + formatNumber(eastonBundy3Cost); }
-            const eb4 = document.getElementById('eastonBundy4'); if (eb4) { eb4.style.display = (specialsVisible && ebUnlocked ? '' : 'none'); eb4.disabled = eastonBundy4Purchased || numericLevel(upgrade24Level) < 100; document.getElementById('eastonBundy4Cost').innerText = formatNumber(eastonBundy4Cost); const eb4Effect = document.getElementById('eastonBundy4Effect'); if (eb4Effect) eb4Effect.innerHTML = 'x3 CPS<br>Unlocks at lvl 100<br>Cost: ' + formatNumber(eastonBundy4Cost); }
-        } catch (e) {}
-
-        for (const s of specialsMap) {
-            try {
-                const btn = document.getElementById(s.id);
-                if (!btn) continue;
-                // reveal the button when specials menu is visible
-                btn.style.display = specialsVisible ? '' : 'none';
-                // determine player's level for the associated upgrade
-                const playerLvl = numericLevel(getUpgradeLevel(s.up));
-                // check purchased flag dynamically
-                let purchased = false;
-                try { purchased = !!(eval(s.purchased)); } catch (e) { purchased = false; }
-                // button enabled only if unlocked and not already purchased
-                btn.disabled = !(playerLvl >= s.lvl) || purchased;
-                // apply letter notation for special tiers (10->A,25->B,50->C,100->D)
-                try {
-                    if (!btn.dataset.letterApplied) {
-                        const letterMap = {10:'A',25:'B',50:'C',100:'D'};
-                        const letter = letterMap[s.lvl] || '';
-                        if (letter) {
-                            btn.innerHTML = `${letter}: ${btn.innerHTML}`;
-                            btn.dataset.letterApplied = '1';
-                        }
-                    }
-                } catch (e) {}
-            } catch (e) {}
-        }
-    } catch (e) {}
+    // Special upgrades menu (specials.js): tiles, ready count, and window.__nextSpecialFor for upgrade tooltips
+    try { if (typeof updateSpecialsMenu === 'function') updateSpecialsMenu(); } catch (e) {}
     // update Divine Assassin button label and cost display if present
     try {
         const asnBtn = document.getElementById('divineAssassinBtn');
@@ -2728,13 +2671,13 @@ function updateDisplays() {
             const lvl = typeof divineAssassinLevel === 'number' ? divineAssassinLevel : 0;
             const baseChance = (typeof DIVINE_ASSASSIN_BASE_CHANCE !== 'undefined') ? DIVINE_ASSASSIN_BASE_CHANCE : 0.05;
             const chance = Math.min(1, baseChance * lvl);
-            const chanceStr = (chance * 100).toFixed(2);
+            const chanceStr = String(+(chance * 100).toFixed(2)); // "5" not "5.00"
             const labelEl2 = asnBtn.querySelector('.upgrade-label');
             if (labelEl2) {
                 if (lvl >= 19) {
-                    labelEl2.innerHTML = `Divine Assassin — lvl ${lvl} (MAX) — crit ${chanceStr}%`;
+                    setHtmlIfChanged(labelEl2, divineCardHtml('Divine Assassin', lvl, `Crit chance ${chanceStr}%`, null));
                 } else {
-                    labelEl2.innerHTML = `Divine Assassin — lvl ${lvl} — crit ${chanceStr}% — cost: <span id="divineAssassinCost">${divineAssassinCost || 1}</span> golden`;
+                    setHtmlIfChanged(labelEl2, divineCardHtml('Divine Assassin', lvl, `Crit chance ${chanceStr}% → ${(Math.min(1, baseChance * (lvl + 1)) * 100).toFixed(0)}%`, divineAssassinCost || 1));
                 }
             }
             // disable button when not affordable or at max level (with visual styling)
@@ -2762,7 +2705,7 @@ function updateDisplays() {
                 const lvl = typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0;
                 const cost = typeof divineSpiritCost !== 'undefined' ? divineSpiritCost : (hasDecimal ? D(1) : 1);
                 const labelEl = spBtn.querySelector('.upgrade-label');
-                if (labelEl) labelEl.innerHTML = `Divine Spirit of What Happened — lvl ${lvl} — crit x${formatNumber(lvl > 0 ? (10 * Math.pow(2, Math.max(0, lvl-1))) : 0)} — cost: <span id="divineSpiritCost">${formatNumber(cost)}</span> golden`;
+                setHtmlIfChanged(labelEl, divineCardHtml('Divine Spirit', lvl, `Crits deal x${formatNumber(10 * Math.pow(2, lvl))} → x${formatNumber(10 * Math.pow(2, lvl + 1))}${(typeof divineAssassinLevel === 'number' && divineAssassinLevel > 0) ? '' : ' (needs crit chance)'}`, cost));
                 // robust affordability check with logging
                 try {
                     const afford = !!goldenCanAfford(divineSpiritCost);
@@ -2795,7 +2738,7 @@ function updateDisplays() {
             const bonus = (lvl * DIVINE_COLLECTOR_PER_LEVEL) * 100; // percentage
             const bonusStr = bonus.toFixed(1);
             const labelEl3 = colBtn.querySelector('.upgrade-label');
-            if (labelEl3) labelEl3.innerHTML = `Divine Collector — lvl ${lvl} — +${bonusStr}% golden — cost: <span id="divineCollectorCost">${divineCollectorCost || 1}</span> golden`;
+            setHtmlIfChanged(labelEl3, divineCardHtml('Divine Collector', lvl, `+${Math.round(bonus)}% Golden from prestige → +${Math.round((lvl + 1) * DIVINE_COLLECTOR_PER_LEVEL * 100)}%`, divineCollectorCost || 1));
             try {
                 const afford = !!goldenCanAfford(divineCollectorCost);
                 try { colBtn.disabled = !afford; } catch (e) {}
@@ -2819,7 +2762,7 @@ function updateDisplays() {
             const lvl = typeof divineMoneyManLevel === 'number' ? divineMoneyManLevel : 0;
             const startAmount = lvl > 0 ? (DIVINE_MONEYMAN_BASE * Math.pow(10, Math.max(0, lvl - 1))) : DIVINE_MONEYMAN_BASE;
             const labelEl4 = mmBtn.querySelector('.upgrade-label');
-            if (labelEl4) labelEl4.innerHTML = `Divine Money Man — lvl ${lvl} — start +${formatNumber(startAmount)} after prestige — cost: <span id="divineMoneyManCost">${divineMoneyManCost || 1}</span> golden`;
+            setHtmlIfChanged(labelEl4, divineCardHtml('Divine Money Man', lvl, lvl > 0 ? `Start runs with ${formatNumber(startAmount)} → ${formatNumber(startAmount * 10)}` : `Start each run with ${formatNumber(DIVINE_MONEYMAN_BASE)}`, divineMoneyManCost || 1));
             try {
                 const afford = !!goldenCanAfford(divineMoneyManCost);
                 try { mmBtn.disabled = !afford; } catch (e) {}
@@ -2847,7 +2790,7 @@ function updateDisplays() {
             const nextMult = 1 / (1 + 0.1 * (lvl + 1));
             const currentPct = Math.round((1 - currentMult) * 100);
             const nextPct = Math.round((1 - nextMult) * 100);
-            if (labelEl) labelEl.innerHTML = `Divine Simple Villager — lvl ${lvl} — price ÷ (1 + ${perLevelPercent}% per lvl); current ${currentPct}% reduction, next ${nextPct}% — cost: <span id="divineSimpleVillagerCost">${formatNumber(divineSimpleVillagerCost || 1)}</span> golden`;
+            setHtmlIfChanged(labelEl, divineCardHtml('Divine Simple Villager', lvl, `Upgrades ${currentPct}% cheaper → ${nextPct}%`, divineSimpleVillagerCost || 1));
             try {
                 const afford = !!goldenCanAfford(divineSimpleVillagerCost);
                 try { svBtn.disabled = !afford; } catch (e) {}
@@ -2865,13 +2808,8 @@ function updateDisplays() {
         }
     } catch (e) {}
     document.getElementById('cps').innerText = formatNumber(cps);
-    // apply golden multiplier to click power display — use same calculation as tooltip for consistency
-    try {
-        const displayClick = getUpgradeCps('upgrade1');
-        document.getElementById('clickPower').innerText = formatNumber(displayClick);
-    } catch (e) {
-        document.getElementById('clickPower').innerText = formatNumber(clickPower * goldenMultiplier);
-    }
+    // show what one click actually earns right now (includes clan, casino and mystery buffs)
+    document.getElementById('clickPower').innerText = formatNumber(hasDecimal ? D(clickPower).times(D(goldenMultiplier)) : clickPower * goldenMultiplier);
     // Upgrade button labels (preserve images inside buttons)
     const setLabel = (btnId, text) => {
         const labelEl = document.querySelector(`#${btnId} .upgrade-label`);
@@ -2881,59 +2819,28 @@ function updateDisplays() {
             if (btn) btn.innerText = text;
         }
     };
-    // show batch cost (how much needed to buy the selected `purchaseBatch` amount)
-    const r110 = 1.1;
-    const r115 = 1.15;
-    const b = purchaseBatch || 1;
-    const cost1 = computeBatchCostWithSimpleVillager(upgrade1Cost, b, r110);
-    const cost2 = computeBatchCostWithSimpleVillager(upgrade2Cost, b, r110);
-    const cost3 = computeBatchCostWithSimpleVillager(upgrade3Cost, b, r110);
-    const cost4 = computeBatchCostWithSimpleVillager(upgrade4Cost, b, r110);
-    const cost5 = computeBatchCostWithSimpleVillager(upgrade5Cost, b, r110);
-    const cost6 = computeBatchCostWithSimpleVillager(upgrade6Cost, b, r110);
-    const cost7 = computeBatchCostWithSimpleVillager(upgrade7Cost, b, r110);
-    const cost8 = computeBatchCostWithSimpleVillager(upgrade8Cost, b, r110);
-    const cost9 = computeBatchCostWithSimpleVillager(upgrade9Cost, b, r110);
-    const cost10 = computeBatchCostWithSimpleVillager(upgrade10Cost, b, r110);
-    const cost11 = computeBatchCostWithSimpleVillager(upgrade11Cost, b, r115);
-    const cost12 = computeBatchCostWithSimpleVillager(upgrade12Cost, b, r115);
-    const cost13 = computeBatchCostWithSimpleVillager(upgrade13Cost, b, r115);
-    const cost14 = computeBatchCostWithSimpleVillager(upgrade14Cost, b, r115);
-    const cost15 = computeBatchCostWithSimpleVillager(upgrade15Cost, b, r115);
-    const cost16 = computeBatchCostWithSimpleVillager(upgrade16Cost, b, r115);
-    const cost17 = computeBatchCostWithSimpleVillager(upgrade17Cost, b, r115);
-    const cost18 = computeBatchCostWithSimpleVillager(upgrade18Cost, b, r115);
-    const cost19 = computeBatchCostWithSimpleVillager(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000, b, r115);
-    const cost20 = computeBatchCostWithSimpleVillager(typeof upgrade20Cost !== 'undefined' ? upgrade20Cost : 1000000000000000, b, r115);
-    const cost21 = computeBatchCostWithSimpleVillager(typeof upgrade21Cost !== 'undefined' ? upgrade21Cost : 200000000000000000, b, r115);
-    const cost22 = computeBatchCostWithSimpleVillager(typeof upgrade22Cost !== 'undefined' ? upgrade22Cost : 1000000000000000000, b, r115);
-    const cost23 = computeBatchCostWithSimpleVillager(typeof upgrade23Cost !== 'undefined' ? upgrade23Cost : 5000000000000000000, b, r115);
-    const cost24 = computeBatchCostWithSimpleVillager(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, b, r115);
-
-    setLabel('upgrade1', `OP mouse (cost for ${b}: ${formatNumber(cost1)})` + (upgrade1Level ? ` - lvl ${upgrade1Level}` : ''));
-    setLabel('upgrade2', `Somalian Pirate (cost for ${b}: ${formatNumber(cost2)})` + (upgrade2Level ? ` - lvl ${upgrade2Level}` : ''));
-    setLabel('upgrade3', `Goonsaw Man (cost for ${b}: ${formatNumber(cost3)})` + (upgrade3Level ? ` - lvl ${upgrade3Level}` : ''));
-    setLabel('upgrade4', `Diddy blud (cost for ${b}: ${formatNumber(cost4)})` + (upgrade4Level ? ` - lvl ${upgrade4Level}` : ''));
-    setLabel('upgrade5', `Argonian Autist (cost for ${b}: ${formatNumber(cost5)})` + (upgrade5Level ? ` - lvl ${upgrade5Level}` : ''));
-    setLabel('upgrade6', `Grape God (cost for ${b}: ${formatNumber(cost6)})` + (upgrade6Level ? ` - lvl ${upgrade6Level}` : ''));
-    setLabel('upgrade7', `Skippie Toilet (cost for ${b}: ${formatNumber(cost7)})` + (upgrade7Level ? ` - lvl ${upgrade7Level}` : ''));
-    setLabel('upgrade8', `Mysterious Island (cost for ${b}: ${formatNumber(cost8)})` + (upgrade8Level ? ` - lvl ${upgrade8Level}` : ''));
-    setLabel('upgrade9', `Tribal Camp (cost for ${b}: ${formatNumber(cost9)})` + (upgrade9Level ? ` - lvl ${upgrade9Level}` : ''));
-    setLabel('upgrade10', `The Phonk Man (cost for ${b}: ${formatNumber(cost10)})` + (upgrade10Level ? ` - lvl ${upgrade10Level}` : ''));
-    setLabel('upgrade11', `Jonathan (cost for ${b}: ${formatNumber(cost11)})` + (upgrade11Level ? ` - lvl ${upgrade11Level}` : ''));
-    setLabel('upgrade12', `CR lurker (cost for ${b}: ${formatNumber(cost12)})` + (upgrade12Level ? ` - lvl ${upgrade12Level}` : ''));
-    setLabel('upgrade13', `ropingnecurse (cost for ${b}: ${formatNumber(cost13)})` + (upgrade13Level ? ` - lvl ${upgrade13Level}` : ''));
-    setLabel('upgrade14', `skibbidi scimitar (cost for ${b}: ${formatNumber(cost14)})` + (upgrade14Level ? ` - lvl ${upgrade14Level}` : ''));
-    setLabel('upgrade15', `What Happened Beats (cost for ${b}: ${formatNumber(cost15)})` + (upgrade15Level ? ` - lvl ${upgrade15Level}` : ''));
-    setLabel('upgrade16', `ez villager (cost for ${b}: ${formatNumber(cost16)})` + (upgrade16Level ? ` - lvl ${upgrade16Level}` : ''));
-    setLabel('upgrade17', `scp wish I knew. (cost for ${b}: ${formatNumber(cost17)})` + (upgrade17Level ? ` - lvl ${upgrade17Level}` : ''));
-    setLabel('upgrade18', `The Goatis (cost for ${b}: ${formatNumber(cost18)})` + (upgrade18Level ? ` - lvl ${upgrade18Level}` : ''));
-    setLabel('upgrade19', `goatises raw liver (cost for ${b}: ${formatNumber(cost19)})` + (upgrade19Level ? ` - lvl ${upgrade19Level}` : ''));
-    setLabel('upgrade20', `The Landon Stream (cost for ${b}: ${formatNumber(cost20)})` + (upgrade20Level ? ` - lvl ${upgrade20Level}` : ''));
-    setLabel('upgrade21', `The Bass (cost for ${b}: ${formatNumber(cost21)})` + (upgrade21Level ? ` - lvl ${upgrade21Level}` : ''));
-    setLabel('upgrade22', `Good Noodles (cost for ${b}: ${formatNumber(cost22)})` + (upgrade22Level ? ` - lvl ${upgrade22Level}` : ''));
-    setLabel('upgrade23', `Mobile Man 38 (cost for ${b}: ${formatNumber(cost23)})` + (upgrade23Level ? ` - lvl ${upgrade23Level}` : ''));
-    setLabel('upgrade24', `Easton Bundy (cost for ${b}: ${formatNumber(cost24)})` + (upgrade24Level ? ` - lvl ${upgrade24Level}` : ''));
+    // Card layout for a left-bar upgrade: name, level badge and cost. Only rewrites the DOM when the text changed.
+    const setUpgradeCard = (btnId, name, costText, lvl) => {
+        const labelEl = document.querySelector(`#${btnId} .upgrade-label`);
+        if (!labelEl) return;
+        const key = name + '|' + costText + '|' + lvl;
+        if (labelEl.dataset.key === key) return;
+        labelEl.dataset.key = key;
+        labelEl.innerHTML = `<span class="up-name">${name}</span>` +
+            `<span class="up-meta"><span class="up-cost">${costText}</span>${lvl ? `<span class="up-level">Lv ${formatNumber(lvl)}</span>` : '<span class="up-level up-level--new">New</span>'}</span>`;
+    };
+    // show batch cost for the selected bulk amount (in Max mode: as many levels as the player can afford)
+    const upgradeCosts = [null, upgrade1Cost, upgrade2Cost, upgrade3Cost, upgrade4Cost, upgrade5Cost, upgrade6Cost, upgrade7Cost, upgrade8Cost, upgrade9Cost, upgrade10Cost, upgrade11Cost, upgrade12Cost,
+        upgrade13Cost, upgrade14Cost, upgrade15Cost, upgrade16Cost, upgrade17Cost, upgrade18Cost, upgrade19Cost, upgrade20Cost, upgrade21Cost, upgrade22Cost, upgrade23Cost, upgrade24Cost];
+    for (let i = 1; i <= 24; i++) {
+        const rate = (i <= 10) ? 1.1 : 1.15;
+        const levels = bulkLevelsFor(upgradeCosts[i], rate);
+        const batchCost = computeBatchCostWithSimpleVillager(upgradeCosts[i], levels, rate);
+        const lvl = getUpgradeLevel(i);
+        setUpgradeCard('upgrade' + i, UPGRADE_NAMES[i], (purchaseBatch === 1 ? '' : (purchaseBatch === 'max' ? `Max ×${levels} ` : `×${levels} `)) + formatNumber(batchCost), lvl);
+        // dim upgrades the player can't afford yet (unlike `disabled`, this keeps the hover tooltip working)
+        try { document.getElementById('upgrade' + i).classList.toggle('cant-afford', !canAfford(effectiveUpgradeCost(upgradeCosts[i]))); } catch (e) {}
+    }
 
     // no left-bar prestige info; golden count shown under click power
 
@@ -2945,61 +2852,64 @@ function updateDisplays() {
         if (leftBar) leftBar.style.display = 'none';
         if (divineLeftBar) divineLeftBar.style.display = 'flex';
     } else {
-        if (leftBar) leftBar.style.display = 'block';
+        if (leftBar) leftBar.style.display = 'flex';
         if (divineLeftBar) divineLeftBar.style.display = 'none';
     }
     // when normal menu is visible, update the visibility of individual upgrade buttons
     if (!divineMode) {
-        document.getElementById('upgrade1').style.display = 'block';
-        document.getElementById('upgrade2').style.display = (upgrade1Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade3').style.display = (upgrade2Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade4').style.display = (upgrade3Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade5').style.display = (upgrade4Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade6').style.display = (upgrade5Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade7').style.display = (upgrade6Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade8').style.display = (upgrade7Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade9').style.display = (upgrade8Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade10').style.display = (upgrade9Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade11').style.display = (upgrade10Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade12').style.display = (upgrade11Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade13').style.display = (numericLevel(upgrade12Level) >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade14').style.display = (upgrade13Level >= 1) ? 'block' : 'none';
-        document.getElementById('upgrade15').style.display = (upgrade14Level >= 1) ? 'block' : 'none';
+        document.getElementById('upgrade1').style.display = 'flex';
+        document.getElementById('upgrade2').style.display = (upgrade1Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade3').style.display = (upgrade2Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade4').style.display = (upgrade3Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade5').style.display = (upgrade4Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade6').style.display = (upgrade5Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade7').style.display = (upgrade6Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade8').style.display = (upgrade7Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade9').style.display = (upgrade8Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade10').style.display = (upgrade9Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade11').style.display = (upgrade10Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade12').style.display = (upgrade11Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade13').style.display = (numericLevel(upgrade12Level) >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade14').style.display = (upgrade13Level >= 1) ? 'flex' : 'none';
+        document.getElementById('upgrade15').style.display = (upgrade14Level >= 1) ? 'flex' : 'none';
         // reveal ez villager (upgrade16) once What Happened Beats (upgrade15) is purchased
-        try { document.getElementById('upgrade16').style.display = (upgrade15Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade17').style.display = (upgrade16Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade18').style.display = (upgrade17Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade19').style.display = (upgrade18Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade20').style.display = (upgrade19Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade21').style.display = (upgrade20Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade22').style.display = (upgrade21Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade23').style.display = (upgrade22Level >= 1) ? 'block' : 'none'; } catch (e) {}
-        try { document.getElementById('upgrade24').style.display = (upgrade23Level >= 1) ? 'block' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade16').style.display = (upgrade15Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade17').style.display = (upgrade16Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade18').style.display = (upgrade17Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade19').style.display = (upgrade18Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade20').style.display = (upgrade19Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade21').style.display = (upgrade20Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade22').style.display = (upgrade21Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade23').style.display = (upgrade22Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        try { document.getElementById('upgrade24').style.display = (upgrade23Level >= 1) ? 'flex' : 'none'; } catch (e) {}
     }
 
     // prestige UI visibility (unlocked at CR lvl 150) - top-left button
+    // show the golden payout on the buttons; `buyPrestige()` validates and explains if not eligible
+    // with nothing to claim yet the button shows progress toward the first Golden instead of "+0"
+    const prestigeAwards = getPotentialPrestigeAwards();
+    const prestigeLevels = getTotalUpgradeLevels();
+    const prestigeLabel = prestigeAwards > 0
+        ? `Prestige <span class="btn-chip">+${formatNumber(prestigeAwards)} Golden</span>`
+        : `Prestige <span class="btn-chip">${formatNumber(prestigeLevels)} / ${formatNumber(LEVELS_PER_GOLDEN)} levels</span>`;
     const prestigeTopBtn = document.getElementById('prestigeTopBtn');
     if (prestigeTopBtn) {
-        prestigeTopBtn.style.display = (numericLevel(upgrade12Level) >= 150) ? 'block' : 'none';
-        // compute potential awards from total levels to decide if prestige can be claimed
-        let totalLevelsForUI = 0;
-        for (let i = 1; i <= 23; i++) {
-            try { totalLevelsForUI += numericLevel(getUpgradeLevel(i)); } catch (e) { }
-        }
-        const potentialAwards = Math.floor(totalLevelsForUI / LEVELS_PER_GOLDEN);
-        // allow the button to be clickable; `buyPrestige()` will validate and alert if not eligible
+        prestigeTopBtn.style.display = (numericLevel(upgrade12Level) >= 150) ? '' : 'none';
+        if (prestigeTopBtn.innerHTML !== prestigeLabel) prestigeTopBtn.innerHTML = prestigeLabel;
+        prestigeTopBtn.classList.toggle('btn-gold', prestigeAwards > 0);
+        prestigeTopBtn.classList.toggle('btn-ghost', prestigeAwards <= 0);
+        const toNext = LEVELS_PER_GOLDEN - (prestigeLevels % LEVELS_PER_GOLDEN);
+        const tip = prestigeAwards > 0
+            ? `Reset your run for ${prestigeAwards} Golden. About ${toNext} more upgrade levels earns another.`
+            : `Every ${LEVELS_PER_GOLDEN} total upgrade levels earns a Golden when you prestige. ${toNext} to go.`;
+        if (prestigeTopBtn.title !== tip) prestigeTopBtn.title = tip;
         prestigeTopBtn.disabled = false;
     }
     // CR section prestige button (mirror of top-left prestige button)
     const prestigeBtnCr = document.getElementById('prestigeBtnCr');
     if (prestigeBtnCr) {
         prestigeBtnCr.style.display = (numericLevel(upgrade12Level) >= 150) ? 'block' : 'none';
-        let totalLevelsForUI2 = 0;
-        for (let i = 1; i <= 23; i++) {
-            try { totalLevelsForUI2 += numericLevel(getUpgradeLevel(i)); } catch (e) { }
-        }
-        const potentialAwards2 = Math.floor(totalLevelsForUI2 / LEVELS_PER_GOLDEN);
-        // allow the CR-section prestige button to be clickable as well
+        if (prestigeBtnCr.innerHTML !== prestigeLabel) prestigeBtnCr.innerHTML = prestigeLabel;
         prestigeBtnCr.disabled = false;
     }
 
@@ -3008,28 +2918,10 @@ function updateDisplays() {
     if (Number(goldenWhat || 0) >= 1) divineUnlocked = true;
     const divineMenuBtn = document.getElementById('divineMenuBtn');
     const normalMenuBtn = document.getElementById('normalMenuBtn');
-    if (divineMenuBtn) divineMenuBtn.style.display = divineUnlocked ? 'inline-block' : 'none';
-    if (normalMenuBtn) normalMenuBtn.style.display = 'inline-block';
-    // shading to indicate active menu
-    if (normalMenuBtn) {
-        normalMenuBtn.style.background = divineMode ? '#222' : '#444';
-        normalMenuBtn.style.color = divineMode ? '#ccc' : '#fff';
-    }
-    if (divineMenuBtn) {
-        divineMenuBtn.style.background = divineMode ? '#444' : '#222';
-        divineMenuBtn.style.color = divineMode ? '#fff' : '#ccc';
-    }
-    // also update clone buttons inside divineLeftBar if present
-    const normalClone = document.getElementById('normalMenuBtn_clone');
-    const divineClone = document.getElementById('divineMenuBtn_clone');
-    if (normalClone) {
-        normalClone.style.background = divineMode ? '#222' : '#444';
-        normalClone.style.color = divineMode ? '#ccc' : '#fff';
-    }
-    if (divineClone) {
-        divineClone.style.background = divineMode ? '#444' : '#222';
-        divineClone.style.color = divineMode ? '#fff' : '#ccc';
-    }
+    if (divineMenuBtn) divineMenuBtn.style.display = divineUnlocked ? '' : 'none';
+    // highlight the active menu tab (both copies: the normal bar and the divine bar each have a pair)
+    for (const id of ['normalMenuBtn', 'normalMenuBtn_clone']) { const b = document.getElementById(id); if (b) b.classList.toggle('active', !divineMode); }
+    for (const id of ['divineMenuBtn', 'divineMenuBtn_clone']) { const b = document.getElementById(id); if (b) b.classList.toggle('active', !!divineMode); }
 
     // Divine Argonian button in divine menu (cost is in goldenWhat)
     const divineArgBtn = document.getElementById('divineArgonBtn');
@@ -3045,16 +2937,11 @@ function updateDisplays() {
             nextPercent = DIVINE_ARGON_BASE_PERCENT;
         }
         // build HTML label showing level, applied percent (if any), and next cost/percent
-        let html = '';
-        const imgHtml = `<img class="upgrade-img" src="mainimage/DivineArgonian.png" alt="Divine Argonian" height="40" width="40" style="vertical-align:middle;margin-right:8px;">`;
-        if (divineArgonLevel > 0) {
-            html = imgHtml + `<span class="upgrade-label">Divine Argonian — lvl ${divineArgonLevel} (+${formatNumber(appliedPercent)}% cps) — next: ${formatNumber(divineArgonCost)} golden (+${formatNumber(nextPercent)}% cps)</span>`;
-        } else {
-            html = imgHtml + `<span class="upgrade-label">Divine Argonian — cost: ${formatNumber(divineArgonCost)} golden (+${formatNumber(nextPercent)}% cps)</span>`;
-        }
-        divineArgBtn.innerHTML = html;
+        const imgHtml = `<img class="upgrade-img" src="mainimage/divineargonian.png" alt="" width="56" height="56">`;
+        const html = imgHtml + '<span class="upgrade-label">' + divineCardHtml('Divine Argonian', divineArgonLevel, `CPS +${formatNumber(appliedPercent)}% → +${formatNumber(nextPercent)}%`, divineArgonCost) + '</span>';
+        setHtmlIfChanged(divineArgBtn, html);
         // always show the divine button inside divine menu but disable if not affordable or locked
-        divineArgBtn.style.display = 'block';
+        divineArgBtn.style.display = '';
         try {
             const afford = !!goldenCanAfford(divineArgonCost);
             try { divineArgBtn.disabled = !afford; } catch (e) {}
@@ -3087,8 +2974,9 @@ function updateDisplays() {
             const mEl = document.getElementById('statsCritMultiplier');
             try {
                 const hasAssassin = (typeof divineAssassinLevel === 'number' && divineAssassinLevel > 0);
-                const chance = hasAssassin ? Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel) : 0;
-                const critMult = (hasAssassin ? (10 * Math.pow(2, Math.max(0, (typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0) - 1))) : 0);
+                const fb = getFollowerBonuses();
+                const chance = Math.min(1, (hasAssassin ? DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel : 0) + (fb.critChance || 0) / 100);
+                const critMult = chance > 0 ? 10 * Math.pow(2, (typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0)) * (1 + (fb.critDmg || 0) / 100) : 0;
                 if (cEl) cEl.innerText = `${(chance * 100).toFixed(2)}%`;
                 if (mEl) mEl.innerText = `x${formatNumber(critMult)}`;
             } catch (e) {
@@ -3118,1221 +3006,6 @@ function updateDisplays() {
         // apply equipped background as well
         try { applyEquippedBackground(); } catch (e) {}
     } catch (e) {}
-    // Special1: unlock when OP mouse reaches level 10
-    // Sections visibility: show section header when first special unlocks
-    const opSection = document.getElementById('opSection');
-    if (opSection) opSection.style.display = (upgrade1Level >= 10) ? 'block' : 'none';
-    const pirateSection = document.getElementById('pirateSection');
-    if (pirateSection) pirateSection.style.display = (upgrade2Level >= 10) ? 'block' : 'none';
-    const goonSection = document.getElementById('goonSection');
-    if (goonSection) goonSection.style.display = (upgrade3Level >= 10) ? 'block' : 'none';
-    const goatisSection = document.getElementById('goatisSection');
-    if (goatisSection) goatisSection.style.display = (numericLevel(upgrade18Level) >= 1) ? 'block' : 'none';
-    const scpSection = document.getElementById('scpSection');
-    if (scpSection) scpSection.style.display = (numericLevel(upgrade17Level) >= 1) ? 'block' : 'none';
-    const diddySection = document.getElementById('diddySection');
-    if (diddySection) diddySection.style.display = (upgrade4Level >= 1) ? 'block' : 'none';
-    // Argonian and Grape sections should be hidden until the corresponding upgrade is purchased (level >= 1)
-    const argonSection = document.getElementById('argonSection');
-    if (argonSection) argonSection.style.display = (upgrade5Level >= 1) ? 'block' : 'none';
-    const grapeSection = document.getElementById('grapeSection');
-    if (grapeSection) grapeSection.style.display = (upgrade6Level >= 1) ? 'block' : 'none';
-    const skippieSection = document.getElementById('skippieSection');
-    if (skippieSection) skippieSection.style.display = (upgrade7Level >= 1) ? 'block' : 'none';
-    const islandSection = document.getElementById('islandSection');
-    if (islandSection) islandSection.style.display = (upgrade8Level >= 1) ? 'block' : 'none';
-    const tribalSection = document.getElementById('tribalSection');
-    if (tribalSection) tribalSection.style.display = (upgrade9Level >= 1) ? 'block' : 'none';
-    const phonkSection = document.getElementById('phonkSection');
-    if (phonkSection) phonkSection.style.display = (upgrade10Level >= 1) ? 'block' : 'none';
-    const jonathanSection = document.getElementById('jonathanSection');
-    if (jonathanSection) jonathanSection.style.display = (upgrade11Level >= 10) ? 'block' : 'none';
-    const crSection = document.getElementById('crSection');
-    if (crSection) crSection.style.display = (numericLevel(upgrade12Level) >= 10) ? 'block' : 'none';
-
-    // Ropingnecurse specials: unlock based on ropingnecurse (upgrade13Level)
-    const ropingSection = document.getElementById('ropingSection');
-    if (ropingSection) ropingSection.style.display = (upgrade13Level >= 10) ? 'block' : 'none';
-
-    // Skibbidi Scimitar specials: unlock based on skibbidi scimitar (upgrade14Level)
-    const skibbidiSection = document.getElementById('skibbidiSection');
-    if (skibbidiSection) skibbidiSection.style.display = (upgrade14Level >= 10) ? 'block' : 'none';
-
-    // Ropingnecurse specials buttons: unlock and purchase state handling
-    const r1 = document.getElementById('roping1');
-    if (r1) {
-        if (!roping1Purchased && upgrade13Level >= 10) {
-            r1.style.display = 'block';
-            document.getElementById('roping1Cost').innerText = formatNumber(roping1Cost);
-            r1.disabled = !canAfford(roping1Cost);
-        } else if (roping1Purchased) {
-            r1.style.display = 'block';
-            r1.disabled = true;
-            r1.innerText = `Purchased — roping x${roping1Multiplier}`;
-        } else { r1.style.display = 'none'; }
-    }
-
-    const r2 = document.getElementById('roping2');
-    if (r2) {
-        if (!roping2Purchased && upgrade13Level >= 25) {
-            r2.style.display = 'block';
-            document.getElementById('roping2Cost').innerText = formatNumber(roping2Cost);
-            r2.disabled = !canAfford(roping2Cost);
-        } else if (roping2Purchased) {
-            r2.style.display = 'block';
-            r2.disabled = true;
-            r2.innerText = `Purchased — roping x${roping2Multiplier}`;
-        } else { r2.style.display = 'none'; }
-    }
-
-    const r3 = document.getElementById('roping3');
-    if (r3) {
-        if (!roping3Purchased && upgrade13Level >= 50) {
-            r3.style.display = 'block';
-            document.getElementById('roping3Cost').innerText = formatNumber(roping3Cost);
-            r3.disabled = !canAfford(roping3Cost);
-        } else if (roping3Purchased) {
-            r3.style.display = 'block';
-            r3.disabled = true;
-            r3.innerText = `Purchased — roping x${roping3Multiplier}`;
-        } else { r3.style.display = 'none'; }
-    }
-
-    const r4 = document.getElementById('roping4');
-    if (r4) {
-        if (!roping4Purchased && upgrade13Level >= 75) {
-            r4.style.display = 'block';
-            document.getElementById('roping4Cost').innerText = formatNumber(roping4Cost);
-            r4.disabled = !canAfford(roping4Cost);
-        } else if (roping4Purchased) {
-            r4.style.display = 'block';
-            r4.disabled = true;
-            r4.innerText = `Purchased — roping x${roping4Multiplier}`;
-        } else { r4.style.display = 'none'; }
-    }
-
-    const s1 = document.getElementById('skibidi1');
-    if (s1) {
-        if (!skibidi1Purchased && upgrade14Level >= 10) {
-            s1.style.display = 'block';
-            document.getElementById('skibidi1Cost').innerText = formatNumber(skibidi1Cost);
-            s1.disabled = !canAfford(skibidi1Cost);
-        } else if (skibidi1Purchased) {
-            s1.style.display = 'block';
-            s1.disabled = true;
-            s1.innerText = `Purchased — skibbidi x${skibidi1Multiplier}`;
-        } else { s1.style.display = 'none'; }
-    }
-
-    const s2 = document.getElementById('skibidi2');
-    if (s2) {
-        if (!skibidi2Purchased && upgrade14Level >= 25) {
-            s2.style.display = 'block';
-            document.getElementById('skibidi2Cost').innerText = formatNumber(skibidi2Cost);
-            s2.disabled = !canAfford(skibidi2Cost);
-        } else if (skibidi2Purchased) {
-            s2.style.display = 'block';
-            s2.disabled = true;
-            s2.innerText = `Purchased — skibbidi x${skibidi2Multiplier}`;
-        } else { s2.style.display = 'none'; }
-    }
-
-    const s3 = document.getElementById('skibidi3');
-    if (s3) {
-        if (!skibidi3Purchased && upgrade14Level >= 50) {
-            s3.style.display = 'block';
-            document.getElementById('skibidi3Cost').innerText = formatNumber(skibidi3Cost);
-            s3.disabled = !canAfford(skibidi3Cost);
-        } else if (skibidi3Purchased) {
-            s3.style.display = 'block';
-            s3.disabled = true;
-            s3.innerText = `Purchased — skibbidi x${skibidi3Multiplier}`;
-        } else { s3.style.display = 'none'; }
-    }
-
-    const s4 = document.getElementById('skibidi4');
-    if (s4) {
-        if (!skibidi4Purchased && upgrade14Level >= 75) {
-            s4.style.display = 'block';
-            document.getElementById('skibidi4Cost').innerText = formatNumber(skibidi4Cost);
-            s4.disabled = !canAfford(skibidi4Cost);
-        } else if (skibidi4Purchased) {
-            s4.style.display = 'block';
-            s4.disabled = true;
-            s4.innerText = `Purchased — skibbidi x${skibidi4Multiplier}`;
-        } else { s4.style.display = 'none'; }
-    }
-
-    // Beats specials UI handling
-    const b1 = document.getElementById('beats1');
-    if (b1) {
-        if (!beats1Purchased && upgrade15Level >= 10) {
-            b1.style.display = 'block';
-            document.getElementById('beats1Cost').innerText = formatNumber(beats1Cost);
-            b1.disabled = !canAfford(beats1Cost);
-        } else if (beats1Purchased) {
-            b1.style.display = 'block';
-            b1.disabled = true;
-            b1.innerText = `Purchased — beats x${beats1Multiplier}`;
-        } else { b1.style.display = 'none'; }
-    }
-
-    const b2 = document.getElementById('beats2');
-    if (b2) {
-        if (!beats2Purchased && upgrade15Level >= 25) {
-            b2.style.display = 'block';
-            document.getElementById('beats2Cost').innerText = formatNumber(beats2Cost);
-            b2.disabled = !canAfford(beats2Cost);
-        } else if (beats2Purchased) {
-            b2.style.display = 'block';
-            b2.disabled = true;
-            b2.innerText = `Purchased — beats x${beats2Multiplier}`;
-        } else { b2.style.display = 'none'; }
-    }
-
-    const b3 = document.getElementById('beats3');
-    if (b3) {
-        if (!beats3Purchased && upgrade15Level >= 50) {
-            b3.style.display = 'block';
-            document.getElementById('beats3Cost').innerText = formatNumber(beats3Cost);
-            b3.disabled = !canAfford(beats3Cost);
-        } else if (beats3Purchased) {
-            b3.style.display = 'block';
-            b3.disabled = true;
-            b3.innerText = `Purchased — beats x${beats3Multiplier}`;
-        } else { b3.style.display = 'none'; }
-    }
-
-    // EZ specials UI handling
-    const e1 = document.getElementById('ez1');
-    if (e1) {
-        if (!ez1Purchased && upgrade16Level >= 10) {
-            e1.style.display = 'block';
-            document.getElementById('ez1Cost').innerText = formatNumber(ez1Cost);
-            e1.disabled = !canAfford(ez1Cost);
-        } else if (ez1Purchased) {
-            e1.style.display = 'block';
-            e1.disabled = true;
-            e1.innerText = `Purchased — ez x${ez1Multiplier}`;
-        } else { e1.style.display = 'none'; }
-    }
-
-    const e2 = document.getElementById('ez2');
-    if (e2) {
-        if (!ez2Purchased && upgrade16Level >= 25) {
-            e2.style.display = 'block';
-            document.getElementById('ez2Cost').innerText = formatNumber(ez2Cost);
-            e2.disabled = !canAfford(ez2Cost);
-        } else if (ez2Purchased) {
-            e2.style.display = 'block';
-            e2.disabled = true;
-            e2.innerText = `Purchased — ez x${ez2Multiplier}`;
-        } else { e2.style.display = 'none'; }
-    }
-
-    const e3 = document.getElementById('ez3');
-    if (e3) {
-        if (!ez3Purchased && upgrade16Level >= 50) {
-            e3.style.display = 'block';
-            document.getElementById('ez3Cost').innerText = formatNumber(ez3Cost);
-            e3.disabled = !canAfford(ez3Cost);
-        } else if (ez3Purchased) {
-            e3.style.display = 'block';
-            e3.disabled = true;
-            e3.innerText = `Purchased — click power x${ez3Multiplier}`;
-        } else { e3.style.display = 'none'; }
-    }
-
-    const e4 = document.getElementById('ez4');
-    if (e4) {
-        if (!ez4Purchased && upgrade16Level >= 100) {
-            e4.style.display = 'block';
-            document.getElementById('ez4Cost').innerText = formatNumber(ez4Cost);
-            e4.disabled = !canAfford(ez4Cost);
-        } else if (ez4Purchased) {
-            e4.style.display = 'block';
-            e4.disabled = true;
-            e4.innerText = `Purchased — ez x${ez4Multiplier}`;
-        } else { e4.style.display = 'none'; }
-    }
-
-    // SCP specials: unlocks at SCP (upgrade17) levels 10/25/50/75
-    const scpBtn1 = document.getElementById('scp1');
-    if (scpBtn1) {
-        if (!scp1Purchased && upgrade17Level >= 10) {
-            scpBtn1.style.display = 'block';
-            document.getElementById('scp1Cost').innerText = formatNumber(scp1Cost);
-            scpBtn1.disabled = !canAfford(scp1Cost);
-        } else if (scp1Purchased) {
-            scpBtn1.style.display = 'block';
-            scpBtn1.disabled = true;
-            scpBtn1.innerText = `Purchased — other cps x2`;
-        } else { scpBtn1.style.display = 'none'; }
-    }
-
-    const scpBtn2 = document.getElementById('scp2');
-    if (scpBtn2) {
-        if (!scp2Purchased && upgrade17Level >= 25) {
-            scpBtn2.style.display = 'block';
-            document.getElementById('scp2Cost').innerText = formatNumber(scp2Cost);
-            scpBtn2.disabled = !canAfford(scp2Cost);
-        } else if (scp2Purchased) {
-            scpBtn2.style.display = 'block';
-            scpBtn2.disabled = true;
-            scpBtn2.innerText = `Purchased — other cps x2`;
-        } else { scpBtn2.style.display = 'none'; }
-    }
-
-    const scpBtn3 = document.getElementById('scp3');
-    if (scpBtn3) {
-        if (!scp3Purchased && upgrade17Level >= 50) {
-            scpBtn3.style.display = 'block';
-            document.getElementById('scp3Cost').innerText = formatNumber(scp3Cost);
-            scpBtn3.disabled = !canAfford(scp3Cost);
-        } else if (scp3Purchased) {
-            scpBtn3.style.display = 'block';
-            scpBtn3.disabled = true;
-            scpBtn3.innerText = `Purchased — other cps x2`;
-        } else { scpBtn3.style.display = 'none'; }
-    }
-
-    const scpBtn4 = document.getElementById('scp4');
-    if (scpBtn4) {
-        if (!scp4Purchased && upgrade17Level >= 75) {
-            scpBtn4.style.display = 'block';
-            document.getElementById('scp4Cost').innerText = formatNumber(scp4Cost);
-            scpBtn4.disabled = !canAfford(scp4Cost);
-        } else if (scp4Purchased) {
-            scpBtn4.style.display = 'block';
-            scpBtn4.disabled = true;
-            scpBtn4.innerText = `Purchased — total cps x2`;
-        } else { scpBtn4.style.display = 'none'; }
-    }
-
-    // The Goatis specials: unlocks at The Goatis (upgrade18) levels 10/25/50/100
-    const goatisBtn1 = document.getElementById('goatis1');
-    if (goatisBtn1) {
-        if (!goatis1Purchased && numericLevel(upgrade18Level) >= 10) {
-            goatisBtn1.style.display = 'block';
-            document.getElementById('goatis1Cost').innerText = formatNumber(goatis1Cost);
-            goatisBtn1.disabled = !canAfford(goatis1Cost);
-        } else if (goatis1Purchased) {
-            goatisBtn1.style.display = 'block';
-            goatisBtn1.disabled = true;
-            goatisBtn1.innerText = `Purchased — The Goatis cps x${goatis1Multiplier}`;
-        } else { goatisBtn1.style.display = 'none'; }
-    }
-
-    const goatisBtn2 = document.getElementById('goatis2');
-    if (goatisBtn2) {
-        if (!goatis2Purchased && numericLevel(upgrade18Level) >= 25) {
-            goatisBtn2.style.display = 'block';
-            document.getElementById('goatis2Cost').innerText = formatNumber(goatis2Cost);
-            goatisBtn2.disabled = !canAfford(goatis2Cost);
-        } else if (goatis2Purchased) {
-            goatisBtn2.style.display = 'block';
-            goatisBtn2.disabled = true;
-            goatisBtn2.innerText = `Purchased — The Goatis cps x${goatis2Multiplier}`;
-        } else { goatisBtn2.style.display = 'none'; }
-    }
-
-    const goatisBtn3 = document.getElementById('goatis3');
-    if (goatisBtn3) {
-        if (!goatis3Purchased && numericLevel(upgrade18Level) >= 50) {
-            goatisBtn3.style.display = 'block';
-            document.getElementById('goatis3Cost').innerText = formatNumber(goatis3Cost);
-            goatisBtn3.disabled = !canAfford(goatis3Cost);
-        } else if (goatis3Purchased) {
-            goatisBtn3.style.display = 'block';
-            goatisBtn3.disabled = true;
-            goatisBtn3.innerText = `Purchased — The Goatis cps x${goatis3Multiplier}`;
-        } else { goatisBtn3.style.display = 'none'; }
-    }
-
-    // The Landon Stream specials: unlocks at The Landon Stream (upgrade20) levels 10/25/50/100
-    const landonBtn1 = document.getElementById('landon1');
-    if (landonBtn1) {
-        if (!landon1Purchased && numericLevel(upgrade20Level) >= 10) {
-            landonBtn1.style.display = 'block';
-            document.getElementById('landon1Cost').innerText = formatNumber(landon1Cost);
-            landonBtn1.disabled = !canAfford(landon1Cost);
-        } else if (landon1Purchased) {
-            landonBtn1.style.display = 'block';
-            landonBtn1.disabled = true;
-            landonBtn1.innerText = `Purchased — The Landon Stream cps x${landon1Multiplier}`;
-        } else { landonBtn1.style.display = 'none'; }
-    }
-
-    const landonBtn2 = document.getElementById('landon2');
-    if (landonBtn2) {
-        if (!landon2Purchased && numericLevel(upgrade20Level) >= 25) {
-            landonBtn2.style.display = 'block';
-            document.getElementById('landon2Cost').innerText = formatNumber(landon2Cost);
-            landonBtn2.disabled = !canAfford(landon2Cost);
-        } else if (landon2Purchased) {
-            landonBtn2.style.display = 'block';
-            landonBtn2.disabled = true;
-            landonBtn2.innerText = `Purchased — The Landon Stream cps x${landon2Multiplier}`;
-        } else { landonBtn2.style.display = 'none'; }
-    }
-
-    const landonBtn3 = document.getElementById('landon3');
-    if (landonBtn3) {
-        if (!landon3Purchased && numericLevel(upgrade20Level) >= 50) {
-            landonBtn3.style.display = 'block';
-            document.getElementById('landon3Cost').innerText = formatNumber(landon3Cost);
-            landonBtn3.disabled = !canAfford(landon3Cost);
-        } else if (landon3Purchased) {
-            landonBtn3.style.display = 'block';
-            landonBtn3.disabled = true;
-            landonBtn3.innerText = `Purchased — The Landon Stream cps x${landon3Multiplier}`;
-        } else { landonBtn3.style.display = 'none'; }
-    }
-
-    const landonBtn4 = document.getElementById('landon4');
-    if (landonBtn4) {
-        if (!landon4Purchased && numericLevel(upgrade20Level) >= 100) {
-            landonBtn4.style.display = 'block';
-            document.getElementById('landon4Cost').innerText = formatNumber(landon4Cost);
-            landonBtn4.disabled = !canAfford(landon4Cost);
-        } else if (landon4Purchased) {
-            landonBtn4.style.display = 'block';
-            landonBtn4.disabled = true;
-            landonBtn4.innerText = `Purchased — The Landon Stream cps x${landon4Multiplier}`;
-        } else { landonBtn4.style.display = 'none'; }
-    }
-
-    // The Bass specials (upgrade21)
-    const theBassBtn1 = document.getElementById('theBass1');
-    if (theBassBtn1) {
-        if (!theBass1Purchased && numericLevel(upgrade21Level) >= 10) {
-            theBassBtn1.style.display = 'block';
-            document.getElementById('theBass1Cost').innerText = formatNumber(theBass1Cost);
-            theBassBtn1.disabled = !canAfford(theBass1Cost);
-        } else if (theBass1Purchased) {
-            theBassBtn1.style.display = 'block';
-            theBassBtn1.disabled = true;
-            theBassBtn1.innerText = `Purchased — The Bass cps x${theBass1Multiplier}`;
-        } else { theBassBtn1.style.display = 'none'; }
-    }
-
-    const theBassBtn2 = document.getElementById('theBass2');
-    if (theBassBtn2) {
-        if (!theBass2Purchased && numericLevel(upgrade21Level) >= 25) {
-            theBassBtn2.style.display = 'block';
-            document.getElementById('theBass2Cost').innerText = formatNumber(theBass2Cost);
-            theBassBtn2.disabled = !canAfford(theBass2Cost);
-        } else if (theBass2Purchased) {
-            theBassBtn2.style.display = 'block';
-            theBassBtn2.disabled = true;
-            theBassBtn2.innerText = `Purchased — The Bass cps x${theBass2Multiplier}`;
-        } else { theBassBtn2.style.display = 'none'; }
-    }
-
-    const theBassBtn3 = document.getElementById('theBass3');
-    if (theBassBtn3) {
-        if (!theBass3Purchased && numericLevel(upgrade21Level) >= 50) {
-            theBassBtn3.style.display = 'block';
-            document.getElementById('theBass3Cost').innerText = formatNumber(theBass3Cost);
-            theBassBtn3.disabled = !canAfford(theBass3Cost);
-        } else if (theBass3Purchased) {
-            theBassBtn3.style.display = 'block';
-            theBassBtn3.disabled = true;
-            theBassBtn3.innerText = `Purchased — The Bass cps x${theBass3Multiplier}`;
-        } else { theBassBtn3.style.display = 'none'; }
-    }
-
-    const theBassBtn4 = document.getElementById('theBass4');
-    if (theBassBtn4) {
-        if (!theBass4Purchased && numericLevel(upgrade21Level) >= 100) {
-            theBassBtn4.style.display = 'block';
-            document.getElementById('theBass4Cost').innerText = formatNumber(theBass4Cost);
-            theBassBtn4.disabled = !canAfford(theBass4Cost);
-        } else if (theBass4Purchased) {
-            theBassBtn4.style.display = 'block';
-            theBassBtn4.disabled = true;
-            theBassBtn4.innerText = `Purchased — The Bass cps x${theBass4Multiplier}`;
-        } else { theBassBtn4.style.display = 'none'; }
-    }
-
-    const goatisBtn4 = document.getElementById('goatis4');
-    if (goatisBtn4) {
-        if (!goatis4Purchased && numericLevel(upgrade18Level) >= 100) {
-            goatisBtn4.style.display = 'block';
-            document.getElementById('goatis4Cost').innerText = formatNumber(goatis4Cost);
-            goatisBtn4.disabled = !canAfford(goatis4Cost);
-        } else if (goatis4Purchased) {
-            goatisBtn4.style.display = 'block';
-            goatisBtn4.disabled = true;
-            goatisBtn4.innerText = `Purchased — The Goatis cps x${goatis4Multiplier}`;
-        } else { goatisBtn4.style.display = 'none'; }
-    }
-
-    // Raw liver specials (upgrade19)
-    const rawBtn1 = document.getElementById('raw1');
-    if (rawBtn1) {
-        if (!raw1Purchased && numericLevel(upgrade19Level) >= 10) {
-            rawBtn1.style.display = 'block';
-            document.getElementById('raw1Cost').innerText = formatNumber(raw1Cost);
-            rawBtn1.disabled = !canAfford(raw1Cost);
-        } else if (raw1Purchased) {
-            rawBtn1.style.display = 'block';
-            rawBtn1.disabled = true;
-            rawBtn1.innerText = `Purchased — raw cps x${raw1Multiplier}`;
-        } else { rawBtn1.style.display = 'none'; }
-    }
-
-    const rawBtn2 = document.getElementById('raw2');
-    if (rawBtn2) {
-        if (!raw2Purchased && numericLevel(upgrade19Level) >= 25) {
-            rawBtn2.style.display = 'block';
-            document.getElementById('raw2Cost').innerText = formatNumber(raw2Cost);
-            rawBtn2.disabled = !canAfford(raw2Cost);
-        } else if (raw2Purchased) {
-            rawBtn2.style.display = 'block';
-            rawBtn2.disabled = true;
-            rawBtn2.innerText = `Purchased — raw cps x${raw2Multiplier}`;
-        } else { rawBtn2.style.display = 'none'; }
-    }
-
-    const rawBtn3 = document.getElementById('raw3');
-    if (rawBtn3) {
-        if (!raw3Purchased && numericLevel(upgrade19Level) >= 50) {
-            rawBtn3.style.display = 'block';
-            document.getElementById('raw3Cost').innerText = formatNumber(raw3Cost);
-            rawBtn3.disabled = !canAfford(raw3Cost);
-        } else if (raw3Purchased) {
-            rawBtn3.style.display = 'block';
-            rawBtn3.disabled = true;
-            rawBtn3.innerText = `Purchased — raw cps x${raw3Multiplier}`;
-        } else { rawBtn3.style.display = 'none'; }
-    }
-
-    const rawBtn4 = document.getElementById('raw4');
-    if (rawBtn4) {
-        if (!raw4Purchased && numericLevel(upgrade19Level) >= 100) {
-            rawBtn4.style.display = 'block';
-            document.getElementById('raw4Cost').innerText = formatNumber(raw4Cost);
-            rawBtn4.disabled = !canAfford(raw4Cost);
-        } else if (raw4Purchased) {
-            rawBtn4.style.display = 'block';
-            rawBtn4.disabled = true;
-            rawBtn4.innerText = `Purchased — raw cps x${raw4Multiplier}`;
-        } else { rawBtn4.style.display = 'none'; }
-    }
-
-    const specialBtn1 = document.getElementById('special1');
-    if (!special1Purchased && upgrade1Level >= 10) {
-        specialBtn1.style.display = 'block';
-        document.getElementById('special1Cost').innerText = formatNumber(special1Cost);
-        specialBtn1.disabled = count < special1Cost;
-    } else if (special1Purchased) {
-        specialBtn1.style.display = 'block';
-        specialBtn1.disabled = true;
-        specialBtn1.innerText = `Purchased — click power x${special1Multiplier}`;
-    } else {
-        specialBtn1.style.display = 'none';
-    }
-
-    // ensure section toggle arrows reflect open/closed state
-    const opToggle = document.getElementById('opToggle');
-    if (opToggle && opSection) opToggle.innerText = opSection.classList && opSection.classList.contains('open') ? 'OP Specials ▴' : 'OP Specials ▾';
-
-    // Special2: unlock at OP mouse level 25 (x2 cps)
-    const specialBtn2 = document.getElementById('special2');
-    if (!special2Purchased && upgrade1Level >= 25) {
-        specialBtn2.style.display = 'block';
-        document.getElementById('special2Cost').innerText = formatNumber(special2Cost);
-        specialBtn2.disabled = count < special2Cost;
-    } else if (special2Purchased) {
-        specialBtn2.style.display = 'block';
-        specialBtn2.disabled = true;
-        specialBtn2.innerText = `Purchased — click power x${special2Multiplier}`;
-    } else {
-        specialBtn2.style.display = 'none';
-    }
-
-    // Special3: unlock at OP mouse level 50 (x2 cps)
-    const specialBtn3 = document.getElementById('special3');
-    if (!special3Purchased && upgrade1Level >= 50) {
-        specialBtn3.style.display = 'block';
-        document.getElementById('special3Cost').innerText = formatNumber(special3Cost);
-        specialBtn3.disabled = count < special3Cost;
-    } else if (special3Purchased) {
-        specialBtn3.style.display = 'block';
-        specialBtn3.disabled = true;
-        specialBtn3.innerText = `Purchased — click power x${special3Multiplier}`;
-    } else {
-        specialBtn3.style.display = 'none';
-    }
-
-    // Special4: unlock at OP mouse level 100 (x2.5 cps)
-    const specialBtn4 = document.getElementById('special4');
-    if (!special4Purchased && upgrade1Level >= 100) {
-        specialBtn4.style.display = 'block';
-        document.getElementById('special4Cost').innerText = formatNumber(special4Cost);
-        specialBtn4.disabled = count < special4Cost;
-    } else if (special4Purchased) {
-        specialBtn4.style.display = 'block';
-        specialBtn4.disabled = true;
-        specialBtn4.innerText = `Purchased — click power x${special4Multiplier}`;
-    } else {
-        specialBtn4.style.display = 'none';
-    }
-
-    // Special5: unlock at OP mouse level 150 (x3 cps)
-    const specialBtn5 = document.getElementById('special5');
-    if (!special5Purchased && upgrade1Level >= 150) {
-        specialBtn5.style.display = 'block';
-        document.getElementById('special5Cost').innerText = formatNumber(special5Cost);
-        specialBtn5.disabled = count < special5Cost;
-    } else if (special5Purchased) {
-        specialBtn5.style.display = 'block';
-        specialBtn5.disabled = true;
-        specialBtn5.innerText = `Purchased — click power x${special5Multiplier}`;
-    } else {
-        specialBtn5.style.display = 'none';
-    }
-
-    // Special6: unlock at OP mouse level 200 (x3.5 cps)
-    const specialBtn6 = document.getElementById('special6');
-    if (specialBtn6) {
-        if (!special6Purchased && upgrade1Level >= 200) {
-            specialBtn6.style.display = 'block';
-            document.getElementById('special6Cost').innerText = formatNumber(special6Cost);
-            specialBtn6.disabled = count < special6Cost;
-        } else if (special6Purchased) {
-            specialBtn6.style.display = 'block';
-            specialBtn6.disabled = true;
-            specialBtn6.innerText = `Purchased — click power x${special6Multiplier}`;
-        } else { specialBtn6.style.display = 'none'; }
-    }
-
-    // Special7: unlock at OP mouse level 250 (x3.5 cps)
-    const specialBtn7 = document.getElementById('special7');
-    if (specialBtn7) {
-        if (!special7Purchased && upgrade1Level >= 250) {
-            specialBtn7.style.display = 'block';
-            document.getElementById('special7Cost').innerText = formatNumber(special7Cost);
-            specialBtn7.disabled = count < special7Cost;
-        } else if (special7Purchased) {
-            specialBtn7.style.display = 'block';
-            specialBtn7.disabled = true;
-            specialBtn7.innerText = `Purchased — click power x${special7Multiplier}`;
-        } else { specialBtn7.style.display = 'none'; }
-    }
-
-    // Special8: unlock at OP mouse level 300 (x4 cps)
-    const specialBtn8 = document.getElementById('special8');
-    if (specialBtn8) {
-        if (!special8Purchased && upgrade1Level >= 300) {
-            specialBtn8.style.display = 'block';
-            document.getElementById('special8Cost').innerText = formatNumber(special8Cost);
-            specialBtn8.disabled = count < special8Cost;
-        } else if (special8Purchased) {
-            specialBtn8.style.display = 'block';
-            specialBtn8.disabled = true;
-            specialBtn8.innerText = `Purchased — click power x${special8Multiplier}`;
-        } else { specialBtn8.style.display = 'none'; }
-    }
-
-    // Pirate section arrow
-    const pirateToggle = document.getElementById('pirateToggle');
-    if (pirateToggle && pirateSection) pirateToggle.innerText = pirateSection.classList && pirateSection.classList.contains('open') ? 'Pirate Specials ▴' : 'Pirate Specials ▾';
-
-    // Pirate specials: unlock based on Somalian Pirate (upgrade2Level)
-    const pbtn1 = document.getElementById('pirate1');
-    if (!pirateSpec1Purchased && upgrade2Level >= 10) {
-        pbtn1.style.display = 'block';
-        document.getElementById('pirate1Cost').innerText = formatNumber(pirateSpec1Cost);
-        pbtn1.disabled = count < pirateSpec1Cost;
-    } else if (pirateSpec1Purchased) {
-        pbtn1.style.display = 'block';
-        pbtn1.disabled = true;
-        pbtn1.innerText = `Purchased — Pirate cps x${pirateSpec1Multiplier}`;
-    } else { pbtn1.style.display = 'none'; }
-
-    const pbtn2 = document.getElementById('pirate2');
-    if (!pirateSpec2Purchased && upgrade2Level >= 25) {
-        pbtn2.style.display = 'block';
-        document.getElementById('pirate2Cost').innerText = formatNumber(pirateSpec2Cost);
-        pbtn2.disabled = count < pirateSpec2Cost;
-    } else if (pirateSpec2Purchased) {
-        pbtn2.style.display = 'block';
-        pbtn2.disabled = true;
-        pbtn2.innerText = `Purchased — Pirate cps x${pirateSpec2Multiplier}`;
-    } else { pbtn2.style.display = 'none'; }
-
-    const pbtn3 = document.getElementById('pirate3');
-    if (!pirateSpec3Purchased && upgrade2Level >= 50) {
-        pbtn3.style.display = 'block';
-        document.getElementById('pirate3Cost').innerText = formatNumber(pirateSpec3Cost);
-        pbtn3.disabled = count < pirateSpec3Cost;
-    } else if (pirateSpec3Purchased) {
-        pbtn3.style.display = 'block';
-        pbtn3.disabled = true;
-        pbtn3.innerText = `Purchased — Pirate cps x${pirateSpec3Multiplier}`;
-    } else { pbtn3.style.display = 'none'; }
-
-    const pbtn4 = document.getElementById('pirate4');
-    if (!pirateSpec4Purchased && upgrade2Level >= 100) {
-        pbtn4.style.display = 'block';
-        document.getElementById('pirate4Cost').innerText = formatNumber(pirateSpec4Cost);
-        pbtn4.disabled = count < pirateSpec4Cost;
-    } else if (pirateSpec4Purchased) {
-        pbtn4.style.display = 'block';
-        pbtn4.disabled = true;
-        pbtn4.innerText = `Purchased — Pirate cps x${pirateSpec4Multiplier}`;
-    } else { pbtn4.style.display = 'none'; }
-
-    // ensure pirate section content arrow reflects state (handled after pirate buttons)
-
-    // Goonsaw specials: unlock based on Goonsaw (upgrade3Level)
-    const gbtn1 = document.getElementById('goon1');
-    if (!goonSpec1Purchased && upgrade3Level >= 10) {
-        gbtn1.style.display = 'block';
-        document.getElementById('goon1Cost').innerText = formatNumber(goonSpec1Cost);
-        gbtn1.disabled = count < goonSpec1Cost;
-    } else if (goonSpec1Purchased) {
-        gbtn1.style.display = 'block';
-        gbtn1.disabled = true;
-        gbtn1.innerText = `Purchased — Goonsaw cps x${goonSpec1Multiplier}`;
-    } else { gbtn1.style.display = 'none'; }
-
-    const gbtn2 = document.getElementById('goon2');
-    if (!goonSpec2Purchased && upgrade3Level >= 25) {
-        gbtn2.style.display = 'block';
-        document.getElementById('goon2Cost').innerText = formatNumber(goonSpec2Cost);
-        gbtn2.disabled = count < goonSpec2Cost;
-    } else if (goonSpec2Purchased) {
-        gbtn2.style.display = 'block';
-        gbtn2.disabled = true;
-        gbtn2.innerText = `Purchased — Goonsaw cps x${goonSpec2Multiplier}`;
-    } else { gbtn2.style.display = 'none'; }
-
-    const gbtn3 = document.getElementById('goon3');
-    if (!goonSpec3Purchased && upgrade3Level >= 50) {
-        gbtn3.style.display = 'block';
-        document.getElementById('goon3Cost').innerText = formatNumber(goonSpec3Cost);
-        gbtn3.disabled = count < goonSpec3Cost;
-    } else if (goonSpec3Purchased) {
-        gbtn3.style.display = 'block';
-        gbtn3.disabled = true;
-        gbtn3.innerText = `Purchased — Goonsaw cps x${goonSpec3Multiplier}`;
-    } else { gbtn3.style.display = 'none'; }
-
-    const gbtn4 = document.getElementById('goon4');
-    if (!goonSpec4Purchased && upgrade3Level >= 100) {
-        gbtn4.style.display = 'block';
-        document.getElementById('goon4Cost').innerText = formatNumber(goonSpec4Cost);
-        gbtn4.disabled = count < goonSpec4Cost;
-    } else if (goonSpec4Purchased) {
-        gbtn4.style.display = 'block';
-        gbtn4.disabled = true;
-        gbtn4.innerText = `Purchased — Goonsaw cps x${goonSpec4Multiplier}`;
-    } else { gbtn4.style.display = 'none'; }
-
-    const goonToggle = document.getElementById('goonToggle');
-    if (goonToggle && goonSection) goonToggle.innerText = goonSection.classList && goonSection.classList.contains('open') ? 'Goonsaw Specials ▴' : 'Goonsaw Specials ▾';
-
-    // Diddy Blud specials: unlock based on Diddy (upgrade4Level)
-    var diddyLevel = upgrade4Level;
-    const dbtn1 = document.getElementById('diddy1');
-    if (!diddy1Purchased && diddyLevel >= 10) {
-        dbtn1.style.display = 'block';
-        document.getElementById('diddy1Cost').innerText = formatNumber(diddy1Cost);
-        dbtn1.disabled = count < diddy1Cost;
-    } else if (diddy1Purchased) {
-        dbtn1.style.display = 'block';
-        dbtn1.disabled = true;
-        dbtn1.innerText = `Purchased — Diddy +50 cps`;
-    } else { dbtn1.style.display = 'none'; }
-
-    const dbtn2 = document.getElementById('diddy2');
-    if (!diddy2Purchased && diddyLevel >= 25) {
-        dbtn2.style.display = 'block';
-        document.getElementById('diddy2Cost').innerText = formatNumber(diddy2Cost);
-        dbtn2.disabled = count < diddy2Cost;
-    } else if (diddy2Purchased) {
-        dbtn2.style.display = 'block';
-        dbtn2.disabled = true;
-        dbtn2.innerText = `Purchased — other cps x2`;
-    } else { dbtn2.style.display = 'none'; }
-
-    const dbtn3 = document.getElementById('diddy3');
-    if (!diddy3Purchased && diddyLevel >= 50) {
-        dbtn3.style.display = 'block';
-        document.getElementById('diddy3Cost').innerText = formatNumber(diddy3Cost);
-        dbtn3.disabled = count < diddy3Cost;
-    } else if (diddy3Purchased) {
-        dbtn3.style.display = 'block';
-        dbtn3.disabled = true;
-        dbtn3.innerText = `Purchased — click power x1.5`;
-    } else { dbtn3.style.display = 'none'; }
-
-    const dbtn4 = document.getElementById('diddy4');
-    if (!diddy4Purchased && diddyLevel >= 100) {
-        dbtn4.style.display = 'block';
-        document.getElementById('diddy4Cost').innerText = formatNumber(diddy4Cost);
-        dbtn4.disabled = count < diddy4Cost;
-    } else if (diddy4Purchased) {
-        dbtn4.style.display = 'block';
-        dbtn4.disabled = true;
-        dbtn4.innerText = `Purchased — total cps x1.25`;
-    } else { dbtn4.style.display = 'none'; }
-
-    const diddyToggle = document.getElementById('diddyToggle');
-    if (diddyToggle && diddySection) diddyToggle.innerText = diddySection.classList && diddySection.classList.contains('open') ? 'Diddy Blud Specials ▴' : 'Diddy Blud Specials ▾';
-
-    // Argonian specials: unlock based on Argonian (upgrade5Level)
-    const argonLevel = upgrade5Level;
-    const abtn1 = document.getElementById('argon1');
-    if (!argon1Purchased && argonLevel >= 10) {
-        abtn1.style.display = 'block';
-        document.getElementById('argon1Cost').innerText = formatNumber(argon1Cost);
-        abtn1.disabled = count < argon1Cost;
-    } else if (argon1Purchased) {
-        abtn1.style.display = 'block';
-        abtn1.disabled = true;
-        abtn1.innerText = `Purchased — click power x${argon1Multiplier}`;
-    } else { abtn1.style.display = 'none'; }
-
-    const abtn2 = document.getElementById('argon2');
-    if (!argon2Purchased && argonLevel >= 25) {
-        abtn2.style.display = 'block';
-        document.getElementById('argon2Cost').innerText = formatNumber(argon2Cost);
-        abtn2.disabled = count < argon2Cost;
-    } else if (argon2Purchased) {
-        abtn2.style.display = 'block';
-        abtn2.disabled = true;
-        abtn2.innerText = `Purchased — other cps x${argon2Multiplier}`;
-    } else { abtn2.style.display = 'none'; }
-
-    const abtn3 = document.getElementById('argon3');
-    if (!argon3Purchased && argonLevel >= 50) {
-        abtn3.style.display = 'block';
-        document.getElementById('argon3Cost').innerText = formatNumber(argon3Cost);
-        abtn3.disabled = count < argon3Cost;
-    } else if (argon3Purchased) {
-        abtn3.style.display = 'block';
-        abtn3.disabled = true;
-        abtn3.innerText = `Purchased — click power x${argon3Multiplier}`;
-    } else { abtn3.style.display = 'none'; }
-
-    const abtn4 = document.getElementById('argon4');
-    if (!argon4Purchased && argonLevel >= 100) {
-        abtn4.style.display = 'block';
-        document.getElementById('argon4Cost').innerText = formatNumber(argon4Cost);
-        abtn4.disabled = count < argon4Cost;
-    } else if (argon4Purchased) {
-        abtn4.style.display = 'block';
-        abtn4.disabled = true;
-        abtn4.innerText = `Purchased — total cps x${argon4Multiplier}`;
-    } else { abtn4.style.display = 'none'; }
-
-    const argonToggle = document.getElementById('argonToggle');
-    if (argonToggle && argonSection) argonToggle.innerText = argonSection.classList && argonSection.classList.contains('open') ? 'Argonian Specials ▴' : 'Argonian Specials ▾';
-
-    // Grape specials: unlock based on Grape (upgrade6Level)
-    const grapeLevel = upgrade6Level;
-    const grbtn1 = document.getElementById('grape1');
-    if (!grape1Purchased && grapeLevel >= 1) {
-        grbtn1.style.display = 'block';
-        document.getElementById('grape1Cost').innerText = formatNumber(grape1Cost);
-        grbtn1.disabled = count < grape1Cost;
-    } else if (grape1Purchased) {
-        grbtn1.style.display = 'block';
-        grbtn1.disabled = true;
-        grbtn1.innerText = `Purchased — +1000 other cps`;
-    } else { grbtn1.style.display = 'none'; }
-
-    const grbtn2 = document.getElementById('grape2');
-    if (!grape2Purchased && grapeLevel >= 5) {
-        grbtn2.style.display = 'block';
-        document.getElementById('grape2Cost').innerText = formatNumber(grape2Cost);
-        grbtn2.disabled = count < grape2Cost;
-    } else if (grape2Purchased) {
-        grbtn2.style.display = 'block';
-        grbtn2.disabled = true;
-        grbtn2.innerText = `Purchased — other cps x${grape2Multiplier}`;
-    } else { grbtn2.style.display = 'none'; }
-
-    const grbtn3 = document.getElementById('grape3');
-    if (!grape3Purchased && grapeLevel >= 10) {
-        grbtn3.style.display = 'block';
-        document.getElementById('grape3Cost').innerText = formatNumber(grape3Cost);
-        grbtn3.disabled = count < grape3Cost;
-    } else if (grape3Purchased) {
-        grbtn3.style.display = 'block';
-        grbtn3.disabled = true;
-        grbtn3.innerText = `Purchased — click power x${grape3Multiplier}`;
-    } else { grbtn3.style.display = 'none'; }
-
-    const grbtn4 = document.getElementById('grape4');
-    if (!grape4Purchased && grapeLevel >= 20) {
-        grbtn4.style.display = 'block';
-        document.getElementById('grape4Cost').innerText = formatNumber(grape4Cost);
-        grbtn4.disabled = count < grape4Cost;
-    } else if (grape4Purchased) {
-        grbtn4.style.display = 'block';
-        grbtn4.disabled = true;
-        grbtn4.innerText = `Purchased — total cps x${grape4Multiplier}`;
-    } else { grbtn4.style.display = 'none'; }
-
-    // Skippie specials: unlock based on Skippie (upgrade7Level)
-    const sbtn1 = document.getElementById('skippie1');
-    if (!skippie1Purchased && upgrade7Level >= 10) {
-        sbtn1.style.display = 'block';
-        document.getElementById('skippie1Cost').innerText = formatNumber(skippie1Cost);
-        sbtn1.disabled = count < skippie1Cost;
-    } else if (skippie1Purchased) {
-        sbtn1.style.display = 'block';
-        sbtn1.disabled = true;
-        sbtn1.innerText = `Purchased — +5000 other cps`;
-    } else { sbtn1.style.display = 'none'; }
-
-    const sbtn2 = document.getElementById('skippie2');
-    if (!skippie2Purchased && upgrade7Level >= 25) {
-        sbtn2.style.display = 'block';
-        document.getElementById('skippie2Cost').innerText = formatNumber(skippie2Cost);
-        sbtn2.disabled = count < skippie2Cost;
-    } else if (skippie2Purchased) {
-        sbtn2.style.display = 'block';
-        sbtn2.disabled = true;
-        sbtn2.innerText = `Purchased — other cps x${skippie2Multiplier}`;
-    } else { sbtn2.style.display = 'none'; }
-
-    const sbtn3 = document.getElementById('skippie3');
-    if (!skippie3Purchased && upgrade7Level >= 50) {
-        sbtn3.style.display = 'block';
-        document.getElementById('skippie3Cost').innerText = formatNumber(skippie3Cost);
-        sbtn3.disabled = count < skippie3Cost;
-    } else if (skippie3Purchased) {
-        sbtn3.style.display = 'block';
-        sbtn3.disabled = true;
-        sbtn3.innerText = `Purchased — click power x${skippie3Multiplier}`;
-    } else { sbtn3.style.display = 'none'; }
-
-    const sbtn4 = document.getElementById('skippie4');
-    if (!skippie4Purchased && upgrade7Level >= 100) {
-        sbtn4.style.display = 'block';
-        document.getElementById('skippie4Cost').innerText = formatNumber(skippie4Cost);
-        sbtn4.disabled = count < skippie4Cost;
-    } else if (skippie4Purchased) {
-        sbtn4.style.display = 'block';
-        sbtn4.disabled = true;
-        sbtn4.innerText = `Purchased — total cps x${skippie4Multiplier}`;
-    } else { sbtn4.style.display = 'none'; }
-
-    // Island specials: unlock based on Mysterious Island (upgrade8Level)
-    const ibtn1 = document.getElementById('island1');
-    if (!island1Purchased && upgrade8Level >= 10) {
-        ibtn1.style.display = 'block';
-        document.getElementById('island1Cost').innerText = formatNumber(island1Cost);
-        ibtn1.disabled = count < island1Cost;
-    } else if (island1Purchased) {
-        ibtn1.style.display = 'block';
-        ibtn1.disabled = true;
-        ibtn1.innerText = `Purchased — +50000 other cps`;
-    } else { ibtn1.style.display = 'none'; }
-
-    const ibtn2 = document.getElementById('island2');
-    if (!island2Purchased && upgrade8Level >= 25) {
-        ibtn2.style.display = 'block';
-        document.getElementById('island2Cost').innerText = formatNumber(island2Cost);
-        ibtn2.disabled = count < island2Cost;
-    } else if (island2Purchased) {
-        ibtn2.style.display = 'block';
-        ibtn2.disabled = true;
-        ibtn2.innerText = `Purchased — other cps x${island2Multiplier}`;
-    } else { ibtn2.style.display = 'none'; }
-
-    const ibtn3 = document.getElementById('island3');
-    if (!island3Purchased && upgrade8Level >= 50) {
-        ibtn3.style.display = 'block';
-        document.getElementById('island3Cost').innerText = formatNumber(island3Cost);
-        ibtn3.disabled = count < island3Cost;
-    } else if (island3Purchased) {
-        ibtn3.style.display = 'block';
-        ibtn3.disabled = true;
-        ibtn3.innerText = `Purchased — click power x${island3Multiplier}`;
-    } else { ibtn3.style.display = 'none'; }
-
-    const ibtn4 = document.getElementById('island4');
-    if (!island4Purchased && upgrade8Level >= 100) {
-        ibtn4.style.display = 'block';
-        document.getElementById('island4Cost').innerText = formatNumber(island4Cost);
-        ibtn4.disabled = count < island4Cost;
-    } else if (island4Purchased) {
-        ibtn4.style.display = 'block';
-        ibtn4.disabled = true;
-        ibtn4.innerText = `Purchased — total cps x${island4Multiplier}`;
-    } else { ibtn4.style.display = 'none'; }
-
-    // Phonk specials: unlock based on Phonk Man (upgrade10Level)
-    const p1 = document.getElementById('phonk1');
-    if (p1) {
-        const c1 = (typeof phonk1Cost !== 'undefined' && Number(phonk1Cost)) ? Number(phonk1Cost) : Number((document.getElementById('phonk1Cost')||{}).innerText.replace(/[^0-9]/g,'')) || 10000000;
-        if (!phonk1Purchased && upgrade10Level >= 10) {
-            p1.style.display = 'block';
-            document.getElementById('phonk1Cost').innerText = formatNumber(c1);
-            p1.disabled = count < c1;
-        } else if (phonk1Purchased) {
-            p1.style.display = 'block';
-            p1.disabled = true;
-            p1.innerText = `Purchased — total cps x${phonk1Multiplier}`;
-        } else { p1.style.display = 'none'; }
-    }
-
-    const p2 = document.getElementById('phonk2');
-    if (p2) {
-        const c2 = (typeof phonk2Cost !== 'undefined' && Number(phonk2Cost)) ? Number(phonk2Cost) : Number((document.getElementById('phonk2Cost')||{}).innerText.replace(/[^0-9]/g,'')) || 40000000;
-        if (!phonk2Purchased && upgrade10Level >= 25) {
-            p2.style.display = 'block';
-            document.getElementById('phonk2Cost').innerText = formatNumber(c2);
-            p2.disabled = count < c2;
-        } else if (phonk2Purchased) {
-            p2.style.display = 'block';
-            p2.disabled = true;
-            p2.innerText = `Purchased — total cps x${phonk2Multiplier}`;
-        } else { p2.style.display = 'none'; }
-    }
-
-    const p3 = document.getElementById('phonk3');
-    if (p3) {
-        const c3 = (typeof phonk3Cost !== 'undefined' && Number(phonk3Cost)) ? Number(phonk3Cost) : Number((document.getElementById('phonk3Cost')||{}).innerText.replace(/[^0-9]/g,'')) || 200000000;
-        if (!phonk3Purchased && upgrade10Level >= 50) {
-            p3.style.display = 'block';
-            document.getElementById('phonk3Cost').innerText = formatNumber(c3);
-            p3.disabled = count < c3;
-        } else if (phonk3Purchased) {
-            p3.style.display = 'block';
-            p3.disabled = true;
-            p3.innerText = `Purchased — total cps x${phonk3Multiplier}`;
-        } else { p3.style.display = 'none'; }
-    }
-
-    const p4 = document.getElementById('phonk4');
-    if (p4) {
-        const c4 = (typeof phonk4Cost !== 'undefined' && Number(phonk4Cost)) ? Number(phonk4Cost) : Number((document.getElementById('phonk4Cost')||{}).innerText.replace(/[^0-9]/g,'')) || 1000000000;
-        if (!phonk4Purchased && upgrade10Level >= 75) {
-            p4.style.display = 'block';
-            document.getElementById('phonk4Cost').innerText = formatNumber(c4);
-            p4.disabled = count < c4;
-        } else if (phonk4Purchased) {
-            p4.style.display = 'block';
-            p4.disabled = true;
-            p4.innerText = `Purchased — Phonk cps x${phonk4Multiplier}`;
-        } else { p4.style.display = 'none'; }
-    }
-
-    const p5 = document.getElementById('phonk5');
-    if (p5) {
-        const c5 = (typeof phonk5Cost !== 'undefined' && Number(phonk5Cost)) ? Number(phonk5Cost) : Number((document.getElementById('phonk5Cost')||{}).innerText.replace(/[^0-9]/g,'')) || 5000000000;
-        if (!phonk5Purchased && upgrade10Level >= 100) {
-            p5.style.display = 'block';
-            document.getElementById('phonk5Cost').innerText = formatNumber(c5);
-            p5.disabled = count < c5;
-        } else if (phonk5Purchased) {
-            p5.style.display = 'block';
-            p5.disabled = true;
-            p5.innerText = `Purchased — total cps x${phonk5Multiplier}`;
-        } else { p5.style.display = 'none'; }
-    }
-
-    // Jonathan specials: unlock based on Jonathan (upgrade11Level)
-    const j1 = document.getElementById('jonathan1');
-    if (j1) {
-        const jc1 = (typeof jonathan1Cost !== 'undefined') ? Number(jonathan1Cost) : 100000000;
-        if (!jonathan1Purchased && upgrade11Level >= 10) {
-            j1.style.display = 'block';
-            document.getElementById('jonathan1Cost').innerText = formatNumber(jc1);
-            j1.disabled = count < jc1;
-        } else if (jonathan1Purchased) {
-            j1.style.display = 'block';
-            j1.disabled = true;
-            j1.innerText = `Purchased — Jonathan cps x${jonathan1Multiplier}`;
-        } else { j1.style.display = 'none'; }
-    }
-
-    const j2 = document.getElementById('jonathan2');
-    if (j2) {
-        const jc2 = (typeof jonathan2Cost !== 'undefined') ? Number(jonathan2Cost) : 400000000;
-        if (!jonathan2Purchased && upgrade11Level >= 25) {
-            j2.style.display = 'block';
-            document.getElementById('jonathan2Cost').innerText = formatNumber(jc2);
-            j2.disabled = count < jc2;
-        } else if (jonathan2Purchased) {
-            j2.style.display = 'block';
-            j2.disabled = true;
-            j2.innerText = `Purchased — Jonathan cps x${jonathan2Multiplier}`;
-        } else { j2.style.display = 'none'; }
-    }
-
-    const j3 = document.getElementById('jonathan3');
-    if (j3) {
-        const jc3 = (typeof jonathan3Cost !== 'undefined') ? Number(jonathan3Cost) : 2000000000;
-        if (!jonathan3Purchased && upgrade11Level >= 50) {
-            j3.style.display = 'block';
-            document.getElementById('jonathan3Cost').innerText = formatNumber(jc3);
-            j3.disabled = count < jc3;
-        } else if (jonathan3Purchased) {
-            j3.style.display = 'block';
-            j3.disabled = true;
-            j3.innerText = `Purchased — click power x${jonathan3Multiplier}`;
-        } else { j3.style.display = 'none'; }
-    }
-
-    const j4 = document.getElementById('jonathan4');
-    if (j4) {
-        const jc4 = (typeof jonathan4Cost !== 'undefined') ? Number(jonathan4Cost) : 10000000000;
-        if (!jonathan4Purchased && upgrade11Level >= 75) {
-            j4.style.display = 'block';
-            document.getElementById('jonathan4Cost').innerText = formatNumber(jc4);
-            j4.disabled = count < jc4;
-        } else if (jonathan4Purchased) {
-            j4.style.display = 'block';
-            j4.disabled = true;
-            j4.innerText = `Purchased — Jonathan cps x${jonathan4Multiplier}`;
-        } else { j4.style.display = 'none'; }
-    }
-
-    // CR Lurker specials: unlock based on CR (upgrade12Level)
-    const c1 = document.getElementById('cr1');
-    if (c1) {
-        const cc1 = (typeof cr1Cost !== 'undefined') ? Number(cr1Cost) : 200000000;
-        if (!cr1Purchased && numericLevel(upgrade12Level) >= 10) {
-            c1.style.display = 'block';
-            document.getElementById('cr1Cost').innerText = formatNumber(cc1);
-            c1.disabled = count < cc1;
-        } else if (cr1Purchased) {
-            c1.style.display = 'block';
-            c1.disabled = true;
-            c1.innerText = `Purchased — CR cps x${cr1Multiplier}`;
-        } else { c1.style.display = 'none'; }
-    }
-
-    const c2 = document.getElementById('cr2');
-    if (c2) {
-        const cc2 = (typeof cr2Cost !== 'undefined') ? Number(cr2Cost) : 800000000;
-        if (!cr2Purchased && numericLevel(upgrade12Level) >= 25) {
-            c2.style.display = 'block';
-            document.getElementById('cr2Cost').innerText = formatNumber(cc2);
-            c2.disabled = count < cc2;
-        } else if (cr2Purchased) {
-            c2.style.display = 'block';
-            c2.disabled = true;
-            c2.innerText = `Purchased — CR cps x${cr2Multiplier}`;
-        } else { c2.style.display = 'none'; }
-    }
-
-    const c3 = document.getElementById('cr3');
-    if (c3) {
-        const cc3 = (typeof cr3Cost !== 'undefined') ? Number(cr3Cost) : 3000000000;
-        if (!cr3Purchased && numericLevel(upgrade12Level) >= 50) {
-            c3.style.display = 'block';
-            document.getElementById('cr3Cost').innerText = formatNumber(cc3);
-            c3.disabled = count < cc3;
-        } else if (cr3Purchased) {
-            c3.style.display = 'block';
-            c3.disabled = true;
-            c3.innerText = `Purchased — click power x${cr3Multiplier}`;
-        } else { c3.style.display = 'none'; }
-    }
-
-    const c4 = document.getElementById('cr4');
-    if (c4) {
-        const cc4 = (typeof cr4Cost !== 'undefined') ? Number(cr4Cost) : 10000000000;
-        if (!cr4Purchased && numericLevel(upgrade12Level) >= 75) {
-            c4.style.display = 'block';
-            document.getElementById('cr4Cost').innerText = formatNumber(cc4);
-            c4.disabled = count < cc4;
-        } else if (cr4Purchased) {
-            c4.style.display = 'block';
-            c4.disabled = true;
-            c4.innerText = `Purchased — CR cps x${cr4Multiplier}`;
-        } else { c4.style.display = 'none'; }
-    }
-
-    const c5 = document.getElementById('cr5');
-    if (c5) {
-        const cc5 = (typeof cr5Cost !== 'undefined') ? Number(cr5Cost) : 30000000000;
-        if (!cr5Purchased && numericLevel(upgrade12Level) >= 100) {
-            c5.style.display = 'block';
-            document.getElementById('cr5Cost').innerText = formatNumber(cc5);
-            c5.disabled = count < cc5;
-        } else if (cr5Purchased) {
-            c5.style.display = 'block';
-            c5.disabled = true;
-            c5.innerText = `Purchased — total cps x${cr5Multiplier}`;
-        } else { c5.style.display = 'none'; }
-    }
-
-    // Tribal specials: unlock based on Tribal (upgrade9Level)
-    const tbtn1 = document.getElementById('tribal1');
-    if (tbtn1) {
-        if (!tribal1Purchased && upgrade9Level >= 10) {
-            tbtn1.style.display = 'block';
-            document.getElementById('tribal1Cost').innerText = formatNumber(tribal1Cost);
-            tbtn1.disabled = count < tribal1Cost;
-        } else if (tribal1Purchased) {
-            tbtn1.style.display = 'block';
-            tbtn1.disabled = true;
-            tbtn1.innerText = `Purchased — +200000 other cps`;
-        } else { tbtn1.style.display = 'none'; }
-    }
-
-    const tbtn2 = document.getElementById('tribal2');
-    if (tbtn2) {
-        if (!tribal2Purchased && upgrade9Level >= 25) {
-            tbtn2.style.display = 'block';
-            document.getElementById('tribal2Cost').innerText = formatNumber(tribal2Cost);
-            tbtn2.disabled = count < tribal2Cost;
-        } else if (tribal2Purchased) {
-            tbtn2.style.display = 'block';
-            tbtn2.disabled = true;
-            tbtn2.innerText = `Purchased — other cps x${tribal2Multiplier}`;
-        } else { tbtn2.style.display = 'none'; }
-    }
-
-    const tbtn3 = document.getElementById('tribal3');
-    if (tbtn3) {
-        if (!tribal3Purchased && upgrade9Level >= 50) {
-            tbtn3.style.display = 'block';
-            document.getElementById('tribal3Cost').innerText = formatNumber(tribal3Cost);
-            tbtn3.disabled = count < tribal3Cost;
-        } else if (tribal3Purchased) {
-            tbtn3.style.display = 'block';
-            tbtn3.disabled = true;
-            tbtn3.innerText = `Purchased — click power x${tribal3Multiplier}`;
-        } else { tbtn3.style.display = 'none'; }
-    }
-
-    const tbtn4 = document.getElementById('tribal4');
-    if (tbtn4) {
-        if (!tribal4Purchased && upgrade9Level >= 100) {
-            tbtn4.style.display = 'block';
-            document.getElementById('tribal4Cost').innerText = formatNumber(tribal4Cost);
-            tbtn4.disabled = count < tribal4Cost;
-        } else if (tribal4Purchased) {
-            tbtn4.style.display = 'block';
-            tbtn4.disabled = true;
-            tbtn4.innerText = `Purchased — total cps x${tribal4Multiplier}`;
-        } else { tbtn4.style.display = 'none'; }
-    }
-
-    const grapeToggle = document.getElementById('grapeToggle');
-    if (grapeToggle && grapeSection) grapeToggle.innerText = grapeSection.classList && grapeSection.classList.contains('open') ? 'Grape God Specials ▴' : 'Grape God Specials ▾';
-    const skippieToggle = document.getElementById('skippieToggle');
-    if (skippieToggle && skippieSection) skippieToggle.innerText = skippieSection.classList && skippieSection.classList.contains('open') ? 'Skippie Toilet Specials ▴' : 'Skippie Toilet Specials ▾';
-    const islandToggle = document.getElementById('islandToggle');
-    if (islandToggle) islandToggle.innerText = (typeof islandSection !== 'undefined' && islandSection && islandSection.classList && islandSection.classList.contains('open')) ? 'Mysterious Island Specials ▴' : 'Mysterious Island Specials ▾';
-    const tribalToggle = document.getElementById('tribalToggle');
-    if (tribalToggle) tribalToggle.innerText = (typeof tribalSection !== 'undefined' && tribalSection && tribalSection.classList && tribalSection.classList.contains('open')) ? 'Tribal Camp Specials ▴' : 'Tribal Camp Specials ▾';
-    const phonkToggle = document.getElementById('phonkToggle');
-    if (phonkToggle) phonkToggle.innerText = (typeof phonkSection !== 'undefined' && phonkSection && phonkSection.classList && phonkSection.classList.contains('open')) ? 'Phonk Man Specials ▴' : 'Phonk Man Specials ▾';
-    const ropingToggle = document.getElementById('ropingToggle');
-    if (ropingToggle) ropingToggle.innerText = (typeof ropingSection !== 'undefined' && ropingSection && ropingSection.classList && ropingSection.classList.contains('open')) ? 'Ropingnecurse Specials ▴' : 'Ropingnecurse Specials ▾';
 }
 
 // small helper to format seconds to human readable H:MM:SS or Dd H:MM:SS
@@ -4369,11 +3042,16 @@ function increment() {
         let chance = (typeof divineAssassinLevel !== 'undefined' && divineAssassinLevel > 0) ? Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel) : 0;
         // Casino crit buff: add bonus crit chance when active
         if (window.casinoCritExpires && window.casinoCritExpires > Date.now()) chance += (window.casinoCritBonus || 0);
+        // Followers: extra crit chance (percentage points)
+        chance += (getFollowerBonuses().critChance || 0) / 100;
         chance = Math.min(1, chance);
         if (chance > 0 && Math.random() < chance) {
                 // compute crit multiplier: base 10x, scaled by Divine Spirit levels (doubles per level)
                 let critMult = 10;
-                if (typeof divineSpiritLevel === 'number' && divineSpiritLevel > 0) critMult = 10 * Math.pow(2, Math.max(0, divineSpiritLevel - 1));
+                // each Divine Spirit level doubles crit damage (level 1 = x20); the old formula made level 1 do nothing
+                if (typeof divineSpiritLevel === 'number' && divineSpiritLevel > 0) critMult = 10 * Math.pow(2, divineSpiritLevel);
+                // Followers: crit damage bonus
+                critMult *= 1 + (getFollowerBonuses().critDmg || 0) / 100;
                 if (hasDecimal) reward = (isDecimalInstance(reward) ? reward : D(reward)).times(D(critMult));
                 else reward *= critMult;
                 // optional visual feedback: spawn extra falling image with crit effects (skipped on Low performance)
@@ -4398,28 +3076,19 @@ function increment() {
                 // always track crit for achievements and consecutive counter
                 try {
                     critOccurred = true;
-                    if (localStorage.getItem('ach_gotCrit') !== '1') {
-                        try { localStorage.setItem('ach_gotCrit','1'); } catch (e) {}
-                        try { showAchievementPopup('Achievement unlocked', "That wasn't supposed to happen — Got a critical click"); } catch (e) {}
-                        try { addUnlockedTitle('Source: Trust Me'); } catch (e) {}
-                        try { window.dispatchEvent(new Event('storage')); } catch (e) {}
-                    }
+                    unlockAchievement('gotCrit');
                     try {
                         const lastWas = localStorage.getItem('last_was_crit') === '1';
                         const prev = Number(localStorage.getItem('consecutive_crits')||0) || 0;
                         const next = lastWas ? (prev + 1) : 1;
                         try { localStorage.setItem('consecutive_crits', String(next)); } catch (e) {}
                         try { localStorage.setItem('last_was_crit','1'); } catch (e) {}
-                        if (next >= 2 && localStorage.getItem('ach_stat_unlikely') !== '1') {
-                            try { localStorage.setItem('ach_stat_unlikely','1'); } catch (e) {}
-                            try { showAchievementPopup('Achievement unlocked', 'Statistically Unlikely — 2 crits in a row'); } catch (e) {}
-                            try { addUnlockedTitle('Probability Skeptic'); } catch (e) {}
-                            try { window.dispatchEvent(new Event('storage')); } catch (e) {}
-                        }
+                        if (next >= 2) unlockAchievement('stat_unlikely');
                     } catch (e) {}
                 } catch (e) {}
             }
     } catch (e) {}
+    try { spawnClickFloat(reward, critOccurred); } catch (e) {}
     // reset consecutive crit counter if this click was not a crit
     try {
         if (!critOccurred) {
@@ -4432,9 +3101,9 @@ function increment() {
     } else {
         count = (typeof count === 'number' ? count : Number(count)) + Number(reward);
     }
-    // rare diamond drop: 1 in 2500 chance per click
+    // rare diamond drop: 1 in 2500 chance per click (Glitch followers raise it)
     try {
-        if (Math.random() < (1/2500)) {
+        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100)) {
             // increment diamonds and show a small visual indicator
             diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) + 1;
             try { saveGame(); } catch (e) {}
@@ -4491,31 +3160,9 @@ function increment() {
         try { var achClicks = Number(localStorage.getItem('ach_clicks')||0); } catch (e) { achClicks = 0; }
         achClicks = achClicks + 1;
         try { localStorage.setItem('ach_clicks', String(achClicks)); } catch (e) {}
-        if (achClicks >= 10) {
-            try {
-                if (localStorage.getItem('ach_gettingStarted') !== '1') {
-                    localStorage.setItem('ach_gettingStarted', '1');
-                    try { showAchievementPopup('Achievement unlocked', 'Getting Started — Clicked 10 times'); } catch (e) {}
-                    try { addUnlockedTitle('What Happened Beginner'); } catch (e) {}
-                    // notify other tabs/windows (best-effort)
-                    try { window.dispatchEvent(new Event('storage')); } catch (e) {}
-                }
-            } catch (e) {}
-        }
-
-        // Additional achievement: Something Happened (1000 clicks)
-        try {
-            if (achClicks >= 1000) {
-                try {
-                    if (localStorage.getItem('ach_somethingHappened') !== '1') {
-                        localStorage.setItem('ach_somethingHappened', '1');
-                        try { showAchievementPopup('Achievement unlocked', 'Something Happened — 1000 clicks'); } catch (e) {}
-                        try { addUnlockedTitle('Confused Observer'); } catch (e) {}
-                        try { window.dispatchEvent(new Event('storage')); } catch (e) {}
-                    }
-                } catch (e) {}
-            }
-        } catch (e) {}
+        // the click-count achievements unlock straight away instead of waiting for the next periodic check
+        if (achClicks === 10) unlockAchievement('gettingStarted');
+        if (achClicks === 1000) unlockAchievement('somethingHappened');
     } catch (e) {}
 
     // Track lifetime and since-prestige click counters
@@ -4530,53 +3177,39 @@ function increment() {
         try { localStorage.setItem('whathappened_clicks_since_prestige', String(since)); } catch (e) {}
     } catch (e) {}
 
-    // Firestore: increment per-user main image clicks for clan events
-    try{
-        (async ()=>{
-            try{
-                const clanId = localStorage.getItem('player_clanId');
-                const username = localStorage.getItem('player_username');
-                if(!clanId || !username) return;
-                if(typeof doc === 'function' && typeof db !== 'undefined'){
-                    const memberRef = doc(db,'clans', String(clanId), 'members', String(username));
-                    try{
-                        // Prefer Firestore atomic increment when available. Ensure the
-                        // `increment` symbol looks like Firestore's helper (accepts an
-                        // argument) so we don't confuse it with the local `increment()`
-                        // click function defined elsewhere in this file.
-                        if (typeof window !== 'undefined' && typeof window.firestoreIncrement === 'function' && window.firestoreIncrement.length >= 1 && typeof updateDoc === 'function'){
-                            try{
-                                await updateDoc(memberRef, { mainClicks: window.firestoreIncrement(1) });
-                            }catch(e){
-                                // fallback to read-modify-write if atomic update failed
-                                try{
-                                    const s = await getDoc(memberRef);
-                                    const cur = (s && s.exists() && s.data() && Number(s.data().mainClicks||0)) ? Number(s.data().mainClicks||0) : 0;
-                                    if(typeof setDoc === 'function'){
-                                        await setDoc(memberRef, { mainClicks: cur + 1 }, { merge: true });
-                                    } else if(typeof updateDoc === 'function'){
-                                        await updateDoc(memberRef, { mainClicks: cur + 1 });
-                                    }
-                                }catch(err){ console.warn('increment mainClicks fallback failed', err); }
-                            }
-                        } else {
-                            // atomic increment not available — best-effort read-modify-write
-                            try{
-                                const s = await getDoc(memberRef);
-                                const cur = (s && s.exists() && s.data() && Number(s.data().mainClicks||0)) ? Number(s.data().mainClicks||0) : 0;
-                                if(typeof setDoc === 'function'){
-                                    await setDoc(memberRef, { mainClicks: cur + 1 }, { merge: true });
-                                } else if(typeof updateDoc === 'function'){
-                                    await updateDoc(memberRef, { mainClicks: cur + 1 });
-                                }
-                            }catch(err){ console.warn('increment mainClicks failed', err); }
-                        }
-                    }catch(e){ console.warn('update member mainClicks failed', e); }
-                }
-                if (clanId) try { window._bossfightPending = (window._bossfightPending || 0) + 1; } catch (e) {}
-            }catch(e){}
-        })();
-    }catch(e){}
+    // Clan events: count the click locally. flushClanClicks() sends the total to Firestore every few seconds
+    // (one write per click was slow, costly, and over Firestore's ~1 write/sec per-document limit).
+    try {
+        if (localStorage.getItem('player_clanId') && localStorage.getItem('player_username')) {
+            window._pendingClanClicks = (window._pendingClanClicks || 0) + 1;
+            window._bossfightPending = (window._bossfightPending || 0) + 1;
+        }
+    } catch (e) {}
+}
+
+// Add the clicks counted since the last flush to this member's `mainClicks` (used by clan-v-clan events)
+async function flushClanClicks() {
+    const pending = window._pendingClanClicks || 0;
+    if (pending <= 0) return;
+    const clanId = localStorage.getItem('player_clanId');
+    const username = localStorage.getItem('player_username');
+    if (!clanId || !username) { window._pendingClanClicks = 0; return; }
+    if (typeof doc !== 'function' || typeof db === 'undefined' || typeof setDoc !== 'function') return;
+    window._pendingClanClicks = 0;
+    try {
+        const memberRef = doc(db, 'clans', String(clanId), 'members', String(username));
+        if (typeof window.firestoreIncrement === 'function') {
+            await setDoc(memberRef, { mainClicks: window.firestoreIncrement(pending) }, { merge: true });
+        } else {
+            const s = await getDoc(memberRef);
+            const cur = (s && s.exists() && Number(s.data().mainClicks)) || 0;
+            await setDoc(memberRef, { mainClicks: cur + pending }, { merge: true });
+        }
+    } catch (e) {
+        // keep the clicks so the next flush retries them
+        window._pendingClanClicks = (window._pendingClanClicks || 0) + pending;
+        console.warn('flushClanClicks failed', e);
+    }
 }
 
 // create a falling image from a random x at the top to the bottom, then remove it
@@ -4687,6 +3320,8 @@ try { updateDisabledClasses(); } catch (e) {}
 
 // Welcome-back modal helper (used for offline gains display)
 function showWelcomeBackModal(amount, seconds) {
+    // a quick refresh isn't "coming back"; only greet players who were away at least a minute
+    if (!(Number(seconds) >= 60)) return;
     try {
         const modal = document.getElementById('welcomeBackModal');
         const gainedEl = document.getElementById('welcomeBackGained');
@@ -4696,21 +3331,23 @@ function showWelcomeBackModal(amount, seconds) {
         if (!modal) return;
         const formattedAmount = (typeof formatNumber === 'function') ? formatNumber(amount) : String(amount);
         const formattedTime = (typeof formatSecondsHuman === 'function') ? formatSecondsHuman(Number(seconds || 0)) : (String(seconds) + 's');
-        if (gainedEl) gainedEl.innerHTML = 'gained: <strong>' + formattedAmount + '</strong>';
-        if (forEl) forEl.innerHTML = 'for: <strong>' + formattedTime + '</strong>';
+        const s = Math.floor(Number(seconds) || 0), d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+        const away = d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`;
+        if (gainedEl) gainedEl.innerHTML = `<span class="wb-amount">+${formattedAmount}</span><span class="wb-label">What Happeneds earned while you were away</span>`;
+        if (forEl) forEl.innerHTML = `Away for <strong title="${formattedTime}">${away}</strong>`;
         modal.style.display = 'block';
         const hide = () => { try { modal.style.display = 'none'; } catch (e) {} };
         if (okBtn) okBtn.addEventListener('click', hide, { once: true });
         if (closeBtn) closeBtn.addEventListener('click', hide, { once: true });
-        // auto-hide after 6 seconds
-        setTimeout(hide, 6000);
+        // auto-hide after 8 seconds
+        setTimeout(hide, 8000);
     } catch (e) {}
 }
 
 function buyUpgrade1() {
     const btn = document.getElementById('upgrade1');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade1Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4736,13 +3373,13 @@ function buyUpgrade1() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade1Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade1Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade2() {
     const btn = document.getElementById('upgrade2');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade2Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4768,13 +3405,13 @@ function buyUpgrade2() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade2Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade2Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade3() {
     const btn = document.getElementById('upgrade3');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade3Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4800,13 +3437,13 @@ function buyUpgrade3() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade3Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade3Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade4() {
     const btn = document.getElementById('upgrade4');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade4Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4832,13 +3469,13 @@ function buyUpgrade4() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade4Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade4Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade5() {
     const btn = document.getElementById('upgrade5');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade5Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4864,13 +3501,13 @@ function buyUpgrade5() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade5Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade5Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade6() {
     const btn = document.getElementById('upgrade6');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade6Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4896,13 +3533,13 @@ function buyUpgrade6() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade6Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade6Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade7() {
     const btn = document.getElementById('upgrade7');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade7Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4928,13 +3565,13 @@ function buyUpgrade7() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade7Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade7Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade8() {
     const btn = document.getElementById('upgrade8');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade8Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4960,13 +3597,13 @@ function buyUpgrade8() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade8Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade8Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade9() {
     const btn = document.getElementById('upgrade9');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade9Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -4992,13 +3629,13 @@ function buyUpgrade9() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade9Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade9Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade10() {
     const btn = document.getElementById('upgrade10');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade10Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5024,13 +3661,13 @@ function buyUpgrade10() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade10Cost, purchaseBatch || 1, 1.1)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade10Cost, purchaseBatch || 1, 1.1)) + '.');
 }
 
 function buyUpgrade11() {
     const btn = document.getElementById('upgrade11');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade11Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5056,13 +3693,13 @@ function buyUpgrade11() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade11Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade11Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade12() {
     const btn = document.getElementById('upgrade12');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade12Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5088,13 +3725,13 @@ function buyUpgrade12() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade12Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade12Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade13() {
     const btn = document.getElementById('upgrade13');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade13Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5130,13 +3767,13 @@ function buyUpgrade13() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade13Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade13Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade14() {
     const btn = document.getElementById('upgrade14');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade14Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5162,13 +3799,13 @@ function buyUpgrade14() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade14Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade14Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade15() {
     const btn = document.getElementById('upgrade15');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade15Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5194,13 +3831,13 @@ function buyUpgrade15() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade15Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade15Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade16() {
     const btn = document.getElementById('upgrade16');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade16Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5225,13 +3862,13 @@ function buyUpgrade16() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade16Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade16Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade17() {
     const btn = document.getElementById('upgrade17');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade17Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5256,13 +3893,13 @@ function buyUpgrade17() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade17Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade17Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade18() {
     const btn = document.getElementById('upgrade18');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade18Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5286,13 +3923,13 @@ function buyUpgrade18() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(upgrade18Cost, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(upgrade18Cost, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade19() {
     const btn = document.getElementById('upgrade19');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade19Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5316,13 +3953,13 @@ function buyUpgrade19() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade20() {
     const btn = document.getElementById('upgrade20');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade20Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5346,13 +3983,13 @@ function buyUpgrade20() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade20Cost !== 'undefined' ? upgrade20Cost : 1000000000000000, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade20Cost !== 'undefined' ? upgrade20Cost : 1000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade21() {
     const btn = document.getElementById('upgrade21');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade21Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5376,13 +4013,13 @@ function buyUpgrade21() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade21Cost !== 'undefined' ? upgrade21Cost : 200000000000000000, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade21Cost !== 'undefined' ? upgrade21Cost : 200000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade22() {
     const btn = document.getElementById('upgrade22');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade22Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5406,13 +4043,13 @@ function buyUpgrade22() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade22Cost !== 'undefined' ? upgrade22Cost : 1000000000000000000, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade22Cost !== 'undefined' ? upgrade22Cost : 1000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade23() {
     const btn = document.getElementById('upgrade23');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade23Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5436,13 +4073,13 @@ function buyUpgrade23() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade23Cost !== 'undefined' ? upgrade23Cost : 5000000000000000000, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade23Cost !== 'undefined' ? upgrade23Cost : 5000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 function buyUpgrade24() {
     const btn = document.getElementById('upgrade24');
     let bought = 0;
-    for (let i = 0; i < purchaseBatch; i++) {
+    for (let i = 0; i < bulkLoopCount(); i++) {
         var eff = effectiveUpgradeCost(upgrade24Cost);
         if (hasDecimal) {
             if ((isDecimalInstance(count) ? count : D(count)).gte(eff)) {
@@ -5466,87 +4103,87 @@ function buyUpgrade24() {
         updateDisplays();
         try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
     }
-    else alert('Not enough What Happeneds — need ' + formatNumber(computeBatchCostWithSimpleVillager(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, purchaseBatch || 1, 1.15)) + '.');
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
 // SCP special purchases (each doubles SCP contribution)
 function buyScp1() {
-    if (numericLevel(upgrade17Level) < 10) { alert('Unlocks at SCP level 10'); return; }
-    if (scp1Purchased) { alert('Already purchased'); return; }
+    if (numericLevel(upgrade17Level) < 10) { notify('Unlocks at SCP level 10'); return; }
+    if (scp1Purchased) { notify('Already purchased'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(scp1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(scp1Cost));
             scp1Purchased = true;
             if (hasDecimal) scpMultiplier = (isDecimalInstance(scpMultiplier) ? scpMultiplier.times(D(2)) : D(scpMultiplier).times(D(2))); else scpMultiplier = scpMultiplier * 2;
             updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     } else {
         if (count >= scp1Cost) {
             count -= scp1Cost; scp1Purchased = true; scpMultiplier = scpMultiplier * 2; updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     }
 }
 
 function buyScp2() {
-    if (numericLevel(upgrade17Level) < 25) { alert('Unlocks at SCP level 25'); return; }
-    if (scp2Purchased) { alert('Already purchased'); return; }
+    if (numericLevel(upgrade17Level) < 25) { notify('Unlocks at SCP level 25'); return; }
+    if (scp2Purchased) { notify('Already purchased'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(scp2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(scp2Cost));
             scp2Purchased = true;
             if (hasDecimal) scpMultiplier = (isDecimalInstance(scpMultiplier) ? scpMultiplier.times(D(2)) : D(scpMultiplier).times(D(2))); else scpMultiplier = scpMultiplier * 2;
             updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     } else {
         if (count >= scp2Cost) {
             count -= scp2Cost; scp2Purchased = true; scpMultiplier = scpMultiplier * 2; updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     }
 }
 
 function buyScp3() {
-    if (numericLevel(upgrade17Level) < 50) { alert('Unlocks at SCP level 50'); return; }
-    if (scp3Purchased) { alert('Already purchased'); return; }
+    if (numericLevel(upgrade17Level) < 50) { notify('Unlocks at SCP level 50'); return; }
+    if (scp3Purchased) { notify('Already purchased'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(scp3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(scp3Cost));
             scp3Purchased = true;
             if (hasDecimal) scpMultiplier = (isDecimalInstance(scpMultiplier) ? scpMultiplier.times(D(2)) : D(scpMultiplier).times(D(2))); else scpMultiplier = scpMultiplier * 2;
             updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     } else {
         if (count >= scp3Cost) {
             count -= scp3Cost; scp3Purchased = true; scpMultiplier = scpMultiplier * 2; updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     }
 }
 
 function buyScp4() {
-    if (numericLevel(upgrade17Level) < 75) { alert('Unlocks at SCP level 75'); return; }
-    if (scp4Purchased) { alert('Already purchased'); return; }
+    if (numericLevel(upgrade17Level) < 75) { notify('Unlocks at SCP level 75'); return; }
+    if (scp4Purchased) { notify('Already purchased'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(scp4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(scp4Cost));
             scp4Purchased = true;
             if (hasDecimal) scpMultiplier = (isDecimalInstance(scpMultiplier) ? scpMultiplier.times(D(2)) : D(scpMultiplier).times(D(2))); else scpMultiplier = scpMultiplier * 2;
             updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     } else {
         if (count >= scp4Cost) {
             count -= scp4Cost; scp4Purchased = true; scpMultiplier = scpMultiplier * 2; updateDisplays();
-        } else alert('Not enough What Happeneds');
+        } else notify('Not enough What Happeneds');
     }
 }
 
 // Good Noodles specials (one-time multipliers applied to upgrade22 contribution)
 function buyGoodNoodles1() {
-    if (goodNoodles1Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade22Level) < 10) { alert('Unlocks at Good Noodles lvl 10.'); return; }
+    if (goodNoodles1Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade22Level) < 10) { notify('Unlocks at Good Noodles lvl 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles1Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles1Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles1Cost))) { notify('Not enough What Happeneds — need ' + needText(goodNoodles1Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(goodNoodles1Cost));
     } else {
-        if (count < goodNoodles1Cost) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles1Cost) + '.'); return; }
+        if (count < goodNoodles1Cost) { notify('Not enough What Happeneds — need ' + needText(goodNoodles1Cost) + '.'); return; }
         count -= goodNoodles1Cost;
     }
     goodNoodles1Purchased = true;
@@ -5556,13 +4193,13 @@ function buyGoodNoodles1() {
 }
 
 function buyGoodNoodles2() {
-    if (goodNoodles2Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade22Level) < 25) { alert('Unlocks at Good Noodles lvl 25.'); return; }
+    if (goodNoodles2Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade22Level) < 25) { notify('Unlocks at Good Noodles lvl 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles2Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles2Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles2Cost))) { notify('Not enough What Happeneds — need ' + needText(goodNoodles2Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(goodNoodles2Cost));
     } else {
-        if (count < goodNoodles2Cost) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles2Cost) + '.'); return; }
+        if (count < goodNoodles2Cost) { notify('Not enough What Happeneds — need ' + needText(goodNoodles2Cost) + '.'); return; }
         count -= goodNoodles2Cost;
     }
     goodNoodles2Purchased = true;
@@ -5572,13 +4209,13 @@ function buyGoodNoodles2() {
 }
 
 function buyGoodNoodles3() {
-    if (goodNoodles3Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade22Level) < 50) { alert('Unlocks at Good Noodles lvl 50.'); return; }
+    if (goodNoodles3Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade22Level) < 50) { notify('Unlocks at Good Noodles lvl 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles3Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles3Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles3Cost))) { notify('Not enough What Happeneds — need ' + needText(goodNoodles3Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(goodNoodles3Cost));
     } else {
-        if (count < goodNoodles3Cost) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles3Cost) + '.'); return; }
+        if (count < goodNoodles3Cost) { notify('Not enough What Happeneds — need ' + needText(goodNoodles3Cost) + '.'); return; }
         count -= goodNoodles3Cost;
     }
     goodNoodles3Purchased = true;
@@ -5588,13 +4225,13 @@ function buyGoodNoodles3() {
 }
 
 function buyGoodNoodles4() {
-    if (goodNoodles4Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade22Level) < 100) { alert('Unlocks at Good Noodles lvl 100.'); return; }
+    if (goodNoodles4Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade22Level) < 100) { notify('Unlocks at Good Noodles lvl 100.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles4Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles4Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(goodNoodles4Cost))) { notify('Not enough What Happeneds — need ' + needText(goodNoodles4Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(goodNoodles4Cost));
     } else {
-        if (count < goodNoodles4Cost) { alert('Not enough What Happeneds — need ' + formatNumber(goodNoodles4Cost) + '.'); return; }
+        if (count < goodNoodles4Cost) { notify('Not enough What Happeneds — need ' + needText(goodNoodles4Cost) + '.'); return; }
         count -= goodNoodles4Cost;
     }
     goodNoodles4Purchased = true;
@@ -5605,13 +4242,13 @@ function buyGoodNoodles4() {
 
 // Mobile Man 38 specials (one-time multipliers applied to upgrade23 contribution)
 function buyMobileMan381() {
-    if (mobileMan381Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade23Level) < 10) { alert('Unlocks at Mobile Man 38 lvl 10.'); return; }
+    if (mobileMan381Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade23Level) < 10) { notify('Unlocks at Mobile Man 38 lvl 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan381Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan381Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan381Cost))) { notify('Not enough What Happeneds — need ' + needText(mobileMan381Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(mobileMan381Cost));
     } else {
-        if (count < mobileMan381Cost) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan381Cost) + '.'); return; }
+        if (count < mobileMan381Cost) { notify('Not enough What Happeneds — need ' + needText(mobileMan381Cost) + '.'); return; }
         count -= mobileMan381Cost;
     }
     mobileMan381Purchased = true;
@@ -5621,13 +4258,13 @@ function buyMobileMan381() {
 }
 
 function buyMobileMan382() {
-    if (mobileMan382Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade23Level) < 25) { alert('Unlocks at Mobile Man 38 lvl 25.'); return; }
+    if (mobileMan382Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade23Level) < 25) { notify('Unlocks at Mobile Man 38 lvl 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan382Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan382Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan382Cost))) { notify('Not enough What Happeneds — need ' + needText(mobileMan382Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(mobileMan382Cost));
     } else {
-        if (count < mobileMan382Cost) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan382Cost) + '.'); return; }
+        if (count < mobileMan382Cost) { notify('Not enough What Happeneds — need ' + needText(mobileMan382Cost) + '.'); return; }
         count -= mobileMan382Cost;
     }
     mobileMan382Purchased = true;
@@ -5637,13 +4274,13 @@ function buyMobileMan382() {
 }
 
 function buyMobileMan383() {
-    if (mobileMan383Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade23Level) < 50) { alert('Unlocks at Mobile Man 38 lvl 50.'); return; }
+    if (mobileMan383Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade23Level) < 50) { notify('Unlocks at Mobile Man 38 lvl 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan383Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan383Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan383Cost))) { notify('Not enough What Happeneds — need ' + needText(mobileMan383Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(mobileMan383Cost));
     } else {
-        if (count < mobileMan383Cost) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan383Cost) + '.'); return; }
+        if (count < mobileMan383Cost) { notify('Not enough What Happeneds — need ' + needText(mobileMan383Cost) + '.'); return; }
         count -= mobileMan383Cost;
     }
     mobileMan383Purchased = true;
@@ -5653,13 +4290,13 @@ function buyMobileMan383() {
 }
 
 function buyMobileMan384() {
-    if (mobileMan384Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade23Level) < 100) { alert('Unlocks at Mobile Man 38 lvl 100.'); return; }
+    if (mobileMan384Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade23Level) < 100) { notify('Unlocks at Mobile Man 38 lvl 100.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan384Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan384Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(mobileMan384Cost))) { notify('Not enough What Happeneds — need ' + needText(mobileMan384Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(mobileMan384Cost));
     } else {
-        if (count < mobileMan384Cost) { alert('Not enough What Happeneds — need ' + formatNumber(mobileMan384Cost) + '.'); return; }
+        if (count < mobileMan384Cost) { notify('Not enough What Happeneds — need ' + needText(mobileMan384Cost) + '.'); return; }
         count -= mobileMan384Cost;
     }
     mobileMan384Purchased = true;
@@ -5670,13 +4307,13 @@ function buyMobileMan384() {
 
 // Easton Bundy special purchases (one-time multipliers applied to upgrade24 contribution)
 function buyEastonBundy1() {
-    if (eastonBundy1Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade24Level) < 10) { alert('Unlocks at Easton Bundy level 10.'); return; }
+    if (eastonBundy1Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade24Level) < 10) { notify('Unlocks at Easton Bundy level 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy1Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy1Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy1Cost))) { notify('Not enough What Happeneds — need ' + needText(eastonBundy1Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(eastonBundy1Cost));
     } else {
-        if (count < eastonBundy1Cost) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy1Cost) + '.'); return; }
+        if (count < eastonBundy1Cost) { notify('Not enough What Happeneds — need ' + needText(eastonBundy1Cost) + '.'); return; }
         count -= eastonBundy1Cost;
     }
     eastonBundy1Purchased = true;
@@ -5686,13 +4323,13 @@ function buyEastonBundy1() {
 }
 
 function buyEastonBundy2() {
-    if (eastonBundy2Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade24Level) < 25) { alert('Unlocks at Easton Bundy level 25.'); return; }
+    if (eastonBundy2Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade24Level) < 25) { notify('Unlocks at Easton Bundy level 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy2Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy2Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy2Cost))) { notify('Not enough What Happeneds — need ' + needText(eastonBundy2Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(eastonBundy2Cost));
     } else {
-        if (count < eastonBundy2Cost) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy2Cost) + '.'); return; }
+        if (count < eastonBundy2Cost) { notify('Not enough What Happeneds — need ' + needText(eastonBundy2Cost) + '.'); return; }
         count -= eastonBundy2Cost;
     }
     eastonBundy2Purchased = true;
@@ -5702,13 +4339,13 @@ function buyEastonBundy2() {
 }
 
 function buyEastonBundy3() {
-    if (eastonBundy3Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade24Level) < 50) { alert('Unlocks at Easton Bundy level 50.'); return; }
+    if (eastonBundy3Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade24Level) < 50) { notify('Unlocks at Easton Bundy level 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy3Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy3Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy3Cost))) { notify('Not enough What Happeneds — need ' + needText(eastonBundy3Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(eastonBundy3Cost));
     } else {
-        if (count < eastonBundy3Cost) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy3Cost) + '.'); return; }
+        if (count < eastonBundy3Cost) { notify('Not enough What Happeneds — need ' + needText(eastonBundy3Cost) + '.'); return; }
         count -= eastonBundy3Cost;
     }
     eastonBundy3Purchased = true;
@@ -5718,13 +4355,13 @@ function buyEastonBundy3() {
 }
 
 function buyEastonBundy4() {
-    if (eastonBundy4Purchased) { alert('Already purchased.'); return; }
-    if (numericLevel(upgrade24Level) < 100) { alert('Unlocks at Easton Bundy level 100.'); return; }
+    if (eastonBundy4Purchased) { notify('Already purchased.'); return; }
+    if (numericLevel(upgrade24Level) < 100) { notify('Unlocks at Easton Bundy level 100.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy4Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy4Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(eastonBundy4Cost))) { notify('Not enough What Happeneds — need ' + needText(eastonBundy4Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(eastonBundy4Cost));
     } else {
-        if (count < eastonBundy4Cost) { alert('Not enough What Happeneds — need ' + formatNumber(eastonBundy4Cost) + '.'); return; }
+        if (count < eastonBundy4Cost) { notify('Not enough What Happeneds — need ' + needText(eastonBundy4Cost) + '.'); return; }
         count -= eastonBundy4Cost;
     }
     eastonBundy4Purchased = true;
@@ -5735,13 +4372,13 @@ function buyEastonBundy4() {
 
 // Ropingnecurse special purchases (one-time multipliers applied to upgrade13 contribution)
 function buyRoping1() {
-    if (roping1Purchased) { alert('Already purchased.'); return; }
-    if (upgrade13Level < 10) { alert('Unlocks at ropingnecurse level 10.'); return; }
+    if (roping1Purchased) { notify('Already purchased.'); return; }
+    if (upgrade13Level < 10) { notify('Unlocks at ropingnecurse level 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping1Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(roping1Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping1Cost))) { notify('Not enough What Happeneds — need ' + needText(roping1Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(roping1Cost));
     } else {
-        if (count < roping1Cost) { alert('Not enough What Happeneds — need ' + formatNumber(roping1Cost) + '.'); return; }
+        if (count < roping1Cost) { notify('Not enough What Happeneds — need ' + needText(roping1Cost) + '.'); return; }
         count -= roping1Cost;
     }
     roping1Purchased = true;
@@ -5755,13 +4392,13 @@ function buyRoping1() {
 
 // EZ specials (ez villager) — one-time multipliers applied to upgrade16 contribution
 function buyEz1() {
-    if (ez1Purchased) { alert('Already purchased.'); return; }
-    if (upgrade16Level < 10) { alert('Unlocks at ez villager level 10.'); return; }
+    if (ez1Purchased) { notify('Already purchased.'); return; }
+    if (upgrade16Level < 10) { notify('Unlocks at ez villager level 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez1Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(ez1Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez1Cost))) { notify('Not enough What Happeneds — need ' + needText(ez1Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(ez1Cost));
     } else {
-        if (count < ez1Cost) { alert('Not enough What Happeneds — need ' + formatNumber(ez1Cost) + '.'); return; }
+        if (count < ez1Cost) { notify('Not enough What Happeneds — need ' + needText(ez1Cost) + '.'); return; }
         count -= ez1Cost;
     }
     ez1Purchased = true;
@@ -5774,13 +4411,13 @@ function buyEz1() {
 }
 
 function buyEz2() {
-    if (ez2Purchased) { alert('Already purchased.'); return; }
-    if (upgrade16Level < 25) { alert('Unlocks at ez villager level 25.'); return; }
+    if (ez2Purchased) { notify('Already purchased.'); return; }
+    if (upgrade16Level < 25) { notify('Unlocks at ez villager level 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez2Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(ez2Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez2Cost))) { notify('Not enough What Happeneds — need ' + needText(ez2Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(ez2Cost));
     } else {
-        if (count < ez2Cost) { alert('Not enough What Happeneds — need ' + formatNumber(ez2Cost) + '.'); return; }
+        if (count < ez2Cost) { notify('Not enough What Happeneds — need ' + needText(ez2Cost) + '.'); return; }
         count -= ez2Cost;
     }
     ez2Purchased = true;
@@ -5793,15 +4430,15 @@ function buyEz2() {
 }
 
 function buyEz3() {
-    if (ez3Purchased) { alert('Already purchased.'); return; }
-    if (upgrade16Level < 50) { alert('Unlocks at ez villager level 50.'); return; }
+    if (ez3Purchased) { notify('Already purchased.'); return; }
+    if (upgrade16Level < 50) { notify('Unlocks at ez villager level 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez3Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(ez3Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez3Cost))) { notify('Not enough What Happeneds — need ' + needText(ez3Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(ez3Cost));
         ez3Purchased = true;
         ezOtherMultiplier = (isDecimalInstance(ezOtherMultiplier) ? ezOtherMultiplier : D(ezOtherMultiplier)).times(D(ez3Multiplier));
     } else {
-        if (count < ez3Cost) { alert('Not enough What Happeneds — need ' + formatNumber(ez3Cost) + '.'); return; }
+        if (count < ez3Cost) { notify('Not enough What Happeneds — need ' + needText(ez3Cost) + '.'); return; }
         count -= ez3Cost;
         ez3Purchased = true;
         if (hasDecimal) ezOtherMultiplier = (isDecimalInstance(ezOtherMultiplier) ? ezOtherMultiplier : D(ezOtherMultiplier)).times(D(ez3Multiplier));
@@ -5811,13 +4448,13 @@ function buyEz3() {
 }
 
 function buyEz4() {
-    if (ez4Purchased) { alert('Already purchased.'); return; }
-    if (upgrade16Level < 100) { alert('Unlocks at ez villager level 100.'); return; }
+    if (ez4Purchased) { notify('Already purchased.'); return; }
+    if (upgrade16Level < 100) { notify('Unlocks at ez villager level 100.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez4Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(ez4Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(ez4Cost))) { notify('Not enough What Happeneds — need ' + needText(ez4Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(ez4Cost));
     } else {
-        if (count < ez4Cost) { alert('Not enough What Happeneds — need ' + formatNumber(ez4Cost) + '.'); return; }
+        if (count < ez4Cost) { notify('Not enough What Happeneds — need ' + needText(ez4Cost) + '.'); return; }
         count -= ez4Cost;
     }
     ez4Purchased = true;
@@ -5830,13 +4467,13 @@ function buyEz4() {
 }
 
 function buyRoping2() {
-    if (roping2Purchased) { alert('Already purchased.'); return; }
-    if (upgrade13Level < 25) { alert('Unlocks at ropingnecurse level 25.'); return; }
+    if (roping2Purchased) { notify('Already purchased.'); return; }
+    if (upgrade13Level < 25) { notify('Unlocks at ropingnecurse level 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping2Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(roping2Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping2Cost))) { notify('Not enough What Happeneds — need ' + needText(roping2Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(roping2Cost));
     } else {
-        if (count < roping2Cost) { alert('Not enough What Happeneds — need ' + formatNumber(roping2Cost) + '.'); return; }
+        if (count < roping2Cost) { notify('Not enough What Happeneds — need ' + needText(roping2Cost) + '.'); return; }
         count -= roping2Cost;
     }
     roping2Purchased = true;
@@ -5849,13 +4486,13 @@ function buyRoping2() {
 }
 
 function buyRoping3() {
-    if (roping3Purchased) { alert('Already purchased.'); return; }
-    if (upgrade13Level < 50) { alert('Unlocks at ropingnecurse level 50.'); return; }
+    if (roping3Purchased) { notify('Already purchased.'); return; }
+    if (upgrade13Level < 50) { notify('Unlocks at ropingnecurse level 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping3Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(roping3Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping3Cost))) { notify('Not enough What Happeneds — need ' + needText(roping3Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(roping3Cost));
     } else {
-        if (count < roping3Cost) { alert('Not enough What Happeneds — need ' + formatNumber(roping3Cost) + '.'); return; }
+        if (count < roping3Cost) { notify('Not enough What Happeneds — need ' + needText(roping3Cost) + '.'); return; }
         count -= roping3Cost;
     }
     roping3Purchased = true;
@@ -5868,13 +4505,13 @@ function buyRoping3() {
 }
 
 function buyRoping4() {
-    if (roping4Purchased) { alert('Already purchased.'); return; }
-    if (upgrade13Level < 75) { alert('Unlocks at ropingnecurse level 75.'); return; }
+    if (roping4Purchased) { notify('Already purchased.'); return; }
+    if (upgrade13Level < 75) { notify('Unlocks at ropingnecurse level 75.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping4Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(roping4Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(roping4Cost))) { notify('Not enough What Happeneds — need ' + needText(roping4Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(roping4Cost));
     } else {
-        if (count < roping4Cost) { alert('Not enough What Happeneds — need ' + formatNumber(roping4Cost) + '.'); return; }
+        if (count < roping4Cost) { notify('Not enough What Happeneds — need ' + needText(roping4Cost) + '.'); return; }
         count -= roping4Cost;
     }
     roping4Purchased = true;
@@ -5888,13 +4525,13 @@ function buyRoping4() {
 
 // Skibbidi scimitar special purchases (one-time multipliers applied to upgrade14 contribution)
 function buySkibidi1() {
-    if (skibidi1Purchased) { alert('Already purchased.'); return; }
-    if (upgrade14Level < 10) { alert('Unlocks at skibbidi scimitar level 10.'); return; }
+    if (skibidi1Purchased) { notify('Already purchased.'); return; }
+    if (upgrade14Level < 10) { notify('Unlocks at skibbidi scimitar level 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi1Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi1Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi1Cost))) { notify('Not enough What Happeneds — need ' + needText(skibidi1Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(skibidi1Cost));
     } else {
-        if (count < skibidi1Cost) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi1Cost) + '.'); return; }
+        if (count < skibidi1Cost) { notify('Not enough What Happeneds — need ' + needText(skibidi1Cost) + '.'); return; }
         count -= skibidi1Cost;
     }
     skibidi1Purchased = true;
@@ -5907,13 +4544,13 @@ function buySkibidi1() {
 }
 
 function buySkibidi2() {
-    if (skibidi2Purchased) { alert('Already purchased.'); return; }
-    if (upgrade14Level < 25) { alert('Unlocks at skibbidi scimitar level 25.'); return; }
+    if (skibidi2Purchased) { notify('Already purchased.'); return; }
+    if (upgrade14Level < 25) { notify('Unlocks at skibbidi scimitar level 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi2Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi2Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi2Cost))) { notify('Not enough What Happeneds — need ' + needText(skibidi2Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(skibidi2Cost));
     } else {
-        if (count < skibidi2Cost) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi2Cost) + '.'); return; }
+        if (count < skibidi2Cost) { notify('Not enough What Happeneds — need ' + needText(skibidi2Cost) + '.'); return; }
         count -= skibidi2Cost;
     }
     skibidi2Purchased = true;
@@ -5926,13 +4563,13 @@ function buySkibidi2() {
 }
 
 function buySkibidi3() {
-    if (skibidi3Purchased) { alert('Already purchased.'); return; }
-    if (upgrade14Level < 50) { alert('Unlocks at skibbidi scimitar level 50.'); return; }
+    if (skibidi3Purchased) { notify('Already purchased.'); return; }
+    if (upgrade14Level < 50) { notify('Unlocks at skibbidi scimitar level 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi3Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi3Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi3Cost))) { notify('Not enough What Happeneds — need ' + needText(skibidi3Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(skibidi3Cost));
     } else {
-        if (count < skibidi3Cost) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi3Cost) + '.'); return; }
+        if (count < skibidi3Cost) { notify('Not enough What Happeneds — need ' + needText(skibidi3Cost) + '.'); return; }
         count -= skibidi3Cost;
     }
     skibidi3Purchased = true;
@@ -5945,13 +4582,13 @@ function buySkibidi3() {
 }
 
 function buySkibidi4() {
-    if (skibidi4Purchased) { alert('Already purchased.'); return; }
-    if (upgrade14Level < 75) { alert('Unlocks at skibbidi scimitar level 75.'); return; }
+    if (skibidi4Purchased) { notify('Already purchased.'); return; }
+    if (upgrade14Level < 75) { notify('Unlocks at skibbidi scimitar level 75.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi4Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi4Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(skibidi4Cost))) { notify('Not enough What Happeneds — need ' + needText(skibidi4Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(skibidi4Cost));
     } else {
-        if (count < skibidi4Cost) { alert('Not enough What Happeneds — need ' + formatNumber(skibidi4Cost) + '.'); return; }
+        if (count < skibidi4Cost) { notify('Not enough What Happeneds — need ' + needText(skibidi4Cost) + '.'); return; }
         count -= skibidi4Cost;
     }
     skibidi4Purchased = true;
@@ -5965,13 +4602,13 @@ function buySkibidi4() {
 
 // Beats specials (What Happened Beats) — one-time multipliers applied to upgrade15 contribution
 function buyBeats1() {
-    if (beats1Purchased) { alert('Already purchased.'); return; }
-    if (upgrade15Level < 10) { alert('Unlocks at What Happened Beats level 10.'); return; }
+    if (beats1Purchased) { notify('Already purchased.'); return; }
+    if (upgrade15Level < 10) { notify('Unlocks at What Happened Beats level 10.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(beats1Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(beats1Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(beats1Cost))) { notify('Not enough What Happeneds — need ' + needText(beats1Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(beats1Cost));
     } else {
-        if (count < beats1Cost) { alert('Not enough What Happeneds — need ' + formatNumber(beats1Cost) + '.'); return; }
+        if (count < beats1Cost) { notify('Not enough What Happeneds — need ' + needText(beats1Cost) + '.'); return; }
         count -= beats1Cost;
     }
     beats1Purchased = true;
@@ -5984,13 +4621,13 @@ function buyBeats1() {
 }
 
 function buyBeats2() {
-    if (beats2Purchased) { alert('Already purchased.'); return; }
-    if (upgrade15Level < 25) { alert('Unlocks at What Happened Beats level 25.'); return; }
+    if (beats2Purchased) { notify('Already purchased.'); return; }
+    if (upgrade15Level < 25) { notify('Unlocks at What Happened Beats level 25.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(beats2Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(beats2Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(beats2Cost))) { notify('Not enough What Happeneds — need ' + needText(beats2Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(beats2Cost));
     } else {
-        if (count < beats2Cost) { alert('Not enough What Happeneds — need ' + formatNumber(beats2Cost) + '.'); return; }
+        if (count < beats2Cost) { notify('Not enough What Happeneds — need ' + needText(beats2Cost) + '.'); return; }
         count -= beats2Cost;
     }
     beats2Purchased = true;
@@ -6003,15 +4640,15 @@ function buyBeats2() {
 }
 
 function buyBeats3() {
-    if (beats3Purchased) { alert('Already purchased.'); return; }
-    if (upgrade15Level < 50) { alert('Unlocks at What Happened Beats level 50.'); return; }
+    if (beats3Purchased) { notify('Already purchased.'); return; }
+    if (upgrade15Level < 50) { notify('Unlocks at What Happened Beats level 50.'); return; }
     if (hasDecimal) {
-        if ((isDecimalInstance(count) ? count : D(count)).lt(D(beats3Cost))) { alert('Not enough What Happeneds — need ' + formatNumber(beats3Cost) + '.'); return; }
+        if ((isDecimalInstance(count) ? count : D(count)).lt(D(beats3Cost))) { notify('Not enough What Happeneds — need ' + needText(beats3Cost) + '.'); return; }
         count = (isDecimalInstance(count) ? count : D(count)).minus(D(beats3Cost));
         beats3Purchased = true;
         beatsOtherMultiplier = (isDecimalInstance(beatsOtherMultiplier) ? beatsOtherMultiplier : D(beatsOtherMultiplier)).times(D(beats3Multiplier));
     } else {
-        if (count < beats3Cost) { alert('Not enough What Happeneds — need ' + formatNumber(beats3Cost) + '.'); return; }
+        if (count < beats3Cost) { notify('Not enough What Happeneds — need ' + needText(beats3Cost) + '.'); return; }
         count -= beats3Cost;
         beats3Purchased = true;
         if (hasDecimal) beatsOtherMultiplier = (isDecimalInstance(beatsOtherMultiplier) ? beatsOtherMultiplier : D(beatsOtherMultiplier)).times(D(beats3Multiplier));
@@ -6022,14 +4659,14 @@ function buyBeats3() {
 
 function buyDivineArgon() {
     if (goldenWhat < divineArgonCost) {
-        alert('Not enough Golden What Happeneds — need ' + divineArgonCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + divineArgonCost + '.');
         return;
     }
     // spend golden currency
     goldenWhat -= divineArgonCost;
     divineArgonLevel += 1;
     // next cost multiplies by 3
-    divineArgonCost = Math.max(1, Math.ceil(divineArgonCost * 3));
+    divineArgonCost = divineCostFor('argon', divineArgonLevel);
     saveGame();
     updateDisplays();
     try { updateShopUI(); } catch (e) {}
@@ -6037,14 +4674,14 @@ function buyDivineArgon() {
 
 function buyDivineSomalian() {
     if (goldenWhat < divineSomalianCost) {
-        alert('Not enough Golden What Happeneds — need ' + divineSomalianCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + divineSomalianCost + '.');
         return;
     }
     // spend golden currency
     goldenWhat -= divineSomalianCost;
     divineSomalianLevel += 1;
     // next cost multiplies by 3
-    divineSomalianCost = Math.max(1, Math.ceil(divineSomalianCost * 3));
+    divineSomalianCost = divineCostFor('somalian', divineSomalianLevel);
     saveGame();
     updateDisplays();
 }
@@ -6052,17 +4689,17 @@ function buyDivineSomalian() {
 function buyDivineAssassin() {
     // enforce max level cap
     if (typeof divineAssassinLevel === 'number' && divineAssassinLevel >= 19) {
-        alert('Divine Assassin is already at max level (19).');
+        notify('Divine Assassin is already at max level (19).');
         return;
     }
     if (goldenWhat < divineAssassinCost) {
-        alert('Not enough Golden What Happeneds — need ' + divineAssassinCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + divineAssassinCost + '.');
         return;
     }
     goldenWhat -= divineAssassinCost;
     divineAssassinLevel = (typeof divineAssassinLevel === 'number' ? divineAssassinLevel : 0) + 1;
     // cost doubles each purchase
-    divineAssassinCost = Math.max(1, Math.ceil(divineAssassinCost * 2));
+    divineAssassinCost = divineCostFor('assassin', divineAssassinLevel);
     saveGame();
     updateDisplays();
 }
@@ -6070,13 +4707,13 @@ function buyDivineAssassin() {
 function buyDivineCollector() {
     if (typeof divineCollectorCost === 'undefined') divineCollectorCost = 1;
     if (goldenWhat < divineCollectorCost) {
-        alert('Not enough Golden What Happeneds — need ' + divineCollectorCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + divineCollectorCost + '.');
         return;
     }
     goldenWhat -= divineCollectorCost;
     divineCollectorLevel += 1;
     // cost doubles each purchase
-    divineCollectorCost = Math.max(1, Math.ceil(divineCollectorCost * 2));
+    divineCollectorCost = divineCostFor('collector', divineCollectorLevel);
     saveGame();
     updateDisplays();
 }
@@ -6084,17 +4721,13 @@ function buyDivineCollector() {
 function buyDivineMoneyMan() {
     if (typeof divineMoneyManCost === 'undefined') divineMoneyManCost = 1;
     if (goldenWhat < divineMoneyManCost) {
-        alert('Not enough Golden What Happeneds — need ' + divineMoneyManCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + divineMoneyManCost + '.');
         return;
     }
     goldenWhat -= divineMoneyManCost;
     divineMoneyManLevel += 1;
     // cost progression: first -> 1, next -> 2, after that -> prev*2 - 1
-    if (divineMoneyManLevel === 1) {
-        divineMoneyManCost = 2;
-    } else {
-        divineMoneyManCost = Math.max(1, Math.ceil(divineMoneyManCost * 2 - 1));
-    }
+    divineMoneyManCost = divineCostFor('moneyMan', divineMoneyManLevel);
     saveGame();
     updateDisplays();
 }
@@ -6105,7 +4738,7 @@ function buyDivineSpirit() {
         if (typeof divineSpiritCost === 'undefined') divineSpiritCost = (hasDecimal ? D(1) : 1);
         if (!goldenCanAfford(divineSpiritCost)) {
             console.warn('buyDivineSpirit: insufficient golden', { goldenWhat, cost: divineSpiritCost });
-            alert('Not enough Golden What Happeneds — need ' + (typeof divineSpiritCost === 'object' && typeof divineSpiritCost.toString === 'function' ? divineSpiritCost.toString() : String(divineSpiritCost)) + '.');
+            notify('Not enough Golden What Happeneds — need ' + (typeof divineSpiritCost === 'object' && typeof divineSpiritCost.toString === 'function' ? divineSpiritCost.toString() : String(divineSpiritCost)) + '.');
             return;
         }
         // spend golden and increase level (Decimal-aware)
@@ -6129,142 +4762,35 @@ function buyDivineSpirit() {
         console.log('buyDivineSpirit: success', { goldenWhat, divineSpiritLevel, divineSpiritCost });
     } catch (err) {
         console.error('buyDivineSpirit error', err);
-        alert('An error occurred while purchasing Divine Spirit. See console for details.');
+        notify('Something went wrong buying Divine Spirit. Try again.');
     }
-}
-
-// shop purchase for Divine Spirit (uses gems/diamonds, not golden currency)
-function buyDivineShopItem() {
-    try {
-        if (shopDivinePurchased) return;
-        const costGems = 20;
-        if ((typeof diamonds === 'undefined' ? 0 : Number(diamonds || 0)) < costGems) {
-            alert('Not enough gems — need ' + costGems + '.');
-            return;
-        }
-        diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds || 0)) - costGems;
-        shopDivinePurchased = true;
-        saveGame(); try { playSfx('purchase.wav'); } catch (e) {}
-        try { updateShopUI(); } catch (e) {}
-        try { updateDisplays(); } catch (e) {}
-    } catch (e) { console.error('buyDivineShopItem error', e); }
 }
 
 function buyDivineSimpleVillager() {
     if (typeof divineSimpleVillagerCost === 'undefined') divineSimpleVillagerCost = 1;
     if (goldenWhat < divineSimpleVillagerCost) {
-        alert('Not enough Golden What Happeneds — need ' + divineSimpleVillagerCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + divineSimpleVillagerCost + '.');
         return;
     }
     // spend golden and increase level
     goldenWhat -= divineSimpleVillagerCost;
     divineSimpleVillagerLevel = (typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0) + 1;
-    // reduce normal prices by 10% (multiplicative), ensure minimum 1
-    try {
-        if (hasDecimal) {
-            const p = D(0.9);
-            // upgrade costs
-            upgrade1Cost = (isDecimalInstance(upgrade1Cost) ? upgrade1Cost : D(upgrade1Cost)).times(p).floor(); if (upgrade1Cost.lt(1)) upgrade1Cost = D(1);
-            upgrade2Cost = (isDecimalInstance(upgrade2Cost) ? upgrade2Cost : D(upgrade2Cost)).times(p).floor(); if (upgrade2Cost.lt(1)) upgrade2Cost = D(1);
-            upgrade3Cost = (isDecimalInstance(upgrade3Cost) ? upgrade3Cost : D(upgrade3Cost)).times(p).floor(); if (upgrade3Cost.lt(1)) upgrade3Cost = D(1);
-            upgrade4Cost = (isDecimalInstance(upgrade4Cost) ? upgrade4Cost : D(upgrade4Cost)).times(p).floor(); if (upgrade4Cost.lt(1)) upgrade4Cost = D(1);
-            upgrade5Cost = (isDecimalInstance(upgrade5Cost) ? upgrade5Cost : D(upgrade5Cost)).times(p).floor(); if (upgrade5Cost.lt(1)) upgrade5Cost = D(1);
-            upgrade6Cost = (isDecimalInstance(upgrade6Cost) ? upgrade6Cost : D(upgrade6Cost)).times(p).floor(); if (upgrade6Cost.lt(1)) upgrade6Cost = D(1);
-            upgrade7Cost = (isDecimalInstance(upgrade7Cost) ? upgrade7Cost : D(upgrade7Cost)).times(p).floor(); if (upgrade7Cost.lt(1)) upgrade7Cost = D(1);
-            upgrade8Cost = (isDecimalInstance(upgrade8Cost) ? upgrade8Cost : D(upgrade8Cost)).times(p).floor(); if (upgrade8Cost.lt(1)) upgrade8Cost = D(1);
-            upgrade9Cost = (isDecimalInstance(upgrade9Cost) ? upgrade9Cost : D(upgrade9Cost)).times(p).floor(); if (upgrade9Cost.lt(1)) upgrade9Cost = D(1);
-            upgrade10Cost = (isDecimalInstance(upgrade10Cost) ? upgrade10Cost : D(upgrade10Cost)).times(p).floor(); if (upgrade10Cost.lt(1)) upgrade10Cost = D(1);
-            upgrade11Cost = (isDecimalInstance(upgrade11Cost) ? upgrade11Cost : D(upgrade11Cost)).times(p).floor(); if (upgrade11Cost.lt(1)) upgrade11Cost = D(1);
-            upgrade12Cost = (isDecimalInstance(upgrade12Cost) ? upgrade12Cost : D(upgrade12Cost)).times(p).floor(); if (upgrade12Cost.lt(1)) upgrade12Cost = D(1);
-            upgrade13Cost = (isDecimalInstance(upgrade13Cost) ? upgrade13Cost : D(upgrade13Cost)).times(p).floor(); if (upgrade13Cost.lt(1)) upgrade13Cost = D(1);
-            upgrade14Cost = (isDecimalInstance(upgrade14Cost) ? upgrade14Cost : D(upgrade14Cost)).times(p).floor(); if (upgrade14Cost.lt(1)) upgrade14Cost = D(1);
-            upgrade15Cost = (isDecimalInstance(upgrade15Cost) ? upgrade15Cost : D(upgrade15Cost)).times(p).floor(); if (upgrade15Cost.lt(1)) upgrade15Cost = D(1);
-            upgrade16Cost = (isDecimalInstance(upgrade16Cost) ? upgrade16Cost : D(upgrade16Cost)).times(p).floor(); if (upgrade16Cost.lt(1)) upgrade16Cost = D(1);
-            // specials and other costs
-            special1Cost = (isDecimalInstance(special1Cost) ? special1Cost : D(special1Cost)).times(p).floor(); if (special1Cost.lt(1)) special1Cost = D(1);
-            special2Cost = (isDecimalInstance(special2Cost) ? special2Cost : D(special2Cost)).times(p).floor(); if (special2Cost.lt(1)) special2Cost = D(1);
-            special3Cost = (isDecimalInstance(special3Cost) ? special3Cost : D(special3Cost)).times(p).floor(); if (special3Cost.lt(1)) special3Cost = D(1);
-            special4Cost = (isDecimalInstance(special4Cost) ? special4Cost : D(special4Cost)).times(p).floor(); if (special4Cost.lt(1)) special4Cost = D(1);
-            special5Cost = (isDecimalInstance(special5Cost) ? special5Cost : D(special5Cost)).times(p).floor(); if (special5Cost.lt(1)) special5Cost = D(1);
-            special6Cost = (isDecimalInstance(special6Cost) ? special6Cost : D(special6Cost)).times(p).floor(); if (special6Cost.lt(1)) special6Cost = D(1);
-            special7Cost = (isDecimalInstance(special7Cost) ? special7Cost : D(special7Cost)).times(p).floor(); if (special7Cost.lt(1)) special7Cost = D(1);
-            special8Cost = (isDecimalInstance(special8Cost) ? special8Cost : D(special8Cost)).times(p).floor(); if (special8Cost.lt(1)) special8Cost = D(1);
-            roping1Cost = (isDecimalInstance(roping1Cost) ? roping1Cost : D(roping1Cost)).times(p).floor(); if (roping1Cost.lt(1)) roping1Cost = D(1);
-            roping2Cost = (isDecimalInstance(roping2Cost) ? roping2Cost : D(roping2Cost)).times(p).floor(); if (roping2Cost.lt(1)) roping2Cost = D(1);
-            roping3Cost = (isDecimalInstance(roping3Cost) ? roping3Cost : D(roping3Cost)).times(p).floor(); if (roping3Cost.lt(1)) roping3Cost = D(1);
-            beats1Cost = (isDecimalInstance(beats1Cost) ? beats1Cost : D(beats1Cost)).times(p).floor(); if (beats1Cost.lt(1)) beats1Cost = D(1);
-            beats2Cost = (isDecimalInstance(beats2Cost) ? beats2Cost : D(beats2Cost)).times(p).floor(); if (beats2Cost.lt(1)) beats2Cost = D(1);
-            beats3Cost = (isDecimalInstance(beats3Cost) ? beats3Cost : D(beats3Cost)).times(p).floor(); if (beats3Cost.lt(1)) beats3Cost = D(1);
-            cr1Cost = (isDecimalInstance(cr1Cost) ? cr1Cost : D(cr1Cost)).times(p).floor(); if (cr1Cost.lt(1)) cr1Cost = D(1);
-            cr2Cost = (isDecimalInstance(cr2Cost) ? cr2Cost : D(cr2Cost)).times(p).floor(); if (cr2Cost.lt(1)) cr2Cost = D(1);
-            cr3Cost = (isDecimalInstance(cr3Cost) ? cr3Cost : D(cr3Cost)).times(p).floor(); if (cr3Cost.lt(1)) cr3Cost = D(1);
-            cr4Cost = (isDecimalInstance(cr4Cost) ? cr4Cost : D(cr4Cost)).times(p).floor(); if (cr4Cost.lt(1)) cr4Cost = D(1);
-            cr5Cost = (isDecimalInstance(cr5Cost) ? cr5Cost : D(cr5Cost)).times(p).floor(); if (cr5Cost.lt(1)) cr5Cost = D(1);
-            ez1Cost = (isDecimalInstance(ez1Cost) ? ez1Cost : D(ez1Cost)).times(p).floor(); if (ez1Cost.lt(1)) ez1Cost = D(1);
-            ez2Cost = (isDecimalInstance(ez2Cost) ? ez2Cost : D(ez2Cost)).times(p).floor(); if (ez2Cost.lt(1)) ez2Cost = D(1);
-            ez3Cost = (isDecimalInstance(ez3Cost) ? ez3Cost : D(ez3Cost)).times(p).floor(); if (ez3Cost.lt(1)) ez3Cost = D(1);
-            ez4Cost = (isDecimalInstance(ez4Cost) ? ez4Cost : D(ez4Cost)).times(p).floor(); if (ez4Cost.lt(1)) ez4Cost = D(1);
-        } else {
-            const p = 0.9;
-            upgrade1Cost = Math.max(1, Math.floor(upgrade1Cost * p));
-            upgrade2Cost = Math.max(1, Math.floor(upgrade2Cost * p));
-            upgrade3Cost = Math.max(1, Math.floor(upgrade3Cost * p));
-            upgrade4Cost = Math.max(1, Math.floor(upgrade4Cost * p));
-            upgrade5Cost = Math.max(1, Math.floor(upgrade5Cost * p));
-            upgrade6Cost = Math.max(1, Math.floor(upgrade6Cost * p));
-            upgrade7Cost = Math.max(1, Math.floor(upgrade7Cost * p));
-            upgrade8Cost = Math.max(1, Math.floor(upgrade8Cost * p));
-            upgrade9Cost = Math.max(1, Math.floor(upgrade9Cost * p));
-            upgrade10Cost = Math.max(1, Math.floor(upgrade10Cost * p));
-            upgrade11Cost = Math.max(1, Math.floor(upgrade11Cost * p));
-            upgrade12Cost = Math.max(1, Math.floor(upgrade12Cost * p));
-            upgrade13Cost = Math.max(1, Math.floor(upgrade13Cost * p));
-            upgrade14Cost = Math.max(1, Math.floor(upgrade14Cost * p));
-            upgrade15Cost = Math.max(1, Math.floor(upgrade15Cost * p));
-            upgrade16Cost = Math.max(1, Math.floor(upgrade16Cost * p));
-            special1Cost = Math.max(1, Math.floor(special1Cost * p));
-            special2Cost = Math.max(1, Math.floor(special2Cost * p));
-            special3Cost = Math.max(1, Math.floor(special3Cost * p));
-            special4Cost = Math.max(1, Math.floor(special4Cost * p));
-            special5Cost = Math.max(1, Math.floor(special5Cost * p));
-            special6Cost = Math.max(1, Math.floor(special6Cost * p));
-            special7Cost = Math.max(1, Math.floor(special7Cost * p));
-            special8Cost = Math.max(1, Math.floor(special8Cost * p));
-            roping1Cost = Math.max(1, Math.floor(roping1Cost * p));
-            roping2Cost = Math.max(1, Math.floor(roping2Cost * p));
-            roping3Cost = Math.max(1, Math.floor(roping3Cost * p));
-            beats1Cost = Math.max(1, Math.floor(beats1Cost * p));
-            beats2Cost = Math.max(1, Math.floor(beats2Cost * p));
-            beats3Cost = Math.max(1, Math.floor(beats3Cost * p));
-            cr1Cost = Math.max(1, Math.floor(cr1Cost * p));
-            cr2Cost = Math.max(1, Math.floor(cr2Cost * p));
-            cr3Cost = Math.max(1, Math.floor(cr3Cost * p));
-            cr4Cost = Math.max(1, Math.floor(cr4Cost * p));
-            cr5Cost = Math.max(1, Math.floor(cr5Cost * p));
-            ez1Cost = Math.max(1, Math.floor(ez1Cost * p));
-            ez2Cost = Math.max(1, Math.floor(ez2Cost * p));
-            ez3Cost = Math.max(1, Math.floor(ez3Cost * p));
-            ez4Cost = Math.max(1, Math.floor(ez4Cost * p));
-        }
-    } catch (e) {
-        // if any cost variable is undefined, ignore and continue
-        console.warn('Price reduction applied with missing variables', e);
-    }
-    // cost of this divine upgrade doubles each purchase
-    divineSimpleVillagerCost = Math.max(1, Math.ceil(divineSimpleVillagerCost * 2));
+    // the discount itself is applied by getSimpleVillagerMultiplier() when prices are shown/charged;
+    // stored costs are not reduced here (doing both applied the discount twice)
+    divineSimpleVillagerCost = divineCostFor('villager', divineSimpleVillagerLevel);
     saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
 }
 
 function buySpecial1() {
     if (special1Purchased) return;
-    if (upgrade1Level < 10) { alert('Unlocks at OP mouse level 10.'); return; }
+    if (upgrade1Level < 10) { notify('Unlocks at OP mouse level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special1Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special1Multiplier));
             special1Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special1Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special1Cost) + '.');
     } else {
         if (count >= special1Cost) {
             count -= special1Cost;
@@ -6272,20 +4798,20 @@ function buySpecial1() {
             else clickMultiplier *= special1Multiplier;
             special1Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special1Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special1Cost) + '.');
     }
 }
 
 function buySpecial2() {
     if (special2Purchased) return;
-    if (upgrade1Level < 25) { alert('Unlocks at OP mouse level 25.'); return; }
+    if (upgrade1Level < 25) { notify('Unlocks at OP mouse level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special2Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special2Multiplier));
             special2Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special2Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special2Cost) + '.');
     } else {
         if (count >= special2Cost) {
             count -= special2Cost;
@@ -6293,20 +4819,20 @@ function buySpecial2() {
             else clickMultiplier *= special2Multiplier;
             special2Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special2Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special2Cost) + '.');
     }
 }
 
 function buySpecial3() {
     if (special3Purchased) return;
-    if (upgrade1Level < 50) { alert('Unlocks at OP mouse level 50.'); return; }
+    if (upgrade1Level < 50) { notify('Unlocks at OP mouse level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special3Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special3Multiplier));
             special3Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special3Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special3Cost) + '.');
     } else {
         if (count >= special3Cost) {
             count -= special3Cost;
@@ -6314,20 +4840,20 @@ function buySpecial3() {
             else clickMultiplier *= special3Multiplier;
             special3Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special3Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special3Cost) + '.');
     }
 }
 
 function buySpecial4() {
     if (special4Purchased) return;
-    if (upgrade1Level < 100) { alert('Unlocks at OP mouse level 100.'); return; }
+    if (upgrade1Level < 100) { notify('Unlocks at OP mouse level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special4Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special4Multiplier));
             special4Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special4Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special4Cost) + '.');
     } else {
         if (count >= special4Cost) {
             count -= special4Cost;
@@ -6335,20 +4861,20 @@ function buySpecial4() {
             else clickMultiplier *= special4Multiplier;
             special4Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special4Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special4Cost) + '.');
     }
 }
 
 function buySpecial5() {
     if (special5Purchased) return;
-    if (upgrade1Level < 150) { alert('Unlocks at OP mouse level 150.'); return; }
+    if (upgrade1Level < 150) { notify('Unlocks at OP mouse level 150.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special5Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special5Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special5Multiplier));
             special5Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special5Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special5Cost) + '.');
     } else {
         if (count >= special5Cost) {
             count -= special5Cost;
@@ -6356,59 +4882,59 @@ function buySpecial5() {
             else clickMultiplier *= special5Multiplier;
             special5Purchased = true;
             updateDisplays();
-        } else alert('Not enough What Happeneds — need ' + formatNumber(special5Cost) + '.');
+        } else notify('Not enough What Happeneds — need ' + needText(special5Cost) + '.');
     }
 }
 
 function buySpecial6() {
     if (special6Purchased) return;
-    if (upgrade1Level < 200) { alert('Unlocks at OP mouse level 200.'); return; }
+    if (upgrade1Level < 200) { notify('Unlocks at OP mouse level 200.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special6Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special6Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special6Multiplier));
             special6Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(special6Cost) + '.'); }
-    } else { if (count >= special6Cost) { count -= special6Cost; if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special6Multiplier)); else clickMultiplier *= special6Multiplier; special6Purchased = true; updateDisplays(); } else { alert('Not enough What Happeneds — need ' + formatNumber(special6Cost) + '.'); } }
+        } else { notify('Not enough What Happeneds — need ' + needText(special6Cost) + '.'); }
+    } else { if (count >= special6Cost) { count -= special6Cost; if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special6Multiplier)); else clickMultiplier *= special6Multiplier; special6Purchased = true; updateDisplays(); } else { notify('Not enough What Happeneds — need ' + needText(special6Cost) + '.'); } }
 }
 
 function buySpecial7() {
     if (special7Purchased) return;
-    if (upgrade1Level < 250) { alert('Unlocks at OP mouse level 250.'); return; }
+    if (upgrade1Level < 250) { notify('Unlocks at OP mouse level 250.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special7Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special7Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special7Multiplier));
             special7Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(special7Cost) + '.'); }
-    } else { if (count >= special7Cost) { count -= special7Cost; if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special7Multiplier)); else clickMultiplier *= special7Multiplier; special7Purchased = true; updateDisplays(); } else { alert('Not enough What Happeneds — need ' + formatNumber(special7Cost) + '.'); } }
+        } else { notify('Not enough What Happeneds — need ' + needText(special7Cost) + '.'); }
+    } else { if (count >= special7Cost) { count -= special7Cost; if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special7Multiplier)); else clickMultiplier *= special7Multiplier; special7Purchased = true; updateDisplays(); } else { notify('Not enough What Happeneds — need ' + needText(special7Cost) + '.'); } }
 }
 
 function buySpecial8() {
     if (special8Purchased) return;
-    if (upgrade1Level < 300) { alert('Unlocks at OP mouse level 300.'); return; }
+    if (upgrade1Level < 300) { notify('Unlocks at OP mouse level 300.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(special8Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(special8Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special8Multiplier));
             special8Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(special8Cost) + '.'); }
-    } else { if (count >= special8Cost) { count -= special8Cost; if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special8Multiplier)); else clickMultiplier *= special8Multiplier; special8Purchased = true; updateDisplays(); } else { alert('Not enough What Happeneds — need ' + formatNumber(special8Cost) + '.'); } }
+        } else { notify('Not enough What Happeneds — need ' + needText(special8Cost) + '.'); }
+    } else { if (count >= special8Cost) { count -= special8Cost; if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(special8Multiplier)); else clickMultiplier *= special8Multiplier; special8Purchased = true; updateDisplays(); } else { notify('Not enough What Happeneds — need ' + needText(special8Cost) + '.'); } }
 }
 
 function buyJonathan1() {
     if (jonathan1Purchased) return;
-    if (upgrade11Level < 10) { alert('Unlocks at Jonathan lvl 10.'); return; }
+    if (upgrade11Level < 10) { notify('Unlocks at Jonathan lvl 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(jonathan1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(jonathan1Cost));
             jonathanOtherMultiplier = (isDecimalInstance(jonathanOtherMultiplier) ? jonathanOtherMultiplier : D(jonathanOtherMultiplier)).times(D(jonathan1Multiplier));
             jonathan1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan1Cost) + '.'); }
     } else {
         if (count >= jonathan1Cost) {
             count -= jonathan1Cost;
@@ -6416,20 +4942,20 @@ function buyJonathan1() {
             else jonathanOtherMultiplier *= jonathan1Multiplier;
             jonathan1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan1Cost) + '.'); }
     }
 }
 
 function buyJonathan2() {
     if (jonathan2Purchased) return;
-    if (upgrade11Level < 25) { alert('Unlocks at Jonathan lvl 25.'); return; }
+    if (upgrade11Level < 25) { notify('Unlocks at Jonathan lvl 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(jonathan2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(jonathan2Cost));
             jonathanOtherMultiplier = (isDecimalInstance(jonathanOtherMultiplier) ? jonathanOtherMultiplier : D(jonathanOtherMultiplier)).times(D(jonathan2Multiplier));
             jonathan2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan2Cost) + '.'); }
     } else {
         if (count >= jonathan2Cost) {
             count -= jonathan2Cost;
@@ -6437,20 +4963,20 @@ function buyJonathan2() {
             else jonathanOtherMultiplier *= jonathan2Multiplier;
             jonathan2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan2Cost) + '.'); }
     }
 }
 
 function buyJonathan3() {
     if (jonathan3Purchased) return;
-    if (upgrade11Level < 50) { alert('Unlocks at Jonathan lvl 50.'); return; }
+    if (upgrade11Level < 50) { notify('Unlocks at Jonathan lvl 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(jonathan3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(jonathan3Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(jonathan3Multiplier));
             jonathan3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan3Cost) + '.'); }
     } else {
         if (count >= jonathan3Cost) {
             count -= jonathan3Cost;
@@ -6458,20 +4984,20 @@ function buyJonathan3() {
             else clickMultiplier *= jonathan3Multiplier;
             jonathan3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan3Cost) + '.'); }
     }
 }
 
 function buyJonathan4() {
     if (jonathan4Purchased) return;
-    if (upgrade11Level < 75) { alert('Unlocks at Jonathan lvl 75.'); return; }
+    if (upgrade11Level < 75) { notify('Unlocks at Jonathan lvl 75.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(jonathan4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(jonathan4Cost));
             jonathanOtherMultiplier = (isDecimalInstance(jonathanOtherMultiplier) ? jonathanOtherMultiplier : D(jonathanOtherMultiplier)).times(D(jonathan4Multiplier));
             jonathan4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan4Cost) + '.'); }
     } else {
         if (count >= jonathan4Cost) {
             count -= jonathan4Cost;
@@ -6479,61 +5005,61 @@ function buyJonathan4() {
             else jonathanOtherMultiplier *= jonathan4Multiplier;
             jonathan4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(jonathan4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(jonathan4Cost) + '.'); }
     }
 }
 
 function buyCr1() {
     if (cr1Purchased) return;
-    if (numericLevel(upgrade12Level) < 10) { alert('Unlocks at CR lvl 10.'); return; }
+    if (numericLevel(upgrade12Level) < 10) { notify('Unlocks at CR lvl 10.'); return; }
     if (count >= cr1Cost) {
         count -= cr1Cost;
         if (hasDecimal) crOtherMultiplier = (isDecimalInstance(crOtherMultiplier) ? crOtherMultiplier : D(crOtherMultiplier)).times(D(cr1Multiplier));
         else crOtherMultiplier *= cr1Multiplier;
         cr1Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(cr1Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(cr1Cost) + '.'); }
 }
 
 function buyCr2() {
     if (cr2Purchased) return;
-    if (numericLevel(upgrade12Level) < 25) { alert('Unlocks at CR lvl 25.'); return; }
+    if (numericLevel(upgrade12Level) < 25) { notify('Unlocks at CR lvl 25.'); return; }
     if (count >= cr2Cost) {
         count -= cr2Cost;
         if (hasDecimal) crOtherMultiplier = (isDecimalInstance(crOtherMultiplier) ? crOtherMultiplier : D(crOtherMultiplier)).times(D(cr2Multiplier));
         else crOtherMultiplier *= cr2Multiplier;
         cr2Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(cr2Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(cr2Cost) + '.'); }
 }
 
 function buyCr3() {
     if (cr3Purchased) return;
-    if (numericLevel(upgrade12Level) < 50) { alert('Unlocks at CR lvl 50.'); return; }
+    if (numericLevel(upgrade12Level) < 50) { notify('Unlocks at CR lvl 50.'); return; }
     if (count >= cr3Cost) {
         count -= cr3Cost;
         if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(cr3Multiplier));
         else clickMultiplier *= cr3Multiplier;
         cr3Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(cr3Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(cr3Cost) + '.'); }
 }
 
 function buyCr4() {
     if (cr4Purchased) return;
-    if (numericLevel(upgrade12Level) < 75) { alert('Unlocks at CR lvl 75.'); return; }
+    if (numericLevel(upgrade12Level) < 75) { notify('Unlocks at CR lvl 75.'); return; }
     if (count >= cr4Cost) {
         count -= cr4Cost;
         if (hasDecimal) crOtherMultiplier = (isDecimalInstance(crOtherMultiplier) ? crOtherMultiplier : D(crOtherMultiplier)).times(D(cr4Multiplier));
         else crOtherMultiplier *= cr4Multiplier;
         cr4Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(cr4Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(cr4Cost) + '.'); }
 }
 
 function buyCr5() {
     if (cr5Purchased) return;
-    if (numericLevel(upgrade12Level) < 100) { alert('Unlocks at CR lvl 100.'); return; }
+    if (numericLevel(upgrade12Level) < 100) { notify('Unlocks at CR lvl 100.'); return; }
     if (count >= cr5Cost) {
         count -= cr5Cost;
         // apply to total cps via multiplying a global multiplier (use goonMultiplier if present)
@@ -6544,54 +5070,47 @@ function buyCr5() {
         else goonMultiplier = (typeof goonMultiplier === 'number' ? goonMultiplier : 1) * cr5Multiplier;
         cr5Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(cr5Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(cr5Cost) + '.'); }
 }
 
 // Prestige / golden claim handler
+// Sum of levels across all 24 normal upgrades (what prestige awards are based on)
+function getTotalUpgradeLevels() {
+    let total = 0;
+    for (let i = 1; i <= 24; i++) {
+        try { total += numericLevel(getUpgradeLevel(i)); } catch (e) { }
+    }
+    return total;
+}
 // Compute how many golden awards the player would receive if they prestiged now
 function getPotentialPrestigeAwards() {
     try {
-        // compute totalLevels dynamically (sum of all upgrade levels)
-        let totalLevels = 0;
-        for (let i = 1; i <= 23; i++) {
-            try { totalLevels += numericLevel(getUpgradeLevel(i)); } catch (e) { }
-        }
-        let awards = Math.floor(totalLevels / LEVELS_PER_GOLDEN);
+        let awards = Math.floor(getTotalUpgradeLevels() / LEVELS_PER_GOLDEN);
         if (typeof divineCollectorLevel !== 'undefined' && divineCollectorLevel > 0) {
             awards = Math.floor(awards * (1 + DIVINE_COLLECTOR_PER_LEVEL * divineCollectorLevel));
-            if (awards < 1 && awards > 0) awards = 1;
         }
+        // Followers: Void followers give extra Golden from prestige
+        const fGolden = getFollowerBonuses().golden || 0;
+        if (fGolden > 0) awards = Math.floor(awards * (1 + fGolden / 100));
         return awards;
     } catch (e) { return 0; }
 }
 
 function buyPrestige() {
-    if (numericLevel(upgrade12Level) < 150) { alert('Prestige unlocks when CR lurker reaches level 150.'); return; }
+    if (numericLevel(upgrade12Level) < 150) { notify('Prestige unlocks when CR lurker reaches level 150.'); return; }
 
-    // compute awards based on total combined levels of base upgrades
-    // sum all upgrade levels dynamically so newly added upgrades count toward prestige
-    let totalLevels = 0;
-    try {
-        for (let i = 1; i <= 23; i++) {
-            try { totalLevels += numericLevel(getUpgradeLevel(i)); } catch (e) { /* ignore missing upgrade */ }
-        }
-    } catch (e) { totalLevels = 0; }
+    // awards are based on the total combined levels of all normal upgrades
+    const totalLevels = getTotalUpgradeLevels();
     const awards = Math.floor(totalLevels / LEVELS_PER_GOLDEN);
     if (awards === 0) {
-        alert(`You need at least ${LEVELS_PER_GOLDEN} total upgrade levels per Golden. You have ${totalLevels}.`);
+        notify(`You need at least ${LEVELS_PER_GOLDEN} total upgrade levels per Golden. You have ${totalLevels}.`);
         return;
     }
 
-    // apply Divine Collector bonus to awards (10% more per level), then compute final awards
-    let finalAwards = awards;
-    try {
-        if (typeof divineCollectorLevel !== 'undefined' && divineCollectorLevel > 0) {
-            finalAwards = Math.floor(awards * (1 + DIVINE_COLLECTOR_PER_LEVEL * divineCollectorLevel));
-            if (finalAwards < 1 && awards > 0) finalAwards = 1;
-        }
-    } catch (e) { finalAwards = awards; }
+    // apply Divine Collector bonus to awards (+25% per level)
+    const finalAwards = getPotentialPrestigeAwards();
 
-    if (!confirm(`gain ${finalAwards} Golden What Happends for ${totalLevels} upgrades? This will reset your progress.`)) return;
+    if (!confirm(`Gain ${finalAwards} Golden What Happeneds for ${totalLevels} upgrade levels? This will reset your progress.`)) return;
 
     // award computed goldens and permanently unlock divine menu if applicable
     goldenWhat += finalAwards;
@@ -6685,7 +5204,8 @@ function buyPrestige() {
             musicOwned, currentMusicTrack,
             // preserve shop state across prestige
             shopDivinePurchased,
-            shopPlatinumPurchased, shopDivineWHPurchased, shopWHVrillPurchased, shopSilverPurchased, shopGoldPurchased,
+            shopPlatinumPurchased, shopDivineWHPurchased, shopWHVrillPurchased, shopWHNaturePurchased, shopVoidWHPurchased, shopFireWHPurchased, shopIceWHPurchased, shopWHhackerPurchased, shopWHchadPurchased, shopWHbreadPurchased, shopWHlightningPurchased, shopSilverPurchased, shopGoldPurchased,
+            shopMobileManPurchased, shopCasinoDealerPurchased,
             shopBgPurchased,
             shopCollectionBgPurchased,
             shopWHBWPurchased,
@@ -6721,37 +5241,20 @@ function buyPrestige() {
             upgrade13Cost: 10000000000,
             lastSaved: Date.now()
         };
+        // keep casino state written by gamba.js (daily spin + active buff, win count); dropping it let players re-spin the same day
+        try {
+            const existing = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY) || '{}') || {};
+            if (existing.casinoSpin && typeof existing.casinoSpin === 'object') prestigeSave.casinoSpin = existing.casinoSpin;
+            if (existing.casino_total_wins) prestigeSave.casino_total_wins = existing.casino_total_wins;
+            if (existing.shopCasinoDealerPurchased) prestigeSave.shopCasinoDealerPurchased = true;
+        } catch (e) {}
         localStorage.setItem(SAVE_KEY, JSON.stringify(prestigeSave));
+        try { localStorage.setItem(SAVE_KEY_LEGACY, JSON.stringify(prestigeSave)); } catch (e) {}
         try { localStorage.setItem('whathappened_prestige_times', String(prestigeTimes || 0)); } catch (e) {}
         try { localStorage.setItem('whathappened_total_golden', String(totalGoldenEver || 0)); } catch (e) {}
         try { localStorage.setItem('whathappened_clicks_since_prestige', '0'); } catch (e) {}
         try { localStorage.setItem('whathappened_last_prestige_ts', String(Date.now())); } catch (e) {}
     } catch (e) { console.error('Failed to persist prestige', e); }
-    // unlock prestige achievements and grant titles
-    try {
-        const prestigeCount = Number(localStorage.getItem('whathappened_prestige_times') || prestigeTimes || 0) || 0;
-        if (prestigeCount >= 1 && !localStorage.getItem('ach_prestige1')) {
-            try { localStorage.setItem('ach_prestige1', '1'); } catch (e) {}
-            try { addUnlockedTitle('Loop Initiater'); } catch (e) {}
-            try { showAchievementPopup('Loop Initiater', 'Prestiged for the first time.'); } catch (e) {}
-        }
-        if (prestigeCount >= 5 && !localStorage.getItem('ach_prestige5')) {
-            try { localStorage.setItem('ach_prestige5', '1'); } catch (e) {}
-            try { addUnlockedTitle('Pattern Recognizer'); } catch (e) {}
-            try { showAchievementPopup('Pattern Recognizer', 'Prestiged 5 times.'); } catch (e) {}
-        }
-        if (prestigeCount >= 10 && !localStorage.getItem('ach_prestige10')) {
-            try { localStorage.setItem('ach_prestige10', '1'); } catch (e) {}
-            try { addUnlockedTitle('Loop Surviver'); } catch (e) {}
-            try { showAchievementPopup('Loop Surviver', 'Prestiged 10 times.'); } catch (e) {}
-        }
-        if (prestigeCount >= 25 && !localStorage.getItem('ach_prestige25')) {
-            try { localStorage.setItem('ach_prestige25', '1'); } catch (e) {}
-            try { addUnlockedTitle('Keeper of the Loop'); } catch (e) {}
-            try { showAchievementPopup('Keeper of the Loop', 'Prestiged 25 times.'); } catch (e) {}
-        }
-    } catch (e) { console.warn('Failed setting prestige achievements', e); }
-
     // reload to perform a full reset (load will pick up golden keys)
     setTimeout(() => location.reload(), 100);
 }
@@ -6759,14 +5262,14 @@ function buyPrestige() {
 // Pirate special purchase handlers
 function buyPirate1() {
     if (pirateSpec1Purchased) return;
-    if (upgrade2Level < 10) { alert('Unlocks at Somalian Pirate level 10.'); return; }
+    if (upgrade2Level < 10) { notify('Unlocks at Somalian Pirate level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(pirateSpec1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(pirateSpec1Cost));
             pirateMultiplier = (isDecimalInstance(pirateMultiplier) ? pirateMultiplier : D(pirateMultiplier)).times(D(pirateSpec1Multiplier));
             pirateSpec1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec1Cost) + '.'); }
     } else {
         if (count >= pirateSpec1Cost) {
             count -= pirateSpec1Cost;
@@ -6774,20 +5277,20 @@ function buyPirate1() {
             else pirateMultiplier *= pirateSpec1Multiplier;
             pirateSpec1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec1Cost) + '.'); }
     }
 }
 
 function buyPirate2() {
     if (pirateSpec2Purchased) return;
-    if (upgrade2Level < 25) { alert('Unlocks at Somalian Pirate level 25.'); return; }
+    if (upgrade2Level < 25) { notify('Unlocks at Somalian Pirate level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(pirateSpec2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(pirateSpec2Cost));
             pirateMultiplier = (isDecimalInstance(pirateMultiplier) ? pirateMultiplier : D(pirateMultiplier)).times(D(pirateSpec2Multiplier));
             pirateSpec2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec2Cost) + '.'); }
     } else {
         if (count >= pirateSpec2Cost) {
             count -= pirateSpec2Cost;
@@ -6795,20 +5298,20 @@ function buyPirate2() {
             else pirateMultiplier *= pirateSpec2Multiplier;
             pirateSpec2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec2Cost) + '.'); }
     }
 }
 
 function buyPirate3() {
     if (pirateSpec3Purchased) return;
-    if (upgrade2Level < 50) { alert('Unlocks at Somalian Pirate level 50.'); return; }
+    if (upgrade2Level < 50) { notify('Unlocks at Somalian Pirate level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(pirateSpec3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(pirateSpec3Cost));
             pirateMultiplier = (isDecimalInstance(pirateMultiplier) ? pirateMultiplier : D(pirateMultiplier)).times(D(pirateSpec3Multiplier));
             pirateSpec3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec3Cost) + '.'); }
     } else {
         if (count >= pirateSpec3Cost) {
             count -= pirateSpec3Cost;
@@ -6816,20 +5319,20 @@ function buyPirate3() {
             else pirateMultiplier *= pirateSpec3Multiplier;
             pirateSpec3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec3Cost) + '.'); }
     }
 }
 
 function buyPirate4() {
     if (pirateSpec4Purchased) return;
-    if (upgrade2Level < 100) { alert('Unlocks at Somalian Pirate level 100.'); return; }
+    if (upgrade2Level < 100) { notify('Unlocks at Somalian Pirate level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(pirateSpec4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(pirateSpec4Cost));
             pirateMultiplier = (isDecimalInstance(pirateMultiplier) ? pirateMultiplier : D(pirateMultiplier)).times(D(pirateSpec4Multiplier));
             pirateSpec4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec4Cost) + '.'); }
     } else {
         if (count >= pirateSpec4Cost) {
             count -= pirateSpec4Cost;
@@ -6837,7 +5340,7 @@ function buyPirate4() {
             else pirateMultiplier *= pirateSpec4Multiplier;
             pirateSpec4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(pirateSpec4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(pirateSpec4Cost) + '.'); }
     }
 }
 
@@ -6857,14 +5360,14 @@ let phonkMultiplier = 1; // multiplies total cps when applied
 let suppressAutosave = false;
 function buyGoon1() {
     if (goonSpec1Purchased) return;
-    if (upgrade3Level < 10) { alert('Unlocks at Goonsaw level 10.'); return; }
+    if (upgrade3Level < 10) { notify('Unlocks at Goonsaw level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goonSpec1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goonSpec1Cost));
             goonMultiplier = (isDecimalInstance(goonMultiplier) ? goonMultiplier : D(goonMultiplier)).times(D(goonSpec1Multiplier));
             goonSpec1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec1Cost) + '.'); }
     } else {
         if (count >= goonSpec1Cost) {
             count -= goonSpec1Cost;
@@ -6872,20 +5375,20 @@ function buyGoon1() {
             else goonMultiplier *= goonSpec1Multiplier;
             goonSpec1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec1Cost) + '.'); }
     }
 }
 
 function buyGoon2() {
     if (goonSpec2Purchased) return;
-    if (upgrade3Level < 25) { alert('Unlocks at Goonsaw level 25.'); return; }
+    if (upgrade3Level < 25) { notify('Unlocks at Goonsaw level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goonSpec2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goonSpec2Cost));
             goonMultiplier = (isDecimalInstance(goonMultiplier) ? goonMultiplier : D(goonMultiplier)).times(D(goonSpec2Multiplier));
             goonSpec2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec2Cost) + '.'); }
     } else {
         if (count >= goonSpec2Cost) {
             count -= goonSpec2Cost;
@@ -6893,20 +5396,20 @@ function buyGoon2() {
             else goonMultiplier *= goonSpec2Multiplier;
             goonSpec2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec2Cost) + '.'); }
     }
 }
 
 function buyGoon3() {
     if (goonSpec3Purchased) return;
-    if (upgrade3Level < 50) { alert('Unlocks at Goonsaw level 50.'); return; }
+    if (upgrade3Level < 50) { notify('Unlocks at Goonsaw level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goonSpec3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goonSpec3Cost));
             goonMultiplier = (isDecimalInstance(goonMultiplier) ? goonMultiplier : D(goonMultiplier)).times(D(goonSpec3Multiplier));
             goonSpec3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec3Cost) + '.'); }
     } else {
         if (count >= goonSpec3Cost) {
             count -= goonSpec3Cost;
@@ -6914,20 +5417,20 @@ function buyGoon3() {
             else goonMultiplier *= goonSpec3Multiplier;
             goonSpec3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec3Cost) + '.'); }
     }
 }
 
 function buyGoon4() {
     if (goonSpec4Purchased) return;
-    if (upgrade3Level < 100) { alert('Unlocks at Goonsaw level 100.'); return; }
+    if (upgrade3Level < 100) { notify('Unlocks at Goonsaw level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goonSpec4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goonSpec4Cost));
             goonMultiplier = (isDecimalInstance(goonMultiplier) ? goonMultiplier : D(goonMultiplier)).times(D(goonSpec4Multiplier));
             goonSpec4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec4Cost) + '.'); }
     } else {
         if (count >= goonSpec4Cost) {
             count -= goonSpec4Cost;
@@ -6935,21 +5438,21 @@ function buyGoon4() {
             else goonMultiplier *= goonSpec4Multiplier;
             goonSpec4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goonSpec4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goonSpec4Cost) + '.'); }
     }
 }
 
 // The Goatis purchase handlers
 function buyGoatis1() {
     if (goatis1Purchased) return;
-    if (upgrade18Level < 10) { alert('Unlocks at The Goatis level 10.'); return; }
+    if (upgrade18Level < 10) { notify('Unlocks at The Goatis level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goatis1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goatis1Cost));
             goatisMultiplier = (isDecimalInstance(goatisMultiplier) ? goatisMultiplier : D(goatisMultiplier)).times(D(goatis1Multiplier));
             goatis1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis1Cost) + '.'); }
     } else {
         if (count >= goatis1Cost) {
             count -= goatis1Cost;
@@ -6957,20 +5460,20 @@ function buyGoatis1() {
             else goatisMultiplier *= goatis1Multiplier;
             goatis1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis1Cost) + '.'); }
     }
 }
 
 function buyGoatis2() {
     if (goatis2Purchased) return;
-    if (upgrade18Level < 25) { alert('Unlocks at The Goatis level 25.'); return; }
+    if (upgrade18Level < 25) { notify('Unlocks at The Goatis level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goatis2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goatis2Cost));
             goatisMultiplier = (isDecimalInstance(goatisMultiplier) ? goatisMultiplier : D(goatisMultiplier)).times(D(goatis2Multiplier));
             goatis2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis2Cost) + '.'); }
     } else {
         if (count >= goatis2Cost) {
             count -= goatis2Cost;
@@ -6978,20 +5481,20 @@ function buyGoatis2() {
             else goatisMultiplier *= goatis2Multiplier;
             goatis2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis2Cost) + '.'); }
     }
 }
 
 function buyGoatis3() {
     if (goatis3Purchased) return;
-    if (upgrade18Level < 50) { alert('Unlocks at The Goatis level 50.'); return; }
+    if (upgrade18Level < 50) { notify('Unlocks at The Goatis level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goatis3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goatis3Cost));
             goatisMultiplier = (isDecimalInstance(goatisMultiplier) ? goatisMultiplier : D(goatisMultiplier)).times(D(goatis3Multiplier));
             goatis3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis3Cost) + '.'); }
     } else {
         if (count >= goatis3Cost) {
             count -= goatis3Cost;
@@ -6999,20 +5502,20 @@ function buyGoatis3() {
             else goatisMultiplier *= goatis3Multiplier;
             goatis3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis3Cost) + '.'); }
     }
 }
 
 function buyGoatis4() {
     if (goatis4Purchased) return;
-    if (upgrade18Level < 100) { alert('Unlocks at The Goatis level 100.'); return; }
+    if (upgrade18Level < 100) { notify('Unlocks at The Goatis level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(goatis4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(goatis4Cost));
             goatisMultiplier = (isDecimalInstance(goatisMultiplier) ? goatisMultiplier : D(goatisMultiplier)).times(D(goatis4Multiplier));
             goatis4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis4Cost) + '.'); }
     } else {
         if (count >= goatis4Cost) {
             count -= goatis4Cost;
@@ -7020,102 +5523,102 @@ function buyGoatis4() {
             else goatisMultiplier *= goatis4Multiplier;
             goatis4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(goatis4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(goatis4Cost) + '.'); }
     }
 }
 
 // goatises raw liver specials (upgrade19)
 function buyRaw1() {
     if (raw1Purchased) return;
-    if (upgrade19Level < 10) { alert('Unlocks at goatises raw liver level 10.'); return; }
+    if (upgrade19Level < 10) { notify('Unlocks at goatises raw liver level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(raw1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(raw1Cost));
             rawMultiplier = (isDecimalInstance(rawMultiplier) ? rawMultiplier : D(rawMultiplier)).times(D(raw1Multiplier));
             raw1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw1Cost) + '.'); }
     } else {
         if (count >= raw1Cost) {
             count -= raw1Cost;
             rawMultiplier *= raw1Multiplier;
             raw1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw1Cost) + '.'); }
     }
 }
 
 function buyRaw2() {
     if (raw2Purchased) return;
-    if (upgrade19Level < 25) { alert('Unlocks at goatises raw liver level 25.'); return; }
+    if (upgrade19Level < 25) { notify('Unlocks at goatises raw liver level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(raw2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(raw2Cost));
             rawMultiplier = (isDecimalInstance(rawMultiplier) ? rawMultiplier : D(rawMultiplier)).times(D(raw2Multiplier));
             raw2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw2Cost) + '.'); }
     } else {
         if (count >= raw2Cost) {
             count -= raw2Cost;
             rawMultiplier *= raw2Multiplier;
             raw2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw2Cost) + '.'); }
     }
 }
 
 function buyRaw3() {
     if (raw3Purchased) return;
-    if (upgrade19Level < 50) { alert('Unlocks at goatises raw liver level 50.'); return; }
+    if (upgrade19Level < 50) { notify('Unlocks at goatises raw liver level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(raw3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(raw3Cost));
             rawMultiplier = (isDecimalInstance(rawMultiplier) ? rawMultiplier : D(rawMultiplier)).times(D(raw3Multiplier));
             raw3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw3Cost) + '.'); }
     } else {
         if (count >= raw3Cost) {
             count -= raw3Cost;
             rawMultiplier *= raw3Multiplier;
             raw3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw3Cost) + '.'); }
     }
 }
 
 function buyRaw4() {
     if (raw4Purchased) return;
-    if (upgrade19Level < 100) { alert('Unlocks at goatises raw liver level 100.'); return; }
+    if (upgrade19Level < 100) { notify('Unlocks at goatises raw liver level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(raw4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(raw4Cost));
             rawMultiplier = (isDecimalInstance(rawMultiplier) ? rawMultiplier : D(rawMultiplier)).times(D(raw4Multiplier));
             raw4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw4Cost) + '.'); }
     } else {
         if (count >= raw4Cost) {
             count -= raw4Cost;
             rawMultiplier *= raw4Multiplier;
             raw4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(raw4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(raw4Cost) + '.'); }
     }
 }
 
 // Landon Stream specials (upgrade20)
 function buyLandon1() {
     if (landon1Purchased) return;
-    if (numericLevel(upgrade20Level) < 10) { alert('Unlocks at The Landon Stream level 10.'); return; }
+    if (numericLevel(upgrade20Level) < 10) { notify('Unlocks at The Landon Stream level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(landon1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(landon1Cost));
             landonMultiplier = (isDecimalInstance(landonMultiplier) ? landonMultiplier : D(landonMultiplier)).times(D(landon1Multiplier));
             landon1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon1Cost) + '.'); }
     } else {
         if (count >= landon1Cost) {
             count -= landon1Cost;
@@ -7123,20 +5626,20 @@ function buyLandon1() {
             else landonMultiplier *= landon1Multiplier;
             landon1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon1Cost) + '.'); }
     }
 }
 
 function buyLandon2() {
     if (landon2Purchased) return;
-    if (numericLevel(upgrade20Level) < 25) { alert('Unlocks at The Landon Stream level 25.'); return; }
+    if (numericLevel(upgrade20Level) < 25) { notify('Unlocks at The Landon Stream level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(landon2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(landon2Cost));
             landonMultiplier = (isDecimalInstance(landonMultiplier) ? landonMultiplier : D(landonMultiplier)).times(D(landon2Multiplier));
             landon2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon2Cost) + '.'); }
     } else {
         if (count >= landon2Cost) {
             count -= landon2Cost;
@@ -7144,20 +5647,20 @@ function buyLandon2() {
             else landonMultiplier *= landon2Multiplier;
             landon2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon2Cost) + '.'); }
     }
 }
 
 function buyLandon3() {
     if (landon3Purchased) return;
-    if (numericLevel(upgrade20Level) < 50) { alert('Unlocks at The Landon Stream level 50.'); return; }
+    if (numericLevel(upgrade20Level) < 50) { notify('Unlocks at The Landon Stream level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(landon3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(landon3Cost));
             landonMultiplier = (isDecimalInstance(landonMultiplier) ? landonMultiplier : D(landonMultiplier)).times(D(landon3Multiplier));
             landon3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon3Cost) + '.'); }
     } else {
         if (count >= landon3Cost) {
             count -= landon3Cost;
@@ -7165,20 +5668,20 @@ function buyLandon3() {
             else landonMultiplier *= landon3Multiplier;
             landon3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon3Cost) + '.'); }
     }
 }
 
 function buyLandon4() {
     if (landon4Purchased) return;
-    if (numericLevel(upgrade20Level) < 100) { alert('Unlocks at The Landon Stream level 100.'); return; }
+    if (numericLevel(upgrade20Level) < 100) { notify('Unlocks at The Landon Stream level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(landon4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(landon4Cost));
             landonMultiplier = (isDecimalInstance(landonMultiplier) ? landonMultiplier : D(landonMultiplier)).times(D(landon4Multiplier));
             landon4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon4Cost) + '.'); }
     } else {
         if (count >= landon4Cost) {
             count -= landon4Cost;
@@ -7186,21 +5689,21 @@ function buyLandon4() {
             else landonMultiplier *= landon4Multiplier;
             landon4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(landon4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(landon4Cost) + '.'); }
     }
 }
 
 // The Bass specials (upgrade21)
 function buyTheBass1() {
     if (theBass1Purchased) return;
-    if (numericLevel(upgrade21Level) < 10) { alert('Unlocks at The Bass level 10.'); return; }
+    if (numericLevel(upgrade21Level) < 10) { notify('Unlocks at The Bass level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(theBass1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(theBass1Cost));
             theBassMultiplier = (isDecimalInstance(theBassMultiplier) ? theBassMultiplier : D(theBassMultiplier)).times(D(theBass1Multiplier));
             theBass1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass1Cost) + '.'); }
     } else {
         if (count >= theBass1Cost) {
             count -= theBass1Cost;
@@ -7208,20 +5711,20 @@ function buyTheBass1() {
             else theBassMultiplier *= theBass1Multiplier;
             theBass1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass1Cost) + '.'); }
     }
 }
 
 function buyTheBass2() {
     if (theBass2Purchased) return;
-    if (numericLevel(upgrade21Level) < 25) { alert('Unlocks at The Bass level 25.'); return; }
+    if (numericLevel(upgrade21Level) < 25) { notify('Unlocks at The Bass level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(theBass2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(theBass2Cost));
             theBassMultiplier = (isDecimalInstance(theBassMultiplier) ? theBassMultiplier : D(theBassMultiplier)).times(D(theBass2Multiplier));
             theBass2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass2Cost) + '.'); }
     } else {
         if (count >= theBass2Cost) {
             count -= theBass2Cost;
@@ -7229,20 +5732,20 @@ function buyTheBass2() {
             else theBassMultiplier *= theBass2Multiplier;
             theBass2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass2Cost) + '.'); }
     }
 }
 
 function buyTheBass3() {
     if (theBass3Purchased) return;
-    if (numericLevel(upgrade21Level) < 50) { alert('Unlocks at The Bass level 50.'); return; }
+    if (numericLevel(upgrade21Level) < 50) { notify('Unlocks at The Bass level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(theBass3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(theBass3Cost));
             theBassMultiplier = (isDecimalInstance(theBassMultiplier) ? theBassMultiplier : D(theBassMultiplier)).times(D(theBass3Multiplier));
             theBass3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass3Cost) + '.'); }
     } else {
         if (count >= theBass3Cost) {
             count -= theBass3Cost;
@@ -7250,20 +5753,20 @@ function buyTheBass3() {
             else theBassMultiplier *= theBass3Multiplier;
             theBass3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass3Cost) + '.'); }
     }
 }
 
 function buyTheBass4() {
     if (theBass4Purchased) return;
-    if (numericLevel(upgrade21Level) < 100) { alert('Unlocks at The Bass level 100.'); return; }
+    if (numericLevel(upgrade21Level) < 100) { notify('Unlocks at The Bass level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(theBass4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(theBass4Cost));
             theBassMultiplier = (isDecimalInstance(theBassMultiplier) ? theBassMultiplier : D(theBassMultiplier)).times(D(theBass4Multiplier));
             theBass4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass4Cost) + '.'); }
     } else {
         if (count >= theBass4Cost) {
             count -= theBass4Cost;
@@ -7271,41 +5774,41 @@ function buyTheBass4() {
             else theBassMultiplier *= theBass4Multiplier;
             theBass4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(theBass4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(theBass4Cost) + '.'); }
     }
 }
 
 // Diddy Blud purchase handlers
 function buyDiddy1() {
     if (diddy1Purchased) return;
-    if (upgrade4Level < 1) { alert('Unlocks at Diddy lvl 1.'); return; }
+    if (upgrade4Level < 10) { notify('Unlocks at Diddy lvl 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(diddy1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(diddy1Cost));
             baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(50));
             diddy1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy1Cost) + '.'); }
     } else {
         if (count >= diddy1Cost) {
             count -= diddy1Cost;
             baseOtherCps += 50;
             diddy1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy1Cost) + '.'); }
     }
 }
 
 function buyDiddy2() {
     if (diddy2Purchased) return;
-    if (upgrade4Level < 5) { alert('Unlocks at Diddy lvl 5.'); return; }
+    if (upgrade4Level < 25) { notify('Unlocks at Diddy lvl 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(diddy2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(diddy2Cost));
             diddyOtherMultiplier = (isDecimalInstance(diddyOtherMultiplier) ? diddyOtherMultiplier : D(diddyOtherMultiplier)).times(D(2));
             diddy2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy2Cost) + '.'); }
     } else {
         if (count >= diddy2Cost) {
             count -= diddy2Cost;
@@ -7313,20 +5816,20 @@ function buyDiddy2() {
             else diddyOtherMultiplier *= 2;
             diddy2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy2Cost) + '.'); }
     }
 }
 
 function buyDiddy3() {
     if (diddy3Purchased) return;
-    if (upgrade4Level < 10) { alert('Unlocks at Diddy lvl 10.'); return; }
+    if (upgrade4Level < 50) { notify('Unlocks at Diddy lvl 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(diddy3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(diddy3Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(1.5));
             diddy3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy3Cost) + '.'); }
     } else {
         if (count >= diddy3Cost) {
             count -= diddy3Cost;
@@ -7334,20 +5837,20 @@ function buyDiddy3() {
             else clickMultiplier *= 1.5;
             diddy3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy3Cost) + '.'); }
     }
 }
 
 function buyDiddy4() {
     if (diddy4Purchased) return;
-    if (upgrade4Level < 20) { alert('Unlocks at Diddy lvl 20.'); return; }
+    if (upgrade4Level < 100) { notify('Unlocks at Diddy lvl 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(diddy4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(diddy4Cost));
             diddyMultiplier = (isDecimalInstance(diddyMultiplier) ? diddyMultiplier : D(diddyMultiplier)).times(D(1.25));
             diddy4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy4Cost) + '.'); }
     } else {
         if (count >= diddy4Cost) {
             count -= diddy4Cost;
@@ -7355,21 +5858,21 @@ function buyDiddy4() {
             else diddyMultiplier *= 1.25;
             diddy4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(diddy4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(diddy4Cost) + '.'); }
     }
 }
 
 // Argonian special purchase handlers
 function buyArgon1() {
     if (argon1Purchased) return;
-    if (upgrade5Level < 10) { alert('Unlocks at Argonian level 10.'); return; }
+    if (upgrade5Level < 10) { notify('Unlocks at Argonian level 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(argon1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(argon1Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(argon1Multiplier));
             argon1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon1Cost) + '.'); }
     } else {
         if (count >= argon1Cost) {
             count -= argon1Cost;
@@ -7377,20 +5880,20 @@ function buyArgon1() {
             else clickMultiplier *= argon1Multiplier;
             argon1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon1Cost) + '.'); }
     }
 }
 
 function buyArgon2() {
     if (argon2Purchased) return;
-    if (upgrade5Level < 25) { alert('Unlocks at Argonian level 25.'); return; }
+    if (upgrade5Level < 25) { notify('Unlocks at Argonian level 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(argon2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(argon2Cost));
             argonOtherMultiplier = (isDecimalInstance(argonOtherMultiplier) ? argonOtherMultiplier : D(argonOtherMultiplier)).times(D(argon2Multiplier));
             argon2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon2Cost) + '.'); }
     } else {
         if (count >= argon2Cost) {
             count -= argon2Cost;
@@ -7398,20 +5901,20 @@ function buyArgon2() {
             else argonOtherMultiplier *= argon2Multiplier;
             argon2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon2Cost) + '.'); }
     }
 }
 
 function buyArgon3() {
     if (argon3Purchased) return;
-    if (upgrade5Level < 50) { alert('Unlocks at Argonian level 50.'); return; }
+    if (upgrade5Level < 50) { notify('Unlocks at Argonian level 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(argon3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(argon3Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(argon3Multiplier));
             argon3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon3Cost) + '.'); }
     } else {
         if (count >= argon3Cost) {
             count -= argon3Cost;
@@ -7419,20 +5922,20 @@ function buyArgon3() {
             else clickMultiplier *= argon3Multiplier;
             argon3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon3Cost) + '.'); }
     }
 }
 
 function buyArgon4() {
     if (argon4Purchased) return;
-    if (upgrade5Level < 100) { alert('Unlocks at Argonian level 100.'); return; }
+    if (upgrade5Level < 100) { notify('Unlocks at Argonian level 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(argon4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(argon4Cost));
             argonMultiplier = (isDecimalInstance(argonMultiplier) ? argonMultiplier : D(argonMultiplier)).times(D(argon4Multiplier));
             argon4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon4Cost) + '.'); }
     } else {
         if (count >= argon4Cost) {
             count -= argon4Cost;
@@ -7440,41 +5943,41 @@ function buyArgon4() {
             else argonMultiplier *= argon4Multiplier;
             argon4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(argon4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(argon4Cost) + '.'); }
     }
 }
 
 // Grape special purchase handlers
 function buyGrape1() {
     if (grape1Purchased) return;
-    if (upgrade6Level < 1) { alert('Unlocks at Grape lvl 1.'); return; }
+    if (upgrade6Level < 10) { notify('Unlocks at Grape lvl 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(grape1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(grape1Cost));
             baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(1000));
             grape1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape1Cost) + '.'); }
     } else {
         if (count >= grape1Cost) {
             count -= grape1Cost;
             baseOtherCps += 1000;
             grape1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape1Cost) + '.'); }
     }
 }
 
 function buyGrape2() {
     if (grape2Purchased) return;
-    if (upgrade6Level < 5) { alert('Unlocks at Grape lvl 5.'); return; }
+    if (upgrade6Level < 25) { notify('Unlocks at Grape lvl 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(grape2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(grape2Cost));
             grapeOtherMultiplier = (isDecimalInstance(grapeOtherMultiplier) ? grapeOtherMultiplier : D(grapeOtherMultiplier)).times(D(grape2Multiplier));
             grape2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape2Cost) + '.'); }
     } else {
         if (count >= grape2Cost) {
             count -= grape2Cost;
@@ -7482,20 +5985,20 @@ function buyGrape2() {
             else grapeOtherMultiplier *= grape2Multiplier;
             grape2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape2Cost) + '.'); }
     }
 }
 
 function buyGrape3() {
     if (grape3Purchased) return;
-    if (upgrade6Level < 10) { alert('Unlocks at Grape lvl 10.'); return; }
+    if (upgrade6Level < 50) { notify('Unlocks at Grape lvl 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(grape3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(grape3Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(grape3Multiplier));
             grape3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape3Cost) + '.'); }
     } else {
         if (count >= grape3Cost) {
             count -= grape3Cost;
@@ -7503,20 +6006,20 @@ function buyGrape3() {
             else clickMultiplier *= grape3Multiplier;
             grape3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape3Cost) + '.'); }
     }
 }
 
 function buyGrape4() {
     if (grape4Purchased) return;
-    if (upgrade6Level < 20) { alert('Unlocks at Grape lvl 20.'); return; }
+    if (upgrade6Level < 100) { notify('Unlocks at Grape lvl 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(grape4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(grape4Cost));
             grapeMultiplier = (isDecimalInstance(grapeMultiplier) ? grapeMultiplier : D(grapeMultiplier)).times(D(grape4Multiplier));
             grape4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape4Cost) + '.'); }
     } else {
         if (count >= grape4Cost) {
             count -= grape4Cost;
@@ -7524,41 +6027,41 @@ function buyGrape4() {
             else grapeMultiplier *= grape4Multiplier;
             grape4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(grape4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(grape4Cost) + '.'); }
     }
 }
 
 // Skippie special purchase handlers
 function buySkippie1() {
     if (skippie1Purchased) return;
-    if (upgrade7Level < 1) { alert('Unlocks at Skippie lvl 1.'); return; }
+    if (upgrade7Level < 10) { notify('Unlocks at Skippie lvl 10.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(skippie1Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(skippie1Cost));
             baseOtherCps = (isDecimalInstance(baseOtherCps) ? baseOtherCps : D(baseOtherCps)).plus(D(5000));
             skippie1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie1Cost) + '.'); }
     } else {
         if (count >= skippie1Cost) {
             count -= skippie1Cost;
             baseOtherCps += 5000;
             skippie1Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie1Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie1Cost) + '.'); }
     }
 }
 
 function buySkippie2() {
     if (skippie2Purchased) return;
-    if (upgrade7Level < 5) { alert('Unlocks at Skippie lvl 5.'); return; }
+    if (upgrade7Level < 25) { notify('Unlocks at Skippie lvl 25.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(skippie2Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(skippie2Cost));
             skippieOtherMultiplier = (isDecimalInstance(skippieOtherMultiplier) ? skippieOtherMultiplier : D(skippieOtherMultiplier)).times(D(skippie2Multiplier));
             skippie2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie2Cost) + '.'); }
     } else {
         if (count >= skippie2Cost) {
             count -= skippie2Cost;
@@ -7566,20 +6069,20 @@ function buySkippie2() {
             else skippieOtherMultiplier *= skippie2Multiplier;
             skippie2Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie2Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie2Cost) + '.'); }
     }
 }
 
 function buySkippie3() {
     if (skippie3Purchased) return;
-    if (upgrade7Level < 10) { alert('Unlocks at Skippie lvl 10.'); return; }
+    if (upgrade7Level < 50) { notify('Unlocks at Skippie lvl 50.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(skippie3Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(skippie3Cost));
             clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(skippie3Multiplier));
             skippie3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie3Cost) + '.'); }
     } else {
         if (count >= skippie3Cost) {
             count -= skippie3Cost;
@@ -7587,20 +6090,20 @@ function buySkippie3() {
             else clickMultiplier *= skippie3Multiplier;
             skippie3Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie3Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie3Cost) + '.'); }
     }
 }
 
 function buySkippie4() {
     if (skippie4Purchased) return;
-    if (upgrade7Level < 20) { alert('Unlocks at Skippie lvl 20.'); return; }
+    if (upgrade7Level < 100) { notify('Unlocks at Skippie lvl 100.'); return; }
     if (hasDecimal) {
         if ((isDecimalInstance(count) ? count : D(count)).gte(D(skippie4Cost))) {
             count = (isDecimalInstance(count) ? count : D(count)).minus(D(skippie4Cost));
             skippieMultiplier = (isDecimalInstance(skippieMultiplier) ? skippieMultiplier : D(skippieMultiplier)).times(D(skippie4Multiplier));
             skippie4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie4Cost) + '.'); }
     } else {
         if (count >= skippie4Cost) {
             count -= skippie4Cost;
@@ -7608,56 +6111,56 @@ function buySkippie4() {
             else skippieMultiplier *= skippie4Multiplier;
             skippie4Purchased = true;
             updateDisplays();
-        } else { alert('Not enough What Happeneds — need ' + formatNumber(skippie4Cost) + '.'); }
+        } else { notify('Not enough What Happeneds — need ' + needText(skippie4Cost) + '.'); }
     }
 }
 
 // Island special purchase handlers
 function buyIsland1() {
     if (island1Purchased) return;
-    if (upgrade8Level < 1) { alert('Unlocks at Island lvl 1.'); return; }
+    if (upgrade8Level < 10) { notify('Unlocks at Island lvl 10.'); return; }
     if (count >= island1Cost) {
         count -= island1Cost;
         baseOtherCps += 50000;
         island1Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(island1Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(island1Cost) + '.'); }
 }
 
 function buyIsland2() {
     if (island2Purchased) return;
-    if (upgrade8Level < 5) { alert('Unlocks at Island lvl 5.'); return; }
+    if (upgrade8Level < 25) { notify('Unlocks at Island lvl 25.'); return; }
     if (count >= island2Cost) {
         count -= island2Cost;
         if (hasDecimal) islandOtherMultiplier = (isDecimalInstance(islandOtherMultiplier) ? islandOtherMultiplier : D(islandOtherMultiplier)).times(D(island2Multiplier));
         else islandOtherMultiplier *= island2Multiplier;
         island2Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(island2Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(island2Cost) + '.'); }
 }
 
 function buyIsland3() {
     if (island3Purchased) return;
-    if (upgrade8Level < 10) { alert('Unlocks at Island lvl 10.'); return; }
+    if (upgrade8Level < 50) { notify('Unlocks at Island lvl 50.'); return; }
     if (count >= island3Cost) {
         count -= island3Cost;
         if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(island3Multiplier));
         else clickMultiplier *= island3Multiplier;
         island3Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(island3Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(island3Cost) + '.'); }
 }
 
 function buyIsland4() {
     if (island4Purchased) return;
-    if (upgrade8Level < 20) { alert('Unlocks at Island lvl 20.'); return; }
+    if (upgrade8Level < 100) { notify('Unlocks at Island lvl 100.'); return; }
     if (count >= island4Cost) {
         count -= island4Cost;
         if (hasDecimal) islandMultiplier = (isDecimalInstance(islandMultiplier) ? islandMultiplier : D(islandMultiplier)).times(D(island4Multiplier));
         else islandMultiplier *= island4Multiplier;
         island4Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(island4Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(island4Cost) + '.'); }
 }
 
 // Phonk special purchase handlers
@@ -7669,83 +6172,97 @@ let phonk5Purchased = false;
 
 function buyPhonk1() {
     if (phonk1Purchased) return;
-    if (upgrade10Level < 10) { alert('Unlocks at Phonk lvl 10.'); return; }
+    if (upgrade10Level < 10) { notify('Unlocks at Phonk lvl 10.'); return; }
     if (count >= phonk1Cost) {
         count -= phonk1Cost;
         if (hasDecimal) phonkMultiplier = (isDecimalInstance(phonkMultiplier) ? phonkMultiplier : D(phonkMultiplier)).times(D(phonk1Multiplier));
         else phonkMultiplier *= phonk1Multiplier;
         phonk1Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(phonk1Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(phonk1Cost) + '.'); }
 }
 
 function buyPhonk2() {
     if (phonk2Purchased) return;
-    if (upgrade10Level < 25) { alert('Unlocks at Phonk lvl 25.'); return; }
+    if (upgrade10Level < 25) { notify('Unlocks at Phonk lvl 25.'); return; }
     if (count >= phonk2Cost) {
         count -= phonk2Cost;
         if (hasDecimal) phonkMultiplier = (isDecimalInstance(phonkMultiplier) ? phonkMultiplier : D(phonkMultiplier)).times(D(phonk2Multiplier));
         else phonkMultiplier *= phonk2Multiplier;
         phonk2Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(phonk2Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(phonk2Cost) + '.'); }
 }
 
 function buyPhonk3() {
     if (phonk3Purchased) return;
-    if (upgrade10Level < 50) { alert('Unlocks at Phonk lvl 50.'); return; }
+    if (upgrade10Level < 50) { notify('Unlocks at Phonk lvl 50.'); return; }
     if (count >= phonk3Cost) {
         count -= phonk3Cost;
         if (hasDecimal) phonkMultiplier = (isDecimalInstance(phonkMultiplier) ? phonkMultiplier : D(phonkMultiplier)).times(D(phonk3Multiplier));
         else phonkMultiplier *= phonk3Multiplier;
         phonk3Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(phonk3Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(phonk3Cost) + '.'); }
 }
 
 function buyPhonk4() {
     if (phonk4Purchased) return;
-    if (upgrade10Level < 75) { alert('Unlocks at Phonk lvl 75.'); return; }
+    if (upgrade10Level < 75) { notify('Unlocks at Phonk lvl 75.'); return; }
     if (count >= phonk4Cost) {
         count -= phonk4Cost;
         if (hasDecimal) phonkOtherMultiplier = (isDecimalInstance(phonkOtherMultiplier) ? phonkOtherMultiplier : D(phonkOtherMultiplier)).times(D(phonk4Multiplier));
         else phonkOtherMultiplier *= phonk4Multiplier;
         phonk4Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(phonk4Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(phonk4Cost) + '.'); }
 }
 
 function buyPhonk5() {
     if (phonk5Purchased) return;
-    if (upgrade10Level < 100) { alert('Unlocks at Phonk lvl 100.'); return; }
+    if (upgrade10Level < 100) { notify('Unlocks at Phonk lvl 100.'); return; }
     if (count >= phonk5Cost) {
         count -= phonk5Cost;
         if (hasDecimal) phonkMultiplier = (isDecimalInstance(phonkMultiplier) ? phonkMultiplier : D(phonkMultiplier)).times(D(phonk5Multiplier));
         else phonkMultiplier *= phonk5Multiplier;
         phonk5Purchased = true;
         saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(phonk5Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(phonk5Cost) + '.'); }
 }
 
 // Fetch active clan buff from Firestore and set window.clanBuffCpsMult / clanBuffClickMult for updateDisplays
 async function refreshClanBuff() {
     try {
         var clanId = localStorage.getItem('player_clanId');
-        if (!clanId) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
+        if (!clanId) { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
         var dbVal = typeof window !== 'undefined' && window.db;
         var docFn = typeof window !== 'undefined' && window.doc;
         var getDocFn = typeof window !== 'undefined' && window.getDoc;
         if (!dbVal || !docFn || typeof getDocFn !== 'function') return;
         var snap = await getDocFn(docFn(dbVal, 'clans', clanId));
-        if (!snap.exists()) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
+        if (!snap.exists()) { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
         var d = snap.data();
+        // clan level perks (applied in updateDisplays); cache the level so offline gains can use it on the next load
+        window.clanLevel = clanLevelFromXp(d.clanXp);
+        try { localStorage.setItem('whathappened_clan_level', String(window.clanLevel)); } catch (e) {}
+        // several clan buffs can run at once (activeBuffs); clans that haven't bought one since then only have activeBuff
+        var toMs = function (v) { return typeof v === 'number' ? v : (v && v.toMillis ? v.toMillis() : 0); };
+        var NAMES = { cps_double_1h: 'Double CPS', click_double_30m: 'Double Click Power', both_triple_20m: 'Triple Everything' };
+        var list = [];
+        var map = (d.activeBuffs && typeof d.activeBuffs === 'object') ? d.activeBuffs : {};
+        Object.keys(map).forEach(function (id) { var b = map[id]; if (b) list.push({ id: id, name: NAMES[id] || 'Clan buff', cpsMult: Number(b.cpsMult) || 1, clickMult: Number(b.clickMult) || 1, expiresAt: toMs(b.expiresAt) }); });
         var ab = d.activeBuff;
-        if (!ab || !ab.expiresAt) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
-        var exp = typeof ab.expiresAt === 'number' ? ab.expiresAt : (ab.expiresAt.toMillis ? ab.expiresAt.toMillis() : 0);
-        if (exp <= Date.now()) { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
-        window.clanBuffCpsMult = typeof ab.cpsMult === 'number' ? ab.cpsMult : 1;
-        window.clanBuffClickMult = typeof ab.clickMult === 'number' ? ab.clickMult : 1;
-    } catch (e) { try { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; } catch (e2) {} }
+        if (ab && ab.id && !map[ab.id]) list.push({ id: ab.id, name: NAMES[ab.id] || 'Clan buff', cpsMult: Number(ab.cpsMult) || 1, clickMult: Number(ab.clickMult) || 1, expiresAt: toMs(ab.expiresAt) });
+        window.clanActiveBuffs = list.filter(function (b) { return b.expiresAt > Date.now(); });
+        applyClanBuffMults();
+    } catch (e) { try { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; } catch (e2) {} }
+}
+// Multiply every clan buff that hasn't expired yet (re-run each frame so a buff stops exactly when it runs out)
+function applyClanBuffMults() {
+    var cpsM = 1, clickM = 1, now = Date.now();
+    (window.clanActiveBuffs || []).forEach(function (b) { if (b.expiresAt > now) { cpsM *= b.cpsMult; clickM *= b.clickMult; } });
+    window.clanBuffCpsMult = cpsM;
+    window.clanBuffClickMult = clickM;
 }
 
 // Ensure buttons and displays show initial values on load
@@ -7754,7 +6271,11 @@ function initApp() {
         console.log('initApp: start');
     // load saved game (if any) then update displays
     loadGame();
-    try { refreshClanBuff(); } catch (e) {}
+    try { syncDivineCostsFromLevels(); } catch (e) {}
+    // saves are only allowed once the real save has been read, so an early click can't overwrite it
+    window._saveLoaded = true;
+    // the Firebase module may still be downloading (it no longer delays startup), so wait for it
+    whenFirebaseReady(() => { try { refreshClanBuff(); } catch (e) {} });
     updateDisplays();
     try { updateShopUI(); } catch (e) {}
     // initialize hover tooltips for upgrades
@@ -7800,11 +6321,22 @@ function initApp() {
     let _goonCountEl = null;
     const getGoonCountEl = () => { if (!_goonCountEl) _goonCountEl = document.getElementById('goonCount'); return _goonCountEl; };
     let _lastGoonCountStr = '';
+    // Income uses real elapsed time: browsers throttle timers in background tabs (1/sec or slower),
+    // so a fixed per-tick amount silently lost most of the CPS while the tab was hidden.
+    let _lastCpsTickAt = Date.now();
+    const MAX_TICK_GAP_MS = 24 * 60 * 60 * 1000; // same 24h cap as offline gains
     function scheduleCpsTick() {
         const ms = (typeof window._perfCpsTickMs === 'number') ? window._perfCpsTickMs : 100;
         window._perfCpsTickTimeout = setTimeout(() => {
             try {
-                const frac = ms / 1000; // so total per second = cps
+                const now = Date.now();
+                const elapsedMs = Math.min(MAX_TICK_GAP_MS, Math.max(0, now - _lastCpsTickAt));
+                _lastCpsTickAt = now;
+                const frac = elapsedMs / 1000; // so total per second = cps
+                // a long gap means the computer slept with the tab open: report it like offline gains
+                if (elapsedMs > 5 * 60000 && Number(cps) > 0) {
+                    try { showWelcomeBackModal(Number(cps) * frac, Math.floor(frac)); } catch (e) {}
+                }
                 if (hasBig) {
                     const cpsVal = D(cps);
                     const isPositive = (typeof cpsVal === 'number' && cpsVal > 0) || (cpsVal && typeof cpsVal.gt === 'function' ? cpsVal.gt(0) : Number(cpsVal) > 0);
@@ -7860,8 +6392,8 @@ function initApp() {
             audio.muted = !!musicMuted;
             try {
                 // restore equipped track selection if present
-                const trackFile = (typeof currentMusicTrack === 'string' && currentMusicTrack && currentMusicTrack !== 'mainTheme') ? (currentMusicTrack + '.mp3') : 'mainTheme.mp3';
-                if (!audio.src || audio.src.indexOf(trackFile) === -1) audio.src = 'audio/' + trackFile;
+                const trackSrc = musicSrcFor(currentMusicTrack);
+                if (!audio.src || decodeURIComponent(audio.src).indexOf(trackSrc) === -1) audio.src = trackSrc;
                 // try to play (may be blocked by browser autoplay); that's acceptable
                 try { if (!audio.paused && audio.currentTime) {} else { audio.play().catch(()=>{}); } } catch (e) {}
             } catch (e) {}
@@ -7910,7 +6442,7 @@ function initApp() {
     try {
         const mainImg = document.querySelector('.main-image');
         if (mainImg && !mainImg.dataset.sfxWired) {
-            mainImg.addEventListener('click', () => { try { playSfx('WHClick.wav'); } catch (e) {} });
+            mainImg.addEventListener('click', () => { try { playSfx('whclick.wav'); } catch (e) {} });
             mainImg.dataset.sfxWired = '1';
         }
     } catch (e) {}
@@ -7945,6 +6477,15 @@ function initApp() {
 }, 30000); // Syncs every 30 seconds
     // save on unload
     window.addEventListener('beforeunload', saveGame);
+    // mobile browsers often kill a backgrounded tab without firing beforeunload: save whenever the tab is hidden
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') {
+            try { saveGame(); } catch (e) {}
+            try { flushClanClicks(); } catch (e) {}
+        }
+    });
+    // clan-event clicks are batched; send them every 3s
+    setInterval(() => { try { flushClanClicks(); } catch (e) {} }, 3000);
     // Bossfight event: flush pending damage to Firestore every 3s (runTransaction so we don't overwrite other clans/members)
     try {
         var runTransactionFn = typeof window !== 'undefined' && window.runTransaction;
@@ -8017,7 +6558,7 @@ function initApp() {
         // update button UI if present
         try{
             const btns = document.querySelectorAll('.bulk-btn');
-            btns.forEach(b=>{ try{ b.classList.toggle('active', Number(b.dataset.value) === purchaseBatch); }catch(e){} });
+            btns.forEach(b=>{ try{ b.classList.toggle('active', String(b.dataset.value) === String(purchaseBatch)); }catch(e){} });
         }catch(e){}
     } catch (e) {}
     // Playtime tracking: accumulate seconds played and check achievements
@@ -8027,8 +6568,7 @@ function initApp() {
         // ensure numeric storage exists
         try { if (!localStorage.getItem(PLAY_KEY)) localStorage.setItem(PLAY_KEY, String(0)); } catch (e) {}
         // initial check
-        try { checkPlaytimeAchievements(); } catch (e) {}
-        // update every 10 seconds
+        // update every 10 seconds (checkDataAchievements picks up the playtime achievements)
         setInterval(() => {
             try {
                 const now = Date.now();
@@ -8038,7 +6578,6 @@ function initApp() {
                     const current = Number(localStorage.getItem(PLAY_KEY) || 0) || 0;
                     const next = current + deltaSec;
                     try { localStorage.setItem(PLAY_KEY, String(next)); } catch (e) {}
-                    try { checkPlaytimeAchievements(); } catch (e) {}
                 }
             } catch (e) {}
         }, 10000);
@@ -8078,21 +6617,72 @@ function initApp() {
             setTimeout(() => { try { document.body.classList.add('transitions-enabled'); } catch (e) {} }, 120);
         } catch (e) {}
         // Update player profile in Firebase after game loads (so count and goldenWhat are loaded from save)
-        try {
-            if (typeof window.writeProfile === 'function') {
-                setTimeout(() => { window.writeProfile().catch(() => {}); }, 500);
-            }
-        } catch (e) {}
+        whenFirebaseReady(() => { try { window.writeProfile().catch(() => {}); } catch (e) {} });
         console.log('initApp: finished (overlay hidden)');
     }
 }
 
-// Leaderboard removed; initialize app
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initApp);
-} else {
+// Run fn once the Firebase module in index.html has set its globals (gives up after ~60s, e.g. when blocked).
+function whenFirebaseReady(fn, tries = 120) {
+    if (window.db && typeof window.writeProfile === 'function') { fn(); return; }
+    if (tries > 0) setTimeout(() => whenFirebaseReady(fn, tries - 1), 500);
+}
+
+// Start as soon as the HTML is parsed. DOMContentLoaded also waits for the Firebase module to download,
+// which on slow or filtered networks left the game showing a blank save for several seconds.
+function initAppOnce() {
+    if (initAppOnce.done) return;
+    initAppOnce.done = true;
     initApp();
 }
+if (document.readyState === 'loading') {
+    document.addEventListener('readystatechange', () => { if (document.readyState !== 'loading') initAppOnce(); });
+    document.addEventListener('DOMContentLoaded', initAppOnce);
+} else {
+    initAppOnce();
+}
+
+// "+N" that floats up from where you clicked (skipped on Low performance; at most 14 on screen)
+function spawnClickFloat(amount, crit) {
+    if (window._perfCritIndicator === false) return;
+    let layer = document.getElementById('clickFloatLayer');
+    if (!layer) { layer = document.createElement('div'); layer.id = 'clickFloatLayer'; layer.setAttribute('aria-hidden', 'true'); document.body.appendChild(layer); }
+    while (layer.childElementCount >= 14) layer.firstElementChild.remove();
+    const p = window._lastClickPoint;
+    let x, y;
+    if (p && Date.now() - p.t < 500) { x = p.x; y = p.y; }
+    else {
+        const btn = document.querySelector('.main-image-btn');
+        const r = btn ? btn.getBoundingClientRect() : { left: innerWidth / 2, top: innerHeight / 2, width: 0, height: 0 };
+        x = r.left + r.width / 2; y = r.top + r.height / 2;
+    }
+    const el = document.createElement('span');
+    el.className = 'click-float' + (crit ? ' crit' : '');
+    el.textContent = '+' + formatNumber(amount);
+    el.style.left = (x + Math.random() * 36 - 18) + 'px';
+    el.style.top = (y - 8) + 'px';
+    layer.appendChild(el);
+    setTimeout(() => el.remove(), crit ? 1200 : 900);
+}
+document.addEventListener('pointerdown', e => {
+    if (e.target && e.target.closest && e.target.closest('.main-image-btn')) window._lastClickPoint = { x: e.clientX, y: e.clientY, t: Date.now() };
+}, true);
+
+// Esc closes the topmost open menu or dialog
+document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    const byId = id => document.getElementById(id);
+    const shown = el => !!el && !!el.style.display && el.style.display !== 'none';
+    const open = id => !!byId(id) && byId(id).classList.contains('open');
+    if (shown(byId('welcomeBackModal'))) { const b = byId('welcomeBackOk'); if (b) b.click(); return; }
+    if (shown(byId('statsPanel'))) return toggleStats();
+    if (open('shopMenu')) return toggleShopMenu();
+    if (open('settingsMenu')) return toggleSettingsMenu();
+    if (open('specialMenu')) return toggleSpecialMenu();
+    const side = byId('sidePanel');
+    if (side && side.style.transform && String(side.style.transform).indexOf('100%') === -1 && byId('sidePanelClose')) return byId('sidePanelClose').click();
+    if (open('leftBar') || open('divineLeftBar')) return toggleLeftBar();
+});
 
 function toggleSpecialMenu() {
     const el = document.getElementById('specialMenu');
@@ -8100,7 +6690,8 @@ function toggleSpecialMenu() {
     el.classList.toggle('open');
     el.setAttribute('aria-hidden', el.classList.contains('open') ? 'false' : 'true');
     const btn = document.getElementById('specialMenuBtn');
-    if (btn) btn.title = el.classList.contains('open') ? 'Close Special Upgrades' : 'Open Special Upgrades';
+    if (btn) btn.classList.toggle('active', el.classList.contains('open'));
+    if (!el.classList.contains('open')) { try { hideSpecialTip(); } catch (e) {} }
     try { updateDisplays(); } catch (e) {}
 }
 
@@ -8111,7 +6702,7 @@ function toggleSettingsMenu() {
     const overlay = document.getElementById('settingsOverlay');
     if (overlay) overlay.classList.toggle('open');
     const btn = document.getElementById('settingsToggle');
-    if (btn) btn.innerText = el.classList.contains('open') ? 'Settings ▴' : 'Settings ⚙';
+    if (btn) btn.classList.toggle('active', el.classList.contains('open'));
     try {
         if (el.classList.contains('open')) document.body.classList.add('overlay-open-settings');
         else document.body.classList.remove('overlay-open-settings');
@@ -8124,7 +6715,33 @@ function toggleStats() {
         const el = document.getElementById('statsPanel');
         if (!el) return;
         el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+        if (el.style.display === 'block') renderExtraStats();
     } catch (e) {}
+}
+// "Around the game": achievements, followers, casino and clan numbers, read from what those pages saved
+function renderExtraStats() {
+    const box = document.getElementById('statsExtra');
+    if (!box) return;
+    const readJSON = k => { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } };
+    const rows = [];
+    try { if (window.WHA) rows.push(['🎖️ Achievements', `${window.WHA.unlockedCount()} / ${window.WHA.ACHIEVEMENTS.length}`, 'achievements.html']); } catch (e) {}
+    rows.push(['🏷️ Titles unlocked', String(getUnlockedTitles().length), 'achievements.html']);
+    const f = readJSON('whathappened_followers');
+    if (f && Array.isArray(f.list)) rows.push(['🦎 Followers', `${f.list.length} owned · ${(f.equipped || []).filter(Boolean).length}/${f.slots || 2} on your team`, 'followers.html']);
+    rows.push(['💎 Gems', formatNumber(Number(diamonds) || 0), null]);
+    const cs = readJSON('whathappened_casino_stats');
+    if (cs && cs.rounds) {
+        const decided = (cs.wins || 0) + (cs.losses || 0);
+        rows.push(['🎰 Casino rounds', `${formatNumber(cs.rounds)}${decided ? ' · ' + Math.round((cs.wins || 0) / decided * 100) + '% won' : ''}${cs.rocketBest ? ' · best rocket ' + Number(cs.rocketBest).toFixed(2) + '×' : ''}`, 'gamba.html']);
+    }
+    const clanId = localStorage.getItem('player_clanId');
+    if (clanId && clanId !== 'undefined') {
+        const ck = readJSON('whathappened_clan_checkin') || {};
+        const lvl = Number(localStorage.getItem('whathappened_clan_level')) || 1;
+        rows.push(['🛡️ Clan', `${localStorage.getItem('player_clanName') || 'Your clan'} · level ${lvl}${ck.streak ? ' · ' + ck.streak + '-day streak' : ''}`, 'clan.html']);
+    }
+    box.innerHTML = '<h4>Around the game</h4>' + rows.map(([k, v, href]) =>
+        `<div class="stats-extra-row"><span>${k}</span>${href ? `<a href="${href}">${v}</a>` : `<b>${v}</b>`}</div>`).join('');
 }
 
 function toggleMusicMute() {
@@ -8236,461 +6853,123 @@ function showShopTab(tab) {
 }
 
 // Render/update shop UI controls inside the shop menu
+// Shop previews use the small WebP copies in thumbs/ folders (the full image only loads once you equip it)
+const NO_THUMB = /^(whathappened|mainbg|gem|shop|lbicon|wheel|divineargonian|divinesimplevillager)$/;
+function thumbFor(path) {
+    const m = String(path || '').match(/^(mainimage|bgimages)\/([^/]+)\.(png|jpe?g|webp)$/i);
+    return (m && !NO_THUMB.test(m[2])) ? `${m[1]}/thumbs/${m[2]}.webp` : path;
+}
 function updateShopUI() {
     try {
-        // render the main items into the main tab container
+        // render the main-image skins into the main tab container from SHOP_SKINS
         const container = document.getElementById('shopTabMain');
         if (!container) return;
-        // build shop markup: preview and Divine Spirit item
-        container.innerHTML = `
-            <div class="shop-items-row">
-                <div class="shop-item">
-                    <div class="shop-item-title">WH classic</div>
-                    <img id="shopPreviewImage" src="mainimage/whathappened.jpeg" alt="Default" class="shop-item-img" />
-                    <div class="shop-item-info"></div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="equipDefaultBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopDefaultStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopDivineItem">
-                    <div class="shop-item-title">Divine Spirit</div>
-                    <img id="shopDivineImg" src="mainimage/DivineSpirit.png" alt="Divine Spirit" class="shop-item-img" style="cursor:pointer;" />
-                    <div class="shop-item-info">Cost: <strong>20</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyDivineBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipDivineBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopDivineStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopCollectionItem">
-                    <div class="shop-item-title">Collection Background</div>
-                    <img id="shopCollectionImg" src="mainimage/collectionbg.png" alt="Collection BG" class="shop-item-img" style="cursor:pointer;" />
-                    <div class="shop-item-info">Cost: <strong>20</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyCollectionBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipCollectionBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopCollectionStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopWHBWItem">
-                    <div class="shop-item-title">WH Black & White</div>
-                    <img id="shopWHBWImg" src="mainimage/WHblackandwhite.png" alt="WH B&W" class="shop-item-img" style="cursor:pointer;" />
-                    <div class="shop-item-info">Cost: <strong>5</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyWHBWBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipWHBWBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopWHBWStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopWHVrillItem">
-                    <div class="shop-item-title">WH Vrill</div>
-                    <img id="shopWHVrillImg" src="mainimage/WHVrill.png" alt="WH Vrill" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%2390C0FF%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2220%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>WHVrill</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>50</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyWHVrillBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipWHVrillBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopWHVrillStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopMobileManItem">
-                    <div class="shop-item-title">Mobile Man Skin</div>
-                    <img id="shopMobileManImg" src="mainimage/mobilemanskin.png" alt="Mobile Man Skin" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%23f0f0f0%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2218%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Mobile Man</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>50</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyMobileManBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipMobileManBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopMobileManStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopSilverItem">
-                    <div class="shop-item-title">Silver WH</div>
-                    <img id="shopSilverImg" src="mainimage/SilverWH.png" alt="Silver WH" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%23C0C0C0%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2224%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Silver</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>100</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buySilverBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipSilverBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopSilverStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopPlatinumItem">
-                    <div class="shop-item-title">Platinum WH</div>
-                    <img id="shopPlatinumImg" src="mainimage/PlatinumWH.png" alt="Platinum WH" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%23E5E4E2%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2224%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Platinum</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>100</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyPlatinumBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipPlatinumBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopPlatinumStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopDivineWHItem">
-                    <div class="shop-item-title">Divine WH</div>
-                    <img id="shopDivineWHImg" src="mainimage/DivineWH.png" alt="Divine WH" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%23FFD700%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2224%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Divine</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>500</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyDivineWHBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipDivineWHBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopDivineWHStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopGoldItem">
-                    <div class="shop-item-title">Gold WH</div>
-                    <img id="shopGoldImg" src="mainimage/GoldWH.png" alt="Gold WH" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%23FFD700%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2224%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Gold</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>500</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyGoldBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipGoldBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopGoldStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
-                </div>
-                <div class="shop-item" id="shopWHNatureItem">
-                    <div class="shop-item-title">WH Nature</div>
-                    <img id="shopWHNatureImg" src="mainimage/whnature.webp" alt="WH Nature" class="shop-item-img" style="cursor:pointer;" onerror="this.onerror=null;this.src='data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%22256%22 height=%22256%22><rect width=%22100%25%22 height=%22100%25%22 fill=%22%2380c080%22/><text x=%2250%25%22 y=%2250%25%22 font-size=%2220%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23000%22>Nature</text></svg>'" />
-                    <div class="shop-item-info">Cost: <strong>20</strong> gems</div>
-                    <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                        <button id="buyWHNatureBtn" style="padding:6px 8px;border-radius:6px;">Buy</button>
-                        <button id="equipWHNatureBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
-                        <div id="shopWHNatureStatus" style="font-weight:700;color:#000;margin-left:6px;"></div>
-                    </div>
+        const placeholder = (skin) => "data:image/svg+xml;utf8," + encodeURIComponent(
+            `<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="100%" height="100%" fill="${skin.color}"/>` +
+            `<text x="50%" y="50%" font-size="22" dominant-baseline="middle" text-anchor="middle" fill="#fff" stroke="#000" stroke-width="0.6">${skin.title}</text></svg>`);
+        let html = '<div class="shop-items-row">';
+        html += `<div class="shop-item" id="shopDefaultItem">
+                <div class="shop-item-title">WH classic</div>
+                <img id="shopPreviewImage" src="${DEFAULT_SHOP_IMAGE}" alt="Default" class="shop-item-img" style="cursor:pointer;" />
+                <div class="shop-item-info">Cost: <strong>Free</strong></div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                    <button id="equipDefaultBtn" style="padding:6px 8px;border-radius:6px;">Equip</button>
                 </div>
             </div>`;
-        // attach handlers
-        // Ensure WH Vrill buy button respects purchased state immediately after rendering
-        try {
-            const whvrillBuyInit = document.getElementById('buyWHVrillBtn');
-            if (whvrillBuyInit) whvrillBuyInit.style.display = (shopWHVrillPurchased ? 'none' : 'inline-block');
-        } catch (e) {}
-        const buyBtn = document.getElementById('buyDivineBtn');
-        const equipBtn = document.getElementById('equipDivineBtn');
-        const divineImg = document.getElementById('shopDivineImg');
-        const status = document.getElementById('shopDivineStatus');
-        function refresh() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            // default preview equip button
-            const defStatus = document.getElementById('shopDefaultStatus');
-            const defBtn = document.getElementById('equipDefaultBtn');
-            if (equippedShopImage === 'mainimage/whathappened.jpeg' || !equippedShopImage) {
-                if (defBtn) { defBtn.innerText = 'Equipped'; defBtn.disabled = true; }
-                if (defStatus) defStatus.innerText = 'equipped';
-            } else {
-                if (defBtn) { defBtn.innerText = 'Equip'; defBtn.disabled = false; }
-                if (defStatus) defStatus.innerText = '';
-            }
-            if (shopDivinePurchased) {
-                if (buyBtn) { buyBtn.style.display = 'none'; }
-                equipBtn.disabled = false; equipBtn.innerText = (equippedShopImage === 'mainimage/DivineSpirit.png') ? 'Equipped' : 'Equip';
-                status.innerText = (equippedShopImage === 'mainimage/DivineSpirit.png') ? 'equipped' : '';
-            } else {
-                if (buyBtn) { buyBtn.style.display = 'inline-block'; buyBtn.innerText = 'Buy (20)'; buyBtn.disabled = (diamonds < 20); }
-                equipBtn.disabled = true; equipBtn.innerText = 'Equip';
-                status.innerText = '';
-            }
+        for (const skin of SHOP_SKINS) {
+            const costHtml = (skin.cost === null) ? `Unlock: <strong>${skin.unlockText}</strong>` : `Cost: <strong>${skin.cost}</strong> gems`;
+            html += `<div class="shop-item" id="shop${skin.id}Item">
+                <div class="shop-item-title">${skin.title}</div>
+                <img id="shop${skin.id}Img" src="${thumbFor(skin.path)}" alt="${skin.title}" class="shop-item-img" style="cursor:pointer;" decoding="async" data-full="${skin.path}" data-fallback="${placeholder(skin)}" />
+                <div class="shop-item-info">${costHtml}</div>
+                <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
+                    ${skin.cost === null ? '' : `<button id="buy${skin.id}Btn" style="padding:6px 8px;border-radius:6px;">Buy (${skin.cost})</button>`}
+                    <button id="equip${skin.id}Btn" style="padding:6px 8px;border-radius:6px;">Equip</button>
+                </div>
+            </div>`;
         }
-        buyBtn.onclick = () => { buyDivineShopItem(); refresh(); };
-        // toggle equip / unequip: if already equipped, unequip back to default; otherwise equip
-        equipBtn.onclick = () => {
-            if (!shopDivinePurchased) { alert('You must buy this item first.'); return; }
-            if (equippedShopImage === 'mainimage/DivineSpirit.png') {
-                equipShopItem('mainimage/whathappened.jpeg');
-            } else {
-                equipShopItem('mainimage/DivineSpirit.png');
-            }
-            refresh();
-        };
-        // clicking the item image will equip if owned, or prompt to buy if not
-        divineImg.onclick = () => {
-            if (shopDivinePurchased) {
-                // clicking image toggles equip state as well
-                if (equippedShopImage === 'mainimage/DivineSpirit.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/DivineSpirit.png');
-                refresh();
-            } else {
-                if (confirm('Buy Divine Spirit for 20 gems?')) { buyDivineShopItem(); refresh(); }
-            }
-        };
-        // collection bg handlers
-        const collectionBuyBtn = document.getElementById('buyCollectionBtn');
-        const collectionEquipBtn = document.getElementById('equipCollectionBtn');
-        const collectionImg = document.getElementById('shopCollectionImg');
-        const collectionStatus = document.getElementById('shopCollectionStatus');
-        function refreshCollection() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopCollectionBgPurchased) {
-                if (collectionBuyBtn) collectionBuyBtn.style.display = 'none';
-                if (collectionEquipBtn) { collectionEquipBtn.disabled = false; collectionEquipBtn.innerText = (equippedShopImage === 'mainimage/collectionbg.png') ? 'Equipped' : 'Equip'; }
-                if (collectionStatus) collectionStatus.innerText = (equippedShopImage === 'mainimage/collectionbg.png') ? 'equipped' : '';
-            } else {
-                if (collectionBuyBtn) { collectionBuyBtn.style.display = 'inline-block'; collectionBuyBtn.innerText = 'Buy (20)'; collectionBuyBtn.disabled = (diamonds < 20); }
-                if (collectionEquipBtn) { collectionEquipBtn.disabled = true; collectionEquipBtn.innerText = 'Equip'; }
-                if (collectionStatus) collectionStatus.innerText = '';
-            }
+        html += '</div>';
+        container.innerHTML = html;
+
+        const isEquipped = (path) => equippedShopImage === path;
+        // clicking an owned skin (button or image) toggles it; clicking the equipped one goes back to the default
+        const toggleSkin = (skin) => { equipShopItem(isEquipped(skin.path) ? DEFAULT_SHOP_IMAGE : skin.path); };
+        container.querySelectorAll('img[data-fallback]').forEach(img => {
+            // thumbnail missing -> full image -> coloured placeholder
+            img.addEventListener('error', function onErr() {
+                if (img.dataset.full && !img.src.endsWith(img.dataset.full)) { img.src = img.dataset.full; return; }
+                img.removeEventListener('error', onErr);
+                img.src = img.dataset.fallback;
+            });
+        });
+        const equipDefault = () => equipShopItem(DEFAULT_SHOP_IMAGE);
+        document.getElementById('equipDefaultBtn').onclick = equipDefault;
+        document.getElementById('shopPreviewImage').onclick = equipDefault;
+        for (const skin of SHOP_SKINS) {
+            const buyBtn = document.getElementById('buy' + skin.id + 'Btn');
+            const equipBtn = document.getElementById('equip' + skin.id + 'Btn');
+            const img = document.getElementById('shop' + skin.id + 'Img');
+            if (buyBtn) buyBtn.onclick = () => buyShopSkin(skin);
+            if (equipBtn) equipBtn.onclick = () => { if (skin.owned()) toggleSkin(skin); else notify('You must buy this item first.'); };
+            if (img) img.onclick = () => {
+                if (skin.owned()) toggleSkin(skin);
+                else if (skin.cost === null) notify('Unlock: ' + skin.unlockText + '.');
+                else if (confirm('Buy ' + skin.title + ' for ' + skin.cost + ' gems?')) buyShopSkin(skin);
+            };
+            const owned = skin.owned();
+            const equipped = isEquipped(skin.path);
+            if (buyBtn) { buyBtn.style.display = owned ? 'none' : ''; buyBtn.disabled = (Number(diamonds) || 0) < skin.cost; }
+            if (equipBtn) { equipBtn.disabled = !owned; equipBtn.innerText = equipped ? 'Unequip' : 'Equip'; }
+            if (equipped) document.getElementById('shop' + skin.id + 'Item').classList.add('equipped');
         }
-        if (collectionBuyBtn) collectionBuyBtn.onclick = () => { buyCollectionBg(); refresh(); refreshCollection(); };
-        if (collectionEquipBtn) collectionEquipBtn.onclick = () => {
-            if (!shopCollectionBgPurchased) { alert('You must buy this item first.'); return; }
-            if (equippedShopImage === 'mainimage/collectionbg.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/collectionbg.png');
-            refresh(); refreshCollection();
-        };
-        if (collectionImg) collectionImg.onclick = () => {
-            if (shopCollectionBgPurchased) {
-                if (equippedShopImage === 'mainimage/collectionbg.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/collectionbg.png');
-                refresh(); refreshCollection();
-            } else {
-                if (confirm('Buy Collection Background for 20 gems?')) { buyCollectionBg(); refresh(); refreshCollection(); }
-            }
-        };
-        // WH black & white skin handlers (5 gems)
-        const whbwBuyBtn = document.getElementById('buyWHBWBtn');
-        const whbwEquipBtn = document.getElementById('equipWHBWBtn');
-        const whbwImg = document.getElementById('shopWHBWImg');
-        const whbwStatus = document.getElementById('shopWHBWStatus');
-        function refreshWHBW() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopWHBWPurchased) {
-                if (whbwBuyBtn) whbwBuyBtn.style.display = 'none';
-                if (whbwEquipBtn) { whbwEquipBtn.disabled = false; whbwEquipBtn.innerText = (equippedShopImage === 'mainimage/WHblackandwhite.png') ? 'Equipped' : 'Equip'; }
-                if (whbwStatus) whbwStatus.innerText = (equippedShopImage === 'mainimage/WHblackandwhite.png') ? 'equipped' : '';
-            } else {
-                if (whbwBuyBtn) { whbwBuyBtn.style.display = 'inline-block'; whbwBuyBtn.innerText = 'Buy (5)'; whbwBuyBtn.disabled = (diamonds < 5); }
-                if (whbwEquipBtn) { whbwEquipBtn.disabled = true; whbwEquipBtn.innerText = 'Equip'; }
-                if (whbwStatus) whbwStatus.innerText = '';
-            }
-        }
-        if (whbwBuyBtn) whbwBuyBtn.onclick = () => { buyWHBW(); refresh(); refreshWHBW(); };
-        if (whbwEquipBtn) whbwEquipBtn.onclick = () => {
-            if (!shopWHBWPurchased) { alert('You must buy this item first.'); return; }
-            if (equippedShopImage === 'mainimage/WHblackandwhite.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/WHblackandwhite.png');
-            refresh(); refreshWHBW();
-        };
-        if (whbwImg) whbwImg.onclick = () => {
-            if (shopWHBWPurchased) {
-                if (equippedShopImage === 'mainimage/WHblackandwhite.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/WHblackandwhite.png');
-                refresh(); refreshWHBW();
-            } else {
-                if (confirm('Buy WH Black & White for 5 gems?')) { buyWHBW(); refresh(); refreshWHBW(); }
-            }
-        };
-        // WH Vrill handlers (50 gems)
-        const whvrillBuyBtn = document.getElementById('buyWHVrillBtn');
-        const whvrillEquipBtn = document.getElementById('equipWHVrillBtn');
-        const whvrillImg = document.getElementById('shopWHVrillImg');
-        const whvrillStatus = document.getElementById('shopWHVrillStatus');
-        function refreshWHVrill() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopWHVrillPurchased) {
-                if (whvrillBuyBtn) whvrillBuyBtn.style.display = 'none';
-                if (whvrillEquipBtn) { whvrillEquipBtn.disabled = false; whvrillEquipBtn.innerText = (equippedShopImage === 'mainimage/WHVrill.png') ? 'Equipped' : 'Equip'; }
-                if (whvrillStatus) whvrillStatus.innerText = (equippedShopImage === 'mainimage/WHVrill.png') ? 'equipped' : '';
-            } else {
-                if (whvrillBuyBtn) { whvrillBuyBtn.style.display = 'inline-block'; whvrillBuyBtn.innerText = 'Buy (50)'; whvrillBuyBtn.disabled = (diamonds < 50); }
-                if (whvrillEquipBtn) { whvrillEquipBtn.disabled = true; whvrillEquipBtn.innerText = 'Equip'; }
-                if (whvrillStatus) whvrillStatus.innerText = '';
-            }
-        }
-        if (whvrillBuyBtn) whvrillBuyBtn.onclick = () => { buyWHVrill(); refresh(); refreshWHVrill(); };
-        if (whvrillEquipBtn) whvrillEquipBtn.onclick = () => { if (!shopWHVrillPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/WHVrill.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/WHVrill.png'); refresh(); refreshWHVrill(); };
-        if (whvrillImg) whvrillImg.onclick = () => { if (shopWHVrillPurchased) { if (equippedShopImage === 'mainimage/WHVrill.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/WHVrill.png'); refresh(); refreshWHVrill(); } else { if (confirm('Buy WH Vrill for 50 gems?')) { buyWHVrill(); refresh(); refreshWHVrill(); } } };
-        // Mobile Man skin handlers (50 gems)
-        const mobileBuyBtn = document.getElementById('buyMobileManBtn');
-        const mobileEquipBtn = document.getElementById('equipMobileManBtn');
-        const mobileImg = document.getElementById('shopMobileManImg');
-        const mobileStatus = document.getElementById('shopMobileManStatus');
-        function refreshMobileMan() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopMobileManPurchased) {
-                if (mobileBuyBtn) mobileBuyBtn.style.display = 'none';
-                if (mobileEquipBtn) { mobileEquipBtn.disabled = false; mobileEquipBtn.innerText = (equippedShopImage === 'mainimage/mobilemanskin.png') ? 'Equipped' : 'Equip'; }
-                if (mobileStatus) mobileStatus.innerText = (equippedShopImage === 'mainimage/mobilemanskin.png') ? 'equipped' : '';
-            } else {
-                if (mobileBuyBtn) { mobileBuyBtn.style.display = 'inline-block'; mobileBuyBtn.innerText = 'Buy (50)'; mobileBuyBtn.disabled = (diamonds < 50); }
-                if (mobileEquipBtn) { mobileEquipBtn.disabled = true; mobileEquipBtn.innerText = 'Equip'; }
-                if (mobileStatus) mobileStatus.innerText = '';
-            }
-        }
-        if (mobileBuyBtn) mobileBuyBtn.onclick = () => { buyMobileMan(); refresh(); refreshMobileMan(); };
-        if (mobileEquipBtn) mobileEquipBtn.onclick = () => { if (!shopMobileManPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/mobilemanskin.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/mobilemanskin.png'); refresh(); refreshMobileMan(); };
-        if (mobileImg) mobileImg.onclick = () => { if (shopMobileManPurchased) { if (equippedShopImage === 'mainimage/mobilemanskin.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/mobilemanskin.png'); refresh(); refreshMobileMan(); } else { if (confirm('Buy Mobile Man Skin for 50 gems?')) { buyMobileMan(); refresh(); refreshMobileMan(); } } };
-        // Silver handlers
-        const silverBuyBtn = document.getElementById('buySilverBtn');
-        const silverEquipBtn = document.getElementById('equipSilverBtn');
-        const silverImg = document.getElementById('shopSilverImg');
-        const silverStatus = document.getElementById('shopSilverStatus');
-        function refreshSilver() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopSilverPurchased) {
-                if (silverBuyBtn) silverBuyBtn.style.display = 'none';
-                if (silverEquipBtn) { silverEquipBtn.disabled = false; silverEquipBtn.innerText = (equippedShopImage === 'mainimage/SilverWH.png') ? 'Equipped' : 'Equip'; }
-                if (silverStatus) silverStatus.innerText = (equippedShopImage === 'mainimage/SilverWH.png') ? 'equipped' : '';
-            } else {
-                if (silverBuyBtn) { silverBuyBtn.style.display = 'inline-block'; silverBuyBtn.innerText = 'Buy (100)'; silverBuyBtn.disabled = (diamonds < 100); }
-                if (silverEquipBtn) { silverEquipBtn.disabled = true; silverEquipBtn.innerText = 'Equip'; }
-                if (silverStatus) silverStatus.innerText = '';
-            }
-        }
-        if (silverBuyBtn) silverBuyBtn.onclick = () => { buySilver(); refresh(); refreshSilver(); };
-        if (silverEquipBtn) silverEquipBtn.onclick = () => { if (!shopSilverPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/SilverWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/SilverWH.png'); refresh(); refreshSilver(); };
-        if (silverImg) silverImg.onclick = () => { if (shopSilverPurchased) { if (equippedShopImage === 'mainimage/SilverWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/SilverWH.png'); refresh(); refreshSilver(); } else { if (confirm('Buy Silver WH for 100 gems?')) { buySilver(); refresh(); refreshSilver(); } } };
-        // Gold handlers
-        const goldBuyBtn = document.getElementById('buyGoldBtn');
-        const goldEquipBtn = document.getElementById('equipGoldBtn');
-        const goldImg = document.getElementById('shopGoldImg');
-        const goldStatus = document.getElementById('shopGoldStatus');
-        function refreshGold() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopGoldPurchased) {
-                if (goldBuyBtn) goldBuyBtn.style.display = 'none';
-                if (goldEquipBtn) { goldEquipBtn.disabled = false; goldEquipBtn.innerText = (equippedShopImage === 'mainimage/GoldWH.png') ? 'Equipped' : 'Equip'; }
-                if (goldStatus) goldStatus.innerText = (equippedShopImage === 'mainimage/GoldWH.png') ? 'equipped' : '';
-            } else {
-                if (goldBuyBtn) { goldBuyBtn.style.display = 'inline-block'; goldBuyBtn.innerText = 'Buy (500)'; goldBuyBtn.disabled = (diamonds < 500); }
-                if (goldEquipBtn) { goldEquipBtn.disabled = true; goldEquipBtn.innerText = 'Equip'; }
-                if (goldStatus) goldStatus.innerText = '';
-            }
-        }
-        if (goldBuyBtn) goldBuyBtn.onclick = () => { buyGold(); refresh(); refreshGold(); };
-        if (goldEquipBtn) goldEquipBtn.onclick = () => { if (!shopGoldPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/GoldWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/GoldWH.png'); refresh(); refreshGold(); };
-        if (goldImg) goldImg.onclick = () => { if (shopGoldPurchased) { if (equippedShopImage === 'mainimage/GoldWH_fixed.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/GoldWH.png'); refresh(); refreshGold(); } else { if (confirm('Buy Gold WH for 500 gems?')) { buyGold(); refresh(); refreshGold(); } } };
-        // WH Nature handlers
-        const whNatureBuyBtn = document.getElementById('buyWHNatureBtn');
-        const whNatureEquipBtn = document.getElementById('equipWHNatureBtn');
-        const whNatureImg = document.getElementById('shopWHNatureImg');
-        const whNatureStatus = document.getElementById('shopWHNatureStatus');
-        function refreshWHNature() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopWHNaturePurchased) {
-                if (whNatureBuyBtn) whNatureBuyBtn.style.display = 'none';
-                if (whNatureEquipBtn) { whNatureEquipBtn.disabled = false; whNatureEquipBtn.innerText = (equippedShopImage === 'mainimage/whnature.webp') ? 'Equipped' : 'Equip'; }
-                if (whNatureStatus) whNatureStatus.innerText = (equippedShopImage === 'mainimage/whnature.webp') ? 'equipped' : '';
-            } else {
-                if (whNatureBuyBtn) { whNatureBuyBtn.style.display = 'inline-block'; whNatureBuyBtn.innerText = 'Buy (20)'; whNatureBuyBtn.disabled = (diamonds < 20); }
-                if (whNatureEquipBtn) { whNatureEquipBtn.disabled = true; whNatureEquipBtn.innerText = 'Equip'; }
-                if (whNatureStatus) whNatureStatus.innerText = '';
-            }
-        }
-        function buyWHNature() {
-            if (shopWHNaturePurchased) return;
-            if ((diamonds || 0) < 20) { alert('Not enough gems. Need 20.'); return; }
-            diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 20;
-            shopWHNaturePurchased = true;
-            saveGame();
-            try { playSfx('audio/purchase.wav'); } catch (e) {}
-            updateDisplays();
-        }
-        if (whNatureBuyBtn) whNatureBuyBtn.onclick = () => { buyWHNature(); refresh(); refreshWHNature(); };
-        if (whNatureEquipBtn) whNatureEquipBtn.onclick = () => { if (!shopWHNaturePurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/whnature.webp') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/whnature.webp'); refresh(); refreshWHNature(); };
-        if (whNatureImg) whNatureImg.onclick = () => { if (shopWHNaturePurchased) { if (equippedShopImage === 'mainimage/whnature.webp') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/whnature.webp'); refresh(); refreshWHNature(); } else { if (confirm('Buy WH Nature for 20 gems?')) { buyWHNature(); refresh(); refreshWHNature(); } } };
-        // Platinum handlers
-        const platinumBuyBtn = document.getElementById('buyPlatinumBtn');
-        const platinumEquipBtn = document.getElementById('equipPlatinumBtn');
-        const platinumImg = document.getElementById('shopPlatinumImg');
-        const platinumStatus = document.getElementById('shopPlatinumStatus');
-        function refreshPlatinum() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopPlatinumPurchased) {
-                if (platinumBuyBtn) platinumBuyBtn.style.display = 'none';
-                if (platinumEquipBtn) { platinumEquipBtn.disabled = false; platinumEquipBtn.innerText = (equippedShopImage === 'mainimage/PlatinumWH.png') ? 'Equipped' : 'Equip'; }
-                if (platinumStatus) platinumStatus.innerText = (equippedShopImage === 'mainimage/PlatinumWH.png') ? 'equipped' : '';
-            } else {
-                if (platinumBuyBtn) { platinumBuyBtn.style.display = 'inline-block'; platinumBuyBtn.innerText = 'Buy (100)'; platinumBuyBtn.disabled = (diamonds < 100); }
-                if (platinumEquipBtn) { platinumEquipBtn.disabled = true; platinumEquipBtn.innerText = 'Equip'; }
-                if (platinumStatus) platinumStatus.innerText = '';
-            }
-        }
-        if (platinumBuyBtn) platinumBuyBtn.onclick = () => { buyPlatinum(); refresh(); refreshPlatinum(); };
-        if (platinumEquipBtn) platinumEquipBtn.onclick = () => { if (!shopPlatinumPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/PlatinumWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/PlatinumWH.png'); refresh(); refreshPlatinum(); };
-        if (platinumImg) platinumImg.onclick = () => { if (shopPlatinumPurchased) { if (equippedShopImage === 'mainimage/PlatinumWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/PlatinumWH.png'); refresh(); refreshPlatinum(); } else { if (confirm('Buy Platinum WH for 100 gems?')) { buyPlatinum(); refresh(); refreshPlatinum(); } } };
-        // Divine WH handlers
-        const divineWHBuyBtn = document.getElementById('buyDivineWHBtn');
-        const divineWHEquipBtn = document.getElementById('equipDivineWHBtn');
-        const divineWHImg = document.getElementById('shopDivineWHImg');
-        const divineWHStatus = document.getElementById('shopDivineWHStatus');
-        function refreshDivineWH() {
-            try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
-            if (shopDivineWHPurchased) {
-                if (divineWHBuyBtn) divineWHBuyBtn.style.display = 'none';
-                if (divineWHEquipBtn) { divineWHEquipBtn.disabled = false; divineWHEquipBtn.innerText = (equippedShopImage === 'mainimage/DivineWH.png') ? 'Equipped' : 'Equip'; }
-                if (divineWHStatus) divineWHStatus.innerText = (equippedShopImage === 'mainimage/DivineWH.png') ? 'equipped' : '';
-            } else {
-                if (divineWHBuyBtn) { divineWHBuyBtn.style.display = 'inline-block'; divineWHBuyBtn.innerText = 'Buy (500)'; divineWHBuyBtn.disabled = (diamonds < 500); }
-                if (divineWHEquipBtn) { divineWHEquipBtn.disabled = true; divineWHEquipBtn.innerText = 'Equip'; }
-                if (divineWHStatus) divineWHStatus.innerText = '';
-            }
-        }
-        if (divineWHBuyBtn) divineWHBuyBtn.onclick = () => { buyDivineWH(); refresh(); refreshDivineWH(); };
-        if (divineWHEquipBtn) divineWHEquipBtn.onclick = () => { if (!shopDivineWHPurchased) { alert('You must buy this item first.'); return; } if (equippedShopImage === 'mainimage/DivineWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/DivineWH.png'); refresh(); refreshDivineWH(); };
-        if (divineWHImg) divineWHImg.onclick = () => { if (shopDivineWHPurchased) { if (equippedShopImage === 'mainimage/DivineWH.png') equipShopItem('mainimage/whathappened.jpeg'); else equipShopItem('mainimage/DivineWH.png'); refresh(); refreshDivineWH(); } else { if (confirm('Buy Divine WH for 500 gems?')) { buyDivineWH(); refresh(); refreshDivineWH(); } } };
-        // clicking the preview defaults to unequip
-        const previewImg = document.getElementById('shopPreviewImage');
-        if (previewImg) previewImg.onclick = () => { equipShopItem('mainimage/whathappened.jpeg'); refresh(); };
-        // equip-default button wiring
-        const equipDefaultBtn = document.getElementById('equipDefaultBtn');
-        if (equipDefaultBtn) equipDefaultBtn.onclick = () => { equipShopItem('mainimage/whathappened.jpeg'); refresh(); };
-        refresh();
-        try { refreshCollection(); } catch (e) {}
-        try { refreshWHBW(); } catch (e) {}
-        try { refreshSilver(); } catch (e) {}
-        try { refreshPlatinum(); } catch (e) {}
-        try { refreshDivineWH(); } catch (e) {}
-        try { refreshGold(); } catch (e) {}
-        try { refreshWHNature(); } catch (e) {}
-        try { refreshMobileMan(); } catch (e) {}
+        const defaultEquipped = !findShopSkin(equippedShopImage);
+        const defBtn = document.getElementById('equipDefaultBtn');
+        defBtn.disabled = defaultEquipped;
+        defBtn.innerText = defaultEquipped ? 'Equipped' : 'Equip';
+        if (defaultEquipped) document.getElementById('shopDefaultItem').classList.add('equipped');
+        try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
+
         // render background images into BG tab
         try {
             const bgContainer = document.getElementById('shopTabBG');
             if (bgContainer) {
-                let html = '<div class="shop-items-row">';
-                const bgCostFor = (fn) => {
-                    try {
-                        if (fn === 'Vrillbg.png') return 20;
-                        if (fn === 'stormbg.png' || fn === 'volcanobg.png' || fn === 'blizardbg.png' || fn === 'burningcitybg.png') return 50;
-                        return 10;
-                    } catch (e) { return 10; }
-                };
-                // default background preview
-                html += `<div class="shop-item"><div class="shop-item-title">Default Background</div><img src="mainimage/Mainbg.png" class="shop-item-img" /><div class="shop-item-info">Cost: <strong>Free</strong></div><div style="display:flex;gap:8px;align-items:center;margin-top:6px;"><button id="equipDefaultBgBtn" style="padding:6px 8px;border-radius:6px;">Equip</button><div id="shopDefaultBgStatus" style="font-weight:700;color:#000;margin-left:6px;"></div></div></div>`;
+                let bgHtml = '<div class="shop-items-row">';
+                bgHtml += `<div class="shop-item"><div class="shop-item-title">Default Background</div><img src="${DEFAULT_BG_IMAGE}" class="shop-item-img" /><div class="shop-item-info">Cost: <strong>Free</strong></div><div style="display:flex;gap:8px;align-items:center;margin-top:6px;"><button id="equipDefaultBgBtn" style="padding:6px 8px;border-radius:6px;">Equip</button></div></div>`;
                 BG_IMAGES.forEach(fn => {
                     const id = fn.replace(/\W+/g, '_');
-                    const cost = bgCostFor(fn);
-                    const path = (fn === 'Vrillbg.png') ? ('mainimage/' + fn) : ('bgimages/' + fn);
-                    // display friendly name: remove trailing 'bg.png' or just '.png'
-                    let displayName = String(fn || '');
-                    displayName = displayName.replace(/bg\.png$/i, '').replace(/\.png$/i, '');
-                    // replace underscores with spaces and capitalise first letter
-                    displayName = displayName.replace(/_/g, ' ');
+                    // display friendly name: drop the trailing 'bg.png' / '.png' and capitalise
+                    let displayName = fn.replace(/bg\.png$/i, '').replace(/\.png$/i, '').replace(/_/g, ' ');
                     displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
-                    html += `<div class="shop-item" id="shopBgItem_${id}">`;
-                    html += `<div class="shop-item-title">${displayName}</div>`;
-                    html += `<img id="shopBgImg_${id}" src="${path}" alt="${displayName}" class="shop-item-img" style="cursor:pointer;" />`;
-                    html += `<div class="shop-item-info">Cost: <strong>${cost}</strong> gems</div>`;
-                    html += `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">`;
-                    html += `<button id="buyBg_${id}" style="padding:6px 8px;border-radius:6px;">Buy</button>`;
-                    html += `<button id="equipBg_${id}" style="padding:6px 8px;border-radius:6px;">Equip</button>`;
-                    html += `<div id="shopBgStatus_${id}" style="font-weight:700;color:#000;margin-left:6px;"></div>`;
-                    html += `</div></div>`;
+                    bgHtml += `<div class="shop-item" id="shopBgItem_${id}">`;
+                    bgHtml += `<div class="shop-item-title">${displayName}</div>`;
+                    bgHtml += `<img id="shopBgImg_${id}" src="${thumbFor(bgPathFor(fn))}" alt="${displayName}" class="shop-item-img" style="cursor:pointer;" decoding="async" onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='${bgPathFor(fn)}';}" />`;
+                    bgHtml += `<div class="shop-item-info">Cost: <strong>${bgCostFor(fn)}</strong> gems</div>`;
+                    bgHtml += `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">`;
+                    bgHtml += `<button id="buyBg_${id}" style="padding:6px 8px;border-radius:6px;">Buy (${bgCostFor(fn)})</button>`;
+                    bgHtml += `<button id="equipBg_${id}" style="padding:6px 8px;border-radius:6px;">Equip</button>`;
+                    bgHtml += `</div></div>`;
                 });
-                html += '</div>';
-                bgContainer.innerHTML = html;
-                // attach handlers for bg items
-                try { document.getElementById('equipDefaultBgBtn').onclick = () => { equipBgImage('mainimage/Mainbg.png'); updateShopUI(); }; } catch (e) {}
+                bgHtml += '</div>';
+                bgContainer.innerHTML = bgHtml;
+                try { document.getElementById('equipDefaultBgBtn').onclick = () => { equipBgImage(DEFAULT_BG_IMAGE); updateShopUI(); }; } catch (e) {}
                 BG_IMAGES.forEach(fn => {
                     const id = fn.replace(/\W+/g, '_');
                     const cost = bgCostFor(fn);
-                    const path = (fn === 'Vrillbg.png') ? ('mainimage/' + fn) : ('bgimages/' + fn);
+                    const path = bgPathFor(fn);
+                    const owned = () => !!(shopBgPurchased && shopBgPurchased[path]);
                     const buyBtn = document.getElementById('buyBg_' + id);
                     const equipBtn = document.getElementById('equipBg_' + id);
                     const imgEl = document.getElementById('shopBgImg_' + id);
-                    const statusEl = document.getElementById('shopBgStatus_' + id);
-                    try {
-                        if (buyBtn) buyBtn.onclick = () => { if (confirm('Buy ' + fn + ' for ' + cost + ' gems?')) { buyBgImage(path, cost); updateShopUI(); } };
-                        if (equipBtn) equipBtn.onclick = () => { equipBgImage(path); updateShopUI(); };
-                        if (imgEl) imgEl.onclick = () => { if (shopBgPurchased && shopBgPurchased[path]) { equipBgImage(path); updateShopUI(); } else { if (confirm('Buy ' + fn + ' for ' + cost + ' gems?')) { buyBgImage(path, cost); updateShopUI(); } } };
-                        // update status and button states
-                        const owned = !!(shopBgPurchased && shopBgPurchased[path]);
-                        if (buyBtn) buyBtn.style.display = owned ? 'none' : 'inline-block';
-                        if (buyBtn) buyBtn.disabled = (diamonds < cost);
-                        if (equipBtn) { equipBtn.disabled = !owned; equipBtn.innerText = (equippedBgImage === path) ? 'Equipped' : 'Equip'; }
-                        if (statusEl) statusEl.innerText = (equippedBgImage === path) ? 'equipped' : '';
-                    } catch (e) {}
+                    if (buyBtn) buyBtn.onclick = () => { buyBgImage(path, cost); };
+                    if (equipBtn) equipBtn.onclick = () => { equipBgImage(path); updateShopUI(); };
+                    if (imgEl) imgEl.onclick = () => { if (owned()) { equipBgImage(path); updateShopUI(); } else if (confirm('Buy this background for ' + cost + ' gems?')) { buyBgImage(path, cost); } };
+                    const equipped = equippedBgImage === path;
+                    if (buyBtn) { buyBtn.style.display = owned() ? 'none' : ''; buyBtn.disabled = (Number(diamonds) || 0) < cost; }
+                    if (equipBtn) { equipBtn.disabled = !owned() || equipped; equipBtn.innerText = equipped ? 'Equipped' : 'Equip'; }
+                    if (equipped) document.getElementById('shopBgItem_' + id).classList.add('equipped');
                 });
+                const defBgBtn = document.getElementById('equipDefaultBgBtn');
+                if (defBgBtn) { const eq = equippedBgImage === DEFAULT_BG_IMAGE; defBgBtn.disabled = eq; defBgBtn.innerText = eq ? 'Equipped' : 'Equip'; if (eq) defBgBtn.closest('.shop-item').classList.add('equipped'); }
             }
         } catch (e) { console.warn('render shop bg tab failed', e); }
         // render music shop into Music tab
@@ -8699,17 +6978,7 @@ function updateShopUI() {
             if (musicContainer) {
                 let mhtml = '<div class="shop-items-row">';
                 // defines the tracks available in the shop
-                const tracks = [
-                    {id: 'mainTheme', name: 'Default Theme', cost: 0, file: 'mainTheme.mp3'},
-                    {id: 'BassInsanity', name: 'Bass Insanity', cost: 20, file: 'BassInsanity.mp3'},
-                    {id: 'MaximumAgro', name: 'Maximum Agro', cost: 20, file: 'MaximumAgro.mp3'},
-                    {id: 'MetalSlam', name: 'Metal Slam', cost: 20, file: 'MetalSlam.mp3'},
-                    {id: 'UltraTwang', name: 'Ultra Twang', cost: 20, file: 'UltraTwang.mp3'},
-                    {id: 'ThroatSing', name: 'Throat Sing', cost: 20, file: 'ThroatSing.mp3'},
-                    {id: 'Hardstyle_whathappened', name: 'Hardstyle — What Happened', cost: 20, file: 'HardstyleWhat Happened.mp3'},
-                    {id: 'EDMWhatHappened', name: 'EDM — What Happened', cost: 20, file: 'EDMWhatHappened.mp3'},
-                    {id: 'SimpleAndEasy', name: 'Simple and Easy', cost: 50, file: 'Simple and Easy.mp3'}
-                ];
+                const tracks = MUSIC_TRACKS;
                 tracks.forEach(t => {
                     const owned = !!(musicOwned && musicOwned[t.id]);
                     mhtml += `<div class="shop-item" id="shopMusic_${t.id}">`;
@@ -8732,7 +7001,7 @@ function updateShopUI() {
                     const statusEl = document.getElementById('shopMusicStatus_' + t.id);
                     try {
                         const owned = !!(musicOwned && musicOwned[t.id]);
-                        if (buyBtn) { buyBtn.style.display = owned ? 'none' : 'inline-block'; buyBtn.disabled = (diamonds < t.cost); buyBtn.onclick = () => { if (confirm('Buy ' + t.name + ' for ' + t.cost + ' gems?')) { diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - t.cost; musicOwned[t.id] = true; saveGame(); updateDisplays(); updateShopUI(); try{ playSfx('audio/purchase.wav'); }catch(e){} } }; }
+                        if (buyBtn) { buyBtn.style.display = owned ? 'none' : 'inline-block'; buyBtn.disabled = (diamonds < t.cost); buyBtn.onclick = () => { if ((Number(diamonds) || 0) < t.cost) { notify('Not enough gems — need ' + t.cost + '.'); return; } if (confirm('Buy ' + t.name + ' for ' + t.cost + ' gems?')) { diamonds = (Number(diamonds) || 0) - t.cost; musicOwned[t.id] = true; saveGame(); updateDisplays(); updateShopUI(); try{ playSfx('audio/purchase.wav'); }catch(e){} } }; }
                         if (previewBtn) previewBtn.onclick = () => {
                             try {
                                 // stop any existing preview and clear timers
@@ -8775,8 +7044,7 @@ function updateShopUI() {
                                             try {
                                                 if (!bgMusicElement) bgMusicElement = document.getElementById('bgMusic');
                                                 if (bgMusicElement) {
-                                                    const file = (currentMusicTrack === 'mainTheme') ? 'mainTheme.mp3' : (currentMusicTrack + '.mp3');
-                                                    bgMusicElement.src = 'audio/' + file;
+                                                    bgMusicElement.src = musicSrcFor(currentMusicTrack);
                                                     try { bgMusicElement.currentTime = priorBgTime || 0; } catch (e) {}
                                                     bgMusicElement.volume = 0;
                                                     bgMusicElement.play().catch(() => {});
@@ -8800,180 +7068,27 @@ function updateShopUI() {
                                 previewTimeout = setTimeout(() => { try { restoreBg(); } catch (e) {} }, 15000);
                             } catch (e) {}
                         };
-                        if (equipBtn) { equipBtn.onclick = () => { if (!musicOwned[t.id]) { alert('You must buy this track first.'); return; } currentMusicTrack = t.id; try { if (!bgMusicElement) bgMusicElement = document.getElementById('bgMusic'); if (bgMusicElement) { bgMusicElement.src = 'audio/' + t.file; bgMusicElement.play().catch(()=>{}); } } catch(e){} saveGame(); updateShopUI(); updateDisplays(); }; equipBtn.innerText = (currentMusicTrack === t.id) ? 'Equipped' : 'Equip'; equipBtn.disabled = !musicOwned[t.id]; }
+                        if (equipBtn) { equipBtn.onclick = () => { if (!musicOwned[t.id]) { notify('You must buy this track first.'); return; } currentMusicTrack = t.id; try { if (!bgMusicElement) bgMusicElement = document.getElementById('bgMusic'); if (bgMusicElement) { bgMusicElement.src = 'audio/' + t.file; bgMusicElement.play().catch(()=>{}); } } catch(e){} saveGame(); updateShopUI(); updateDisplays(); }; equipBtn.innerText = (currentMusicTrack === t.id) ? 'Equipped' : 'Equip'; equipBtn.disabled = !musicOwned[t.id]; }
                         if (statusEl) statusEl.innerText = (currentMusicTrack === t.id) ? 'equipped' : '';
                     } catch (e) {}
                 });
             }
         } catch (e) { console.warn('render shop music tab failed', e); }
 
-        // mark equipped items with a visual outline
-        try {
-            function refreshShopEquippedOutlines() {
-                try {
-                    // main tab: match by image filename
-                    const equippedSkin = (equippedShopImage || '').split('/').pop();
-                    // First, reset all equip buttons to default state based on ownership
-                    document.querySelectorAll('#shopTabMain .shop-item').forEach(div => {
-                        try {
-                            const buyBtn = div.querySelector('button[id^="buy"]');
-                            const equipBtn = div.querySelector('button[id^="equip"]');
-                            const owned = (!buyBtn) || (buyBtn && (buyBtn.style.display === 'none' || buyBtn.style.display === ''));
-                            if (equipBtn) {
-                                equipBtn.innerText = 'Equip';
-                                equipBtn.disabled = !owned;
-                            }
-                            div.classList.remove('equipped');
-                        } catch (e) {}
-                    });
-                    // Then mark only the actual equipped skin as equipped
-                    document.querySelectorAll('#shopTabMain .shop-item').forEach(div => {
-                        try {
-                            const img = div.querySelector('img.shop-item-img');
-                            if (!img) return;
-                            const fname = (img.src || '').split('/').pop();
-                            if (fname && equippedSkin && fname === equippedSkin) {
-                                div.classList.add('equipped');
-                                try {
-                                    const equipBtn = div.querySelector('button[id^="equip"]');
-                                    if (equipBtn) { equipBtn.innerText = 'Equipped'; equipBtn.disabled = true; }
-                                } catch (e) {}
-                            }
-                        } catch (e) {}
-                    });
-                    // bg tab: ensure only the equipped background shows equipped state and update equip buttons
-                    const equippedBG = (equippedBgImage || '').split('/').pop();
-                    // reset all bg equip buttons first
-                    document.querySelectorAll('#shopTabBG .shop-item').forEach(div => {
-                        try {
-                            const buyBtn = div.querySelector('button[id^="buyBg_"]');
-                            const equipBtn = div.querySelector('button[id^="equipBg_"]');
-                            const owned = (!buyBtn) || (buyBtn && (buyBtn.style.display === 'none' || buyBtn.style.display === ''));
-                            if (equipBtn) {
-                                equipBtn.innerText = 'Equip';
-                                equipBtn.disabled = !owned;
-                            }
-                            div.classList.remove('equipped');
-                        } catch (e) {}
-                    });
-                    // then mark the actual equipped background
-                    document.querySelectorAll('#shopTabBG .shop-item').forEach(div => {
-                        try {
-                            const img = div.querySelector('img.shop-item-img');
-                            if (!img) return;
-                            const fname = (img.src || '').split('/').pop();
-                            if (fname && equippedBG && fname === equippedBG) {
-                                div.classList.add('equipped');
-                                try {
-                                    const equipBtn = div.querySelector('button[id^="equipBg_"]');
-                                    if (equipBtn) { equipBtn.innerText = 'Equipped'; equipBtn.disabled = true; }
-                                } catch (e) {}
-                            }
-                        } catch (e) {}
-                    });
-                    // music tab: id based matching
-                    document.querySelectorAll('#shopTabMusic .shop-item').forEach(div => {
-                        try {
-                            const id = div.id || '';
-                            const m = id.match(/^shopMusic_(.+)$/);
-                            if (!m) return;
-                            const tid = m[1];
-                            div.classList.toggle('equipped', currentMusicTrack === tid);
-                        } catch (e) {}
-                    });
-                } catch (e) {}
-            }
-            try { refreshShopEquippedOutlines(); } catch (e) {}
-        } catch (e) {}
+        // music tab: outline the equipped track
+        document.querySelectorAll('#shopTabMusic .shop-item').forEach(div => {
+            const m = (div.id || '').match(/^shopMusic_(.+)$/);
+            if (m) div.classList.toggle('equipped', currentMusicTrack === m[1]);
+        });
     } catch (e) { console.error('updateShopUI failed', e); }
 }
 
-// Duplicate shop-version of buyDivineSpirit removed to avoid overwriting
-// the golden-purchase implementation. Use `buyDivineShopItem()` for
-// buying the Divine Spirit with gems (diamonds).
-
-function buySilver() {
-    if (shopSilverPurchased) return;
-    if ((diamonds || 0) < 100) { alert('Not enough gems. Need 100.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 100;
-    shopSilverPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyGold() {
-    if (shopGoldPurchased) return;
-    if ((diamonds || 0) < 500) { alert('Not enough gems. Need 500.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 500;
-    shopGoldPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyCollectionBg() {
-    if (shopCollectionBgPurchased) return;
-    if ((diamonds || 0) < 20) { alert('Not enough gems. Need 20.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 20;
-    shopCollectionBgPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyWHBW() {
-    if (shopWHBWPurchased) return;
-    if ((diamonds || 0) < 5) { alert('Not enough gems. Need 5.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 5;
-    shopWHBWPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyWHVrill() {
-    if (shopWHVrillPurchased) return;
-    if ((diamonds || 0) < 50) { alert('Not enough gems. Need 50.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 50;
-    shopWHVrillPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyMobileMan() {
-    if (shopMobileManPurchased) return;
-    if ((diamonds || 0) < 50) { alert('Not enough gems. Need 50.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 50;
-    shopMobileManPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyPlatinum() {
-    if (shopPlatinumPurchased) return;
-    if ((diamonds || 0) < 100) { alert('Not enough gems. Need 100.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 100;
-    shopPlatinumPurchased = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
-}
-
-function buyDivineWH() {
-    if (shopDivineWHPurchased) return;
-    if ((diamonds || 0) < 500) { alert('Not enough gems. Need 500.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - 500;
-    shopDivineWHPurchased = true;
+// Buy a main-image skin from SHOP_SKINS with gems (skins with cost null are unlocked elsewhere)
+function buyShopSkin(skin) {
+    if (!skin || skin.owned() || skin.cost === null) return;
+    if ((Number(diamonds) || 0) < skin.cost) { notify('Not enough gems — need ' + skin.cost + '.'); return; }
+    diamonds = (Number(diamonds) || 0) - skin.cost;
+    skin.grant();
     saveGame();
     try { playSfx('audio/purchase.wav'); } catch (e) {}
     updateDisplays();
@@ -8982,25 +7097,13 @@ function buyDivineWH() {
 
 function equipShopItem(filename) {
     if (!filename) return;
-    // normalize to mainimage/ prefix if caller passed basename
-    const normalized = (typeof filename === 'string' && filename.includes('/')) ? filename : ('mainimage/' + filename);
-    const base = ('' + filename).split('/').pop().toLowerCase();
-    if (base === 'divinespirit.png' && !shopDivinePurchased) { alert('You must buy this item first.'); return; }
-    if (base === 'collectionbg.png' && !shopCollectionBgPurchased) { alert('You must buy this item first.'); return; }
-    if (base === 'whblackandwhite.png' && !shopWHBWPurchased) { alert('You must buy this item first.'); return; }
-    // accept both original and fixed filenames for silver/gold
-    if ((base === 'silverwh.png' || base === 'SilverWH.png') && !shopSilverPurchased) { alert('You must buy this item first.'); return; }
-    if ((base === 'goldwh.png' || base === 'GoldWH.png') && !shopGoldPurchased) { alert('You must buy this item first.'); return; }
-    if ((base === 'platinumwh.png' || base === 'PlatinumWH.png') && !shopPlatinumPurchased) { alert('You must buy this item first.'); return; }
-    if ((base === 'divinewh.png' || base === 'DivineWH.png') && !shopDivineWHPurchased) { alert('You must buy this item first.'); return; }
-    if ((base === 'whvrill.png' || base === 'WHVrill.png') && !shopWHVrillPurchased) { alert('You must buy this item first.'); return; }
-    if ((base === 'mobilemanskin.png' || base === 'MobileManSkin.png') && !shopMobileManPurchased) { alert('You must buy this item first.'); return; }
-    if (base === 'whnature.webp' && !shopWHNaturePurchased) { alert('You must buy this item first.'); return; }
-    equippedShopImage = normalized;
+    const skin = findShopSkin(filename);
+    if (skin && !skin.owned()) { notify('You must buy this item first.'); return; }
+    equippedShopImage = skin ? skin.path : DEFAULT_SHOP_IMAGE;
     // update main image element
     try {
         const img = document.querySelector('.main-image');
-        if (img) img.src = normalized;
+        if (img) img.src = equippedShopImage;
     } catch (e) {}
     saveGame();
     updateDisplays();
@@ -9010,29 +7113,28 @@ function equipShopItem(filename) {
 // Apply equipped background image to the page body
 function applyEquippedBackground() {
     try {
-        const bg = (typeof equippedBgImage === 'string' && equippedBgImage) ? equippedBgImage : 'mainimage/Mainbg.png';
+        const bg = (typeof equippedBgImage === 'string' && equippedBgImage) ? equippedBgImage : DEFAULT_BG_IMAGE;
         document.body.style.backgroundImage = "url('" + bg + "')";
     } catch (e) {}
 }
 
-function buyBgImage(filename, cost = 10) {
-    if (!filename) return;
-    if (shopBgPurchased && shopBgPurchased[filename]) return;
-    if ((diamonds || 0) < cost) { alert('Not enough gems. Need ' + cost + '.'); return; }
-    diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) - cost;
+function buyBgImage(path, cost = 10) {
+    if (!path) return;
+    if (shopBgPurchased && shopBgPurchased[path]) return;
+    if ((Number(diamonds) || 0) < cost) { notify('Not enough gems — need ' + cost + '.'); return; }
+    diamonds = (Number(diamonds) || 0) - cost;
     shopBgPurchased = shopBgPurchased || {};
-    shopBgPurchased[filename] = true;
+    shopBgPurchased[path] = true;
     saveGame();
     try { playSfx('audio/purchase.wav'); } catch (e) {}
     updateDisplays();
     updateShopUI();
 }
 
-function equipBgImage(filename) {
-    if (!filename) return;
-    const base = ('' + filename).split('/').pop();
-    if (base !== 'Mainbg.png' && !(shopBgPurchased && shopBgPurchased[filename])) { alert('You must buy this item first.'); return; }
-    equippedBgImage = filename;
+function equipBgImage(path) {
+    if (!path) return;
+    if (path !== DEFAULT_BG_IMAGE && !(shopBgPurchased && shopBgPurchased[path])) { notify('You must buy this item first.'); return; }
+    equippedBgImage = path;
     applyEquippedBackground();
     saveGame();
     updateDisplays();
@@ -9140,89 +7242,52 @@ function redeemSecretCode() {
     }
 }
 
-function toggleSection(which) {
-    const idMap = {
-        op: 'opSection',
-        pirate: 'pirateSection',
-        goon: 'goonSection',
-        diddy: 'diddySection',
-        argon: 'argonSection',
-        grape: 'grapeSection',
-        skippie: 'skippieSection',
-        island: 'islandSection',
-        tribal: 'tribalSection',
-        phonk: 'phonkSection',
-        jonathan: 'jonathanSection',
-        cr: 'crSection',
-        roping: 'ropingSection',
-        skibbidi: 'skibbidiSection',
-        beats: 'beatsSection',
-        ez: 'ezSection',
-        scp: 'scpSection',
-        goatis: 'goatisSection',
-        raw: 'rawSection',
-        landon: 'landonSection', theBass: 'theBassSection', goodNoodles: 'goodNoodlesSection', mobileMan38: 'mobileMan38Section', easton: 'eastonSection'
-    };
-    const sec = document.getElementById(idMap[which]);
-    console.log('toggleSection called', { which, id: idMap[which], secExists: !!sec });
-    if (!sec) return;
-    sec.classList.toggle('open');
-    console.log('section new classList', sec.className);
-    const toggleId = {
-        op: 'opToggle', pirate: 'pirateToggle', goon: 'goonToggle', diddy: 'diddyToggle', argon: 'argonToggle', grape: 'grapeToggle', skippie: 'skippieToggle',
-        island: 'islandToggle', tribal: 'tribalToggle', phonk: 'phonkToggle', jonathan: 'jonathanToggle', cr: 'crToggle', roping: 'ropingToggle',
-        skibbidi: 'skibbidiToggle', beats: 'beatsToggle', ez: 'ezToggle', scp: 'scpToggle', goatis: 'goatisToggle', raw: 'rawToggle', landon: 'landonToggle', theBass: 'theBassToggle', goodNoodles: 'goodNoodlesToggle', mobileMan38: 'mobileMan38Toggle', easton: 'eastonToggle'
-    }[which];
-    const btn = document.getElementById(toggleId || null);
-    if (btn) btn.innerText = sec.classList.contains('open') ? btn.innerText.replace('▾','▴') : btn.innerText.replace('▴','▾');
-}
-
 // Tribal special purchase handlers
 function buyTribal1() {
     if (tribal1Purchased) return;
-    if (upgrade9Level < 1) { alert('Unlocks at Tribal lvl 1.'); return; }
+    if (upgrade9Level < 10) { notify('Unlocks at Tribal lvl 10.'); return; }
     if (count >= tribal1Cost) {
         count -= tribal1Cost;
         baseOtherCps += 200000;
         tribal1Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(tribal1Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(tribal1Cost) + '.'); }
 }
 
 function buyTribal2() {
     if (tribal2Purchased) return;
-    if (upgrade9Level < 5) { alert('Unlocks at Tribal lvl 5.'); return; }
+    if (upgrade9Level < 25) { notify('Unlocks at Tribal lvl 25.'); return; }
     if (count >= tribal2Cost) {
         count -= tribal2Cost;
         if (hasDecimal) tribalOtherMultiplier = (isDecimalInstance(tribalOtherMultiplier) ? tribalOtherMultiplier : D(tribalOtherMultiplier)).times(D(tribal2Multiplier));
         else tribalOtherMultiplier *= tribal2Multiplier;
         tribal2Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(tribal2Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(tribal2Cost) + '.'); }
 }
 
 function buyTribal3() {
     if (tribal3Purchased) return;
-    if (upgrade9Level < 10) { alert('Unlocks at Tribal lvl 10.'); return; }
+    if (upgrade9Level < 50) { notify('Unlocks at Tribal lvl 50.'); return; }
     if (count >= tribal3Cost) {
         count -= tribal3Cost;
         if (hasDecimal) clickMultiplier = (isDecimalInstance(clickMultiplier) ? clickMultiplier : D(clickMultiplier)).times(D(tribal3Multiplier));
         else clickMultiplier *= tribal3Multiplier;
         tribal3Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(tribal3Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(tribal3Cost) + '.'); }
 }
 
 function buyTribal4() {
     if (tribal4Purchased) return;
-    if (upgrade9Level < 20) { alert('Unlocks at Tribal lvl 20.'); return; }
+    if (upgrade9Level < 100) { notify('Unlocks at Tribal lvl 100.'); return; }
     if (count >= tribal4Cost) {
         count -= tribal4Cost;
         if (hasDecimal) tribalMultiplier = (isDecimalInstance(tribalMultiplier) ? tribalMultiplier : D(tribalMultiplier)).times(D(tribal4Multiplier));
         else tribalMultiplier *= tribal4Multiplier;
         tribal4Purchased = true;
         updateDisplays();
-    } else { alert('Not enough What Happeneds — need ' + formatNumber(tribal4Cost) + '.'); }
+    } else { notify('Not enough What Happeneds — need ' + needText(tribal4Cost) + '.'); }
 }
 
 // ------------------ Save / Load / Reset ------------------
@@ -9233,7 +7298,7 @@ const SAVE_KEY_LEGACY = 'whathappened_save_v1';
 const SAVE_VERSION = 3;
 
 function saveGame() {
-    if (suppressAutosave) return;
+    if (suppressAutosave || !window._saveLoaded) return;
     try {
         const save = {
             count,
@@ -9370,7 +7435,15 @@ function saveGame() {
             shopDivineWHPurchased,
             shopWHVrillPurchased,
             shopWHNaturePurchased,
+            shopVoidWHPurchased,
+            shopFireWHPurchased,
+            shopIceWHPurchased,
+            shopWHhackerPurchased,
+            shopWHchadPurchased,
+            shopWHbreadPurchased,
+            shopWHlightningPurchased,
             shopMobileManPurchased,
+            shopCasinoDealerPurchased,
             shopSilverPurchased,
             shopGoldPurchased,
             shopCollectionBgPurchased,
@@ -9399,6 +7472,18 @@ function saveGame() {
                 version: SAVE_VERSION,
             tribalOtherMultiplier, tribalMultiplier,
         };
+        // preserve casino/daily spin state from existing save so main game never overwrites it
+        try {
+            const existingRaw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY);
+            if (existingRaw) {
+                const existing = JSON.parse(existingRaw);
+                if (existing && typeof existing.casinoSpin === 'object' && existing.casinoSpin !== null) {
+                    save.casinoSpin = existing.casinoSpin;
+                }
+                // casino win count (used by the casino dealer unlock and clan challenges) is also owned by gamba.js
+                if (existing && existing.casino_total_wins) save.casino_total_wins = existing.casino_total_wins;
+            }
+        } catch (e) {}
         // serialize Decimal instances to strings so JSON round-trips
         if (hasDecimal) {
             for (const k in save) {
@@ -9609,10 +7694,10 @@ function loadGame() {
         island1Purchased = !!s.island1Purchased; island2Purchased = !!s.island2Purchased; island3Purchased = !!s.island3Purchased; island4Purchased = !!s.island4Purchased;
         tribal1Purchased = !!s.tribal1Purchased; tribal2Purchased = !!s.tribal2Purchased; tribal3Purchased = !!s.tribal3Purchased; tribal4Purchased = !!s.tribal4Purchased;
         // Good Noodles purchased flags
-        goodNoodles1Purchased = !!s.goodNoodles1Purchased; goodNoodles2Purchased = !!s.goodNoodles2Purchased; goodNoodles3Purchased = !!s.goodNoodles3Purchased;
+        goodNoodles1Purchased = !!s.goodNoodles1Purchased; goodNoodles2Purchased = !!s.goodNoodles2Purchased; goodNoodles3Purchased = !!s.goodNoodles3Purchased; goodNoodles4Purchased = !!s.goodNoodles4Purchased;
         if (typeof s.goodNoodlesMultiplier === 'number') goodNoodlesMultiplier = s.goodNoodlesMultiplier;
         // Mobile Man 38 purchased flags
-        mobileMan381Purchased = !!s.mobileMan381Purchased; mobileMan382Purchased = !!s.mobileMan382Purchased; mobileMan383Purchased = !!s.mobileMan383Purchased;
+        mobileMan381Purchased = !!s.mobileMan381Purchased; mobileMan382Purchased = !!s.mobileMan382Purchased; mobileMan383Purchased = !!s.mobileMan383Purchased; mobileMan384Purchased = !!s.mobileMan384Purchased;
         if (typeof s.mobileMan38Multiplier === 'number') mobileMan38Multiplier = s.mobileMan38Multiplier;
         // Easton Bundy purchased flags
         eastonBundy1Purchased = !!s.eastonBundy1Purchased; eastonBundy2Purchased = !!s.eastonBundy2Purchased; eastonBundy3Purchased = !!s.eastonBundy3Purchased; eastonBundy4Purchased = !!s.eastonBundy4Purchased;
@@ -9643,33 +7728,27 @@ function loadGame() {
         shopDivineWHPurchased = !!s.shopDivineWHPurchased;
         shopWHVrillPurchased = !!s.shopWHVrillPurchased;
         shopWHNaturePurchased = !!s.shopWHNaturePurchased;
+        shopVoidWHPurchased = !!s.shopVoidWHPurchased;
+        shopFireWHPurchased = !!s.shopFireWHPurchased;
+        shopIceWHPurchased = !!s.shopIceWHPurchased;
+        shopWHhackerPurchased = !!s.shopWHhackerPurchased;
+        shopWHchadPurchased = !!s.shopWHchadPurchased;
+        shopWHbreadPurchased = !!s.shopWHbreadPurchased;
+        shopWHlightningPurchased = !!s.shopWHlightningPurchased;
         shopMobileManPurchased = !!s.shopMobileManPurchased;
         shopSilverPurchased = !!s.shopSilverPurchased;
         shopGoldPurchased = !!s.shopGoldPurchased;
         shopCollectionBgPurchased = !!s.shopCollectionBgPurchased;
-        // load background purchases map (ensure defaults)
-        shopBgPurchased = (typeof s.shopBgPurchased === 'object' && s.shopBgPurchased !== null) ? s.shopBgPurchased : {};
-        try { BG_IMAGES.forEach(fn => { const full = (fn === 'Vrillbg.png') ? ('mainimage/' + fn) : ('bgimages/' + fn); shopBgPurchased[full] = !!shopBgPurchased[full] || !!shopBgPurchased[fn]; }); } catch (e) {}
+        // the casino page sets this after 10 blackjack wins (also mirrored to its own localStorage key)
+        shopCasinoDealerPurchased = !!s.shopCasinoDealerPurchased || localStorage.getItem('shopCasinoDealerPurchased') === '1';
+        // load background purchases; older saves keyed them by bare filename or with different letter case
+        const savedBg = (typeof s.shopBgPurchased === 'object' && s.shopBgPurchased !== null) ? s.shopBgPurchased : {};
+        shopBgPurchased = {};
+        Object.keys(savedBg).forEach(k => { if (savedBg[k]) shopBgPurchased[canonicalBgPath(k)] = true; });
+        delete shopBgPurchased[DEFAULT_BG_IMAGE];
         shopWHBWPurchased = !!s.shopWHBWPurchased;
-        if (typeof s.equippedShopImage === 'string') {
-            equippedShopImage = s.equippedShopImage;
-            try {
-                if (equippedShopImage && typeof equippedShopImage === 'string' && equippedShopImage.indexOf('/') === -1) {
-                    equippedShopImage = 'mainimage/' + equippedShopImage;
-                }
-            } catch (e) {}
-        }
-        if (typeof s.equippedBgImage === 'string') {
-            equippedBgImage = s.equippedBgImage;
-            try {
-                if (equippedBgImage && typeof equippedBgImage === 'string' && equippedBgImage.indexOf('/') === -1) {
-                    // assume background names without a path refer to the mainimage Mainbg.png
-                    if (equippedBgImage.toLowerCase() === 'mainbg.png') equippedBgImage = 'mainimage/Mainbg.png';
-                    else if (equippedBgImage.toLowerCase() === 'vrillbg.png') equippedBgImage = 'mainimage/Vrillbg.png';
-                    else equippedBgImage = 'bgimages/' + equippedBgImage;
-                }
-            } catch (e) {}
-        }
+        if (typeof s.equippedShopImage === 'string') equippedShopImage = canonicalSkinPath(s.equippedShopImage);
+        if (typeof s.equippedBgImage === 'string') equippedBgImage = canonicalBgPath(s.equippedBgImage);
         // diamonds
         if (typeof s.diamonds === 'string') diamonds = Number(s.diamonds);
         else if (typeof s.diamonds === 'number') diamonds = s.diamonds;
@@ -9792,7 +7871,7 @@ function loadGame() {
                 if (typeof divineMoneyManLevel === 'number' && divineMoneyManLevel > 0) {
                     const add = DIVINE_MONEYMAN_BASE * Math.pow(10, Math.max(0, divineMoneyManLevel - 1));
                         if (hasBig) addToCount(D(add)); else count = (typeof count === 'number' ? count : 0) + add;
-                    try { alert(`Prestige bonus: +${formatNumber(add)} What Happeneds from Divine Money Man (lvl ${divineMoneyManLevel}).`); } catch (e) {}
+                    try { notify(`Prestige bonus: +${formatNumber(add)} What Happeneds from Divine Money Man (lvl ${divineMoneyManLevel}).`, 6000); } catch (e) {}
                 }
                 // persist current state without the prestige flag so this applies only once
                 try { saveGame(); } catch (e) {}
@@ -9891,11 +7970,13 @@ function loadGame() {
                             let totalCps = D(pirateEffective).times(D(pirateMultiplier || 1)).plus(otherCps.times(D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1)));
                             const mults = [diddyMultiplier, argonMultiplier, grapeMultiplier, skippieMultiplier, islandMultiplier, tribalMultiplier, phonkMultiplier];
                             for (const m of mults) totalCps = totalCps.times(D(typeof m !== 'undefined' ? m : 1));
-                            totalCps = totalCps.times(D(1 + (typeof goldenWhat === 'number' ? goldenWhat * 0.1 : 0)));
+                            totalCps = totalCps.times(D(1 + getGoldenBonusCount() * 0.1));
                             if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
                                 const offlineAppliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
                                 totalCps = totalCps.times(D(1 + (offlineAppliedPercent / 100)));
                             }
+                            // Followers: CPS bonus applies offline too, plus the offline earnings bonus
+                            try { const fb = getFollowerBonuses(); totalCps = totalCps.times(D((1 + fb.cps / 100) * (1 + fb.offline / 100))); } catch (e) {}
                             const gainedD = totalCps.times(D(seconds));
                             if (gainedD && (typeof gainedD.gt === 'function' ? gainedD.gt(0) : Number(gainedD) > 0)) {
                                 addToCount(gainedD);
@@ -9911,13 +7992,17 @@ function loadGame() {
                             let totalCps = (pirateEffective * (pirateMultiplier || 1)) + (otherCps * (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1));
                             totalCps = totalCps * (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1);
                             // apply golden prestige multiplier to offline gains
-                            const offlineGoldenMult = 1 + (typeof goldenWhat === 'number' ? goldenWhat * 0.1 : 0);
+                            const offlineGoldenMult = 1 + getGoldenBonusCount() * 0.1;
                             totalCps = totalCps * offlineGoldenMult;
                             if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
                                 const offlineAppliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
                                 const offlineDivineMult = 1 + (offlineAppliedPercent / 100);
                                 totalCps = totalCps * offlineDivineMult;
                             }
+                            // permanent clan level perk (level cached by refreshClanBuff on the last visit)
+                            totalCps = totalCps * (1 + getClanLevelPerk().cps / 100);
+                            // Followers: CPS bonus applies offline too, plus the offline earnings bonus
+                            try { const fb = getFollowerBonuses(); totalCps = totalCps * (1 + fb.cps / 100) * (1 + fb.offline / 100); } catch (e) {}
                             const gained = totalCps * seconds;
                             if (gained > 0) {
                                 count = (typeof count === 'number' ? count : Number(count)) + Number(gained);
@@ -9943,6 +8028,7 @@ function resetGame() {
         try { localStorage.removeItem(SAVE_KEY_LEGACY); } catch (e) {}
     } catch (e) { console.error('resetGame cleanup failed', e); }
     try { localStorage.removeItem(REDEEMED_KEY); } catch (e) {}
+    try { if (window.WHF) localStorage.removeItem(window.WHF.STORAGE_KEY); } catch (e) {}
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }
