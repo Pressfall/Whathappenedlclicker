@@ -26,6 +26,10 @@
     --divine: #a77dff;
     --divine-deep: #7a4fe0;
     --danger: #ff5b6b;
+    /* gems, the premium currency: crystal cyan into blue-violet */
+    --gem: #5ee7ff;
+    --gem-deep: #4f7dff;
+    --gem-violet: #7b5cff;
 
     /* shape */
     --radius-sm: 8px;

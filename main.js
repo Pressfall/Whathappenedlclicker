@@ -2328,6 +2328,11 @@ function getFollowerBonuses() {
     }
     return _followerBonusCache.bonus;
 }
+// ---------- Items (items.js): equipped charms (percent bonuses) and running consumables (cpsMult / clickMult) ----------
+const NO_ITEM_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, boxRate: 0, offline: 0, cpsMult: 1, clickMult: 1 };
+function getItemBonuses() {
+    try { return (window.WHI && window.WHI.bonuses()) || NO_ITEM_BONUS; } catch (e) { return NO_ITEM_BONUS; }
+}
 // Equipped followers + their totals under the stats card; only rebuilt when the team changes.
 let _followerStripKey = null;
 function renderFollowerStrip() {
@@ -2392,6 +2397,15 @@ try {
 try {
     window.addEventListener('pageshow', (ev) => {
         if (ev.persisted) { suppressAutosave = true; location.reload(); }
+    });
+} catch (e) {}
+// Accounts (cloud.js): progress from the account is about to replace this device's, so nothing may save the game's
+// in-memory state over it before the page reloads
+function freezeSavesForReload() { suppressAutosave = true; }
+// ...and when that happens in another tab (account page or another game tab), reload this one without saving
+try {
+    window.addEventListener('storage', (ev) => {
+        if (ev.key === 'whathappened_cloud_applied' && ev.newValue) { suppressAutosave = true; location.reload(); }
     });
 } catch (e) {}
 
@@ -2508,8 +2522,7 @@ function updateDisplays() {
         cps = (pirateEffective * pirateMultiplier + otherCps * (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1));
         cps = cps * (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1);
     }
-    // update gem display if present
-    try { const gemEl = document.getElementById('gemCount'); if (gemEl) gemEl.innerText = String(diamonds || 0); } catch (e) {}
+    try { renderGemBalances(); } catch (e) {}
     if (hasDecimal) {
         cps = cps.times(goldenMultiplier);
         if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
@@ -2583,6 +2596,18 @@ function updateDisplays() {
         } else {
             cps = cps * fCps;
             clickPower = clickPower * fClick;
+        }
+    } catch (e) {}
+    // Items: equipped charms and running consumable boosts
+    try {
+        const ib = getItemBonuses();
+        const iCps = (1 + (ib.cps || 0) / 100) * (ib.cpsMult || 1), iClick = (1 + (ib.click || 0) / 100) * (ib.clickMult || 1);
+        if (hasDecimal) {
+            cps = cps.times(D(iCps));
+            clickPower = clickPower.times(D(iClick));
+        } else {
+            cps = cps * iCps;
+            clickPower = clickPower * iClick;
         }
     } catch (e) {}
     try { renderFollowerStrip(); } catch (e) {}
@@ -2974,9 +2999,9 @@ function updateDisplays() {
             const mEl = document.getElementById('statsCritMultiplier');
             try {
                 const hasAssassin = (typeof divineAssassinLevel === 'number' && divineAssassinLevel > 0);
-                const fb = getFollowerBonuses();
-                const chance = Math.min(1, (hasAssassin ? DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel : 0) + (fb.critChance || 0) / 100);
-                const critMult = chance > 0 ? 10 * Math.pow(2, (typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0)) * (1 + (fb.critDmg || 0) / 100) : 0;
+                const fb = getFollowerBonuses(), ib = getItemBonuses();
+                const chance = Math.min(1, (hasAssassin ? DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel : 0) + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100);
+                const critMult = chance > 0 ? 10 * Math.pow(2, (typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0)) * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) : 0;
                 if (cEl) cEl.innerText = `${(chance * 100).toFixed(2)}%`;
                 if (mEl) mEl.innerText = `x${formatNumber(critMult)}`;
             } catch (e) {
@@ -3042,16 +3067,18 @@ function increment() {
         let chance = (typeof divineAssassinLevel !== 'undefined' && divineAssassinLevel > 0) ? Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel) : 0;
         // Casino crit buff: add bonus crit chance when active
         if (window.casinoCritExpires && window.casinoCritExpires > Date.now()) chance += (window.casinoCritBonus || 0);
-        // Followers: extra crit chance (percentage points)
+        // Followers and items (charms, Loaded Dice): extra crit chance (percentage points)
         chance += (getFollowerBonuses().critChance || 0) / 100;
+        chance += (getItemBonuses().critChance || 0) / 100;
         chance = Math.min(1, chance);
         if (chance > 0 && Math.random() < chance) {
                 // compute crit multiplier: base 10x, scaled by Divine Spirit levels (doubles per level)
                 let critMult = 10;
                 // each Divine Spirit level doubles crit damage (level 1 = x20); the old formula made level 1 do nothing
                 if (typeof divineSpiritLevel === 'number' && divineSpiritLevel > 0) critMult = 10 * Math.pow(2, divineSpiritLevel);
-                // Followers: crit damage bonus
+                // Followers and charms: crit damage bonus
                 critMult *= 1 + (getFollowerBonuses().critDmg || 0) / 100;
+                critMult *= 1 + (getItemBonuses().critDmg || 0) / 100;
                 if (hasDecimal) reward = (isDecimalInstance(reward) ? reward : D(reward)).times(D(critMult));
                 else reward *= critMult;
                 // optional visual feedback: spawn extra falling image with crit effects (skipped on Low performance)
@@ -3101,29 +3128,9 @@ function increment() {
     } else {
         count = (typeof count === 'number' ? count : Number(count)) + Number(reward);
     }
-    // rare diamond drop: 1 in 2500 chance per click (Glitch followers raise it)
+    // rare gem drop: 1 in 2500 chance per click (Glitch followers and gem charms raise it); the gem flies into the top-bar counter
     try {
-        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100)) {
-            // increment diamonds and show a small visual indicator
-            diamonds = (typeof diamonds === 'number' ? diamonds : Number(diamonds) || 0) + 1;
-            try { saveGame(); } catch (e) {}
-            try {
-                const indicator = document.createElement('div');
-                indicator.className = 'crit-indicator';
-                indicator.innerText = '♦ +1';
-                const mainEl = document.getElementById('mainContent');
-                if (mainEl) {
-                    const r = mainEl.getBoundingClientRect();
-                    indicator.style.left = (r.left + r.width / 2) + 'px';
-                    indicator.style.top = (r.top + r.height / 3) + 'px';
-                } else {
-                    indicator.style.left = (window.innerWidth / 2) + 'px';
-                    indicator.style.top = (window.innerHeight * 0.35) + 'px';
-                }
-                document.body.appendChild(indicator);
-                setTimeout(() => { try { indicator.remove(); } catch (e) {} }, 1600);
-            } catch (e) {}
-        }
+        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100) * (1 + (getItemBonuses().gems || 0) / 100)) addGems(1);
     } catch (e) {}
     try {
         const str = formatNumber(count);
@@ -6671,6 +6678,8 @@ document.addEventListener('pointerdown', e => {
 // Esc closes the topmost open menu or dialog
 document.addEventListener('keydown', e => {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // items.js: gem purchase dialog, lootbox reveal, Items menu
+    if (window.WHI && window.WHI.handleEscape()) return;
     const byId = id => document.getElementById(id);
     const shown = el => !!el && !!el.style.display && el.style.display !== 'none';
     const open = id => !!byId(id) && byId(id).classList.contains('open');
@@ -6728,7 +6737,14 @@ function renderExtraStats() {
     rows.push(['🏷️ Titles unlocked', String(getUnlockedTitles().length), 'achievements.html']);
     const f = readJSON('whathappened_followers');
     if (f && Array.isArray(f.list)) rows.push(['🦎 Followers', `${f.list.length} owned · ${(f.equipped || []).filter(Boolean).length}/${f.slots || 2} on your team`, 'followers.html']);
-    rows.push(['💎 Gems', formatNumber(Number(diamonds) || 0), null]);
+    rows.push(['💎 Gems', formatNumber(getGems()), null]);
+    try {
+        if (window.WHI) {
+            const it = window.WHI.summary();
+            rows.push(['🎁 Lootboxes', `${formatNumber(it.opened)} opened · ${formatNumber(it.boxes)} waiting`, null]);
+            rows.push(['🧿 Charms found', `${it.charms} / ${it.charmsTotal}`, null]);
+        }
+    } catch (e) {}
     const cs = readJSON('whathappened_casino_stats');
     if (cs && cs.rounds) {
         const decided = (cs.wins || 0) + (cs.losses || 0);
@@ -6799,8 +6815,73 @@ function toggleSfxMute() {
     } catch (e) { console.warn('toggleSfxMute error', e); }
 }
 
-// Shop menu toggle
-function toggleShopMenu() {
+// ---------- Gems: the premium currency (main.js `diamonds`; items.js draws the counter, burst and purchase dialog) ----------
+function getGems() { return Math.max(0, Math.floor(Number(diamonds) || 0)); }
+function gemPriceHtml(n) {
+    return `<span class="gem-price"><img src="mainimage/gem.png" alt="" class="gem-ico">${formatNumber(n)}<span class="sr-only"> gems</span></span>`;
+}
+// Every place that shows the gem balance (top-bar counter, shop header, Items menu)
+function renderGemBalances() {
+    if (window.WHI) { window.WHI.renderHud(); return; }
+    const el = document.getElementById('gemCount');
+    if (el) el.innerText = formatNumber(getGems());
+}
+// Give gems. They fly from `from` ({x, y}, default: the last click) into the top-bar counter.
+// quiet: credit only (items.js animates them itself later).
+function addGems(n, from, quiet) {
+    const amt = Math.max(0, Math.floor(Number(n) || 0));
+    if (!amt) return;
+    diamonds = getGems() + amt;
+    try { saveGame(); } catch (e) {}
+    if (!quiet) {
+        if (window.WHI) { try { window.WHI.gemBurst(amt, from); } catch (e) {} }
+        else notify('+' + amt + (amt === 1 ? ' gem' : ' gems'));
+    }
+    try { updateDisplays(); } catch (e) {}
+}
+function notifyNotEnoughGems(cost) {
+    notify('Not enough gems. You need ' + formatNumber(cost - getGems()) + ' more.');
+    try { if (window.WHI) window.WHI.shakeChip(); } catch (e) {}
+}
+// Every gem purchase goes through here: the confirm dialog (items.js), then the gems are taken.
+// details: { title, desc, img (url) or art (html) }. Resolves true once paid; the caller then grants the purchase.
+function spendGems(cost, details) {
+    const price = Math.max(0, Math.floor(Number(cost) || 0));
+    const d = details || {};
+    if (getGems() < price) { notifyNotEnoughGems(price); return Promise.resolve(false); }
+    const ask = (window.WHI && typeof window.WHI.confirmSpend === 'function')
+        ? window.WHI.confirmSpend(Object.assign({}, d, { cost: price }))
+        : Promise.resolve(confirm('Spend ' + price + ' gems on ' + (d.title || 'this') + '?'));
+    return ask.then(ok => {
+        if (!ok) return false;
+        // the balance can change while the dialog is open (a gem drop, a purchase in another tab)
+        if (getGems() < price) { notifyNotEnoughGems(price); return false; }
+        diamonds = getGems() - price;
+        try { saveGame(); } catch (e) {}
+        try { playSfx('audio/purchase.wav'); } catch (e) {}
+        try { updateDisplays(); } catch (e) {}
+        return true;
+    });
+}
+// Rewards from items.js consumables
+// Instantly earn `seconds` of the current CPS. Returns the amount added.
+function addCpsSeconds(seconds) {
+    const gain = hasDecimal ? (isDecimalInstance(cps) ? cps : D(cps)).times(Number(seconds) || 0) : (Number(cps) || 0) * (Number(seconds) || 0);
+    addToCount(gain);
+    try { updateDisplays(); } catch (e) {}
+    return gain;
+}
+function addGolden(n) {
+    const amt = Math.max(0, Number(n) || 0);
+    goldenWhat = (Number(goldenWhat) || 0) + amt;
+    totalGoldenEver = (Number(totalGoldenEver) || 0) + amt;
+    if (goldenWhat >= 1) divineUnlocked = true;
+    try { saveGame(); } catch (e) {}
+    try { updateDisplays(); } catch (e) {}
+}
+
+// Shop menu toggle (tab: which tab to open on, default the skins)
+function toggleShopMenu(tab) {
     const menu = document.getElementById('shopMenu');
     const overlay = document.getElementById('shopOverlay');
     if (!menu || !overlay) return;
@@ -6809,46 +6890,51 @@ function toggleShopMenu() {
         menu.classList.add('open');
         overlay.classList.add('open');
         try { updateShopUI(); } catch (e) {}
-        try { showShopTab('main'); } catch (e) {}
+        try { showShopTab(typeof tab === 'string' ? tab : 'main'); } catch (e) {}
         try { document.body.classList.add('overlay-open-shop'); } catch (e) {}
     } else {
         menu.classList.remove('open');
         overlay.classList.remove('open');
         try { document.body.classList.remove('overlay-open-shop'); } catch (e) {}
     }
-    // ensure gem count is updated when opening
-    try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
+    try { renderGemBalances(); } catch (e) {}
+}
+// Open the shop on a tab (or switch to it if the shop is already open)
+function openShop(tab) {
+    const menu = document.getElementById('shopMenu');
+    if (menu && menu.classList.contains('open')) showShopTab(tab || 'main');
+    else toggleShopMenu(tab || 'main');
 }
 
-// Show the requested shop tab: 'main' or 'bg'. Handles a short opacity transition.
+// Shop tabs: [content id, tab button id]
+const SHOP_TABS = {
+    treasury: ['shopTabTreasury', 'shopTabBtnTreasury'],
+    main: ['shopTabMain', 'shopTabBtnMain'],
+    bg: ['shopTabBG', 'shopTabBtnBG'],
+    music: ['shopTabMusic', 'shopTabBtnMusic'],
+};
+let currentShopTab = 'main';
+// Show the requested shop tab. Handles a short opacity transition.
 function showShopTab(tab) {
     try {
-        const main = document.getElementById('shopTabMain');
-        const bg = document.getElementById('shopTabBG');
-        const music = document.getElementById('shopTabMusic');
-        const btnMain = document.getElementById('shopTabBtnMain');
-        const btnBG = document.getElementById('shopTabBtnBG');
-        const btnMusic = document.getElementById('shopTabBtnMusic');
-        if (!main || !bg || !music || !btnMain || !btnBG || !btnMusic) return;
-        // fast-path if already active
-        if (tab === 'bg' && btnBG.classList.contains('active')) return;
-        if (tab === 'main' && btnMain.classList.contains('active')) return;
-        if (tab === 'music' && btnMusic.classList.contains('active')) return;
-
-        const showEl = (tab === 'bg') ? bg : (tab === 'music' ? music : main);
-        const hideEls = [main, bg, music].filter(e => e !== showEl);
-        // prepare shown element
+        if (!SHOP_TABS[tab]) tab = 'main';
+        const pane = k => document.getElementById(SHOP_TABS[k][0]);
+        const showEl = pane(tab);
+        if (!showEl) return;
+        // fast-path if already showing
+        if (currentShopTab === tab && showEl.style.display !== 'none') return;
+        currentShopTab = tab;
+        // prepare shown element, start the hide animation for the others
         showEl.style.display = 'block';
         showEl.style.opacity = '0';
-        // start hide animation for the others
-        hideEls.forEach(h => { try { h.style.opacity = '0'; } catch (e) {} });
-        // toggle active button styles
-        btnMain.classList.toggle('active', tab === 'main');
-        btnBG.classList.toggle('active', tab === 'bg');
-        btnMusic.classList.toggle('active', tab === 'music');
-        // after a tick, fade in the shown element; after transition, hide the others
+        for (const k in SHOP_TABS) {
+            const btn = document.getElementById(SHOP_TABS[k][1]);
+            if (btn) btn.classList.toggle('active', k === tab);
+            if (k !== tab && pane(k)) pane(k).style.opacity = '0';
+        }
+        // after a tick, fade in the shown element; after the transition, hide whatever isn't the current tab
         requestAnimationFrame(() => { showEl.style.opacity = '1'; });
-        setTimeout(() => { try { hideEls.forEach(h => h.style.display = 'none'); } catch (e) {} }, 240);
+        setTimeout(() => { for (const k in SHOP_TABS) if (k !== currentShopTab && pane(k)) pane(k).style.display = 'none'; }, 240);
     } catch (e) { console.warn('showShopTab error', e); }
 }
 
@@ -6877,13 +6963,13 @@ function updateShopUI() {
                 </div>
             </div>`;
         for (const skin of SHOP_SKINS) {
-            const costHtml = (skin.cost === null) ? `Unlock: <strong>${skin.unlockText}</strong>` : `Cost: <strong>${skin.cost}</strong> gems`;
+            const costHtml = (skin.cost === null) ? `Unlock: <strong>${skin.unlockText}</strong>` : (skin.owned() ? '<strong>Owned</strong>' : `Price: ${gemPriceHtml(skin.cost)}`);
             html += `<div class="shop-item" id="shop${skin.id}Item">
                 <div class="shop-item-title">${skin.title}</div>
                 <img id="shop${skin.id}Img" src="${thumbFor(skin.path)}" alt="${skin.title}" class="shop-item-img" style="cursor:pointer;" decoding="async" data-full="${skin.path}" data-fallback="${placeholder(skin)}" />
                 <div class="shop-item-info">${costHtml}</div>
                 <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
-                    ${skin.cost === null ? '' : `<button id="buy${skin.id}Btn" style="padding:6px 8px;border-radius:6px;">Buy (${skin.cost})</button>`}
+                    ${skin.cost === null ? '' : `<button id="buy${skin.id}Btn" style="padding:6px 8px;border-radius:6px;" aria-label="Buy ${skin.title} for ${skin.cost} gems">Buy ${gemPriceHtml(skin.cost)}</button>`}
                     <button id="equip${skin.id}Btn" style="padding:6px 8px;border-radius:6px;">Equip</button>
                 </div>
             </div>`;
@@ -6914,7 +7000,7 @@ function updateShopUI() {
             if (img) img.onclick = () => {
                 if (skin.owned()) toggleSkin(skin);
                 else if (skin.cost === null) notify('Unlock: ' + skin.unlockText + '.');
-                else if (confirm('Buy ' + skin.title + ' for ' + skin.cost + ' gems?')) buyShopSkin(skin);
+                else buyShopSkin(skin);
             };
             const owned = skin.owned();
             const equipped = isEquipped(skin.path);
@@ -6927,7 +7013,9 @@ function updateShopUI() {
         defBtn.disabled = defaultEquipped;
         defBtn.innerText = defaultEquipped ? 'Equipped' : 'Equip';
         if (defaultEquipped) document.getElementById('shopDefaultItem').classList.add('equipped');
-        try { document.getElementById('gemCount').innerText = String(diamonds || 0); } catch (e) {}
+        try { renderGemBalances(); } catch (e) {}
+        // Treasury tab (lootboxes, lure, charm slots) is drawn by items.js
+        try { const tre = document.getElementById('shopTabTreasury'); if (tre && window.WHI) window.WHI.renderTreasury(tre); } catch (e) { console.warn('render treasury failed', e); }
 
         // render background images into BG tab
         try {
@@ -6943,9 +7031,9 @@ function updateShopUI() {
                     bgHtml += `<div class="shop-item" id="shopBgItem_${id}">`;
                     bgHtml += `<div class="shop-item-title">${displayName}</div>`;
                     bgHtml += `<img id="shopBgImg_${id}" src="${thumbFor(bgPathFor(fn))}" alt="${displayName}" class="shop-item-img" style="cursor:pointer;" decoding="async" onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='${bgPathFor(fn)}';}" />`;
-                    bgHtml += `<div class="shop-item-info">Cost: <strong>${bgCostFor(fn)}</strong> gems</div>`;
+                    bgHtml += `<div class="shop-item-info">${(shopBgPurchased && shopBgPurchased[bgPathFor(fn)]) ? '<strong>Owned</strong>' : 'Price: ' + gemPriceHtml(bgCostFor(fn))}</div>`;
                     bgHtml += `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">`;
-                    bgHtml += `<button id="buyBg_${id}" style="padding:6px 8px;border-radius:6px;">Buy (${bgCostFor(fn)})</button>`;
+                    bgHtml += `<button id="buyBg_${id}" style="padding:6px 8px;border-radius:6px;" aria-label="Buy the ${displayName} background for ${bgCostFor(fn)} gems">Buy ${gemPriceHtml(bgCostFor(fn))}</button>`;
                     bgHtml += `<button id="equipBg_${id}" style="padding:6px 8px;border-radius:6px;">Equip</button>`;
                     bgHtml += `</div></div>`;
                 });
@@ -6962,7 +7050,7 @@ function updateShopUI() {
                     const imgEl = document.getElementById('shopBgImg_' + id);
                     if (buyBtn) buyBtn.onclick = () => { buyBgImage(path, cost); };
                     if (equipBtn) equipBtn.onclick = () => { equipBgImage(path); updateShopUI(); };
-                    if (imgEl) imgEl.onclick = () => { if (owned()) { equipBgImage(path); updateShopUI(); } else if (confirm('Buy this background for ' + cost + ' gems?')) { buyBgImage(path, cost); } };
+                    if (imgEl) imgEl.onclick = () => { if (owned()) { equipBgImage(path); updateShopUI(); } else buyBgImage(path, cost); };
                     const equipped = equippedBgImage === path;
                     if (buyBtn) { buyBtn.style.display = owned() ? 'none' : ''; buyBtn.disabled = (Number(diamonds) || 0) < cost; }
                     if (equipBtn) { equipBtn.disabled = !owned() || equipped; equipBtn.innerText = equipped ? 'Equipped' : 'Equip'; }
@@ -6984,9 +7072,9 @@ function updateShopUI() {
                     mhtml += `<div class="shop-item" id="shopMusic_${t.id}">`;
                     mhtml += `<div class="shop-item-title">${t.name}</div>`;
                     // image removed for music shop (text + buttons only)
-                    mhtml += `<div class="shop-item-info">Cost: <strong>${t.cost}</strong> gems</div>`;
+                    mhtml += `<div class="shop-item-info">${owned ? '<strong>Owned</strong>' : 'Price: ' + gemPriceHtml(t.cost)}</div>`;
                     mhtml += `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">`;
-                    mhtml += `<button id="buyMusic_${t.id}" style="padding:6px 8px;border-radius:6px;">Buy</button>`;
+                    mhtml += `<button id="buyMusic_${t.id}" style="padding:6px 8px;border-radius:6px;" aria-label="Buy ${t.name} for ${t.cost} gems">Buy ${gemPriceHtml(t.cost)}</button>`;
                     mhtml += `<button id="previewMusic_${t.id}" style="padding:6px 8px;border-radius:6px;">Preview</button>`;
                     mhtml += `<button id="equipMusic_${t.id}" style="padding:6px 8px;border-radius:6px;">Equip</button>`;
                     mhtml += `<div id="shopMusicStatus_${t.id}" style="font-weight:700;color:#000;margin-left:6px;"></div>`;
@@ -7001,7 +7089,7 @@ function updateShopUI() {
                     const statusEl = document.getElementById('shopMusicStatus_' + t.id);
                     try {
                         const owned = !!(musicOwned && musicOwned[t.id]);
-                        if (buyBtn) { buyBtn.style.display = owned ? 'none' : 'inline-block'; buyBtn.disabled = (diamonds < t.cost); buyBtn.onclick = () => { if ((Number(diamonds) || 0) < t.cost) { notify('Not enough gems — need ' + t.cost + '.'); return; } if (confirm('Buy ' + t.name + ' for ' + t.cost + ' gems?')) { diamonds = (Number(diamonds) || 0) - t.cost; musicOwned[t.id] = true; saveGame(); updateDisplays(); updateShopUI(); try{ playSfx('audio/purchase.wav'); }catch(e){} } }; }
+                        if (buyBtn) { buyBtn.style.display = owned ? 'none' : 'inline-flex'; buyBtn.disabled = (getGems() < t.cost); buyBtn.onclick = () => buyMusicTrack(t); }
                         if (previewBtn) previewBtn.onclick = () => {
                             try {
                                 // stop any existing preview and clear timers
@@ -7086,13 +7174,24 @@ function updateShopUI() {
 // Buy a main-image skin from SHOP_SKINS with gems (skins with cost null are unlocked elsewhere)
 function buyShopSkin(skin) {
     if (!skin || skin.owned() || skin.cost === null) return;
-    if ((Number(diamonds) || 0) < skin.cost) { notify('Not enough gems — need ' + skin.cost + '.'); return; }
-    diamonds = (Number(diamonds) || 0) - skin.cost;
-    skin.grant();
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
+    spendGems(skin.cost, { title: skin.title, desc: 'Main image skin. Yours to keep, even through prestige.', img: thumbFor(skin.path) }).then(ok => {
+        if (!ok) return;
+        skin.grant();
+        saveGame();
+        updateDisplays();
+        updateShopUI();
+    });
+}
+
+function buyMusicTrack(t) {
+    if (!t || (musicOwned && musicOwned[t.id])) return;
+    spendGems(t.cost, { title: t.name, desc: 'Music track. Equip it in the Music tab.', art: '🎵' }).then(ok => {
+        if (!ok) return;
+        musicOwned[t.id] = true;
+        saveGame();
+        updateDisplays();
+        updateShopUI();
+    });
 }
 
 function equipShopItem(filename) {
@@ -7121,14 +7220,15 @@ function applyEquippedBackground() {
 function buyBgImage(path, cost = 10) {
     if (!path) return;
     if (shopBgPurchased && shopBgPurchased[path]) return;
-    if ((Number(diamonds) || 0) < cost) { notify('Not enough gems — need ' + cost + '.'); return; }
-    diamonds = (Number(diamonds) || 0) - cost;
-    shopBgPurchased = shopBgPurchased || {};
-    shopBgPurchased[path] = true;
-    saveGame();
-    try { playSfx('audio/purchase.wav'); } catch (e) {}
-    updateDisplays();
-    updateShopUI();
+    const name = String(path).split('/').pop().replace(/bg\.png$/i, '').replace(/\.png$/i, '');
+    spendGems(cost, { title: name.charAt(0).toUpperCase() + name.slice(1) + ' background', desc: 'Background image. Yours to keep, even through prestige.', img: thumbFor(path) }).then(ok => {
+        if (!ok) return;
+        shopBgPurchased = shopBgPurchased || {};
+        shopBgPurchased[path] = true;
+        saveGame();
+        updateDisplays();
+        updateShopUI();
+    });
 }
 
 function equipBgImage(path) {
@@ -7224,12 +7324,12 @@ function redeemSecretCode() {
             showSecretCodeStatus(reward.message || ('You received ' + amt + ' golden!'), true);
             inp.value = '';
         } else if (reward.type === 'diamonds') {
-            // add diamonds (integer)
+            // add gems (integer); they fly from the Redeem button into the counter
             const amt = Number(reward.amount) || 0;
-            try { diamonds = (Number(diamonds) || 0) + amt; } catch (e) { diamonds = amt; }
-            try { saveGame(); } catch (e) {}
-            try { updateDisplays(); } catch (e) {}
-            showSecretCodeStatus(reward.message || ('You received ' + amt + ' diamonds!'), true);
+            let from = null;
+            try { const r = inp.getBoundingClientRect(); if (r.width) from = { x: r.left + r.width / 2, y: r.top + r.height / 2 }; } catch (e) {}
+            addGems(amt, from);
+            showSecretCodeStatus(reward.message || ('You received ' + amt + ' gems!'), true);
             inp.value = '';
         } else {
             // unknown reward type — just acknowledge
@@ -7977,6 +8077,8 @@ function loadGame() {
                             }
                             // Followers: CPS bonus applies offline too, plus the offline earnings bonus
                             try { const fb = getFollowerBonuses(); totalCps = totalCps.times(D((1 + fb.cps / 100) * (1 + fb.offline / 100))); } catch (e) {}
+                            // Items: equipped charms' CPS and offline bonuses (consumable boosts don't run while you're away)
+                            try { const ib = getItemBonuses(); totalCps = totalCps.times(D((1 + ib.cps / 100) * (1 + ib.offline / 100))); } catch (e) {}
                             const gainedD = totalCps.times(D(seconds));
                             if (gainedD && (typeof gainedD.gt === 'function' ? gainedD.gt(0) : Number(gainedD) > 0)) {
                                 addToCount(gainedD);
@@ -8003,6 +8105,8 @@ function loadGame() {
                             totalCps = totalCps * (1 + getClanLevelPerk().cps / 100);
                             // Followers: CPS bonus applies offline too, plus the offline earnings bonus
                             try { const fb = getFollowerBonuses(); totalCps = totalCps * (1 + fb.cps / 100) * (1 + fb.offline / 100); } catch (e) {}
+                            // Items: equipped charms' CPS and offline bonuses (consumable boosts don't run while you're away)
+                            try { const ib = getItemBonuses(); totalCps = totalCps * (1 + ib.cps / 100) * (1 + ib.offline / 100); } catch (e) {}
                             const gained = totalCps * seconds;
                             if (gained > 0) {
                                 count = (typeof count === 'number' ? count : Number(count)) + Number(gained);
@@ -8029,6 +8133,7 @@ function resetGame() {
     } catch (e) { console.error('resetGame cleanup failed', e); }
     try { localStorage.removeItem(REDEEMED_KEY); } catch (e) {}
     try { if (window.WHF) localStorage.removeItem(window.WHF.STORAGE_KEY); } catch (e) {}
+    try { if (window.WHI) localStorage.removeItem(window.WHI.STORAGE_KEY); } catch (e) {}
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }

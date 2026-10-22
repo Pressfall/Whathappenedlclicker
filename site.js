@@ -14,6 +14,7 @@
         { href: 'gamba.html', label: 'Casino', icon: '🎰', alert: 'casino' },
         { href: 'clan.html', label: 'Clans', icon: '🛡️', alert: 'clan' },
         { href: 'leaderboard.html', label: 'Leaderboard', icon: '🏆' },
+        { href: 'account.html', label: 'Account', icon: '☁️' },
     ];
 
     function readJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }

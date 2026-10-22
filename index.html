@@ -16,6 +16,8 @@
     <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="theme.css">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="items.css">
+    <link rel="stylesheet" href="cloud.css">
     <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
     <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
     <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
@@ -216,6 +218,12 @@
     <!-- ========== Top bar: menu toggle + page navigation (in the main column, beside the upgrades bar) ========== -->
     <header id="topBar">
         <button id="leftBarToggle" class="icon-btn" aria-label="Toggle upgrades menu" title="Upgrades menu" onclick="toggleLeftBar()">☰</button>
+        <!-- Gem balance (premium currency); the + opens the shop's Treasury. items.js keeps the count up to date. -->
+        <button id="gemChip" class="gem-chip" type="button" onclick="openShop('treasury')" title="Gems: the premium currency. Open the Treasury">
+            <img src="mainimage/gem.png" alt="" class="gem-ico" width="24" height="24">
+            <span id="gemChipCount" class="gem-chip-count" data-gem-balance>0</span><span class="sr-only"> gems, open the Treasury</span>
+            <span class="gem-chip-plus" aria-hidden="true">+</span>
+        </button>
         <nav class="top-nav" aria-label="Game pages">
             <button id="leaderboardTopBtn" class="nav-btn" onclick="window.location.href='leaderboard.html'"><span class="nav-ico" aria-hidden="true">🏆</span><span class="nav-txt">Leaderboard</span></button>
             <button id="achievementsTopBtn" class="nav-btn" onclick="window.location.href='achievements.html'"><span class="nav-ico" aria-hidden="true">🎖️</span><span class="nav-txt">Achievements</span></button>
@@ -223,6 +231,7 @@
             <button id="followersTopBtn" class="nav-btn" onclick="window.location.href='followers.html'"><span class="nav-ico" aria-hidden="true">🦎</span><span class="nav-txt">Followers</span></button>
             <button id="clanToggle" class="nav-btn"><span class="nav-ico" aria-hidden="true">🛡️</span><span class="nav-txt">Clan</span></button>
             <button id="specialMenuBtn" class="nav-btn nav-btn--special" aria-label="Special upgrades" onclick="toggleSpecialMenu()"><span class="nav-ico" aria-hidden="true">✦</span><span class="nav-txt">Specials</span></button>
+            <button id="itemsTopBtn" class="nav-btn" aria-label="Items: lootboxes, charms and consumables" onclick="window.WHI && WHI.openInventory()"><span class="nav-ico" aria-hidden="true">🎒</span><span class="nav-txt">Items</span></button>
             <button id="shopToggle" class="nav-btn nav-btn--gold" onclick="toggleShopMenu()"><img src="mainimage/shop.png" alt="" class="nav-img"><span class="nav-txt">Shop</span></button>
             <button id="settingsToggle" class="nav-btn" aria-label="Settings" onclick="toggleSettingsMenu()"><span class="nav-ico" aria-hidden="true">⚙️</span><span class="nav-txt">Settings</span></button>
         </nav>
@@ -349,6 +358,8 @@
                 <div class="info-actions">
                     <button id="prestigeTopBtn" class="btn btn-gold" onclick="buyPrestige()" style="display:none;">Prestige</button>
                     <button onclick="toggleStats()" class="btn btn-ghost">Stats</button>
+                    <!-- account save status (cloud.js keeps the label current); a plain link so it still works if cloud.js can't load -->
+                    <a id="cloudBtn" href="account.html" class="btn btn-ghost" title="Sign in to save your progress and play on any device">☁️ Save to account</a>
                     <button id="submitLeaderboardBtn" class="btn btn-primary">Submit score</button>
                 </div>
             </div>
@@ -390,16 +401,17 @@
         <button id="welcomeBackOk" class="btn btn-primary btn-block">Nice</button>
     </div>
 
-    <!-- ========== Shop overlay and menu (gems, main image skins, BG, music) ========== -->
+    <!-- ========== Shop overlay and menu (gems: Treasury, main image skins, BG, music) ========== -->
     <div id="shopOverlay" class="shop-overlay"></div>
     <div id="shopMenu" class="shop-menu">
         <div class="shop-header">
                 <div class="shop-left">
                     <div class="gem-balance">
                         <img src="mainimage/gem.png" alt="" height="26" width="26">
-                        <span><span id="gemCount">0</span> gems</span>
+                        <span><span id="gemCount" data-gem-balance>0</span> gems</span>
                     </div>
                     <div class="shop-tabs">
+                        <button id="shopTabBtnTreasury" class="shop-tab-btn shop-tab-btn--gem" onclick="showShopTab('treasury')">💎 Treasury</button>
                         <button id="shopTabBtnMain" class="shop-tab-btn active" onclick="showShopTab('main')">Main Image Skins</button>
                         <button id="shopTabBtnBG" class="shop-tab-btn" onclick="showShopTab('bg')">BG Images</button>
                         <button id="shopTabBtnMusic" class="shop-tab-btn" onclick="showShopTab('music')">Music</button>
@@ -408,6 +420,7 @@
                 <button id="shopClose" class="modal-close" onclick="toggleShopMenu()" aria-label="Close shop">✕</button>
             </div>
             <div class="shop-content">
+                <div id="shopTabTreasury" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:0;display:none;"></div>
                 <div id="shopTabMain" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:1;display:block;"></div>
                 <div id="shopTabBG" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:0;display:none;"></div>
                 <div id="shopTabMusic" class="shop-tab-content" style="transition:opacity 220ms ease;opacity:0;display:none;"></div>
@@ -491,6 +504,13 @@
             <button id="settingsClose" class="modal-close" onclick="toggleSettingsMenu()" aria-label="Close settings">✕</button>
         </div>
         <div id="settingsContent" class="settings-content">
+            <section class="settings-group">
+                <h4>Account</h4>
+                <div class="setting-row">
+                    <a class="btn btn-primary btn-sm" href="account.html">☁️ Save your progress to an account</a>
+                    <div class="setting-help">Sign in with Google or email to back up your progress and play on any device.</div>
+                </div>
+            </section>
             <section class="settings-group">
                 <h4>Display</h4>
                 <div class="setting-row">
@@ -660,6 +680,9 @@
 
             // Fallback: click outside the menu (not on toggle/button) closes them
             document.addEventListener('click', function(e){
+                // items.js layers that sit on top of the menus: the gem purchase dialog, the lootbox reveal, a lootbox
+                // on the screen, and the gem counter (which opens the shop's Treasury)
+                if (e.target && e.target.closest && e.target.closest('.gem-confirm-wrap, .loot-reveal, .loot-drop, #gemChip')) return;
                 try {
                     const shopMenu = document.getElementById('shopMenu');
                     const shopToggle = document.getElementById('shopToggle');
@@ -679,9 +702,15 @@
     </script>
 
     </body>
+    <!-- ========== Accounts and cloud saves (cloud.js): keeps the signed-in account's save up to date; drives #cloudBtn ========== -->
+    <script type="module">
+        import { startGameSync } from './cloud.js';
+        // WHCloud.saveNow() saves to the signed-in account right away (it only ever writes that account's own save)
+        window.WHCloud = startGameSync();
+    </script>
     <!-- ========== Firebase (Firestore, Analytics): exposes db, doc, setDoc, getDoc, updateDoc, etc. for main.js ========== -->
     <script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
+  import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
     import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
         import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteDoc, where, increment, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
     // TODO: Add SDKs for Firebase products that you want to use
@@ -699,8 +728,8 @@
     measurementId: "G-C2FWNR7288"
   };
 
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
+  // Initialize Firebase (cloud.js shares this app for accounts and cloud saves)
+  const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
   const analytics = getAnalytics(app);
     // Firestore instance used for leaderboard submissions from the game
     try {
@@ -1398,6 +1427,7 @@
         <script src="achievements-data.js"></script>
         <script src="main.js"></script>
         <script src="specials.js"></script>
+        <script src="items.js"></script>
         <script src="site.js"></script>
         <script>
             // badges on the nav buttons for things waiting on other pages (new achievements, eggs, daily spin, clan check-in)
@@ -1405,6 +1435,8 @@
                 const map = { achievements: 'achievementsTopBtn', followers: 'followersTopBtn', casino: 'casinoTopBtn', clan: 'clanToggle' };
                 const refresh = () => { try { WHSite.applyNavBadges(map); } catch (e) {} };
                 refresh();
+                // phones: the nav scrolls sideways; start at the end so Shop and Settings are in view
+                try { const nav = document.querySelector('#topBar .top-nav'); if (nav) nav.scrollLeft = nav.scrollWidth; } catch (e) {}
                 setInterval(refresh, 4000);
                 window.addEventListener('wh:achievements', refresh);
                 window.addEventListener('storage', refresh);
@@ -1473,6 +1505,8 @@
                 }
                 // clan shop buffs (main.js keeps window.clanActiveBuffs up to date)
                 (window.clanActiveBuffs || []).forEach(b => { if (b.expiresAt > Date.now()) lines.push(`Clan: ${b.name} — ${formatRemaining(b.expiresAt)}`); });
+                // consumables used from the Items menu, and the Lootbox Lure (items.js)
+                try { if (window.WHI) window.WHI.boostLines().forEach(b => lines.push(`${b.label} — ${formatRemaining(b.until)}`)); } catch (e) {}
                 if(lines.length === 0) { list.innerText = 'No active buffs'; if(panel) panel.style.display = 'none'; } else { list.innerHTML = lines.map(l => `<div>${l}</div>`).join(''); if(panel) panel.style.display = 'block'; }
             }catch(e){}
         }

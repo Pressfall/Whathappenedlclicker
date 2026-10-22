@@ -32,7 +32,8 @@
 
   <h2>Information We Collect</h2>
   <ul>
-    <li><strong>Local save data:</strong> Your game progress (counts, levels, settings, and divine/golden state) is stored in your browser's <code>localStorage</code>. This data stays on your device unless you intentionally share it.</li>
+    <li><strong>Local save data:</strong> Your game progress (counts, levels, settings, and divine/golden state) is stored in your browser's <code>localStorage</code>. This data stays on your device unless you sign in to an account (see below) or intentionally share it.</li>
+    <li><strong>Accounts and cloud saves (optional):</strong> If you create an account or sign in, we store your email address (and, for Google sign-in, your Google account name and profile picture) with Google Firebase Authentication, and a copy of your game progress, the time it was saved and a short device description such as "Chrome on Windows" in Google Cloud Firestore. Passwords are handled by Firebase Authentication; the game never sees or stores them.</li>
     <li><strong>Leaderboard entries:</strong> When you save a username and submit a score to the leaderboard, the leaderboard stores the <em>username</em>, a string representation of your count, and a timestamp. If you run the optional leaderboard server, that server will persist these entries.</li>
     <li><strong>Server logs & metadata:</strong> If you submit leaderboard data to a hosted leaderboard server (for example, Firestore/Firestore REST endpoints), that server may also log IP addresses, request metadata, and other technical information necessary to operate and secure the service.</li>
     <li><strong>Third-party services:</strong> Third-party services used to display content or provide features may collect information in order to operate. This can include cookies, device identifiers, and signals about your interactions. The site itself does not send these signals to third parties beyond what those services collect when loaded in the browser.</li>
@@ -41,6 +42,7 @@
   <h2>How We Use Information</h2>
   <ul>
     <li>Store and restore your game progress in <code>localStorage</code> for a better experience.</li>
+    <li>If you have an account: sign you in, save your progress to it, and load it on your other devices. Your cloud save can only be read or changed while signed in to your account.</li>
     <li>Publish leaderboard entries (username, score, timestamp) only when you submit them intentionally via the leaderboard UI.</li>
     <li>Use third-party content or services that may use cookies or other browser storage to provide or measure their features.</li>
   </ul>
@@ -74,6 +76,8 @@
 
   <h2>Data Retention</h2>
   <p>Local save data remains on your device until you delete it (via the game's "Clear Save" control or by clearing localStorage). Leaderboard entries are retained on the leaderboard server according to that server's policy.</p>
+
+  <p><strong>Accounts:</strong> your account and cloud save are kept until you delete them. You can delete your account at any time on the <a href="account.html">Account page</a> (Security → Delete account), which removes the account and its cloud save immediately; the progress on your device is not affected.</p>
 
   <p><strong>Suggested default retention:</strong> if you operate a leaderboard server, consider retaining leaderboard entries for a reasonable period (for example, 12 months) unless you are required to keep them longer. Provide users with the ability to request deletion sooner.</p>
 

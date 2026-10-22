@@ -1,0 +1,54 @@
+/**
+ * Cloud saves (cloud.js): the ☁️ save button on the game page and the "which progress do you want to keep?" dialog.
+ * Loaded by index.html and account.html.
+ */
+
+a.btn { text-decoration: none; }
+#cloudBtn.is-warn { background: rgba(255, 200, 61, 0.14); border-color: rgba(255, 200, 61, 0.55); color: var(--gold); }
+
+/* ========== Choosing between this device's progress and the account's ========== */
+.cs-wrap { position: fixed; inset: 0; z-index: 2800; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
+.cs-backdrop { position: fixed; inset: 0; background: rgba(3, 6, 14, 0.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.cs-dialog {
+    position: relative;
+    width: min(100%, 620px);
+    padding: 22px 20px 16px;
+    border-radius: var(--radius-lg);
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg);
+    text-align: center;
+    animation: cs-in 200ms ease-out;
+}
+@keyframes cs-in { from { opacity: 0; transform: translateY(10px) scale(0.97); } }
+.cs-kicker { font-size: 11px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--blue); }
+.cs-title { margin: 6px 0; font-size: 20px; }
+.cs-desc { margin: 0 auto 16px; max-width: 52ch; color: var(--text-dim); font-size: 13.5px; line-height: 1.5; }
+.cs-options { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
+.cs-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 14px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-strong);
+    background: var(--surface-2);
+    color: var(--text);
+    text-align: left;
+    transition: border-color 120ms ease, transform 120ms ease, background 120ms ease;
+}
+.cs-card:hover, .cs-card:focus-visible { border-color: var(--blue); background: var(--surface-3); transform: translateY(-2px); }
+.cs-card.is-ahead { border-color: rgba(47, 208, 122, 0.55); }
+.cs-badge { position: absolute; top: -10px; right: 12px; padding: 2px 9px; border-radius: 999px; background: var(--primary); color: #04170c; font-size: 10.5px; font-weight: 900; letter-spacing: 0.5px; text-transform: uppercase; }
+.cs-card-title { font-weight: 800; font-size: 16px; }
+.cs-card-sub { color: var(--text-dim); font-size: 12px; margin-bottom: 6px; }
+.cs-pick { margin-top: 10px; padding: 8px 12px; border-radius: 999px; background: rgba(90, 169, 255, 0.16); border: 1px solid rgba(90, 169, 255, 0.45); color: #cfe5ff; font-weight: 800; font-size: 13px; text-align: center; }
+.cs-card.is-ahead .cs-pick { background: linear-gradient(180deg, var(--primary), var(--primary-deep)); border-color: transparent; color: #04170c; }
+.cs-stats { margin: 0; display: grid; gap: 4px; font-size: 13px; }
+.cs-stats > div { display: flex; justify-content: space-between; gap: 10px; }
+.cs-stats dt { color: var(--text-dim); }
+.cs-stats dd { margin: 0; font-weight: 800; font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) {
+    .cs-options { grid-template-columns: 1fr; }
+}

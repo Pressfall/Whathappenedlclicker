@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<!--
+  WHAT HAPPENED clicker — Account page: sign in (email/password or Google), save progress to the account, load it on
+  another device, and manage the account. Logic in account.js (UI) and cloud.js (Firebase accounts and cloud saves).
+  No inline scripts: the Content-Security-Policy below only allows scripts from this site and Google's Firebase /
+  sign-in servers.
+-->
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://*.googleapis.com https://www.gstatic.com; frame-src https://whleaderboard.firebaseapp.com https://accounts.google.com; img-src 'self' data: https://*.googleusercontent.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; object-src 'none'; base-uri 'self'; form-action 'self'">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <title>Account — What Happened</title>
+    <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
+    <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="theme.css">
+    <link rel="stylesheet" href="cloud.css">
+    <link rel="stylesheet" href="account.css">
+</head>
+<body>
+    <a class="page-back" href="index.html">← Back to game</a>
+    <main class="acc-wrap">
+        <header class="acc-header">
+            <h1 class="page-title">Account</h1>
+            <p class="acc-sub">Save your progress to an account and keep playing on any device.</p>
+        </header>
+
+        <div id="accLoading" class="acc-card glass-panel acc-loading" role="status">Checking your account…</div>
+
+        <!-- ========== Signed out: Google or email, plus what this device has ========== -->
+        <section id="accSignedOut" class="acc-grid" hidden>
+            <div class="acc-card glass-panel acc-auth">
+                <button type="button" id="googleBtn" class="google-btn">
+                    <svg viewBox="0 0 48 48" aria-hidden="true" focusable="false"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+                    <span>Continue with Google</span>
+                </button>
+                <div class="acc-or"><span>or use your email</span></div>
+
+                <div class="acc-tabs" role="tablist" aria-label="Email sign-in">
+                    <button type="button" role="tab" id="tabSignin" class="acc-tab" data-mode="signin" aria-selected="true">Sign in</button>
+                    <button type="button" role="tab" id="tabSignup" class="acc-tab" data-mode="signup" aria-selected="false">Create account</button>
+                </div>
+
+                <form id="authForm" class="acc-form" novalidate>
+                    <label class="acc-field">
+                        <span>Email</span>
+                        <input type="email" id="authEmail" name="email" autocomplete="email" inputmode="email" maxlength="254" required>
+                    </label>
+                    <label class="acc-field">
+                        <span>Password</span>
+                        <span class="pw-wrap">
+                            <input type="password" id="authPassword" name="password" autocomplete="current-password" maxlength="128" required>
+                            <button type="button" class="pw-toggle" data-for="authPassword" aria-label="Show password" aria-pressed="false">Show</button>
+                        </span>
+                    </label>
+                    <div id="pwRules" class="pw-rules" hidden>
+                        <div class="pw-meter" aria-hidden="true"><i id="pwMeter"></i></div>
+                        <ul>
+                            <li data-rule="length">At least 8 characters</li>
+                            <li data-rule="mix">Letters and numbers</li>
+                            <li data-rule="common">Not a common password or your email</li>
+                        </ul>
+                    </div>
+                    <label class="acc-field" id="confirmRow" hidden>
+                        <span>Confirm password</span>
+                        <input type="password" id="authConfirm" name="confirm" autocomplete="new-password" maxlength="128">
+                    </label>
+                    <p id="authMsg" class="acc-msg" role="alert" hidden></p>
+                    <button type="submit" id="authSubmit" class="btn btn-primary btn-block">Sign in</button>
+                    <button type="button" id="forgotBtn" class="acc-link">Forgot your password?</button>
+                </form>
+
+                <form id="resetForm" class="acc-form" novalidate hidden>
+                    <p class="acc-note">Enter your account's email and we'll send you a link to choose a new password.</p>
+                    <label class="acc-field">
+                        <span>Email</span>
+                        <input type="email" id="resetEmail" name="email" autocomplete="email" inputmode="email" maxlength="254" required>
+                    </label>
+                    <p id="resetMsg" class="acc-msg" role="alert" hidden></p>
+                    <button type="submit" id="resetSubmit" class="btn btn-primary btn-block">Send reset link</button>
+                    <button type="button" id="resetBack" class="acc-link">Back to sign in</button>
+                </form>
+            </div>
+
+            <div class="acc-card glass-panel acc-device">
+                <h2>Progress on this device</h2>
+                <div id="deviceStats"></div>
+                <p class="acc-note">When you sign in or create an account, this progress is saved to it, so you won't lose anything. If your account already has progress, you choose which to keep, and the other is kept as a backup.</p>
+            </div>
+        </section>
+
+        <!-- ========== Signed in ========== -->
+        <section id="accSignedIn" class="acc-stack" hidden>
+            <div class="acc-card glass-panel acc-profile">
+                <div class="acc-avatar" id="accAvatar" aria-hidden="true"></div>
+                <div class="acc-who">
+                    <div class="acc-name" id="accName"></div>
+                    <div class="acc-email" id="accEmail"></div>
+                    <div class="acc-chips" id="accChips"></div>
+                </div>
+                <div class="acc-profile-actions">
+                    <button type="button" id="signOutBtn" class="btn btn-ghost btn-sm">Sign out</button>
+                    <button type="button" id="signOutClearBtn" class="btn btn-ghost btn-sm" title="For shared computers: saves your progress to your account, then removes it from this device">Sign out and remove from this device</button>
+                </div>
+                <div id="verifyBox" class="acc-verify" hidden>
+                    <span>Please verify your email so you can recover your account if you forget your password. We sent a link to your inbox.</span>
+                    <span class="acc-verify-actions">
+                        <button type="button" id="resendBtn" class="btn btn-ghost btn-sm">Resend email</button>
+                        <button type="button" id="verifiedBtn" class="btn btn-ghost btn-sm">I've verified it</button>
+                    </span>
+                </div>
+            </div>
+
+            <div class="acc-card glass-panel acc-sync">
+                <div class="acc-sync-head">
+                    <h2>Cloud save</h2>
+                    <p id="syncStatus" class="acc-sync-status" role="status"></p>
+                </div>
+                <div class="acc-compare">
+                    <div class="acc-side">
+                        <h3>💻 This device</h3>
+                        <div id="localStats"></div>
+                    </div>
+                    <div class="acc-side">
+                        <h3>☁️ Your account</h3>
+                        <p id="cloudWhen" class="acc-when"></p>
+                        <div id="cloudStats"></div>
+                    </div>
+                </div>
+                <div class="acc-actions">
+                    <button type="button" id="saveNowBtn" class="btn btn-primary">Save this device's progress</button>
+                    <button type="button" id="loadBtn" class="btn btn-ghost">Load account progress onto this device</button>
+                    <button type="button" id="chooseBtn" class="btn btn-gold" hidden>Choose which progress to keep</button>
+                    <a href="index.html" class="btn btn-ghost">Play</a>
+                </div>
+                <p id="syncMsg" class="acc-msg" role="alert" hidden></p>
+                <div id="backupBox" class="acc-backup" hidden>
+                    <div>
+                        <h3>Backup on this device</h3>
+                        <p id="backupWhat" class="acc-note"></p>
+                        <div id="backupStats"></div>
+                    </div>
+                    <button type="button" id="restoreBtn" class="btn btn-ghost btn-sm">Restore this backup</button>
+                </div>
+                <p class="acc-note">While you play, your progress is saved to your account every few minutes and whenever you leave the game.</p>
+            </div>
+
+            <div class="acc-card glass-panel acc-security">
+                <h2>Security</h2>
+                <form id="pwForm" class="acc-form" novalidate hidden>
+                    <h3>Change password</h3>
+                    <input type="text" name="username" autocomplete="username" id="pwUser" hidden>
+                    <label class="acc-field">
+                        <span>Current password</span>
+                        <input type="password" id="pwCurrent" autocomplete="current-password" maxlength="128" required>
+                    </label>
+                    <label class="acc-field">
+                        <span>New password</span>
+                        <span class="pw-wrap">
+                            <input type="password" id="pwNew" autocomplete="new-password" maxlength="128" required>
+                            <button type="button" class="pw-toggle" data-for="pwNew" aria-label="Show password" aria-pressed="false">Show</button>
+                        </span>
+                    </label>
+                    <div id="pwNewRules" class="pw-rules">
+                        <div class="pw-meter" aria-hidden="true"><i id="pwNewMeter"></i></div>
+                        <ul>
+                            <li data-rule="length">At least 8 characters</li>
+                            <li data-rule="mix">Letters and numbers</li>
+                            <li data-rule="common">Not a common password or your email</li>
+                        </ul>
+                    </div>
+                    <label class="acc-field">
+                        <span>Confirm new password</span>
+                        <input type="password" id="pwConfirm" autocomplete="new-password" maxlength="128" required>
+                    </label>
+                    <p id="pwMsg" class="acc-msg" role="alert" hidden></p>
+                    <button type="submit" id="pwSubmit" class="btn btn-primary">Change password</button>
+                </form>
+                <p id="googleNote" class="acc-note" hidden>You sign in with Google, so your password and two-step verification are managed in your Google account.</p>
+
+                <details class="acc-danger">
+                    <summary>Delete account</summary>
+                    <p class="acc-note">This permanently deletes your account and the progress saved to it. The progress on this device stays here.</p>
+                    <form id="deleteForm" class="acc-form" novalidate>
+                        <label class="acc-field" id="deletePwRow">
+                            <span>Your password</span>
+                            <input type="password" id="deletePw" autocomplete="current-password" maxlength="128">
+                        </label>
+                        <label class="acc-field">
+                            <span>Type DELETE to confirm</span>
+                            <input type="text" id="deleteConfirm" autocomplete="off" maxlength="10">
+                        </label>
+                        <p id="deleteMsg" class="acc-msg" role="alert" hidden></p>
+                        <button type="submit" id="deleteSubmit" class="btn btn-danger">Delete my account</button>
+                    </form>
+                </details>
+            </div>
+        </section>
+
+        <p class="acc-foot">Accounts and saves are stored with Google Firebase. See the <a href="privacy.html">privacy policy</a>.</p>
+    </main>
+    <script src="site.js"></script>
+    <script type="module" src="account.js"></script>
+</body>
+</html>

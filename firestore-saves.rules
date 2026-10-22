@@ -1,0 +1,45 @@
+// Firestore security rules for accounts' cloud saves (cloud.js writes saves/{uid}).
+//
+// HOW TO USE: copy the `match /saves/{uid}` block and the two functions below into your existing rules
+// (Firebase console → Firestore Database → Rules), inside `match /databases/{database}/documents { ... }`, then Publish.
+// Don't replace your whole rules with this file: your clan, chat and leaderboard collections need their own rules.
+//
+// IMPORTANT: Firestore allows a request if ANY matching rule allows it. If your rules contain a catch-all such as
+//     match /{document=**} { allow read, write: if true; }
+// or test mode's `allow read, write: if request.time < timestamp.date(...)`, then anyone can read and overwrite
+// every player's save, whatever the block below says. Replace the catch-all with rules for each collection you use.
+//
+// Test them in the console's Rules Playground: a signed-in user can get/create/update saves/<their uid>, and is denied
+// for any other uid or when signed out.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // One cloud save per account. Only the signed-in owner can read, write or delete it.
+    match /saves/{uid} {
+      allow read, delete: if isOwner(uid);
+      // rev counts up by exactly one per save, so a device that missed another device's save can't overwrite it
+      allow create: if isOwner(uid) && isValidSave() && request.resource.data.rev == 1;
+      allow update: if isOwner(uid) && isValidSave() && request.resource.data.rev == resource.data.rev + 1;
+    }
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+
+    // Exactly the fields cloud.js uploadLocal() writes. The progress is one JSON string; Firestore caps a document
+    // at 1 MiB. updatedAt must be the server's clock (serverTimestamp()), not the device's.
+    function isValidSave() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['v', 'rev', 'payload', 'summary', 'device', 'updatedAt'])
+        && d.keys().hasAll(['v', 'rev', 'payload', 'summary', 'device', 'updatedAt'])
+        && d.v == 1
+        && d.rev is int
+        && d.payload is string && d.payload.size() <= 900000
+        && d.summary is map && d.summary.size() <= 16
+        && d.device is string && d.device.size() <= 64
+        && d.updatedAt == request.time;
+    }
+  }
+}

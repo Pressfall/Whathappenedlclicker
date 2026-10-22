@@ -1,0 +1,22 @@
+# HTTP security headers for the account page. Netlify (and Cloudflare Pages) read this file; other hosts ignore it.
+# They stop other sites from showing the sign-in page inside a frame (clickjacking) and from guessing file types.
+# Firebase's Google sign-in pop-up needs window.opener, so no Cross-Origin-Opener-Policy here.
+/account
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/account.html
+  X-Frame-Options: DENY
+  Content-Security-Policy: frame-ancestors 'none'
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+/account.js
+  X-Content-Type-Options: nosniff
+
+/cloud.js
+  X-Content-Type-Options: nosniff

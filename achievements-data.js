@@ -7,13 +7,13 @@
 (function () {
     'use strict';
 
-    const SAVE_KEY = 'whathappened_save', SAVE_KEY_LEGACY = 'whathappened_save_v1', FOLLOWERS_KEY = 'whathappened_followers';
+    const SAVE_KEY = 'whathappened_save', SAVE_KEY_LEGACY = 'whathappened_save_v1', FOLLOWERS_KEY = 'whathappened_followers', ITEMS_KEY = 'whathappened_items';
 
     // Display order of the categories on the achievements page
     const CATEGORIES = [
         { id: 'Clicking', icon: '👆' }, { id: 'Income', icon: '💸' }, { id: 'Upgrades', icon: '📈' }, { id: 'Prestige', icon: '🔁' },
         { id: 'Divine', icon: '✨' }, { id: 'Specials', icon: '⭐' }, { id: 'Followers', icon: '🦎' }, { id: 'Casino', icon: '🎰' },
-        { id: 'Clans', icon: '🛡️' }, { id: 'Dedication', icon: '⏳' }, { id: 'Collector', icon: '💎' },
+        { id: 'Clans', icon: '🛡️' }, { id: 'Lootboxes', icon: '🎁' }, { id: 'Dedication', icon: '⏳' }, { id: 'Collector', icon: '💎' },
     ];
 
     // stat: a snapshot field name, or a function (snapshot) => number. Unlocks when stat >= target.
@@ -115,6 +115,13 @@
         { key: 'x_clan_donate1k', cat: 'Clans', name: 'Team Player', desc: 'Put 1,000 Clan Points into clan buffs.', title: 'Patron', rarity: 'rare', badge: '🤝', stat: 'clanDonated', target: 1000 },
         { key: 'x_clan_lvl10', cat: 'Clans', name: 'Rising Power', desc: 'Be in a level 10 clan.', title: 'Banner Bearer', rarity: 'rare', badge: '🚩', stat: 'clanLevel', target: 10 },
         { key: 'x_clan_lvl20', cat: 'Clans', name: 'Legendary Clan', desc: 'Be in a max level (20) clan.', title: 'Overlord', rarity: 'legendary', badge: '⚔️', stat: 'clanLevel', target: 20 },
+        // ---- lootboxes and items (items.js) ----
+        { key: 'x_box_first', cat: 'Lootboxes', name: 'Finders Keepers', desc: 'Grab a lootbox before it vanishes.', title: 'Treasure Hunter', rarity: 'common', badge: '🎁', stat: 'boxesCollected', target: 1 },
+        { key: 'x_box_merge', cat: 'Lootboxes', name: 'Three Become One', desc: 'Merge three lootboxes into a better one.', title: 'Alchemist', rarity: 'common', badge: '⚗️', stat: 'boxesMerged', target: 1 },
+        { key: 'x_box_open50', cat: 'Lootboxes', name: 'Unboxing Channel', desc: 'Open 50 lootboxes.', title: 'Unboxer', rarity: 'uncommon', badge: '📦', stat: 'boxesOpened', target: 50 },
+        { key: 'x_box_diamond', cat: 'Lootboxes', name: 'Shine Bright', desc: 'Get a Diamond Chest.', title: 'Diamond Digger', rarity: 'rare', badge: '💠', stat: 'bestBoxTier', target: 4 },
+        { key: 'x_box_mythic', cat: 'Lootboxes', name: 'Into the Vault', desc: 'Get a Mythic Vault.', title: 'Vault Breaker', rarity: 'legendary', badge: '🌌', stat: 'bestBoxTier', target: 5 },
+        { key: 'x_charms_all', cat: 'Lootboxes', name: 'Charmed, I\'m Sure', desc: 'Find all 15 charms.', title: 'Charmer', rarity: 'epic', badge: '🧿', stat: 'charmsSeen', target: 15 },
         // ---- misc ----
         { key: 'x_gems_100', cat: 'Collector', name: 'Shiny Rocks', desc: 'Hold 100 gems at once.', title: 'Gem Hoarder', rarity: 'uncommon', badge: '💎', stat: 'gems', target: 100 },
     ];
@@ -128,6 +135,7 @@
     function snapshot(live) {
         const s = readJSON(SAVE_KEY) || readJSON(SAVE_KEY_LEGACY) || {};
         const f = readJSON(FOLLOWERS_KEY) || {};
+        const items = (readJSON(ITEMS_KEY) || {}).stats || {};
         const list = Array.isArray(f.list) ? f.list : [];
         const W = window.WHF;
         const sp = id => (W && W.SPECIES_BY_ID[id]) || null;
@@ -174,6 +182,11 @@
             clanDonated: num('whathappened_clan_donated'),
             inClan, clanRole,
             playHours: num('whathappened_playtime_seconds') / 3600,
+            boxesCollected: Number(items.collected) || 0,
+            boxesOpened: Number(items.opened) || 0,
+            boxesMerged: Number(items.merged) || 0,
+            bestBoxTier: Number(items.bestTier) || 0, // 1 = Wooden Crate ... 5 = Mythic Vault
+            charmsSeen: Number(items.charmsSeen) || 0,
         }, divine, live || {});
         const ups = snap.upgrades.slice(1);
         snap.upgradeMax = Math.max(0, ...ups);
