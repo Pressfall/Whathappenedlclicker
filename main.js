@@ -1996,13 +1996,29 @@ let musicVolumeBackup = null;
 // SFX settings
 let sfxVolume = 0.8;
 let sfxMuted = false;
-// helper to play short SFX (creates a one-shot Audio so overlapping is allowed)
+// audio pool for rapid sounds (e.g. click sounds) to prevent GC thrashing and audio element leaks
+const _sfxPool = {};
 function playSfx(src) {
     try {
         if (!src) return;
         if (sfxMuted) return;
         const finalSrc = (typeof src === 'string' && src.indexOf('/') === -1) ? ('audio/' + src) : src;
-        const a = new Audio(finalSrc);
+        // reuse audio element from a small pool (size 6) to avoid creating dozens of Audio instances per second
+        if (!_sfxPool[finalSrc]) {
+            _sfxPool[finalSrc] = { index: 0, pool: [] };
+        }
+        const bucket = _sfxPool[finalSrc];
+        let a;
+        if (bucket.pool.length < 6) {
+            a = new Audio(finalSrc);
+            bucket.pool.push(a);
+        } else {
+            a = bucket.pool[bucket.index];
+            bucket.index = (bucket.index + 1) % bucket.pool.length;
+            if (!a.paused) {
+                try { a.currentTime = 0; } catch (e) {}
+            }
+        }
         a.volume = (typeof sfxVolume === 'number') ? Math.max(0, Math.min(1, sfxVolume)) : 0.8;
         a.muted = !!sfxMuted;
         a.play().catch(() => {});
@@ -3049,6 +3065,41 @@ function formatSecondsHuman(sec) {
 }
 
 // ========== Main click handler: currency, achievements, clan mainClicks ==========
+// --- In-memory click counters (flushed to localStorage periodically, not per-click) ---
+// These are initialised from localStorage once (in init / loadGame) and written back
+// every few seconds by _flushClickCounters(), avoiding the expensive synchronous
+// localStorage round-trip on every single click.
+let _memAchClicks = null;       // lazy-init on first click
+let _memLifetimeClicks = null;
+let _memClicksSincePrestige = null;
+let _memClanId = null;          // cached clan check
+let _memClanUsername = null;
+let _clickCountersDirty = false;
+
+function _ensureClickCountersLoaded() {
+    if (_memAchClicks === null) {
+        try { _memAchClicks = Number(localStorage.getItem('ach_clicks') || 0) || 0; } catch (e) { _memAchClicks = 0; }
+        try { _memLifetimeClicks = Number(localStorage.getItem('whathappened_lifetime_clicks') || 0) || 0; } catch (e) { _memLifetimeClicks = 0; }
+        try { _memClicksSincePrestige = Number(localStorage.getItem('whathappened_clicks_since_prestige') || 0) || 0; } catch (e) { _memClicksSincePrestige = 0; }
+        try { _memClanId = localStorage.getItem('player_clanId') || ''; } catch (e) { _memClanId = ''; }
+        try { _memClanUsername = localStorage.getItem('player_username') || ''; } catch (e) { _memClanUsername = ''; }
+    }
+}
+
+// Persist the in-memory click counters to localStorage (called every ~2s, not per click)
+function _flushClickCounters() {
+    if (!_clickCountersDirty) return;
+    _clickCountersDirty = false;
+    try { localStorage.setItem('ach_clicks', String(_memAchClicks)); } catch (e) {}
+    try { localStorage.setItem('whathappened_lifetime_clicks', String(_memLifetimeClicks)); } catch (e) {}
+    try { localStorage.setItem('whathappened_clicks_since_prestige', String(_memClicksSincePrestige)); } catch (e) {}
+}
+// flush click counters every 2 seconds instead of writing localStorage per click
+setInterval(_flushClickCounters, 2000);
+// also flush on page unload so nothing is lost
+try { window.addEventListener('beforeunload', _flushClickCounters); } catch (e) {}
+try { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') _flushClickCounters(); }); } catch (e) {}
+
 function increment() {
     let critOccurred = false;
     // compute base click reward (clickPower already includes Somalian and clickMultiplier effects)
@@ -3150,44 +3201,39 @@ function increment() {
             spawnFallingImage(false);
         }
     } catch (e) { /* ignore if animation fails */ }
-    // visual: briefly pulsate the main image on click
+    // visual: briefly pulsate the main image on click (throttled to avoid forced reflows)
     try {
-        const img = document.querySelector('.main-image');
-        if (img) {
-            img.classList.remove('pulsate');
-            // force reflow to restart animation
-            void img.offsetWidth;
-            img.classList.add('pulsate');
-            setTimeout(() => { try { img.classList.remove('pulsate'); } catch (e) {} }, 700);
+        if (!window._lastPulsateAt || now - window._lastPulsateAt > 120) {
+            window._lastPulsateAt = now;
+            const img = window._mainImageCached || (window._mainImageCached = document.querySelector('.main-image'));
+            if (img) {
+                img.classList.remove('pulsate');
+                // force reflow to restart animation
+                void img.offsetWidth;
+                img.classList.add('pulsate');
+                // clear pulsate class after the animation finishes (only need one pending timeout)
+                clearTimeout(window._pulsateTimeout);
+                window._pulsateTimeout = setTimeout(() => { try { img.classList.remove('pulsate'); } catch (e) {} }, 700);
+            }
         }
     } catch (e) {}
 
-    // Achievement: track clicks for "Getting Started" (unlock after 10 clicks)
+    // Achievement & click counters: update in-memory only (flushed to localStorage periodically)
     try {
-        try { var achClicks = Number(localStorage.getItem('ach_clicks')||0); } catch (e) { achClicks = 0; }
-        achClicks = achClicks + 1;
-        try { localStorage.setItem('ach_clicks', String(achClicks)); } catch (e) {}
+        _ensureClickCountersLoaded();
+        _memAchClicks++;
+        _memLifetimeClicks++;
+        _memClicksSincePrestige++;
+        _clickCountersDirty = true;
         // the click-count achievements unlock straight away instead of waiting for the next periodic check
-        if (achClicks === 10) unlockAchievement('gettingStarted');
-        if (achClicks === 1000) unlockAchievement('somethingHappened');
-    } catch (e) {}
-
-    // Track lifetime and since-prestige click counters
-    try {
-        try { var lifetime = Number(localStorage.getItem('whathappened_lifetime_clicks')||0); } catch (e) { lifetime = 0; }
-        lifetime = lifetime + 1;
-        try { localStorage.setItem('whathappened_lifetime_clicks', String(lifetime)); } catch (e) {}
-    } catch (e) {}
-    try {
-        try { var since = Number(localStorage.getItem('whathappened_clicks_since_prestige')||0); } catch (e) { since = 0; }
-        since = since + 1;
-        try { localStorage.setItem('whathappened_clicks_since_prestige', String(since)); } catch (e) {}
+        if (_memAchClicks === 10) unlockAchievement('gettingStarted');
+        if (_memAchClicks === 1000) unlockAchievement('somethingHappened');
     } catch (e) {}
 
     // Clan events: count the click locally. flushClanClicks() sends the total to Firestore every few seconds
     // (one write per click was slow, costly, and over Firestore's ~1 write/sec per-document limit).
     try {
-        if (localStorage.getItem('player_clanId') && localStorage.getItem('player_username')) {
+        if (_memClanId && _memClanUsername) {
             window._pendingClanClicks = (window._pendingClanClicks || 0) + 1;
             window._bossfightPending = (window._bossfightPending || 0) + 1;
         }
@@ -3221,6 +3267,12 @@ async function flushClanClicks() {
 
 // create a falling image from a random x at the top to the bottom, then remove it
 function spawnFallingImage(isCrit = false) {
+    // cap falling images to prevent DOM bloat during rapid clicking
+    const container = document.getElementById('falling-container');
+    const parent = container || document.body;
+    const MAX_FALLING = 15;
+    if (parent.querySelectorAll('.falling-image').length >= MAX_FALLING) return;
+
     const img = document.createElement('img');
     img.src = (typeof equippedShopImage === 'string' && equippedShopImage) ? equippedShopImage : 'mainimage/whathappened.jpeg';
     img.className = 'falling-image';
@@ -3241,9 +3293,7 @@ function spawnFallingImage(isCrit = false) {
     }
 
     // append into the falling images container (background)
-    const container = document.getElementById('falling-container');
-    if (container) container.appendChild(img);
-    else document.body.appendChild(img);
+    parent.appendChild(img);
 
     // trigger the CSS transform on next frame to animate
     requestAnimationFrame(() => {
@@ -3265,8 +3315,10 @@ function spawnFallingImage(isCrit = false) {
         }
     });
 
-    // remove when transition finishes
-    img.addEventListener('transitionend', () => { try { img.remove(); } catch (e) {} });
+    // remove when transition finishes; also hard-cap removal in case transitionend never fires
+    const cleanup = () => { try { img.remove(); } catch (e) {} };
+    img.addEventListener('transitionend', cleanup, { once: true });
+    setTimeout(cleanup, 2500);
 }
 
     // Helper: animate the last bought upgrade button (used after purchases)
@@ -6688,6 +6740,7 @@ document.addEventListener('keydown', e => {
     if (open('shopMenu')) return toggleShopMenu();
     if (open('settingsMenu')) return toggleSettingsMenu();
     if (open('specialMenu')) return toggleSpecialMenu();
+    if (open('navSideBar')) return closeNavSideBar();
     const side = byId('sidePanel');
     if (side && side.style.transform && String(side.style.transform).indexOf('100%') === -1 && byId('sidePanelClose')) return byId('sidePanelClose').click();
     if (open('leftBar') || open('divineLeftBar')) return toggleLeftBar();
@@ -6696,6 +6749,9 @@ document.addEventListener('keydown', e => {
 function toggleSpecialMenu() {
     const el = document.getElementById('specialMenu');
     if (!el) return;
+    if (!el.classList.contains('open')) {
+        try { closeNavSideBar(); } catch (e) {}
+    }
     el.classList.toggle('open');
     el.setAttribute('aria-hidden', el.classList.contains('open') ? 'false' : 'true');
     const btn = document.getElementById('specialMenuBtn');
@@ -6703,6 +6759,43 @@ function toggleSpecialMenu() {
     if (!el.classList.contains('open')) { try { hideSpecialTip(); } catch (e) {} }
     try { updateDisplays(); } catch (e) {}
 }
+
+function toggleNavSideBar() {
+    const bar = document.getElementById('navSideBar');
+    if (!bar) return;
+    if (bar.classList.contains('open')) closeNavSideBar();
+    else openNavSideBar();
+}
+window.toggleNavSideBar = toggleNavSideBar;
+window.toggleNavMenu = toggleNavSideBar;
+
+function openNavSideBar() {
+    const bar = document.getElementById('navSideBar');
+    const overlay = document.getElementById('navSideBarOverlay');
+    const btn = document.getElementById('navMenuToggle');
+    if (!bar) return;
+    const sm = document.getElementById('specialMenu');
+    if (sm && sm.classList.contains('open')) {
+        try { toggleSpecialMenu(); } catch (e) {}
+    }
+    bar.classList.add('open');
+    bar.setAttribute('aria-hidden', 'false');
+    if (overlay) overlay.classList.add('active');
+    if (btn) btn.classList.add('active');
+}
+window.openNavSideBar = openNavSideBar;
+
+function closeNavSideBar() {
+    const bar = document.getElementById('navSideBar');
+    const overlay = document.getElementById('navSideBarOverlay');
+    const btn = document.getElementById('navMenuToggle');
+    if (!bar) return;
+    bar.classList.remove('open');
+    bar.setAttribute('aria-hidden', 'true');
+    if (overlay) overlay.classList.remove('active');
+    if (btn) btn.classList.remove('active');
+}
+window.closeNavSideBar = closeNavSideBar;
 
 function toggleSettingsMenu() {
     const el = document.getElementById('settingsMenu');
@@ -6713,8 +6806,12 @@ function toggleSettingsMenu() {
     const btn = document.getElementById('settingsToggle');
     if (btn) btn.classList.toggle('active', el.classList.contains('open'));
     try {
-        if (el.classList.contains('open')) document.body.classList.add('overlay-open-settings');
-        else document.body.classList.remove('overlay-open-settings');
+        if (el.classList.contains('open')) {
+            document.body.classList.add('overlay-open-settings');
+            try { closeNavSideBar(); } catch (e) {}
+        } else {
+            document.body.classList.remove('overlay-open-settings');
+        }
     } catch (e) {}
 }
 
@@ -6889,6 +6986,7 @@ function toggleShopMenu(tab) {
     if (open) {
         menu.classList.add('open');
         overlay.classList.add('open');
+        try { closeNavSideBar(); } catch (e) {}
         try { updateShopUI(); } catch (e) {}
         try { showShopTab(typeof tab === 'string' ? tab : 'main'); } catch (e) {}
         try { document.body.classList.add('overlay-open-shop'); } catch (e) {}

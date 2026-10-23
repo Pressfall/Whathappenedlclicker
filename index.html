@@ -225,17 +225,112 @@
             <span class="gem-chip-plus" aria-hidden="true">+</span>
         </button>
         <nav class="top-nav" aria-label="Game pages">
-            <button id="leaderboardTopBtn" class="nav-btn" onclick="window.location.href='leaderboard.html'"><span class="nav-ico" aria-hidden="true">🏆</span><span class="nav-txt">Leaderboard</span></button>
-            <button id="achievementsTopBtn" class="nav-btn" onclick="window.location.href='achievements.html'"><span class="nav-ico" aria-hidden="true">🎖️</span><span class="nav-txt">Achievements</span></button>
-            <button id="casinoTopBtn" class="nav-btn" onclick="window.location.href='gamba.html'"><span class="nav-ico" aria-hidden="true">🎰</span><span class="nav-txt">Casino</span></button>
-            <button id="followersTopBtn" class="nav-btn" onclick="window.location.href='followers.html'"><span class="nav-ico" aria-hidden="true">🦎</span><span class="nav-txt">Followers</span></button>
-            <button id="clanToggle" class="nav-btn"><span class="nav-ico" aria-hidden="true">🛡️</span><span class="nav-txt">Clan</span></button>
             <button id="specialMenuBtn" class="nav-btn nav-btn--special" aria-label="Special upgrades" onclick="toggleSpecialMenu()"><span class="nav-ico" aria-hidden="true">✦</span><span class="nav-txt">Specials</span></button>
-            <button id="itemsTopBtn" class="nav-btn" aria-label="Items: lootboxes, charms and consumables" onclick="window.WHI && WHI.openInventory()"><span class="nav-ico" aria-hidden="true">🎒</span><span class="nav-txt">Items</span></button>
-            <button id="shopToggle" class="nav-btn nav-btn--gold" onclick="toggleShopMenu()"><img src="mainimage/shop.png" alt="" class="nav-img"><span class="nav-txt">Shop</span></button>
-            <button id="settingsToggle" class="nav-btn" aria-label="Settings" onclick="toggleSettingsMenu()"><span class="nav-ico" aria-hidden="true">⚙️</span><span class="nav-txt">Settings</span></button>
+            <button id="navMenuToggle" class="nav-btn nav-btn--menu" aria-label="Game navigation menu" title="Open navigation menu" onclick="toggleNavSideBar()">
+                <span class="nav-ico" aria-hidden="true">☰</span>
+                <span class="nav-txt">Menu</span>
+                <span class="nav-caret" aria-hidden="true">▾</span>
+                <span id="navMenuBadge" class="site-badge dot" style="display:none;"></span>
+            </button>
         </nav>
     </header>
+
+    <!-- ========== Navigation dropdown side bar overlay & panel ========== -->
+    <div id="navSideBarOverlay" class="nav-sidebar-overlay" onclick="closeNavSideBar()"></div>
+    <aside id="navSideBar" class="nav-sidebar" aria-hidden="true" role="dialog" aria-label="Game Navigation">
+        <div class="nav-sidebar-header">
+            <div class="nav-sidebar-title">
+                <span class="nav-sidebar-title-icon" aria-hidden="true">🧭</span>
+                <span>Menu</span>
+            </div>
+            <button id="navSideBarClose" class="modal-close" onclick="closeNavSideBar()" aria-label="Close menu">✕</button>
+        </div>
+        <div class="nav-sidebar-content">
+            <div class="nav-sidebar-group">
+                <div class="nav-sidebar-group-title">Activities & Shop</div>
+                <button id="shopToggle" class="nav-btn nav-sidebar-btn nav-sidebar-btn--shop" onclick="toggleShopMenu(); closeNavSideBar();">
+                    <span class="nav-ico nav-sidebar-ico"><img src="mainimage/shop.png" alt="" class="nav-img"></span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Shop</span>
+                        <span class="nav-sidebar-desc">Skins, backgrounds & music</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <button id="itemsTopBtn" class="nav-btn nav-sidebar-btn" aria-label="Items: lootboxes, charms and consumables" onclick="window.WHI && WHI.openInventory(); closeNavSideBar();">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">🎒</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Items & Charms</span>
+                        <span class="nav-sidebar-desc">Lootboxes, charms & boosts</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <button id="casinoTopBtn" class="nav-btn nav-sidebar-btn" onclick="window.location.href='gamba.html'">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">🎰</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Casino</span>
+                        <span class="nav-sidebar-desc">Slots, daily spin & rocket</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <button id="followersTopBtn" class="nav-btn nav-sidebar-btn" onclick="window.location.href='followers.html'">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">🦎</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Followers</span>
+                        <span class="nav-sidebar-desc">Hatch eggs & manage pets</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <button id="clanToggle" class="nav-btn nav-sidebar-btn" onclick="window.location.href='clan.html'">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">🛡️</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Clan</span>
+                        <span class="nav-sidebar-desc">Clans, events & boss fights</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+            </div>
+
+            <div class="nav-sidebar-group">
+                <div class="nav-sidebar-group-title">Rankings & Stats</div>
+                <button id="achievementsTopBtn" class="nav-btn nav-sidebar-btn" onclick="window.location.href='achievements.html'">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">🎖️</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Achievements</span>
+                        <span class="nav-sidebar-desc">Milestones & titles</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <button id="leaderboardTopBtn" class="nav-btn nav-sidebar-btn" onclick="window.location.href='leaderboard.html'">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">🏆</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Leaderboard</span>
+                        <span class="nav-sidebar-desc">Global player rankings</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+            </div>
+
+            <div class="nav-sidebar-group">
+                <div class="nav-sidebar-group-title">System</div>
+                <button id="settingsToggle" class="nav-btn nav-sidebar-btn" aria-label="Settings" onclick="toggleSettingsMenu(); closeNavSideBar();">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">⚙️</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Settings</span>
+                        <span class="nav-sidebar-desc">Audio, visuals & codes</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <a href="account.html" class="nav-btn nav-sidebar-btn" title="Cloud Save & Account">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">☁️</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Cloud Save</span>
+                        <span class="nav-sidebar-desc">Save to account & sync</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </a>
+            </div>
+        </div>
+    </aside>
     <!-- Active buffs panel (appears when buffs are active) -->
     <div id="buffPanel" class="glass-panel" style="display:none;">
         <div class="buff-title">Active Buffs</div>
@@ -695,6 +790,13 @@
                     const settingsToggle = document.getElementById('settingsToggle');
                     if (settingsMenu && settingsMenu.classList.contains('open')) {
                         if (!settingsMenu.contains(e.target) && !settingsToggle.contains(e.target)) toggleSettingsMenu();
+                    }
+                } catch (e) {}
+                try {
+                    const navSideBar = document.getElementById('navSideBar');
+                    const navMenuToggle = document.getElementById('navMenuToggle');
+                    if (navSideBar && navSideBar.classList.contains('open')) {
+                        if (!navSideBar.contains(e.target) && !navMenuToggle.contains(e.target)) closeNavSideBar();
                     }
                 } catch (e) {}
             }, { capture: true });
@@ -1433,10 +1535,17 @@
             // badges on the nav buttons for things waiting on other pages (new achievements, eggs, daily spin, clan check-in)
             (function () {
                 const map = { achievements: 'achievementsTopBtn', followers: 'followersTopBtn', casino: 'casinoTopBtn', clan: 'clanToggle' };
-                const refresh = () => { try { WHSite.applyNavBadges(map); } catch (e) {} };
+                const refresh = () => {
+                    try {
+                        WHSite.applyNavBadges(map);
+                        // Also show dot on navMenuToggle if any badge is present
+                        const alerts = (window.WHSite && window.WHSite.alerts) ? WHSite.alerts() : {};
+                        const hasAlert = Object.keys(alerts).some(k => alerts[k] && (alerts[k].count > 0 || alerts[k].text));
+                        const menuBadge = document.getElementById('navMenuBadge');
+                        if (menuBadge) menuBadge.style.display = hasAlert ? 'inline-flex' : 'none';
+                    } catch (e) {}
+                };
                 refresh();
-                // phones: the nav scrolls sideways; start at the end so Shop and Settings are in view
-                try { const nav = document.querySelector('#topBar .top-nav'); if (nav) nav.scrollLeft = nav.scrollWidth; } catch (e) {}
                 setInterval(refresh, 4000);
                 window.addEventListener('wh:achievements', refresh);
                 window.addEventListener('storage', refresh);

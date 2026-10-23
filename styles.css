@@ -267,6 +267,28 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
 .nav-btn--gold { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); border-color: transparent; color: #2a1600; font-weight: 800; }
 .nav-btn--gold:hover { background: linear-gradient(180deg, #ffd66b, var(--gold-deep)); }
 .nav-btn--special .nav-ico { color: var(--gold); }
+.nav-btn--menu {
+    position: relative;
+    gap: 6px;
+    padding-right: 12px;
+}
+.nav-btn--menu .nav-caret {
+    font-size: 11px;
+    line-height: 1;
+    opacity: 0.75;
+    transition: transform 200ms ease;
+}
+.nav-btn--menu.active {
+    border-color: var(--gold);
+    background: var(--surface-3);
+}
+.nav-btn--menu.active .nav-caret {
+    transform: rotate(180deg);
+}
+.nav-btn--menu .site-badge.dot {
+    top: 2px;
+    right: 2px;
+}
 
 /* ========== Main area ========== */
 #mainContent {
@@ -508,6 +530,211 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
 .setting-help { font-size: 12px; color: var(--text-dim); }
 .setting-help:empty { display: none; }
 .settings-footer { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
+
+/* ========== Navigation Dropdown Side Bar ========== */
+.nav-sidebar-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1140;
+    background: rgba(4, 6, 10, 0.6);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 240ms ease;
+}
+.nav-sidebar-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.nav-sidebar {
+    position: fixed;
+    top: calc(var(--topbar-height) + 8px);
+    right: 16px;
+    z-index: 1150;
+    width: min(92vw, 350px);
+    max-height: calc(100vh - var(--topbar-height) - 24px);
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    border-radius: var(--radius-lg);
+    background: rgba(15, 18, 27, 0.95);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid var(--border-strong);
+    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(255, 255, 255, 0.05);
+    transform: translateX(calc(100% + 30px));
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 260ms cubic-bezier(.16, 1, .3, 1), opacity 200ms ease;
+}
+.nav-sidebar.open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.nav-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 12px;
+    margin-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+.nav-sidebar-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 800;
+    font-size: 16px;
+    color: var(--text);
+    letter-spacing: 0.3px;
+}
+.nav-sidebar-title-icon {
+    font-size: 18px;
+}
+
+.nav-sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 4px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.nav-sidebar-content::-webkit-scrollbar {
+    width: 6px;
+}
+.nav-sidebar-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.nav-sidebar-content::-webkit-scrollbar-thumb {
+    background: var(--surface-3);
+    border-radius: 999px;
+}
+.nav-sidebar-content::-webkit-scrollbar-thumb:hover {
+    background: var(--border-strong);
+}
+
+.nav-sidebar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.nav-sidebar-group-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    padding: 0 4px 4px;
+}
+
+.nav-sidebar-btn {
+    position: relative;
+    display: flex !important;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    height: auto !important;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--text);
+    text-decoration: none;
+    text-align: left;
+    white-space: normal;
+    box-shadow: none;
+    transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+}
+.nav-sidebar-btn:hover {
+    background: var(--surface-3);
+    border-color: var(--border-strong);
+    transform: translateX(4px);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+.nav-sidebar-btn:active {
+    transform: translateX(2px) scale(0.99);
+}
+
+.nav-sidebar-ico {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    border-radius: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    font-size: 18px;
+    line-height: 1;
+}
+.nav-sidebar-ico .nav-img {
+    width: 20px;
+    height: 20px;
+}
+
+.nav-sidebar-meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.nav-sidebar-name {
+    display: inline-block !important;
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--text);
+}
+.nav-sidebar-desc {
+    display: block;
+    font-size: 12px;
+    color: var(--text-dim);
+    line-height: 1.25;
+}
+
+.nav-sidebar-arrow {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-faint);
+    margin-left: auto;
+    transition: transform 140ms ease, color 140ms ease;
+}
+.nav-sidebar-btn:hover .nav-sidebar-arrow {
+    transform: translateX(2px);
+    color: var(--gold);
+}
+
+/* special highlight for Shop button */
+.nav-sidebar-btn--shop {
+    background: linear-gradient(90deg, rgba(255, 200, 61, 0.12), rgba(255, 154, 31, 0.03));
+    border-color: rgba(255, 200, 61, 0.3);
+}
+.nav-sidebar-btn--shop .nav-sidebar-ico {
+    background: linear-gradient(135deg, rgba(255, 200, 61, 0.25), rgba(255, 154, 31, 0.15));
+    border-color: rgba(255, 200, 61, 0.4);
+}
+.nav-sidebar-btn--shop .nav-sidebar-name {
+    color: #ffe082;
+}
+.nav-sidebar-btn--shop:hover {
+    background: linear-gradient(90deg, rgba(255, 200, 61, 0.2), rgba(255, 154, 31, 0.08));
+    border-color: var(--gold);
+    box-shadow: 0 4px 20px rgba(255, 200, 61, 0.2);
+}
+
+/* ensure site-badge sits nicely on nav-sidebar-btn */
+.nav-sidebar-btn > .site-badge {
+    top: 10px;
+    right: 12px;
+}
 
 /* ========== Special upgrades panel (right side) ========== */
 .special-menu {
@@ -811,7 +1038,8 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
 /* ========== Responsive ========== */
 @media (max-width: 1180px) {
     .nav-btn { padding: 0 11px; }
-    .nav-btn:not(.nav-btn--gold) .nav-txt { display: none; }
+    .nav-btn:not(.nav-btn--gold):not(.nav-btn--menu):not(.nav-sidebar-btn) .nav-txt { display: none; }
+    .nav-btn--menu .nav-txt, .nav-sidebar-btn .nav-txt { display: inline-block !important; }
 }
 
 #leftBarOverlay { display: none; }
@@ -830,12 +1058,28 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
     #topBar { padding: 10px 12px; gap: 8px; }
     /* flex-start, not flex-end: buttons that overflow off the left edge of a scroll box can't be scrolled to.
        index.html starts the nav scrolled to the end so Shop and Settings are in view. */
-    .top-nav { flex-wrap: nowrap; overflow-x: auto; gap: 5px; padding-bottom: 2px; justify-content: flex-start; }
+    .top-nav { flex-wrap: nowrap; overflow-x: auto; gap: 6px; padding-bottom: 2px; justify-content: flex-end; }
     .nav-btn { height: 38px; padding: 0 10px; flex: 0 0 auto; }
     .nav-btn--gold .nav-txt { display: none; }
+    .nav-btn--menu .nav-txt { display: inline-block !important; }
     #mainContent { padding: 0 12px 24px; }
     .stat-tile { padding: 8px 4px; }
     .stat-value { font-size: 16px; }
+
+    /* nav sidebar takes full right screen height on mobile */
+    .nav-sidebar {
+        top: 0;
+        bottom: 0;
+        right: 0;
+        width: min(88vw, 340px);
+        max-height: 100vh;
+        border-radius: 0;
+        border-right: none;
+        border-top: none;
+        border-bottom: none;
+        padding-top: calc(14px + env(safe-area-inset-top, 0px));
+        padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+    }
 
     /* specials become a bottom sheet */
     .special-menu {
