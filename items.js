@@ -46,13 +46,13 @@
     const BOXES = [
         { id: 'wood', name: 'Wooden Crate', short: 'Wooden', color: '#d0915a', rolls: 2, weights: [62, 28, 9, 1, 0, 0], guarantee: null, gems: null, price: null, spawn: 80,
             paint: { body: ['#b57538', '#6e3d1b'], lid: ['#c6844a', '#83512a'], trim: ['#7a7e89', '#30333b'] } },
-        { id: 'iron', name: 'Iron Chest', short: 'Iron', color: '#c9d1dc', rolls: 3, weights: [38, 36, 20, 5, 1, 0], guarantee: 1, gems: null, price: 10, spawn: 17,
+        { id: 'iron', name: 'Iron Chest', short: 'Iron', color: '#c9d1dc', rolls: 3, weights: [38, 37, 20, 5, 0, 0], guarantee: null, gems: null, price: 50, spawn: 17,
             paint: { body: ['#8f99aa', '#4c5464'], lid: ['#a7b0c0', '#5f6878'], trim: ['#f0f3f7', '#9aa3b3'] } },
-        { id: 'gold', name: 'Golden Chest', short: 'Golden', color: '#ffc83d', rolls: 3, weights: [12, 32, 34, 16, 5, 1], guarantee: 2, gems: { chance: 0.4, min: 1, max: 2 }, price: 30, spawn: 3,
+        { id: 'gold', name: 'Golden Chest', short: 'Golden', color: '#ffc83d', rolls: 3, weights: [15, 34, 34, 16, 1, 0], guarantee: 1, gems: { chance: 0.4, min: 1, max: 2 }, price: 200, spawn: 3,
             paint: { body: ['#ffcc3f', '#c97a0c'], lid: ['#ffe07a', '#e09218'], trim: ['#fff6cf', '#d29a2c'] } },
-        { id: 'diamond', name: 'Diamond Chest', short: 'Diamond', color: '#5ee7ff', rolls: 4, weights: [0, 12, 36, 34, 14, 4], guarantee: 3, gems: { chance: 1, min: 2, max: 5 }, price: 80, spawn: 0,
+        { id: 'diamond', name: 'Diamond Chest', short: 'Diamond', color: '#5ee7ff', rolls: 4, weights: [0, 15, 43, 37, 4, 1], guarantee: 2, gems: { chance: 1, min: 2, max: 5 }, price: 500, spawn: 0,
             paint: { body: ['#6fdcff', '#2563c9'], lid: ['#a5f0ff', '#3a86e0'], trim: ['#ffffff', '#9adff7'] } },
-        { id: 'mythic', name: 'Mythic Vault', short: 'Mythic', color: '#ff5bd0', rolls: 5, weights: [0, 0, 18, 40, 30, 12], guarantee: 4, gems: { chance: 1, min: 8, max: 16 }, price: 200, spawn: 0,
+        { id: 'mythic', name: 'Mythic Vault', short: 'Mythic', color: '#ff5bd0', rolls: 5, weights: [0, 0, 35, 53, 10, 2], guarantee: 3, gems: { chance: 1, min: 8, max: 16 }, price: 1000, spawn: 0,
             paint: { body: ['#ff6bd6', '#5a1fc0'], lid: ['#ff9fe6', '#8336e0'], trim: ['#fff0fb', '#e0a0ff'] } },
     ];
 

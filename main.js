@@ -2698,7 +2698,7 @@ function updateDisplays() {
         if (up19Btn) {
             const labelEl = up19Btn.querySelector('.upgrade-label');
             const formattedCost = formatNumber(typeof upgrade19Cost !== 'undefined' ? upgrade19Cost : 200000000000000);
-            if (labelEl) labelEl.innerHTML = `goatises raw liver (cost: <span id="upgrade19Cost">${formattedCost}</span>)`;
+            if (labelEl) labelEl.innerHTML = `<span class="up-name">${UPGRADE_NAMES[19]}</span><span class="up-meta"><span class="up-cost" id="upgrade19Cost">${formattedCost}</span><span class="up-level">Lv ${formatNumber(upgrade19Level)}</span></span>`;
             // reveal upgrade19 when upgrade18 has been purchased at least once
             try { up19Btn.style.display = (numericLevel(upgrade18Level) >= 1) ? '' : 'none'; } catch (e) {}
         }

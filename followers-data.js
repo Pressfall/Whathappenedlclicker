@@ -159,17 +159,17 @@
     SPECIES.forEach(s => { SPECIES_BY_ID[s.id] = s; });
 
     const PACKS = [
-        { id: 'sack', name: 'Scrappy Sack', icon: '👜', cost: 1, count: 1, cooldown: 10 * MINUTE, weights: [64, 27, 7, 1.7, 0.3, 0], families: null,
+        { id: 'sack', name: 'Scrappy Sack', icon: '👜', cost: 1, count: 1, cooldown: 10 * MINUTE, weights: [64.2, 27, 7, 1.7, 0.1, 0], families: null,
             colors: ['#a07a52', '#3a2814'], desc: 'One follower from any family. The cheap way to start a team or get level-up fodder.' },
-        { id: 'clicker', name: 'Clicker Crate', icon: '👆', cost: 4, count: 3, cooldown: 2 * HOUR, weights: [45, 33, 16, 5, 1, 0], families: ['ember', 'storm', 'chad'], guarantee: 1,
+        { id: 'clicker', name: 'Clicker Crate', icon: '👆', cost: 4, count: 3, cooldown: 2 * HOUR, weights: [45, 33, 16.5, 5, 0.5, 0], families: ['ember', 'storm', 'chad'], guarantee: 1,
             colors: ['#ff7a2f', '#5a1a08'], desc: 'Ember, Storm and Chad followers: click power, crit chance and crit damage. At least one Uncommon or better.' },
-        { id: 'idler', name: 'Idler Crate', icon: '💤', cost: 4, count: 3, cooldown: 2 * HOUR, weights: [45, 33, 16, 5, 1, 0], families: ['swamp', 'frost', 'bakery'], guarantee: 1,
+        { id: 'idler', name: 'Idler Crate', icon: '💤', cost: 4, count: 3, cooldown: 2 * HOUR, weights: [45, 33, 16.5, 5, 0.5, 0], families: ['swamp', 'frost', 'bakery'], guarantee: 1,
             colors: ['#3f9a55', '#0b2715'], desc: 'Swamp, Frost and Bakery followers: CPS and offline earnings. At least one Uncommon or better.' },
-        { id: 'oddity', name: 'Oddity Crate', icon: '🔮', cost: 5, count: 3, cooldown: 3 * HOUR, weights: [45, 33, 16, 5, 1, 0], families: ['void', 'glitch'], guarantee: 1,
+        { id: 'oddity', name: 'Oddity Crate', icon: '🔮', cost: 5, count: 3, cooldown: 3 * HOUR, weights: [45, 33, 16.5, 5, 0.5, 0], families: ['void', 'glitch'], guarantee: 1,
             colors: ['#7a3ad0', '#0d0420'], desc: 'Void and Glitch followers: extra Golden from prestige and gem drops. At least one Uncommon or better.' },
-        { id: 'royal', name: 'Royal Chest', icon: '👑', cost: 10, count: 3, cooldown: 12 * HOUR, weights: [0, 0, 72, 22, 5.5, 0.5], families: null,
+        { id: 'royal', name: 'Royal Chest', icon: '👑', cost: 10, count: 3, cooldown: 12 * HOUR, weights: [0, 0, 74, 23, 2.8, 0.2], families: null,
             colors: ['#ffc83d', '#6a3a00'], desc: 'Three followers from any family, every one Rare or better.' },
-        { id: 'celestial', name: 'Celestial Relic', icon: '🌠', cost: 25, count: 2, cooldown: 48 * HOUR, weights: [0, 0, 0, 78, 20, 2], families: null,
+        { id: 'celestial', name: 'Celestial Relic', icon: '🌠', cost: 25, count: 2, cooldown: 48 * HOUR, weights: [0, 0, 0, 85, 14, 1], families: null,
             colors: ['#ff5bd0', '#2a0638'], desc: 'Two followers, Epic or better, with the best Mythic odds of any pack.' },
     ];
     const PACKS_BY_ID = {};
