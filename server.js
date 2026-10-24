@@ -27,6 +27,11 @@ const server = http.createServer((req, res) => {
     if (reqUrl === '/') reqUrl = '/index.html';
 
     const safePath = path.normalize(decodeURIComponent(reqUrl)).replace(/^(\.\.[\/\\])+/, '');
+    if (safePath.split(/[\\/]/).some(segment => segment.startsWith('.'))) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('404 Not Found');
+        return;
+    }
     let filePath = path.join(ROOT, safePath);
 
     fs.stat(filePath, (err, stats) => {

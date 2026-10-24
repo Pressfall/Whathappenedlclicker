@@ -1,0 +1,4 @@
+# local enviornment variables
+.env
+.env.*
+!.env.example
