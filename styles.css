@@ -523,6 +523,7 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
 .settings-group { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
 .settings-group h4 { margin: 0; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-faint); }
 .setting-row { display: flex; flex-direction: column; gap: 6px; }
+.setting-row[hidden] { display: none; }
 .setting-row > label { display: flex; justify-content: space-between; font-weight: 600; font-size: 14px; }
 .setting-value { color: var(--gold); font-weight: 700; font-variant-numeric: tabular-nums; }
 .setting-inline { display: flex; align-items: center; gap: 8px; }

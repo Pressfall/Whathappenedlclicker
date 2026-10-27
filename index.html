@@ -18,10 +18,11 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="items.css">
     <link rel="stylesheet" href="cloud.css">
+    <link rel="stylesheet" href="guide.css">
+    <link rel="stylesheet" href="consent.css">
     <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
     <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
     <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
-        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-7259344384263515" crossorigin="anonymous"></script>
 </head>
 <body class="leftbar-open">
     <!-- ========== Loading overlay (hidden after init or 10s failsafe) ========== -->
@@ -46,7 +47,7 @@
     <div id="leftBarOverlay" onclick="closeLeftBar()"></div>
     <aside id="leftBar">
         <div class="leftBarScroll">
-            <!-- Normal / Divine menu switcher; then upgrade buttons 1–24 -->
+            <!-- Normal / Divine menu switcher; then upgrade buttons 1–28 -->
             <ul>
         <li>
             <div class="menu-tabs">
@@ -196,6 +197,30 @@
             <button id="upgrade24" class="upgrade-full-btn" onclick="buyUpgrade24()" style="display:none;">
                 <span class="upgrade-label">Easton Bundy (cost: 30,000Q)</span>
                 <img class="upgrade-img" src="mainimage/upgrades/thumbs/eastonBundy.webp" loading="lazy" decoding="async" alt="Easton Bundy" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade25" class="upgrade-full-btn" onclick="buyUpgrade25()" style="display:none;">
+                <span class="upgrade-label">Tom Pearl</span>
+                <img class="upgrade-img" src="mainimage/upgrades/thumbs/tompearl.webp" loading="lazy" decoding="async" alt="Tom Pearl" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade26" class="upgrade-full-btn" onclick="buyUpgrade26()" style="display:none;">
+                <span class="upgrade-label">Hypergamy</span>
+                <img class="upgrade-img" src="mainimage/upgrades/thumbs/hypergamy.webp" loading="lazy" decoding="async" alt="Hypergamy" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade27" class="upgrade-full-btn" onclick="buyUpgrade27()" style="display:none;">
+                <span class="upgrade-label">Evil Somalian Pirate</span>
+                <img class="upgrade-img" src="mainimage/upgrades/thumbs/evilpirate.webp" loading="lazy" decoding="async" alt="Evil Somalian Pirate" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade28" class="upgrade-full-btn" onclick="buyUpgrade28()" style="display:none;">
+                <span class="upgrade-label">O'algo</span>
+                <img class="upgrade-img" src="mainimage/upgrades/thumbs/oalgo.webp" loading="lazy" decoding="async" alt="O'algo" height="50" width="50">
             </button>
         </li>
             </ul>
@@ -425,12 +450,36 @@
                 <div class="divine-tooltip" role="tooltip"><div class="divine-effect" id="divineSimpleVillagerEffect"></div></div>
             </button>
         </li>
+        <li>
+            <button id="divineBrileyismBtn" onclick="buyDivineBrileyism()">
+                <img class="upgrade-img" src="mainimage/thumbs/brileyism.webp" decoding="async" alt="Divine Prophit of Brileyism" width="52" height="52">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Prophit of Brileyism</div>
+                    <div class="divine-level">Level: <span id="divineBrileyismLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineBrileyismCost">2</span> golden</div>
+                </div>
+            </button>
+        </li>
     </ul>
 
     <!-- ========== Main game area: title, equipped title, click image, counters ========== -->
     <div id="mainContent">
         <h1 class="game-title">WHAT HAPPENED<span class="game-title-bang">?!</span></h1>
         <div id="equippedTitleDisplay"></div>
+        <!-- first-run guide (guide.js): the next step for a new player, all steps on request, then a pointer to the next unlock -->
+        <section id="guideCard" class="guide-card glass-panel" aria-label="Getting started" hidden>
+            <div class="guide-head">
+                <h2>Getting started <span id="guideProgress" class="guide-progress"></span></h2>
+                <div class="guide-head-actions">
+                    <button id="guideToggle" class="btn btn-ghost btn-sm guide-toggle" type="button" aria-expanded="false" aria-controls="guideSteps">All steps</button>
+                    <button id="guideClose" class="modal-close" type="button" aria-label="Hide the getting-started guide" title="Hide this guide (you can bring it back in Settings)">✕</button>
+                </div>
+            </div>
+            <p id="guideCurrent" class="guide-current"></p>
+            <ol id="guideSteps" class="guide-steps" hidden></ol>
+            <p id="guideNext" class="guide-next" hidden></p>
+            <p id="guideUpgrade" class="guide-next" hidden></p>
+        </section>
         <div class="main-image-wrap">
             <button class="main-image-btn" onclick="increment()" aria-label="Click What Happened">
                 <img src="mainimage/whathappened.jpeg" alt="What Happened" class="main-image">
@@ -524,16 +573,13 @@
     </div>
 
     <!-- Leaderboard placed below all main info (clear separator and extra space) -->
-    <!-- Banner Ad: replace data-ad-slot with your AdSense ad unit ID -->
-    <div id="adWrapper" style="text-align:center;margin:12px 0;">
+    <!-- Banner Ad: replace data-ad-slot with your AdSense ad unit ID. Hidden, and AdSense not even loaded, until the player accepts ads (core/consent.js). -->
+    <div id="adWrapper" style="text-align:center;margin:12px 0;" hidden>
         <ins class="adsbygoogle"
             style="display:block;max-width:728px;margin:0 auto;"
             data-ad-slot="1234567890"
             data-ad-format="auto"
             data-full-width-responsive="true"></ins>
-        <script>
-            try { (adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* ignore */ }
-        </script>
         <!-- fallback placeholder shown when AdSense does not load (e.g. local file or unapproved domain) -->
         <div id="adFallback" style="display:none;max-width:728px;margin:8px auto;padding:12px;border:1px dashed #666;background:#222;color:#ddd;border-radius:6px;">Ad placeholder (only shown while testing locally)</div>
         <script>
@@ -606,6 +652,28 @@
                     <div class="setting-help">Sign in with Google or email to back up your progress and play on any device.</div>
                 </div>
             </section>
+            <section class="settings-group" id="saveBackupGroup">
+                <h4>Save backup</h4>
+                <div class="setting-row">
+                    <div class="setting-inline">
+                        <button id="exportSaveBtn" class="btn btn-primary btn-sm" type="button">Download save file</button>
+                        <button id="importSaveBtn" class="btn btn-ghost btn-sm" type="button">Import save file…</button>
+                    </div>
+                    <input id="importSaveInput" type="file" accept=".json,application/json" hidden>
+                    <div id="saveToolsStatus" class="setting-help" role="status" aria-live="polite">Your progress is stored in this browser. Download a copy to keep it safe or to move it to another browser.</div>
+                </div>
+                <div class="setting-row" id="restoreBackupRow" hidden>
+                    <div id="restoreBackupText" class="setting-help"></div>
+                    <button id="restoreBackupBtn" class="btn btn-ghost btn-sm" type="button">Restore that progress</button>
+                </div>
+                <div class="setting-row" id="damagedSaveRow" hidden>
+                    <div id="damagedSaveText" class="setting-help"></div>
+                    <div class="setting-inline">
+                        <button id="damagedDownloadBtn" class="btn btn-ghost btn-sm" type="button">Download it</button>
+                        <button id="damagedDeleteBtn" class="btn btn-ghost btn-sm" type="button">Delete it</button>
+                    </div>
+                </div>
+            </section>
             <section class="settings-group">
                 <h4>Display</h4>
                 <div class="setting-row">
@@ -653,9 +721,20 @@
                     <label for="secretCodeInput">Codes</label>
                     <div class="setting-inline">
                         <input id="secretCodeInput" type="text" maxlength="64" placeholder="Enter code">
-                        <button class="btn btn-primary btn-sm" onclick="redeemSecretCode()">Redeem</button>
+                        <button id="secretCodeBtn" class="btn btn-primary btn-sm" onclick="redeemSecretCode()">Redeem</button>
                     </div>
                     <div id="secretCodeStatus" class="setting-help"></div>
+                </div>
+            </section>
+            <section class="settings-group">
+                <h4>Help &amp; privacy</h4>
+                <div class="setting-row">
+                    <button id="guideShowBtn" class="btn btn-ghost btn-sm" type="button">Show the getting-started guide</button>
+                </div>
+                <div class="setting-row">
+                    <button id="adChoicesBtn" class="btn btn-ghost btn-sm" type="button">Ad &amp; cookie choices</button>
+                    <div id="adChoicesStatus" class="setting-help"></div>
+                    <a class="setting-help" href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>
                 </div>
             </section>
             <div class="settings-footer">
@@ -813,7 +892,6 @@
     <!-- ========== Firebase (Firestore, Analytics): exposes db, doc, setDoc, getDoc, updateDoc, etc. for main.js ========== -->
     <script type="module">
   import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
-    import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js";
         import { getFirestore, collection, addDoc, serverTimestamp, getDocs, query, orderBy, limit, doc, setDoc, getDoc, updateDoc, arrayUnion, arrayRemove, onSnapshot, deleteDoc, where, increment, runTransaction } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
     // TODO: Add SDKs for Firebase products that you want to use
     // https://firebase.google.com/docs/web/setup#available-libraries
@@ -832,7 +910,15 @@
 
   // Initialize Firebase (cloud.js shares this app for accounts and cloud saves)
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
+  // Google Analytics only starts once the player has accepted ads and visit counting (core/consent.js, privacy.html)
+  let analyticsStarted = false;
+  function startAnalytics() {
+      if (analyticsStarted) return;
+      analyticsStarted = true;
+      import("https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js").then(m => m.getAnalytics(app)).catch(() => { analyticsStarted = false; });
+  }
+  if (window.WHConsent && window.WHConsent.allowed()) startAnalytics();
+  window.addEventListener('wh:consent', e => { if (e.detail === 'granted') startAnalytics(); });
     // Firestore instance used for leaderboard submissions from the game
     try {
         const db = getFirestore(app);
@@ -1525,11 +1611,19 @@
         })();
         </script>
 
+        <script src="core/calc.js"></script>
+        <script src="core/save.js"></script>
+        <script src="core/progress.js"></script>
+        <script src="core/guide.js"></script>
+        <script src="core/consent.js"></script>
+        <script src="core/clan-buffs.js"></script>
         <script src="followers-data.js"></script>
         <script src="achievements-data.js"></script>
         <script src="main.js"></script>
         <script src="specials.js"></script>
         <script src="items.js"></script>
+        <script src="guide.js"></script>
+        <script src="save-tools.js"></script>
         <script src="site.js"></script>
         <script>
             // badges on the nav buttons for things waiting on other pages (new achievements, eggs, daily spin, clan check-in)
@@ -1869,17 +1963,4 @@
     })();
     </script>
 
-    <!-- Cookie consent banner -->
-    <div id="cookie-consent-banner" style="display:none"> 
-        <div class="cookie-consent-inner">
-            <div class="cookie-consent-text">
-                This site uses localStorage to save your game and may load third-party ads. By clicking "Accept" you consent to the use of local storage and third-party cookies as described in our <a href="privacy.html" target="_blank" rel="noopener">Privacy Policy</a>.
-            </div>
-            <div class="cookie-consent-actions">
-                <button id="cookie-accept-btn" class="btn">Accept</button>
-                <a href="privacy.html" class="btn btn-link" target="_blank" rel="noopener">Manage</a>
-            </div>
-        </div>
-
-    </div>
     </html>

@@ -1,0 +1,4 @@
+{
+  "_comment": "Codes to create in the Firebase console, collection 'codes'. The document id is the code (UPPER CASE); the fields are the object next to it. This file is for reference, the game does not read it.",
+  "GEMS": { "type": "diamonds", "amount": 100, "message": "You received 100 gems!" }
+}

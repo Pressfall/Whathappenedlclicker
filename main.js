@@ -5,7 +5,7 @@
  * - Decimal/currency helpers, core state (count, clickPower, cps)
  * - Clan sync (syncClanStats), main image size, formatNumber
  * - Achievements, titles, batch cost, level multipliers, effective CPS
- * - Upgrade tooltips, upgrade state and buy functions (1–24, divine, specials)
+ * - Upgrade tooltips, upgrade state and buy functions (1–28, divine, specials)
  * - Prestige, save/load, increment (click handler + mainClicks for clan events)
  * - UI: falling images, displays, shop, settings, init
  */
@@ -15,6 +15,9 @@ const hasDecimal = typeof Decimal !== 'undefined';
 const hasBig = hasDecimal; // alias for legacy checks
 function D(v) { return hasDecimal ? new Decimal(v) : Number(v); }
 function isDecimalInstance(x) { return hasDecimal && x instanceof Decimal; }
+// Price curves, bulk buying, milestones, Divine costs, prestige awards and offline earnings live in core/calc.js
+// (loaded before this file) so they can be tested without the page. The functions below keep their old names.
+const calc = WHCalc.create(hasDecimal ? Decimal : undefined);
 
 // safe numeric conversion helper (Decimal-aware). Returns a Number or Decimal
 // consistent with the current numeric mode. Falls back to `fallback` when
@@ -24,20 +27,7 @@ function isDecimalInstance(x) { return hasDecimal && x instanceof Decimal; }
 // firebase/auth (or initialize auth in the firebase module script) and
 // call signInAnonymously there.
 
-function safeNum(n, fallback = 0) {
-    if (hasDecimal) {
-        try {
-            const cand = isDecimalInstance(n) ? n : D(n);
-            if (cand && typeof cand.isFinite === 'function') return cand.isFinite() ? cand : (isDecimalInstance(fallback) ? fallback : D(fallback));
-            return cand;
-        } catch (e) {
-            return isDecimalInstance(fallback) ? fallback : D(fallback);
-        }
-    } else {
-        const num = Number(n);
-      return Number.isFinite(num) ? num : fallback;
-    }
-}
+function safeNum(n, fallback = 0) { return calc.safeNum(n, fallback); }
 
 // return a numeric JS primitive for upgrade level values (handles Decimal instances)
 function numericLevel(v) { return isDecimalInstance(v) ? v.toNumber() : Number(v || 0) || 0; }
@@ -386,7 +376,7 @@ function checkDataAchievements(force) {
     _lastDataAchCheck = now;
     try {
         const upgrades = [0];
-        for (let i = 1; i <= 24; i++) upgrades.push(numericLevel(getUpgradeLevel(i)));
+        for (let i = 1; i <= UPGRADE_COUNT; i++) upgrades.push(numericLevel(getUpgradeLevel(i)));
         const owned = (window.SPECIAL_UPGRADES || []).filter(sp => { try { return !!(new Function('return ' + sp.owned))(); } catch (e) { return false; } }).length;
         const live = {
             cps: Number(cps) || 0, clickPower: Number(clickPower) || 0,
@@ -395,7 +385,7 @@ function checkDataAchievements(force) {
             divineArgon: Number(divineArgonLevel) || 0, divineSomalian: Number(divineSomalianLevel) || 0,
             divineAssassin: Number(divineAssassinLevel) || 0, divineCollector: Number(divineCollectorLevel) || 0,
             divineMoneyMan: Number(divineMoneyManLevel) || 0, divineSpirit: Number(divineSpiritLevel) || 0,
-            divineVillager: Number(divineSimpleVillagerLevel) || 0,
+            divineVillager: Number(divineSimpleVillagerLevel) || 0, divineBrileyism: Number(divineBrileyismLevel) || 0,
         };
         if (window.SPECIAL_UPGRADES) { live.specialsOwned = owned; live.specialsTotal = window.SPECIAL_UPGRADES.length; }
         const fresh = window.WHA.checkAll(window.WHA.snapshot(live));
@@ -556,28 +546,7 @@ try { window.addEventListener('storage', refreshEquippedTitleDisplay); } catch (
 
 
 // compute total cost to buy `batch` levels given current cost and multiplicative rate
-function computeBatchCost(currentCost, batch, rate) {
-    const b = Math.max(1, Math.floor(safeNum(batch, 1)));
-    if (hasDecimal) {
-        let total = D(0);
-        let temp = D(safeNum(currentCost, 0));
-        const r = D(safeNum(rate, 1.1));
-        for (let i = 0; i < b; i++) {
-            total = total.plus(temp);
-            temp = temp.times(r).ceil();
-        }
-        return total;
-    } else {
-        let total = 0;
-        let temp = safeNum(currentCost, 0);
-        const r = safeNum(rate, 1.1);
-        for (let i = 0; i < b; i++) {
-            total += temp;
-            temp = Math.ceil(temp * r);
-        }
-        return total;
-    }
-}
+function computeBatchCost(currentCost, batch, rate) { return calc.computeBatchCost(currentCost, batch, rate); }
 // same as computeBatchCost but with Divine Simple Villager discount applied (for normal upgrade costs)
 function computeBatchCostWithSimpleVillager(currentCost, batch, rate) {
     const raw = computeBatchCost(currentCost, batch, rate);
@@ -591,14 +560,7 @@ function computeBatchCostWithSimpleVillager(currentCost, batch, rate) {
 // - every 25 levels after 500 => x2 per 25
 // - every multiple of 100 (beyond 500) => x4 per 100
 // - every multiple of 1000 => x10 per 1000
-function computeLevelMultiplier(level) {
-    const lv = Number(isDecimalInstance(level) ? level.toNumber() : safeNum(level, 0)) || 0;
-    if (lv <= 500) return 1;
-    const n25 = Math.floor((lv - 500) / 25);
-    const n100 = Math.max(0, Math.floor(lv / 100) - 5); // multiples of 100 beyond 500
-    const n1000 = Math.floor(lv / 1000);
-    return Math.pow(2, n25) * Math.pow(4, n100) * Math.pow(10, n1000);
-}
+function computeLevelMultiplier(level) { return calc.computeLevelMultiplier(level); }
 
 // Return the numeric level for a given upgrade index (1..12)
 function getUpgradeLevel(idx) {
@@ -627,54 +589,23 @@ function getUpgradeLevel(idx) {
         case 22: return upgrade22Level || 0;
         case 23: return upgrade23Level || 0;
         case 24: return upgrade24Level || 0;
+        case 25: return upgrade25Level || 0;
+        case 26: return upgrade26Level || 0;
+        case 27: return upgrade27Level || 0;
+        case 28: return upgrade28Level || 0;
         default: return 0;
     }
 }
 
 // Given a level >= 500, return the next milestone and its single-step boost
 // e.g. { level: 525, boost: 2 } or { level: 1000, boost: 10 }
-function getNextMilestone(level) {
-    const lv = Number(isDecimalInstance(level) ? level.toNumber() : safeNum(level, 0)) || 0;
-    if (lv < 500) return null;
-    // next 25-multiple after 500
-    const n25 = Math.floor((lv - 500) / 25) + 1;
-    const next25 = 500 + n25 * 25;
-    // next 100-multiple
-    const next100 = (Math.floor(lv / 100) + 1) * 100;
-    // next 1000-multiple
-    const next1000 = (Math.floor(lv / 1000) + 1) * 1000;
-    // pick the closest milestone greater than current level
-    const candidates = [next25, next100, next1000].filter(n => n > lv);
-    if (candidates.length === 0) return null;
-    const next = Math.min(...candidates);
-    // determine boost for that milestone (prefer largest applicable special)
-    if (next % 1000 === 0) return { level: next, boost: 10 };
-    if (next % 100 === 0) return { level: next, boost: 4 };
-    if (next % 25 === 0) return { level: next, boost: 2 };
-    return null;
-}
+function getNextMilestone(level) { return calc.getNextMilestone(level); }
 
 // compute effective cps components (pirate, other, jonathan, cr) applying per-upgrade multipliers
 function computeEffectiveCpsParts() {
     if (hasDecimal) {
         // per-level base contributions for normal upgrades (Decimal)
-        const per = {
-            2: D(1),
-            3: D(5),
-            4: D(20),
-            5: D(100),
-            6: D(500),
-            7: D(5000),
-            8: D(20000),
-            9: D(100000),
-            10: D(500000),
-            11: D(1500000),
-            12: D(5000000),
-            13: D(20000000),
-            14: D(50000000),
-            15: D(500000000),
-            16: D(2000000000)
-        };
+        const per = UPGRADE_CPS.map(v => D(v));
 
         // SCP specials visibility and button states (show when upgrade17 purchased at least once)
         const expectedPirate = pirateLvl.times(per[2]);
@@ -690,7 +621,7 @@ function computeEffectiveCpsParts() {
             const base = (per[i] || D(0)).times(lvl);
             expectedOther = expectedOther.plus(base);
             const mult = D(computeLevelMultiplier(Number(lvl)));
-            derivedOther = derivedOther.plus(base.times(mult));
+            derivedOther = derivedOther.plus(base.times(mult).times(D(i === 10 ? (phonkOtherMultiplier || 1) : 1))); // Memphis Tapes doubles The Phonk Man
         }
         // account for upgrade13 (ropingnecurse) separately so it can get its own multiplier
         const upgrade13Lvl = D(getUpgradeLevel(13));
@@ -727,61 +658,69 @@ function computeEffectiveCpsParts() {
 
         // account for upgrade17 (scp wish I knew.) separately so its specials multiply it
         const upgrade17Lvl = D(getUpgradeLevel(17));
-        const per17 = D(10000000000); // 10B per level
+        const per17 = per[17];
         const expectedScp = (upgrade17Lvl.gt(0) && per17.gt(0)) ? per17.times(upgrade17Lvl) : D(0);
         const scpMult = D(computeLevelMultiplier(Number(upgrade17Lvl)));
         const scpEffectiveDec = expectedScp.times(scpMult).times(D(scpMultiplier || 1));
 
         // account for upgrade18 (The Goatis) so its specials multiply it
         const upgrade18Lvl = D(getUpgradeLevel(18));
-        const per18 = D(150000000000); // 150B per level
+        const per18 = per[18];
         const expectedGoatis = (upgrade18Lvl.gt(0) && per18.gt(0)) ? per18.times(upgrade18Lvl) : D(0);
         const goatisMultDec = D(computeLevelMultiplier(Number(upgrade18Lvl)));
         const goatisEffectiveDec = expectedGoatis.times(goatisMultDec).times(D(typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1));
 
         // account for upgrade19 (goatises raw liver)
         const upgrade19Lvl = D(getUpgradeLevel(19));
-        const per19 = D(2000000000000); // 2T per level
+        const per19 = per[19];
         const expectedRaw = (upgrade19Lvl.gt(0) && per19.gt(0)) ? per19.times(upgrade19Lvl) : D(0);
         const rawMultDec = D(computeLevelMultiplier(Number(upgrade19Lvl)));
         const rawEffectiveDec = expectedRaw.times(rawMultDec).times(D(typeof rawMultiplier !== 'undefined' ? rawMultiplier : 1));
 
         // account for upgrade20 (The Landon Stream)
         const upgrade20Lvl = D(getUpgradeLevel(20));
-        const per20 = D(50000000000000); // 50T per level
+        const per20 = per[20];
         const expectedLandon = (upgrade20Lvl.gt(0) && per20.gt(0)) ? per20.times(upgrade20Lvl) : D(0);
         const landonMult = D(computeLevelMultiplier(Number(upgrade20Lvl)));
         const landonEffective = expectedLandon.times(landonMult).times(D(typeof landonMultiplier !== 'undefined' ? landonMultiplier : 1));
 
         // account for upgrade21 (The Bass)
         const upgrade21Lvl = D(getUpgradeLevel(21));
-        const per21 = D(1000000000000000); // 1Q per level
+        const per21 = per[21];
         const expectedTheBass = (upgrade21Lvl.gt(0) && per21.gt(0)) ? per21.times(upgrade21Lvl) : D(0);
         const theBassMult = D(computeLevelMultiplier(Number(upgrade21Lvl)));
         const theBassEffective = expectedTheBass.times(theBassMult).times(D(typeof theBassMultiplier !== 'undefined' ? theBassMultiplier : 1));
 
         // account for upgrade22 (Good Noodles)
         const upgrade22Lvl = D(getUpgradeLevel(22));
-        const per22 = D(50000000000000000); // 50Q per level
+        const per22 = per[22];
         const expectedGoodNoodles = (upgrade22Lvl.gt(0) && per22.gt(0)) ? per22.times(upgrade22Lvl) : D(0);
         const goodNoodlesMult = D(computeLevelMultiplier(Number(upgrade22Lvl)));
         const goodNoodlesEffective = expectedGoodNoodles.times(goodNoodlesMult).times(D(typeof goodNoodlesMultiplier !== 'undefined' ? goodNoodlesMultiplier : 1));
 
         // account for upgrade23 (Mobile Man 38)
         const upgrade23Lvl = D(getUpgradeLevel(23));
-        const per23 = D(500000000000000000); // 500Q per level
+        const per23 = per[23];
         const expectedMobileMan = (upgrade23Lvl.gt(0) && per23.gt(0)) ? per23.times(upgrade23Lvl) : D(0);
         const mobileManMult = D(computeLevelMultiplier(Number(upgrade23Lvl)));
         const mobileManEffective = expectedMobileMan.times(mobileManMult).times(D(typeof mobileMan38Multiplier !== 'undefined' ? mobileMan38Multiplier : 1));
 
         // account for upgrade24 (Easton Bundy)
         const upgrade24Lvl = D(getUpgradeLevel(24));
-        const per24 = D(1000000000000000000); // 1000Q per level
+        const per24 = per[24];
         const expectedEaston = (upgrade24Lvl.gt(0) && per24.gt(0)) ? per24.times(upgrade24Lvl) : D(0);
         const eastonMultDec = D(computeLevelMultiplier(Number(upgrade24Lvl)));
         const eastonEffective = expectedEaston.times(eastonMultDec).times(D(typeof eastonBundyMultiplier !== 'undefined' ? eastonBundyMultiplier : 1));
 
-        const otherEffective = otherBase.plus(ropingEffective).plus(skibidiEffective).plus(beatsEffective).plus(ezEffective).plus(scpEffectiveDec).plus(goatisEffectiveDec).plus(rawEffectiveDec).plus(landonEffective).plus(theBassEffective).plus(goodNoodlesEffective).plus(mobileManEffective).plus(eastonEffective);
+        // upgrades 25+ (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo): level-based, each with its own specials multiplier
+        let lateTierEffective = D(0);
+        for (let i = 25; i <= UPGRADE_COUNT; i++) {
+            const lvl = D(getUpgradeLevel(i));
+            if (lvl.lte(0)) continue;
+            lateTierEffective = lateTierEffective.plus(per[i].times(lvl).times(D(computeLevelMultiplier(Number(lvl)))).times(D(lateTierMultiplier(i))));
+        }
+
+        const otherEffective = otherBase.plus(ropingEffective).plus(skibidiEffective).plus(beatsEffective).plus(ezEffective).plus(scpEffectiveDec).plus(goatisEffectiveDec).plus(rawEffectiveDec).plus(landonEffective).plus(theBassEffective).plus(goodNoodlesEffective).plus(mobileManEffective).plus(eastonEffective).plus(lateTierEffective);
 
         // jonathan (upgrade11)
         const jonathanLvl = D(getUpgradeLevel(11));
@@ -806,23 +745,7 @@ function computeEffectiveCpsParts() {
         };
     } else {
         // per-level base contributions for normal upgrades
-        const per = {
-            2: 1,
-            3: 5,
-            4: 20,
-            5: 100,
-            6: 500,
-            7: 5000,
-            8: 20000,
-            9: 100000,
-            10: 500000,
-            11: 1500000,
-            12: 5000000,
-            13: 20000000,
-            14: 50000000,
-            15: 500000000,
-            16: 2000000000
-        };
+        const per = UPGRADE_CPS;
         // pirate (upgrade2)
         const pirateLvl = getUpgradeLevel(2);
         const expectedPirate = pirateLvl * per[2];
@@ -838,7 +761,7 @@ function computeEffectiveCpsParts() {
             const base = (per[i] || 0) * lvl;
             expectedOther += base;
             const mult = computeLevelMultiplier(lvl);
-            derivedOther += base * mult;
+            derivedOther += base * mult * (i === 10 ? (phonkOtherMultiplier || 1) : 1); // Memphis Tapes doubles The Phonk Man
         }
         // account for upgrade13 (ropingnecurse) separately so it can get its own multiplier
         const upgrade13Lvl = getUpgradeLevel(13);
@@ -878,61 +801,68 @@ function computeEffectiveCpsParts() {
 
         // account for upgrade17 (scp wish I knew.) separately so its specials multiply it
         const upgrade17Lvl = getUpgradeLevel(17);
-        const per17 = 10000000000; // 10B per level
+        const per17 = per[17];
         const expectedScp = (upgrade17Lvl > 0 && per17 > 0) ? per17 * upgrade17Lvl : 0;
         const scpMult = computeLevelMultiplier(upgrade17Lvl);
         const scpEffective = expectedScp * scpMult * (scpMultiplier || 1);
 
         // account for upgrade18 (The Goatis)
         const upgrade18Lvl = getUpgradeLevel(18);
-        const per18 = 150000000000; // 150B per level
+        const per18 = per[18];
         const expectedGoatis = (upgrade18Lvl > 0 && per18 > 0) ? per18 * upgrade18Lvl : 0;
         const goatisMult = computeLevelMultiplier(upgrade18Lvl);
         const goatisEffective = expectedGoatis * goatisMult * (goatisMultiplier || 1);
 
         // account for upgrade20 (The Landon Stream)
         const upgrade20Lvl = getUpgradeLevel(20);
-        const per20 = 50000000000000; // 50T per level
+        const per20 = per[20];
         const expectedLandon = (upgrade20Lvl > 0 && per20 > 0) ? per20 * upgrade20Lvl : 0;
         const landonMult = computeLevelMultiplier(upgrade20Lvl);
         const landonEffective = expectedLandon * landonMult * (landonMultiplier || 1);
 
         // account for upgrade21 (The Bass)
         const upgrade21Lvl = getUpgradeLevel(21);
-        const per21 = 1000000000000000; // 1Q per level
+        const per21 = per[21];
         const expectedTheBass = (upgrade21Lvl > 0 && per21 > 0) ? per21 * upgrade21Lvl : 0;
         const theBassMult = computeLevelMultiplier(upgrade21Lvl);
         const theBassEffective = expectedTheBass * theBassMult * (theBassMultiplier || 1);
 
         // account for upgrade22 (Good Noodles)
         const upgrade22Lvl = getUpgradeLevel(22);
-        const per22 = 50000000000000000; // 50Q per level
+        const per22 = per[22];
         const expectedGoodNoodles = (upgrade22Lvl > 0 && per22 > 0) ? per22 * upgrade22Lvl : 0;
         const goodNoodlesMult = computeLevelMultiplier(upgrade22Lvl);
         const goodNoodlesEffective = expectedGoodNoodles * goodNoodlesMult * (goodNoodlesMultiplier || 1);
 
         // account for upgrade23 (Mobile Man 38)
         const upgrade23Lvl = getUpgradeLevel(23);
-        const per23 = 500000000000000000; // 500Q per level
+        const per23 = per[23];
         const expectedMobileMan = (upgrade23Lvl > 0 && per23 > 0) ? per23 * upgrade23Lvl : 0;
         const mobileManMult = computeLevelMultiplier(upgrade23Lvl);
         const mobileManEffective = expectedMobileMan * mobileManMult * (mobileMan38Multiplier || 1);
 
         // account for upgrade24 (Easton Bundy)
         const upgrade24Lvl = getUpgradeLevel(24);
-        const per24 = 1000000000000000000; // 1000Q per level
+        const per24 = per[24];
         const expectedEaston = (upgrade24Lvl > 0 && per24 > 0) ? per24 * upgrade24Lvl : 0;
         const eastonMult = computeLevelMultiplier(upgrade24Lvl);
         const eastonEffective = expectedEaston * eastonMult * (typeof eastonBundyMultiplier !== 'undefined' ? eastonBundyMultiplier : 1);
 
         // account for upgrade19 (goatises raw liver)
         const upgrade19Lvl = getUpgradeLevel(19);
-        const per19 = 2000000000000; // 2T per level
+        const per19 = per[19];
         const expectedRaw = (upgrade19Lvl > 0 && per19 > 0) ? per19 * upgrade19Lvl : 0;
         const rawMult = computeLevelMultiplier(upgrade19Lvl);
         const rawEffective = expectedRaw * rawMult * (rawMultiplier || 1);
 
-        const otherEffectiveFinal = otherEffective + scpEffective + goatisEffective + rawEffective + landonEffective + theBassEffective + goodNoodlesEffective + mobileManEffective + eastonEffective;
+        // upgrades 25+ (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo): level-based, each with its own specials multiplier
+        let lateTierEffective = 0;
+        for (let i = 25; i <= UPGRADE_COUNT; i++) {
+            const lvl = numericLevel(getUpgradeLevel(i));
+            if (lvl > 0) lateTierEffective += per[i] * lvl * computeLevelMultiplier(lvl) * lateTierMultiplier(i);
+        }
+
+        const otherEffectiveFinal = otherEffective + scpEffective + goatisEffective + rawEffective + landonEffective + theBassEffective + goodNoodlesEffective + mobileManEffective + eastonEffective + lateTierEffective;
 
         // jonathan (upgrade11)
         const jonathanLvl = getUpgradeLevel(11);
@@ -985,13 +915,45 @@ UPGRADE_DESCRIPTIONS.upgrade19 = '...you wanted raw liver.';
 UPGRADE_DESCRIPTIONS.upgrade20 = 'most respectful christian main';
 UPGRADE_DESCRIPTIONS.upgrade21 = "What is the cat's name?";
 UPGRADE_DESCRIPTIONS.upgrade22 = 'We eating good noodles every day';
-UPGRADE_DESCRIPTIONS.upgrade23 = 'Mobile Man 38: A mobile service that produces large passive output (500Q cps per level).';
-UPGRADE_DESCRIPTIONS.upgrade24 = 'Easton Bundy: An exceptional operator who provides powerful passive cps generation (1,000Q cps per level).';
+UPGRADE_DESCRIPTIONS.upgrade23 = 'Mobile Man 38: A mobile service that produces large passive output.';
+UPGRADE_DESCRIPTIONS.upgrade24 = 'Easton Bundy: An exceptional operator who provides powerful passive cps generation.';
+UPGRADE_DESCRIPTIONS.upgrade25 = 'Tom Pearl turns the phonk all the way up. Nobody has ever seen him without the shades.';
+UPGRADE_DESCRIPTIONS.upgrade26 = 'A diagram so powerful it rewires the entire economy. Anything above the arrow is a catch.';
+UPGRADE_DESCRIPTIONS.upgrade27 = 'The Somalian Pirate had a twin all along. This one does not ask for a price. (Meant to be reached after a few prestiges.)';
+UPGRADE_DESCRIPTIONS.upgrade28 = "O'algo has read Logical Fallacies for Dummies cover to cover. Your CPS can no longer be argued with. (Meant to be reached after many prestiges.)";
 
-// Display names for upgrades 1..24 (index 0 unused), used in the left-bar button labels
+// Display names for upgrades 1..28 (index 0 unused), used in the left-bar button labels
 const UPGRADE_NAMES = [null, 'OP mouse', 'Somalian Pirate', 'Goonsaw Man', 'Diddy blud', 'Argonian Autist', 'Grape God', 'Skippie Toilet', 'Mysterious Island',
     'Tribal Camp', 'The Phonk Man', 'Jonathan', 'CR lurker', 'ropingnecurse', 'skibbidi scimitar', 'What Happened Beats', 'ez villager', 'scp wish I knew.',
-    'The Goatis', 'goatises raw liver', 'The Landon Stream', 'The Bass', 'Good Noodles', 'Mobile Man 38', 'Easton Bundy'];
+    'The Goatis', 'goatises raw liver', 'The Landon Stream', 'The Bass', 'Good Noodles', 'Mobile Man 38', 'Easton Bundy',
+    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo"];
+const UPGRADE_COUNT = UPGRADE_NAMES.length - 1;
+
+// Balance tables for upgrades 1..28 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
+// Each level costs 10% more than the last for upgrades 1-10 and 15% more from upgrade 11 on.
+// Later upgrades take longer to pay for themselves, so each new one is a goal rather than an instant unlock.
+const UPGRADE_CPS = [0, 1, 1, 5, 20, 100, 500, 5000, 20000, 100000, 500000, 1500000, 5000000,
+    20000000, 50000000, 500000000, 2000000000, 10000000000, 150000000000, 2000000000000, 50000000000000, 1e15, 5e16, 5e17, 1e18,
+    1e19, 1e20, 1e21, 1e22];
+// Costs from CR lurker (12) on were tuned with a simulated player so each new upgrade takes a bit longer to reach than the last
+// (about 5 minutes apart at CR lurker, 10-13 minutes apart by Easton Bundy) instead of the whole late game unlocking in two minutes.
+// Evil Somalian Pirate (27) and O'algo (28) are meant for after prestiges: out of reach in a first run, Evil Pirate after about
+// 2 prestiges, O'algo several prestiges later, and each gets quicker to reach as your Divine upgrades grow.
+const UPGRADE_BASE_COSTS = [0, 100, 500, 1000, 3000, 10000, 250000, 1000000, 5000000, 20000000, 100000000, 500000000, 4.3e10,
+    4e13, 1.5e14, 3.6e14, 1.2e15, 3.3e16, 1.7e19, 1.3e20, 3.1e20, 7e22, 6.8e23, 6e25, 1.8e26,
+    8.5e26, 4.2e27, 3e31, 1e33];
+function upgradeCostRate(i) { return i <= 10 ? 1.1 : 1.15; }
+
+// Special upgrade prices: a multiple of what the level that unlocks the special costs, so a special is never pocket change
+// by the time you reach it. Specials that only boost their own upgrade, click power, or add base CPS cost a few levels' worth.
+// The ones that multiply (nearly) all of your CPS cost far more the later they unlock, so they arrive spread over the run
+// instead of all at once (cheap ones used to stack ~270,000x within a couple of minutes and skip the whole midgame).
+const SPECIAL_PRICE_FACTOR = { own: 3, click: 3, base: 1, global: { 10: 10, 25: 100, 50: 1000, 75: 10000, 100: 100000 } };
+function specialCost(upgradeIdx, unlockLevel, scope) {
+    const levelCost = UPGRADE_BASE_COSTS[upgradeIdx] * Math.pow(upgradeCostRate(upgradeIdx), unlockLevel);
+    const factor = scope === 'global' ? SPECIAL_PRICE_FACTOR.global[unlockLevel] : SPECIAL_PRICE_FACTOR[scope];
+    return Math.ceil(levelCost * factor);
+}
 
 // currently hovered upgrade id (e.g. 'upgrade3') — used to refresh tooltip content live
 let currentHoveredUpgradeId = null;
@@ -999,41 +961,8 @@ let currentHoveredUpgradeId = null;
 // build tooltip HTML for a given upgrade id
 function getTooltipHtmlForUpgrade(id) {
     const desc = UPGRADE_DESCRIPTIONS[id] || document.getElementById(id)?.dataset?.desc || 'The Strongest';
-    let cpsVal = getUpgradeCps(id);
+    const cpsVal = getUpgradeCps(id);
     const unit = (id === 'upgrade1') ? 'click power' : 'cps';
-    // ensure ez villager tooltip computes its CPS correctly (some branches may show 0)
-    try {
-        if (id === 'upgrade16') {
-            if (hasDecimal) {
-                const per16 = D(2000000000);
-                const lvl = D(upgrade16Level || 0);
-                const base = (lvl.gt(0) && per16.gt(0)) ? per16.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const ezMultLocal = D(typeof ezOtherMultiplier !== 'undefined' ? ezOtherMultiplier : 1);
-                const globalSectionMultLocal = D(typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1).times(D(typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1)).times(D(typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1)).times(D(typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1)).times(D(typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1)).times(D(typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1)).times(D(typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1)).times(D(typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1));
-                const goldenMultLocal = D(1).plus(D(getGoldenBonusCount()).times(D(0.1)));
-                const divineArgonMultLocal = (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) ? D(1).plus(D(DIVINE_ARGON_BASE_PERCENT).times(D(2).pow(Math.max(0, (divineArgonLevel||0)-1))).div(D(100))) : D(1);
-                cpsVal = eff.times(goon).times(ezMultLocal).times(globalSectionMultLocal).times(goldenMultLocal).times(divineArgonMultLocal);
-            } else {
-                const per16 = 2000000000;
-                const lvl = upgrade16Level || 0;
-                const base = (lvl > 0 && per16 > 0) ? per16 * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const ezMultLocal = (typeof ezOtherMultiplier !== 'undefined' ? ezOtherMultiplier : 1);
-                const globalSectionMultLocal = (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1) * (typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1);
-                const goldenMultLocal = 1 + (getGoldenBonusCount() * 0.1);
-                // apply Divine Argonian multiplier if purchased
-                let divineArgonMultLocal = 1;
-                if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
-                    const appliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
-                    divineArgonMultLocal = 1 + (appliedPercent / 100);
-                }
-                cpsVal = eff * goon * ezMultLocal * globalSectionMultLocal * goldenMultLocal * divineArgonMultLocal;
-            }
-        }
-    } catch (e) {}
     let cpsText;
     if (hasDecimal && isDecimalInstance(cpsVal)) cpsText = formatNumber(cpsVal) + ' ' + unit;
     else cpsText = isFinite(cpsVal) ? formatNumber(cpsVal) + ' ' + unit : '0 ' + unit;
@@ -1091,7 +1020,7 @@ function initTooltips() {
         tip.style.top = y + 'px';
     };
 
-    for (let i = 1; i <= 24; i++) {
+    for (let i = 1; i <= UPGRADE_COUNT; i++) {
         const id = 'upgrade' + i;
         const el = document.getElementById(id);
         if (!el) continue;
@@ -1127,469 +1056,174 @@ function initTooltips() {
         } catch (err) {}
     }
 }
+// Multiplier that only an upgrade's own specials apply to its CPS (1 when it has none)
+function upgradeOwnMultiplier(i) {
+    switch (i) {
+        case 10: return Number(phonkOtherMultiplier) || 1;
+        case 13: return Number(ropingOtherMultiplier) || 1;
+        case 14: return Number(skibbidiOtherMultiplier) || 1;
+        case 15: return Number(beatsOtherMultiplier) || 1;
+        case 16: return Number(ezOtherMultiplier) || 1;
+        case 17: return Number(scpMultiplier) || 1;
+        case 18: return Number(goatisMultiplier) || 1;
+        case 19: return Number(rawMultiplier) || 1;
+        case 20: return Number(landonMultiplier) || 1;
+        case 21: return Number(theBassMultiplier) || 1;
+        case 22: return Number(goodNoodlesMultiplier) || 1;
+        case 23: return Number(mobileMan38Multiplier) || 1;
+        case 24: return Number(eastonBundyMultiplier) || 1;
+        default: return i >= 25 ? lateTierMultiplier(i) : 1;
+    }
+}
+
+// What an upgrade currently earns (for its hover tooltip): its share of the live CPS, with every multiplier applied.
+// OP mouse shows what one click earns.
 function getUpgradeCps(upgradeId) {
     try {
-        const per = {2:1,3:5,4:20,5:100,6:500,7:5000,8:20000,9:100000,10:500000,11:1500000,12:5000000,13:20000000,14:50000000,15:500000000,16:2000000000};
-        if (hasDecimal) {
-            const divineArgonMult = (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) ? D(1).plus(D(DIVINE_ARGON_BASE_PERCENT).times(D(2).pow(Math.max(0, (divineArgonLevel||0)-1))).div(D(100))) : D(1);
-            // include ez multiplier in global section multipliers
-            const globalSectionMult = D(typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1).times(D(typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1)).times(D(typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1)).times(D(typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1)).times(D(typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1)).times(D(typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1)).times(D(typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1)).times(D(typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1));
-            const goldenMult = D(1).plus(D(getGoldenBonusCount()).times(D(0.1)));
-
-            if (upgradeId === 'upgrade1') {
-                const divineSomalianMultLocal = (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) ? D(11).times(D(5).pow(Math.max(0, (divineSomalianLevel||0)-1))) : D(1);
-                const clickMultLocal = D(typeof clickMultiplier === 'number' ? clickMultiplier : clickMultiplier || 1).times(divineSomalianMultLocal);
-                const lvl = D(upgrade1Level || 0);
-                const initialBase = D(1);
-                const upgradeEffective = lvl.times(D(computeLevelMultiplier(Number(lvl))));
-                const effectiveBase = initialBase.plus(upgradeEffective);
-                return effectiveBase.times(clickMultLocal).times(goldenMult);
-            }
-
-            if (upgradeId === 'upgrade2') {
-                const lvl = D(upgrade2Level || 0);
-                const base = D(per[2] || 0).times(lvl);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                return eff.times(D(pirateMultiplier || 1)).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-
-            const idx = Number(upgradeId.replace('upgrade',''));
-            function getUpgradeLevel(idx) {
-                switch (idx) {
-                    case 1: return upgrade1Level || 0;
-                    case 2: return upgrade2Level || 0;
-                    case 3: return upgrade3Level || 0;
-                    case 4: return upgrade4Level || 0;
-                    case 5: return upgrade5Level || 0;
-                    case 6: return upgrade6Level || 0;
-                    case 7: return upgrade7Level || 0;
-                    case 8: return upgrade8Level || 0;
-                    case 9: return upgrade9Level || 0;
-                    case 10: return upgrade10Level || 0;
-                    case 11: return upgrade11Level || 0;
-                    case 12: return upgrade12Level || 0;
-                    case 13: return upgrade13Level || 0;
-                    case 14: return upgrade14Level || 0;
-                    case 15: return upgrade15Level || 0;
-                    case 16: return upgrade16Level || 0;
-                    case 17: return upgrade17Level || 0;
-                    case 18: return upgrade18Level || 0;
-                    case 19: return upgrade19Level || 0;
-                    case 20: return upgrade20Level || 0;
-                    case 21: return upgrade21Level || 0;
-                    default: return 0;
-                }
-            }
-            if (idx >=3 && idx <=10) {
-                const lvl = D(getUpgradeLevel(idx));
-                const base = D(per[idx] || 0).times(lvl);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                return eff.times(goon).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 11) {
-                const lvl = D(upgrade11Level || 0);
-                const base = D(per[11] || 0).times(lvl);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const jonMul = D(jonathanOtherMultiplier || 1);
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                return eff.times(jonMul).times(goon).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 12) {
-                const lvl = D(upgrade12Level || 0);
-                const base = D(per[12] || 0).times(lvl);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const crMul = D(crOtherMultiplier || 1);
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                return eff.times(crMul).times(goon).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 13) {
-                const lvl = D(upgrade13Level || 0);
-                const per13Local = D(per[13] || 0);
-                const base = (lvl.gt(0) && per13Local.gt(0)) ? per13Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const ropingMultLocal = D(typeof ropingOtherMultiplier !== 'undefined' ? ropingOtherMultiplier : 1);
-                return eff.times(goon).times(ropingMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 14) {
-                const lvl = D(upgrade14Level || 0);
-                const per14Local = D(per[14] || 0);
-                const base = (lvl.gt(0) && per14Local.gt(0)) ? per14Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const skibidiMultLocal = D(typeof skibbidiOtherMultiplier !== 'undefined' ? skibbidiOtherMultiplier : 1);
-                return eff.times(goon).times(skibidiMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 15) {
-                const lvl = D(upgrade15Level || 0);
-                const per15Local = D(per[15] || 0);
-                const base = (lvl.gt(0) && per15Local.gt(0)) ? per15Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const beatsMultLocal = D(typeof beatsOtherMultiplier !== 'undefined' ? beatsOtherMultiplier : 1);
-                return eff.times(goon).times(beatsMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 16) {
-                const lvl = D(upgrade16Level || 0);
-                const per16Local = D(per[16] || 0);
-                const base = (lvl.gt(0) && per16Local.gt(0)) ? per16Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const ezMultLocal = D(typeof ezOtherMultiplier !== 'undefined' ? ezOtherMultiplier : 1);
-                return eff.times(goon).times(ezMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 17) {
-                const lvl = D(upgrade17Level || 0);
-                const per17Local = D(10000000000); // 10B per level
-                const base = (lvl.gt(0) && per17Local.gt(0)) ? per17Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const scpMultLocal = D(typeof scpMultiplier !== 'undefined' ? scpMultiplier : 1);
-                return eff.times(scpMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 18) {
-                const lvl = D(upgrade18Level || 0);
-                const per18Local = D(150000000000); // 150B per level
-                const base = (lvl.gt(0) && per18Local.gt(0)) ? per18Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const goatisMultLocal = D(typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1);
-                return eff.times(goon).times(goatisMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 19) {
-                const lvl = D(upgrade19Level || 0);
-                const per19Local = D(2000000000000); // 2T per level
-                const base = (lvl.gt(0) && per19Local.gt(0)) ? per19Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const rawMultLocal = D(typeof rawMultiplier !== 'undefined' ? rawMultiplier : 1);
-                return eff.times(goon).times(rawMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 20) {
-                const lvl = D(upgrade20Level || 0);
-                const per20Local = D(50000000000000); // 50T per level
-                const base = (lvl.gt(0) && per20Local.gt(0)) ? per20Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const landonMultLocal = D(typeof landonMultiplier !== 'undefined' ? landonMultiplier : 1);
-                return eff.times(goon).times(landonMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 21) {
-                const lvl = D(upgrade21Level || 0);
-                const per21Local = D(1000000000000000); // 1Q per level
-                const base = (lvl.gt(0) && per21Local.gt(0)) ? per21Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const theBassMultLocal = D(typeof theBassMultiplier !== 'undefined' ? theBassMultiplier : 1);
-                return eff.times(goon).times(theBassMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 22) {
-                const lvl = D(upgrade22Level || 0);
-                const per22Local = D(50000000000000000); // 50Q per level
-                const base = (lvl.gt(0) && per22Local.gt(0)) ? per22Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const goodNoodlesMultLocal = D(typeof goodNoodlesMultiplier !== 'undefined' ? goodNoodlesMultiplier : 1);
-                return eff.times(goon).times(goodNoodlesMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 23) {
-                const lvl = D(upgrade23Level || 0);
-                const per23Local = D(500000000000000000); // 500Q per level
-                const base = (lvl.gt(0) && per23Local.gt(0)) ? per23Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const mobileManMultLocal = D(typeof mobileMan38Multiplier !== 'undefined' ? mobileMan38Multiplier : 1);
-                return eff.times(goon).times(mobileManMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            if (idx === 24) {
-                const lvl = D(upgrade24Level || 0);
-                const per24Local = D(1000000000000000000); // 1000Q per level
-                const base = (lvl.gt(0) && per24Local.gt(0)) ? per24Local.times(lvl) : D(0);
-                const eff = base.times(D(computeLevelMultiplier(Number(lvl))));
-                const goon = D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const eastonBundyMultLocal = D(typeof eastonBundyMultiplier !== 'undefined' ? eastonBundyMultiplier : 1);
-                return eff.times(goon).times(eastonBundyMultLocal).times(globalSectionMult).times(goldenMult).times(divineArgonMult);
-            }
-            return D(0);
-        } else {
-            // original numeric branch
-            const divineArgonMult = (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) ? (1 + (DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel-1)))/100) : 1;
-            const globalSectionMult = (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1) * (typeof ezMultiplier !== 'undefined' ? ezMultiplier : 1);
-            const goldenMult = 1 + getGoldenBonusCount() * 0.1;
-
-            if (upgradeId === 'upgrade1') {
-                const divineSomalianMultLocal = (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) ? (11 * Math.pow(5, Math.max(0, divineSomalianLevel - 1))) : 1;
-                const clickMultLocal = (typeof clickMultiplier === 'number' ? clickMultiplier : 1) * divineSomalianMultLocal;
-                const lvl = upgrade1Level || 0;
-                const initialBase = 1;
-                const upgradeEffective = lvl * computeLevelMultiplier(lvl);
-                const effectiveBase = initialBase + upgradeEffective;
-                return effectiveBase * clickMultLocal * goldenMult;
-            }
-            if (upgradeId === 'upgrade2') {
-                const lvl = upgrade2Level || 0;
-                const base = (per[2] || 0) * lvl;
-                const eff = base * computeLevelMultiplier(lvl);
-                return eff * (pirateMultiplier || 1) * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            const idx = Number(upgradeId.replace('upgrade',''));
-            function getUpgradeLevel(idx) {
-                switch (idx) {
-                    case 1: return upgrade1Level || 0;
-                    case 2: return upgrade2Level || 0;
-                    case 3: return upgrade3Level || 0;
-                    case 4: return upgrade4Level || 0;
-                    case 5: return upgrade5Level || 0;
-                    case 6: return upgrade6Level || 0;
-                    case 7: return upgrade7Level || 0;
-                    case 8: return upgrade8Level || 0;
-                    case 9: return upgrade9Level || 0;
-                    case 10: return upgrade10Level || 0;
-                    case 11: return upgrade11Level || 0;
-                    case 12: return upgrade12Level || 0;
-                    case 13: return upgrade13Level || 0;
-                    case 14: return upgrade14Level || 0;
-                    case 15: return upgrade15Level || 0;
-                    case 16: return upgrade16Level || 0;
-                    case 17: return upgrade17Level || 0;
-                    case 18: return upgrade18Level || 0;
-                    case 19: return upgrade19Level || 0;
-                    default: return 0;
-                }
-            }
-            if (idx >=3 && idx <=10) {
-                const lvl = getUpgradeLevel(idx);
-                const base = (per[idx] || 0) * lvl;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                return eff * goon * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 11) {
-                const lvl = upgrade11Level || 0;
-                const base = (per[11] || 0) * lvl;
-                const eff = base * computeLevelMultiplier(lvl);
-                const jonMul = (jonathanOtherMultiplier || 1);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                return eff * jonMul * goon * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 12) {
-                const lvl = upgrade12Level || 0;
-                const base = (per[12] || 0) * lvl;
-                const eff = base * computeLevelMultiplier(lvl);
-                const crMul = (crOtherMultiplier || 1);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                return eff * crMul * goon * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 13) {
-                const lvl = upgrade13Level || 0;
-                const per13Local = (per[13] || 0);
-                const base = (lvl > 0 && per13Local > 0) ? per13Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const ropingMultLocal = (typeof ropingOtherMultiplier !== 'undefined' ? ropingOtherMultiplier : 1);
-                return eff * goon * ropingMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 14) {
-                const lvl = upgrade14Level || 0;
-                const per14Local = (per[14] || 0);
-                const base = (lvl > 0 && per14Local > 0) ? per14Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const skibidiMultLocal = (typeof skibbidiOtherMultiplier !== 'undefined' ? skibbidiOtherMultiplier : 1);
-                return eff * goon * skibidiMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 15) {
-                const lvl = upgrade15Level || 0;
-                const per15Local = (per[15] || 0);
-                const base = (lvl > 0 && per15Local > 0) ? per15Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const beatsMultLocal = (typeof beatsOtherMultiplier !== 'undefined' ? beatsOtherMultiplier : 1);
-                return eff * goon * beatsMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 16) {
-                const lvl = upgrade16Level || 0;
-                const per16Local = (per[16] || 0);
-                const base = (lvl > 0 && per16Local > 0) ? per16Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const ezMultLocal = (typeof ezOtherMultiplier !== 'undefined' ? ezOtherMultiplier : 1);
-                return eff * goon * ezMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 17) {
-                const lvl = upgrade17Level || 0;
-                const per17Local = 10000000000; // 10B per level
-                const base = (lvl > 0 && per17Local > 0) ? per17Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const scpMultLocal = (typeof scpMultiplier !== 'undefined' ? scpMultiplier : 1);
-                return eff * scpMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 18) {
-                const lvl = upgrade18Level || 0;
-                const per18Local = 150000000000; // 150B per level
-                const base = (lvl > 0 && per18Local > 0) ? per18Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const goatisMultLocal = (typeof goatisMultiplier !== 'undefined' ? goatisMultiplier : 1);
-                return eff * goon * goatisMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 19) {
-                const lvl = upgrade19Level || 0;
-                const per19Local = 2000000000000; // 2T per level
-                const base = (lvl > 0 && per19Local > 0) ? per19Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const rawMultLocal = (typeof rawMultiplier !== 'undefined' ? rawMultiplier : 1);
-                return eff * goon * rawMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 20) {
-                const lvl = upgrade20Level || 0;
-                const per20Local = 50000000000000; // 50T per level
-                const base = (lvl > 0 && per20Local > 0) ? per20Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const landonMultLocal = (typeof landonMultiplier !== 'undefined' ? landonMultiplier : 1);
-                return eff * goon * landonMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 21) {
-                const lvl = upgrade21Level || 0;
-                const per21Local = 1000000000000000; // 1Q per level
-                const base = (lvl > 0 && per21Local > 0) ? per21Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const theBassMultLocal = (typeof theBassMultiplier !== 'undefined' ? theBassMultiplier : 1);
-                return eff * goon * theBassMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 22) {
-                const lvl = upgrade22Level || 0;
-                const per22Local = 50000000000000000; // 50Q per level
-                const base = (lvl > 0 && per22Local > 0) ? per22Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const goodNoodlesMultLocal = (typeof goodNoodlesMultiplier !== 'undefined' ? goodNoodlesMultiplier : 1);
-                return eff * goon * goodNoodlesMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 23) {
-                const lvl = upgrade23Level || 0;
-                const per23Local = 500000000000000000; // 500Q per level
-                const base = (lvl > 0 && per23Local > 0) ? per23Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const mobileManMultLocal = (typeof mobileMan38Multiplier !== 'undefined' ? mobileMan38Multiplier : 1);
-                return eff * goon * mobileManMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            if (idx === 24) {
-                const lvl = upgrade24Level || 0;
-                const per24Local = 1000000000000000000; // 1000Q per level
-                const base = (lvl > 0 && per24Local > 0) ? per24Local * lvl : 0;
-                const eff = base * computeLevelMultiplier(lvl);
-                const goon = (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1);
-                const eastonBundyMultLocal = (typeof eastonBundyMultiplier !== 'undefined' ? eastonBundyMultiplier : 1);
-                return eff * goon * eastonBundyMultLocal * globalSectionMult * goldenMult * divineArgonMult;
-            }
-            return 0;
-        }
-    } catch (e) { return hasDecimal ? D(0) : 0; }
+        const i = Number(String(upgradeId).replace('upgrade', '')) || 0;
+        if (i === 1) return Number(clickPower) * Number(goldenMultiplier);
+        const lvl = numericLevel(getUpgradeLevel(i));
+        if (lvl <= 0 || !UPGRADE_CPS[i]) return 0;
+        const own = UPGRADE_CPS[i] * lvl * computeLevelMultiplier(lvl) * upgradeOwnMultiplier(i);
+        // the same grouping updateDisplays uses: pirate | (crew, Jonathan, CR) x Goonsaw, then the total-CPS specials
+        const parts = computeEffectiveCpsParts();
+        const crew = [diddyOtherMultiplier, argonOtherMultiplier, grapeOtherMultiplier, skippieOtherMultiplier, islandOtherMultiplier, tribalOtherMultiplier].reduce((a, m) => a * (Number(m) || 1), 1);
+        const totals = [diddyMultiplier, argonMultiplier, grapeMultiplier, skippieMultiplier, islandMultiplier, tribalMultiplier, phonkMultiplier].reduce((a, m) => a * (Number(m) || 1), 1);
+        const goon = Number(goonMultiplier) || 1;
+        const preGlobal = (Number(parts.pirateEffective) * (Number(pirateMultiplier) || 1) +
+            (Number(parts.otherEffective) * crew + Number(parts.jonathanEffective) * (Number(jonathanOtherMultiplier) || 1) + Number(parts.crEffective) * (Number(crOtherMultiplier) || 1)) * goon) * totals;
+        // golden, divine, clan, casino, follower and item bonuses all scale total CPS
+        const globalFactor = preGlobal > 0 ? Number(cps) / preGlobal : 1;
+        let group;
+        if (i === 2) group = Number(pirateMultiplier) || 1;
+        else if (i === 11) group = (Number(jonathanOtherMultiplier) || 1) * goon;
+        else if (i === 12) group = (Number(crOtherMultiplier) || 1) * goon;
+        else group = crew * goon;
+        return own * group * totals * globalFactor;
+    } catch (e) { return 0; }
 }
 
 // Upgrade 1 state
-let upgrade1Cost = 100;
+let upgrade1Cost = UPGRADE_BASE_COSTS[1];
 let upgrade1Level = 0;
 
 // Upgrade 13 (ropingnecurse)
-let upgrade13Cost = 10000000000; // 10B
+let upgrade13Cost = UPGRADE_BASE_COSTS[13];
 let upgrade13Level = 0;
 
 // Upgrade 14 (skibbidi scimitar)
-let upgrade14Cost = 25000000000; // 25B
+let upgrade14Cost = UPGRADE_BASE_COSTS[14];
 let upgrade14Level = 0;
 // What Happened Beats (upgrade15)
-let upgrade15Cost = 100000000000; // 100B
+let upgrade15Cost = UPGRADE_BASE_COSTS[15];
 let upgrade15Level = 0;
 
 // Upgrade 16 (ez villager)
-let upgrade16Cost = 250000000000; // 250B (UI default)
+let upgrade16Cost = UPGRADE_BASE_COSTS[16];
 let upgrade16Level = 0;
 // ez-specific multiplier (applies only to upgrade16 contribution)
 let ezOtherMultiplier = 1;
 // Upgrade 17 (scp wish I knew.)
-let upgrade17Cost = 700000000000; // 700B
+let upgrade17Cost = UPGRADE_BASE_COSTS[17];
 let upgrade17Level = 0;
 // Upgrade 18 (The Goatis)
-let upgrade18Cost = 5000000000000; // 5T
+let upgrade18Cost = UPGRADE_BASE_COSTS[18];
 let upgrade18Level = 0;
 // Upgrade 19 (goatises raw liver)
-let upgrade19Cost = 200000000000000; // 200T
+let upgrade19Cost = UPGRADE_BASE_COSTS[19];
 let upgrade19Level = 0;
 // Upgrade 20 (The Landon Stream)
-let upgrade20Cost = 1000000000000000; // 1Q
+let upgrade20Cost = UPGRADE_BASE_COSTS[20];
 let upgrade20Level = 0;
 // Upgrade 21 (The Bass)
-let upgrade21Cost = 200000000000000000; // 200Q
+let upgrade21Cost = UPGRADE_BASE_COSTS[21];
 let upgrade21Level = 0;
 // Upgrade 22 (Good Noodles)
-let upgrade22Cost = 1000000000000000000; // 1000Q
+let upgrade22Cost = UPGRADE_BASE_COSTS[22];
 let upgrade22Level = 0;
 // Good Noodles multiplier (specials apply here)
 let goodNoodlesMultiplier = 1;
 // Good Noodles specials: costs and purchased flags
-let goodNoodles1Cost = 2000000000000000000; // 2000Q
-let goodNoodles2Cost = 8000000000000000000; // 8000Q
-let goodNoodles3Cost = 30000000000000000000; // 30000Q
+let goodNoodles1Cost = specialCost(22, 10, 'own');
+let goodNoodles2Cost = specialCost(22, 25, 'own');
+let goodNoodles3Cost = specialCost(22, 50, 'own');
 let goodNoodles1Purchased = false, goodNoodles2Purchased = false, goodNoodles3Purchased = false;
-let goodNoodles4Cost = 100000000000000000000; // 100000Q
+let goodNoodles4Cost = specialCost(22, 100, 'own');
 let goodNoodles4Purchased = false;
 // Upgrade 23 (Mobile Man 38)
-let upgrade23Cost = 5000000000000000000; // 5000Q
+let upgrade23Cost = UPGRADE_BASE_COSTS[23];
 let upgrade23Level = 0;
 // Mobile Man 38 multiplier (specials apply here)
 let mobileMan38Multiplier = 1;
 // Mobile Man 38 specials: costs and purchased flags
-let mobileMan381Cost = 10000000000000000000; // 10000Q
-let mobileMan382Cost = 40000000000000000000; // 40000Q
-let mobileMan383Cost = 150000000000000000000; // 150000Q
+let mobileMan381Cost = specialCost(23, 10, 'own');
+let mobileMan382Cost = specialCost(23, 25, 'own');
+let mobileMan383Cost = specialCost(23, 50, 'own');
 let mobileMan381Purchased = false, mobileMan382Purchased = false, mobileMan383Purchased = false;
-let mobileMan384Cost = 600000000000000000000; // 600000Q
+let mobileMan384Cost = specialCost(23, 100, 'own');
 let mobileMan384Purchased = false;
 // Upgrade 24 (Easton Bundy) state
-let upgrade24Cost = 30000000000000000000; // 30000Q
+let upgrade24Cost = UPGRADE_BASE_COSTS[24];
 let upgrade24Level = 0;
 // Easton Bundy multiplier (specials apply here)
 let eastonBundyMultiplier = 1;
 // Easton Bundy specials: costs and purchased flags
-let eastonBundy1Cost = 60000000000000000000; // 60000Q
-let eastonBundy2Cost = 240000000000000000000; // 240000Q
-let eastonBundy3Cost = 900000000000000000000; // 900000Q
+let eastonBundy1Cost = specialCost(24, 10, 'own');
+let eastonBundy2Cost = specialCost(24, 25, 'own');
+let eastonBundy3Cost = specialCost(24, 50, 'own');
 let eastonBundy1Purchased = false, eastonBundy2Purchased = false, eastonBundy3Purchased = false;
-let eastonBundy4Cost = 3600000000000000000000; // 3600000Q
+let eastonBundy4Cost = specialCost(24, 100, 'own');
 let eastonBundy4Purchased = false;
+// Upgrades 25-28: Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo
+let upgrade25Cost = UPGRADE_BASE_COSTS[25], upgrade25Level = 0;
+let upgrade26Cost = UPGRADE_BASE_COSTS[26], upgrade26Level = 0;
+let upgrade27Cost = UPGRADE_BASE_COSTS[27], upgrade27Level = 0;
+let upgrade28Cost = UPGRADE_BASE_COSTS[28], upgrade28Level = 0;
+// each one's specials multiply only its own CPS
+let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1;
+function lateTierMultiplier(i) {
+    switch (i) {
+        case 25: return Number(tomPearlMultiplier) || 1;
+        case 26: return Number(hypergamyMultiplier) || 1;
+        case 27: return Number(evilPirateMultiplier) || 1;
+        case 28: return Number(oalgoMultiplier) || 1;
+        default: return 1;
+    }
+}
+// Their specials unlock at levels 10 / 25 / 50 / 100 (x1.5 / x2 / x2.5 / x3, like the other late upgrades); prices come from specialCost()
+let tomPearl1Cost = specialCost(25, 10, 'own'), tomPearl2Cost = specialCost(25, 25, 'own'), tomPearl3Cost = specialCost(25, 50, 'own'), tomPearl4Cost = specialCost(25, 100, 'own');
+let tomPearl1Purchased = false, tomPearl2Purchased = false, tomPearl3Purchased = false, tomPearl4Purchased = false;
+let hypergamy1Cost = specialCost(26, 10, 'own'), hypergamy2Cost = specialCost(26, 25, 'own'), hypergamy3Cost = specialCost(26, 50, 'own'), hypergamy4Cost = specialCost(26, 100, 'own');
+let hypergamy1Purchased = false, hypergamy2Purchased = false, hypergamy3Purchased = false, hypergamy4Purchased = false;
+let evilPirate1Cost = specialCost(27, 10, 'own'), evilPirate2Cost = specialCost(27, 25, 'own'), evilPirate3Cost = specialCost(27, 50, 'own'), evilPirate4Cost = specialCost(27, 100, 'own');
+let evilPirate1Purchased = false, evilPirate2Purchased = false, evilPirate3Purchased = false, evilPirate4Purchased = false;
+let oalgo1Cost = specialCost(28, 10, 'own'), oalgo2Cost = specialCost(28, 25, 'own'), oalgo3Cost = specialCost(28, 50, 'own'), oalgo4Cost = specialCost(28, 100, 'own');
+let oalgo1Purchased = false, oalgo2Purchased = false, oalgo3Purchased = false, oalgo4Purchased = false;
 // Landon Stream specials (one-time multipliers that apply to upgrade20 contribution)
-// Priced like the other late-game tiers: 2x / 8x / 30x / 120x the base upgrade cost (1Q)
-let landon1Cost = 2000000000000000; // 2Q
-let landon2Cost = 8000000000000000; // 8Q
-let landon3Cost = 30000000000000000; // 30Q
-let landon4Cost = 120000000000000000; // 120Q
+let landon1Cost = specialCost(20, 10, 'own');
+let landon2Cost = specialCost(20, 25, 'own');
+let landon3Cost = specialCost(20, 50, 'own');
+let landon4Cost = specialCost(20, 100, 'own');
 let landon1Purchased = false;
 let landon2Purchased = false;
 let landon3Purchased = false;
 let landon4Purchased = false;
 let landonMultiplier = 1;
 // The Bass specials (one-time multipliers that apply to upgrade21 contribution)
-// 2x / 8x / 30x / 120x the base upgrade cost (200Q)
-let theBass1Cost = 400000000000000000; // 400Q
-let theBass2Cost = 1600000000000000000; // 1,600Q
-let theBass3Cost = 6000000000000000000; // 6,000Q
-let theBass4Cost = 24000000000000000000; // 24,000Q
+let theBass1Cost = specialCost(21, 10, 'own');
+let theBass2Cost = specialCost(21, 25, 'own');
+let theBass3Cost = specialCost(21, 50, 'own');
+let theBass4Cost = specialCost(21, 100, 'own');
 let theBass1Purchased = false;
 let theBass2Purchased = false;
 let theBass3Purchased = false;
 let theBass4Purchased = false;
 let theBassMultiplier = 1;
 // SCP specials (one-time multipliers that each double SCP cps contribution)
-let scp1Cost = 500000000000; // 500B
-let scp2Cost = 2000000000000; // 2T
-let scp3Cost = 10000000000000; // 10T
-let scp4Cost = 50000000000000; // 50T
+let scp1Cost = specialCost(17, 10, 'own');
+let scp2Cost = specialCost(17, 25, 'own');
+let scp3Cost = specialCost(17, 50, 'own');
+let scp4Cost = specialCost(17, 75, 'own');
 let scp1Purchased = false;
 let scp2Purchased = false;
 let scp3Purchased = false;
@@ -1597,88 +1231,88 @@ let scp4Purchased = false;
 let scpMultiplier = 1;
  
 // Upgrade 2 state
-let upgrade2Cost = 500;
+let upgrade2Cost = UPGRADE_BASE_COSTS[2];
 let upgrade2Level = 0;
 
 // Upgrade 3 state
-let upgrade3Cost = 1000;
+let upgrade3Cost = UPGRADE_BASE_COSTS[3];
 let upgrade3Level = 0;
 // Upgrade 4 (Diddy blud) state
-let upgrade4Cost = 3000;
+let upgrade4Cost = UPGRADE_BASE_COSTS[4];
 let upgrade4Level = 0;
 
 //Upgrade 5 (Argonian Autist) state
-let upgrade5Cost = 10000;
+let upgrade5Cost = UPGRADE_BASE_COSTS[5];
 let upgrade5Level = 0;
 // Upgrade 6 (Grape God) state
-let upgrade6Cost = 250000;
+let upgrade6Cost = UPGRADE_BASE_COSTS[6];
 let upgrade6Level = 0;
 
 // Special upgrade: multiplier unlocked at OP mouse level 10
-let special1Cost = 1000;
+let special1Cost = specialCost(1, 10, 'click');
 let special1Purchased = false;
 const special1Multiplier = 1.5;
 // Additional special upgrades (cps multipliers)
-let special2Cost = 5000;
+let special2Cost = specialCost(1, 25, 'click');
 let special2Purchased = false;
 const special2Multiplier = 2;
 
-let special3Cost = 20000;
+let special3Cost = specialCost(1, 50, 'click');
 let special3Purchased = false;
 const special3Multiplier = 2;
 
-let special4Cost = 100000;
+let special4Cost = specialCost(1, 100, 'click');
 let special4Purchased = false;
 const special4Multiplier = 2.5;
 
-let special5Cost = 500000;
+let special5Cost = specialCost(1, 150, 'click');
 let special5Purchased = false;
 const special5Multiplier = 3;
 
 // Additional OP mouse specials (high-tier)
-let special6Cost = 2000000;
+let special6Cost = specialCost(1, 200, 'click');
 let special6Purchased = false;
 const special6Multiplier = 3.5;
 
-let special7Cost = 5000000;
+let special7Cost = specialCost(1, 250, 'click');
 let special7Purchased = false;
 const special7Multiplier = 3.5;
 
-let special8Cost = 20000000;
+let special8Cost = specialCost(1, 300, 'click');
 let special8Purchased = false;
 const special8Multiplier = 4;
 
 // Ropingnecurse specials
-let roping1Cost = 50000000000; // 50B
+let roping1Cost = specialCost(13, 10, 'own');
 let roping1Purchased = false;
 const roping1Multiplier = 1.5;
 
-let roping2Cost = 200000000000; // 200B
+let roping2Cost = specialCost(13, 25, 'own');
 let roping2Purchased = false;
 const roping2Multiplier = 2;
 
-let roping3Cost = 1000000000000; // 1T
+let roping3Cost = specialCost(13, 50, 'own');
 let roping3Purchased = false;
 const roping3Multiplier = 2;
 
-let roping4Cost = 5000000000000; // 5T
+let roping4Cost = specialCost(13, 75, 'own');
 let roping4Purchased = false;
 const roping4Multiplier = 2.25;
 
 // Skibbidi Scimitar specials
-let skibidi1Cost = 60000000000; // 60B
+let skibidi1Cost = specialCost(14, 10, 'own');
 let skibidi1Purchased = false;
 const skibidi1Multiplier = 1.5;
 
-let skibidi2Cost = 240000000000; // 240B
+let skibidi2Cost = specialCost(14, 25, 'own');
 let skibidi2Purchased = false;
 const skibidi2Multiplier = 2;
 
-let skibidi3Cost = 1200000000000; // 1.2T
+let skibidi3Cost = specialCost(14, 50, 'own');
 let skibidi3Purchased = false;
 const skibidi3Multiplier = 2;
 
-let skibidi4Cost = 6000000000000; // 6T
+let skibidi4Cost = specialCost(14, 75, 'own');
 let skibidi4Purchased = false;
 const skibidi4Multiplier = 2.25;
 
@@ -1695,82 +1329,82 @@ let skibbidiOtherMultiplier = 1;
 let beatsOtherMultiplier = 1;
 
 // Beats specials
-let beats1Cost = 80000000000; // 80B unlock lvl10
+let beats1Cost = specialCost(15, 10, 'own');
 let beats1Purchased = false;
 const beats1Multiplier = 1.5;
 
-let beats2Cost = 300000000000; // 300B unlock lvl25
+let beats2Cost = specialCost(15, 25, 'own');
 let beats2Purchased = false;
 const beats2Multiplier = 2;
 
-let beats3Cost = 1000000000000; // 1T unlock lvl50
+let beats3Cost = specialCost(15, 50, 'own');
 let beats3Purchased = false;
 const beats3Multiplier = 2.5;
 
 // EZ Villager specials
-let ez1Cost = 1000000000000; // 1T unlock lvl10
+let ez1Cost = specialCost(16, 10, 'own');
 let ez1Purchased = false;
 const ez1Multiplier = 1.5;
 
-let ez2Cost = 4000000000000; // 4T unlock lvl25
+let ez2Cost = specialCost(16, 25, 'own');
 let ez2Purchased = false;
 const ez2Multiplier = 2;
 
-let ez3Cost = 20000000000000; // 20T unlock lvl50
+let ez3Cost = specialCost(16, 50, 'own');
 let ez3Purchased = false;
 const ez3Multiplier = 2; // click power x2
 
-let ez4Cost = 100000000000000; // 100T unlock lvl100
+let ez4Cost = specialCost(16, 100, 'own');
 let ez4Purchased = false;
 const ez4Multiplier = 2; // total cps x2
 
 // Pirate-specific specials (unlocks at Somalian Pirate levels)
-let pirateSpec1Cost = 1500; // lvl 10
+let pirateSpec1Cost = specialCost(2, 10, 'own'); // lvl 10
 let pirateSpec1Purchased = false;
 const pirateSpec1Multiplier = 1.5;
 
-let pirateSpec2Cost = 6000; // lvl 25
+let pirateSpec2Cost = specialCost(2, 25, 'own'); // lvl 25
 let pirateSpec2Purchased = false;
 const pirateSpec2Multiplier = 1.5;
 
-let pirateSpec3Cost = 25000; // lvl 50
+let pirateSpec3Cost = specialCost(2, 50, 'own'); // lvl 50
 let pirateSpec3Purchased = false;
 const pirateSpec3Multiplier = 2;
 
-let pirateSpec4Cost = 100000; // lvl 100
+let pirateSpec4Cost = specialCost(2, 100, 'own'); // lvl 100
 let pirateSpec4Purchased = false;
 const pirateSpec4Multiplier = 1.25; // applies to pirate contribution
 
 // Goonsaw-specific specials
-let goonSpec1Cost = 2000; // lvl 10
+let goonSpec1Cost = specialCost(3, 10, 'global'); // lvl 10
 let goonSpec1Purchased = false;
 const goonSpec1Multiplier = 2;
 
-let goonSpec2Cost = 8000; // lvl 25
+let goonSpec2Cost = specialCost(3, 25, 'global'); // lvl 25
 let goonSpec2Purchased = false;
 const goonSpec2Multiplier = 2;
 
-let goonSpec3Cost = 30000; // lvl 50
+let goonSpec3Cost = specialCost(3, 50, 'global'); // lvl 50
 let goonSpec3Purchased = false;
 const goonSpec3Multiplier = 1.5;
 
-let goonSpec4Cost = 150000; // lvl 100
+let goonSpec4Cost = specialCost(3, 100, 'global'); // lvl 100
 let goonSpec4Purchased = false;
 const goonSpec4Multiplier = 2.5;
 // The Goatis specials (upgrade18)
-let goatis1Cost = 10000000000000; // 10T (2x base upgrade cost)
+let goatis1Cost = specialCost(18, 10, 'own');
 let goatis1Purchased = false;
 const goatis1Multiplier = 1.5;
 
-let goatis2Cost = 40000000000000; // 40T
+let goatis2Cost = specialCost(18, 25, 'own');
 let goatis2Purchased = false;
 const goatis2Multiplier = 2;
 
-let goatis3Cost = 150000000000000; // 150T
+let goatis3Cost = specialCost(18, 50, 'own');
 let goatis3Purchased = false;
 const goatis3Multiplier = 2;
 
-let goatis4Cost = 600000000000000; // 600T
+let goatis4Cost = specialCost(18, 100, 'own');
 let goatis4Purchased = false;
 const goatis4Multiplier = 2.25;
 // Landon Stream specials multipliers
@@ -1789,19 +1423,19 @@ const theBass4Multiplier = 2.25;
 let goatisMultiplier = 1;
 
 // goatises raw liver specials (upgrade19)
-let raw1Cost = 400000000000000; // 400T (2x base upgrade cost)
+let raw1Cost = specialCost(19, 10, 'own');
 let raw1Purchased = false;
 const raw1Multiplier = 1.5;
 
-let raw2Cost = 1600000000000000; // 1.6Q
+let raw2Cost = specialCost(19, 25, 'own');
 let raw2Purchased = false;
 const raw2Multiplier = 2;
 
-let raw3Cost = 6000000000000000; // 6Q
+let raw3Cost = specialCost(19, 50, 'own');
 let raw3Purchased = false;
 const raw3Multiplier = 2;
 
-let raw4Cost = 24000000000000000; // 24Q
+let raw4Cost = specialCost(19, 100, 'own');
 let raw4Purchased = false;
 const raw4Multiplier = 2.25;
 
@@ -1809,20 +1443,20 @@ const raw4Multiplier = 2.25;
 let rawMultiplier = 1;
 
 // Diddy Blud specials
-let diddy1Cost = 5000;
-let diddy2Cost = 20000;
-let diddy3Cost = 50000;
-let diddy4Cost = 200000;
+let diddy1Cost = specialCost(4, 10, 'base');
+let diddy2Cost = specialCost(4, 25, 'global');
+let diddy3Cost = specialCost(4, 50, 'click');
+let diddy4Cost = specialCost(4, 100, 'global');
 let diddy1Purchased = false;
 let diddy2Purchased = false;
 let diddy3Purchased = false;
 let diddy4Purchased = false;
 
 // Argonian (upgrade5) specials
-let argon1Cost = 10000;
-let argon2Cost = 40000;
-let argon3Cost = 150000;
-let argon4Cost = 500000;
+let argon1Cost = specialCost(5, 10, 'click');
+let argon2Cost = specialCost(5, 25, 'global');
+let argon3Cost = specialCost(5, 50, 'click');
+let argon4Cost = specialCost(5, 100, 'global');
 let argon1Purchased = false;
 let argon2Purchased = false;
 let argon3Purchased = false;
@@ -1833,10 +1467,10 @@ const argon3Multiplier = 2;   // click power
 const argon4Multiplier = 1.5; // total cps
 
 // Grape God (upgrade6) specials
-let grape1Cost = 250000;
-let grape2Cost = 1000000;
-let grape3Cost = 5000000;
-let grape4Cost = 20000000;
+let grape1Cost = specialCost(6, 10, 'base');
+let grape2Cost = specialCost(6, 25, 'global');
+let grape3Cost = specialCost(6, 50, 'click');
+let grape4Cost = specialCost(6, 100, 'global');
 let grape1Purchased = false;
 let grape2Purchased = false;
 let grape3Purchased = false;
@@ -1845,30 +1479,30 @@ const grape2Multiplier = 2; // other cps
 const grape3Multiplier = 2; // click power
 const grape4Multiplier = 2; // total cps
 // Skippie Toilet (upgrade7) specials and state
-let upgrade7Cost = 1000000;
+let upgrade7Cost = UPGRADE_BASE_COSTS[7];
 let upgrade7Level = 0;
 
 // Mysterious Island (upgrade8)
-let upgrade8Cost = 5000000;
+let upgrade8Cost = UPGRADE_BASE_COSTS[8];
 let upgrade8Level = 0;
 // Tribal Camp (upgrade9)
-let upgrade9Cost = 20000000;
+let upgrade9Cost = UPGRADE_BASE_COSTS[9];
 let upgrade9Level = 0;
 
 // The Phonk Man (upgrade10)
-let upgrade10Cost = 100000000;
+let upgrade10Cost = UPGRADE_BASE_COSTS[10];
 let upgrade10Level = 0;
 // Jonathan (upgrade11)
-let upgrade11Cost = 500000000; // 500M
+let upgrade11Cost = UPGRADE_BASE_COSTS[11];
 let upgrade11Level = 0;
 // CR lurker (upgrade12)
-let upgrade12Cost = 2000000000; // 2B
+let upgrade12Cost = UPGRADE_BASE_COSTS[12];
 let upgrade12Level = 0;
 
-let skippie1Cost = 500000;
-let skippie2Cost = 2000000;
-let skippie3Cost = 10000000;
-let skippie4Cost = 50000000;
+let skippie1Cost = specialCost(7, 10, 'base');
+let skippie2Cost = specialCost(7, 25, 'global');
+let skippie3Cost = specialCost(7, 50, 'click');
+let skippie4Cost = specialCost(7, 100, 'global');
 let skippie1Purchased = false;
 let skippie2Purchased = false;
 let skippie3Purchased = false;
@@ -1878,10 +1512,10 @@ const skippie3Multiplier = 2; // click power multiplier
 const skippie4Multiplier = 2; // total cps multiplier
 
 // Mysterious Island specials
-let island1Cost = 2000000;
-let island2Cost = 8000000;
-let island3Cost = 40000000;
-let island4Cost = 200000000;
+let island1Cost = specialCost(8, 10, 'base');
+let island2Cost = specialCost(8, 25, 'global');
+let island3Cost = specialCost(8, 50, 'click');
+let island4Cost = specialCost(8, 100, 'global');
 let island1Purchased = false;
 let island2Purchased = false;
 let island3Purchased = false;
@@ -1895,10 +1529,10 @@ let islandMultiplier = 1;
 let ezMultiplier = 1;
 
 // Tribal Camp specials
-let tribal1Cost = 10000000;
-let tribal2Cost = 40000000;
-let tribal3Cost = 200000000;
-let tribal4Cost = 1000000000;
+let tribal1Cost = specialCost(9, 10, 'base');
+let tribal2Cost = specialCost(9, 25, 'global');
+let tribal3Cost = specialCost(9, 50, 'click');
+let tribal4Cost = specialCost(9, 100, 'global');
 let tribal1Purchased = false;
 let tribal2Purchased = false;
 let tribal3Purchased = false;
@@ -1909,21 +1543,21 @@ const tribal4Multiplier = 2;
 let tribalOtherMultiplier = 1;
 let tribalMultiplier = 1;
 // Phonk Man specials costs and multipliers
-let phonk1Cost = 10000000; // 10M
-let phonk2Cost = 40000000; // 40M
-let phonk3Cost = 200000000; // 200M
-let phonk4Cost = 1000000000; // 1B
-let phonk5Cost = 5000000000; // 5B
+let phonk1Cost = specialCost(10, 10, 'global');
+let phonk2Cost = specialCost(10, 25, 'global');
+let phonk3Cost = specialCost(10, 50, 'global');
+let phonk4Cost = specialCost(10, 75, 'own');
+let phonk5Cost = specialCost(10, 100, 'global');
 const phonk1Multiplier = 1.25;
 const phonk2Multiplier = 1.25;
 const phonk3Multiplier = 1.5;
 const phonk4Multiplier = 2; // applies to Phonk's cps only
 const phonk5Multiplier = 2; // applies to total cps
 // Jonathan specials: costs and multipliers
-let jonathan1Cost = 100000000; // 100M
-let jonathan2Cost = 400000000; // 400M
-let jonathan3Cost = 2000000000; // 2B
-let jonathan4Cost = 10000000000; // 10B
+let jonathan1Cost = specialCost(11, 10, 'own');
+let jonathan2Cost = specialCost(11, 25, 'own');
+let jonathan3Cost = specialCost(11, 50, 'click');
+let jonathan4Cost = specialCost(11, 75, 'own');
 let jonathan1Purchased = false;
 let jonathan2Purchased = false;
 let jonathan3Purchased = false;
@@ -1936,11 +1570,11 @@ const jonathan3Multiplier = 4; // click power multiplier
 const jonathan4Multiplier = 2;
 
 // CR lurker specials: costs and multipliers
-let cr1Cost = 200000000; // 200M
-let cr2Cost = 800000000; // 800M
-let cr3Cost = 3000000000; // 3B
-let cr4Cost = 10000000000; // 10B
-let cr5Cost = 30000000000; // 30B
+let cr1Cost = specialCost(12, 10, 'own');
+let cr2Cost = specialCost(12, 25, 'own');
+let cr3Cost = specialCost(12, 50, 'click');
+let cr4Cost = specialCost(12, 75, 'own');
+let cr5Cost = specialCost(12, 100, 'global');
 let cr1Purchased = false;
 let cr2Purchased = false;
 let cr3Purchased = false;
@@ -2163,27 +1797,43 @@ const DIVINE_MONEYMAN_BASE = 100000; // starting amount at level 1 (buffed to 10
 let divineSpiritLevel = 0;
 let divineSpiritCost = 1; // next cost in golden; follows Fibonacci-like progression 1,2,3,5,8...
 
-// Divine Simple Villager: reduces normal prices by 10% per level, cost doubles each purchase
+// Divine Simple Villager: reduces normal prices by 25% per level (was 10%, which was worth less than just holding the Golden)
 let divineSimpleVillagerLevel = 0;
 let divineSimpleVillagerCost = 1; // cost in golden currency; doubles each purchase
-// Price is divided by (1 + 10% per level), so it never goes to zero (e.g. level 10 => 1/2 price, level 90 => 1/10 price)
+// Price is divided by (1 + 25% per level), so it never goes to zero (e.g. level 4 => 1/2 price, level 36 => 1/10 price)
+
+// Divine Prophit of Brileyism: every other Divine upgrade's effect is 5% stronger per level
+let divineBrileyismLevel = 0;
+let divineBrileyismCost = 2;
+const DIVINE_BRILEYISM_PER_LEVEL = 0.05;
+
 // Golden cost of the next level of each Divine upgrade, from its current level.
 //  Argonian / Somalian: x3 per level (each level roughly doubles CPS / multiplies click power by 5)
 //  Assassin: level n costs n (+5% crit chance per level, max 19). It used to double, so the last levels cost 260K+.
 //  Collector / Simple Villager: x1.6 per level (their bonuses are additive and shrink relative to what you have)
 //  Money Man: 1, 2, 3, 5, 9, 17... (each level is a x10 bigger head start)
 //  Spirit: Fibonacci 1, 2, 3, 5, 8... (each level doubles crit damage)
-function divineCostFor(kind, level) {
-    const L = Math.max(0, Math.floor(Number(level) || 0));
-    switch (kind) {
-        case 'argon': case 'somalian': return Math.pow(3, L);
-        case 'assassin': return L + 1;
-        case 'collector': case 'villager': return Math.ceil(Math.pow(1.6, L));
-        case 'moneyMan': return L === 0 ? 1 : Math.pow(2, L - 1) + 1;
-        case 'spirit': return fibNumber(L + 1);
-        default: return 1;
-    }
-}
+//  Brileyism: 2, 4, 6, 9, 14, 21... (x1.6 per level; it boosts everything else by a flat 5% per level)
+function divineCostFor(kind, level) { return calc.divineCostFor(kind, level); }
+
+// ---------- Divine effects ----------
+// Each takes a level (the current one when omitted) and includes the Brileyism boost, which scales the bonus part of
+// every other Divine upgrade: +300% CPS becomes +315%, x11 click power becomes x11.5, 5% crit chance per level 5.25%, ...
+function getBrileyismBoost() { return 1 + DIVINE_BRILEYISM_PER_LEVEL * Math.max(0, numericLevel(divineBrileyismLevel)); }
+function lvlOr(level, current) { return Math.max(0, level === undefined ? numericLevel(current) : Number(level) || 0); }
+// Divine Argonian: +300% CPS at level 1, doubling each level
+function divineArgonPercentAt(level) { const L = lvlOr(level, divineArgonLevel); return L > 0 ? DIVINE_ARGON_BASE_PERCENT * Math.pow(2, L - 1) * getBrileyismBoost() : 0; }
+function getDivineCpsMult(level) { return 1 + divineArgonPercentAt(level) / 100; }
+// Divine Somalian: click power x11 at level 1, x5 more each level
+function getDivineClickMult(level) { const L = lvlOr(level, divineSomalianLevel); return L > 0 ? 1 + (11 * Math.pow(5, L - 1) - 1) * getBrileyismBoost() : 1; }
+// Divine Assassin: +5% crit chance per level
+function getDivineCritChance(level) { return Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * lvlOr(level, divineAssassinLevel) * getBrileyismBoost()); }
+// Divine Spirit: crits deal x10, doubled per level
+function getDivineCritMult(level) { const L = lvlOr(level, divineSpiritLevel); return 10 + 10 * (Math.pow(2, L) - 1) * getBrileyismBoost(); }
+// Divine Collector: +25% Golden from prestige per level
+function getDivineCollectorBonus(level) { return DIVINE_COLLECTOR_PER_LEVEL * lvlOr(level, divineCollectorLevel) * getBrileyismBoost(); }
+// Divine Money Man: start each run with 100K, x10 per level
+function getDivineMoneyManStart(level) { const L = lvlOr(level, divineMoneyManLevel); return L > 0 ? DIVINE_MONEYMAN_BASE * Math.pow(10, L - 1) * getBrileyismBoost() : 0; }
 // Recompute every next-cost from the levels (fixes saves made under the old cost curves)
 function syncDivineCostsFromLevels() {
     divineArgonCost = divineCostFor('argon', divineArgonLevel);
@@ -2193,8 +1843,10 @@ function syncDivineCostsFromLevels() {
     divineSimpleVillagerCost = divineCostFor('villager', divineSimpleVillagerLevel);
     divineMoneyManCost = divineCostFor('moneyMan', divineMoneyManLevel);
     divineSpiritCost = divineCostFor('spirit', divineSpiritLevel);
+    divineBrileyismCost = divineCostFor('brileyism', divineBrileyismLevel);
 }
-function getSimpleVillagerMultiplier() { const lvl = typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0; return 1 / (1 + 0.1 * Math.max(0, lvl)); }
+// Divine Simple Villager: upgrade prices divided by (1 + 25% per level)
+function getSimpleVillagerMultiplier(level) { return 1 / (1 + 0.25 * lvlOr(level, divineSimpleVillagerLevel) * getBrileyismBoost()); }
 function effectiveUpgradeCost(baseCost) {
     if (baseCost === undefined || baseCost === null) return baseCost;
     const mult = getSimpleVillagerMultiplier();
@@ -2208,28 +1860,7 @@ function effectiveUpgradeCost(baseCost) {
 }
 
 // fib helper (supports Decimal if available)
-function fibNumber(n) {
-    const nn = Math.max(1, Math.floor(n));
-    if (hasDecimal) {
-        let a = D(1), b = D(2);
-        if (nn === 1) return a;
-        if (nn === 2) return b;
-        for (let i = 3; i <= nn; i++) {
-            const c = a.plus(b);
-            a = b; b = c;
-        }
-        return b;
-    } else {
-        if (nn === 1) return 1;
-        if (nn === 2) return 2;
-        let a = 1, b = 2;
-        for (let i = 3; i <= nn; i++) {
-            const c = a + b;
-            a = b; b = c;
-        }
-        return b;
-    }
-}
+function fibNumber(n) { return calc.fibNumber(n); }
 
 // bulk purchase amount (1,5,10,25,50,100) or 'max' (as many levels as affordable)
 let purchaseBatch = 1;
@@ -2239,16 +1870,7 @@ function bulkLoopCount() { return purchaseBatch === 'max' ? 100000 : purchaseBat
 // levels the next purchase covers (for labels): the selected batch, or the affordable count in Max mode
 function bulkLevelsFor(currentCost, rate) {
     if (purchaseBatch !== 'max') return purchaseBatch;
-    const mult = getSimpleVillagerMultiplier();
-    const have = Number(count) || 0;
-    let n = 0, total = 0, temp = Number(currentCost) || 0;
-    while (n < 1000) {
-        total += temp * mult;
-        if (total > have) break;
-        temp = Math.ceil(temp * rate);
-        n++;
-    }
-    return Math.max(1, n);
+    return Math.max(1, calc.maxAffordableLevels(currentCost, rate, count, getSimpleVillagerMultiplier()));
 }
 
 function setBulkPurchase(v) {
@@ -2463,10 +2085,7 @@ function updateDisplays() {
     if (hasDecimal) {
         // recompute current click power from base and multipliers using Decimal math
         // include Divine Somalian multiplier: level 0 -> x1, level1 -> x11, subsequent levels multiply by 5 each
-        let divineSomalianMult = D(1);
-        if (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) {
-            divineSomalianMult = D(11).times(D(5).pow(Math.max(0, divineSomalianLevel - 1)));
-        }
+        const divineSomalianMult = D(getDivineClickMult());
         // compute OP mouse effective base applying milestone multipliers (milestones apply to OP mouse levels)
         const opLvl = D(upgrade1Level || 0);
         const opBaseInitial = D(1);
@@ -2490,7 +2109,7 @@ function updateDisplays() {
             const eastonIsZero = (isDecimalInstance(partsEaston) ? (partsEaston && typeof partsEaston.eq === 'function' ? partsEaston.eq(0) : false) : Number(partsEaston) === 0);
             if (eastonIsZero) {
                 const upgrade24LvlLocal = D(getUpgradeLevel(24));
-                const per24Local = D(1000000000000000000);
+                const per24Local = D(UPGRADE_CPS[24]);
                 const expectedLocalEaston = (upgrade24LvlLocal.gt(0) && per24Local.gt(0)) ? per24Local.times(upgrade24LvlLocal) : D(0);
                 if (expectedLocalEaston.gt(0)) {
                     const eastonMultLocal = D(computeLevelMultiplier(Number(upgrade24LvlLocal)));
@@ -2510,10 +2129,7 @@ function updateDisplays() {
     } else {
         // recompute current click power from base and multipliers
         // include Divine Somalian multiplier: level 0 -> x1, level1 -> x11, subsequent levels multiply by 5 each
-        let divineSomalianMult = 1;
-        if (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) {
-            divineSomalianMult = 11 * Math.pow(5, Math.max(0, divineSomalianLevel - 1));
-        }
+        const divineSomalianMult = getDivineClickMult();
         // compute OP mouse effective base applying milestone multipliers (milestones apply to OP mouse levels)
         const opLvl = upgrade1Level || 0;
         const opBaseInitial = 1; // starting base click power
@@ -2540,20 +2156,10 @@ function updateDisplays() {
     }
     try { renderGemBalances(); } catch (e) {}
     if (hasDecimal) {
-        cps = cps.times(goldenMultiplier);
-        if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
-            const appliedPercent = D(DIVINE_ARGON_BASE_PERCENT).times(D(D(2).pow(Math.max(0, (divineArgonLevel||0) - 1))));
-            const divineMult = D(1).plus(appliedPercent.div(D(100)));
-            cps = cps.times(divineMult);
-        }
+        cps = cps.times(goldenMultiplier).times(D(getDivineCpsMult()));
     } else {
-        cps = cps * goldenMultiplier;
         // apply Divine Argonian multiplier if purchased (percent is additive percentage e.g. 300 -> +300%)
-        if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
-            const appliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
-            const divineMult = 1 + (appliedPercent / 100);
-            cps = cps * divineMult;
-        }
+        cps = cps * goldenMultiplier * getDivineCpsMult();
     }
     // Clan buff (temporary, bought in the clan shop) and clan level perks (permanent, from clan XP)
     try {
@@ -2664,16 +2270,8 @@ function updateDisplays() {
     try {
         const somBtn = document.getElementById('divineSomalianBtn');
         if (somBtn) {
-            // compute current and next multiplier locally so we don't rely on outer-scope vars
-            let curMult;
-            if (hasDecimal) {
-                curMult = D(1);
-                if (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) curMult = D(11).times(D(5).pow(Math.max(0, divineSomalianLevel - 1)));
-            } else {
-                curMult = 1;
-                if (typeof divineSomalianLevel !== 'undefined' && divineSomalianLevel > 0) curMult = 11 * Math.pow(5, Math.max(0, divineSomalianLevel - 1));
-            }
-            const nextMult = (typeof divineSomalianLevel === 'number' && divineSomalianLevel > 0) ? (hasDecimal ? curMult.times(5) : curMult * 5) : (hasDecimal ? D(11) : 11);
+            const curMult = getDivineClickMult();
+            const nextMult = getDivineClickMult(numericLevel(divineSomalianLevel) + 1);
             const labelEl = somBtn.querySelector('.upgrade-label');
             setHtmlIfChanged(labelEl, divineCardHtml('Divine Somalian', divineSomalianLevel || 0, `Click power x${formatNumber(curMult)} → x${formatNumber(nextMult)}`, divineSomalianCost || 1));
             try {
@@ -2710,15 +2308,14 @@ function updateDisplays() {
         const asnBtn = document.getElementById('divineAssassinBtn');
         if (asnBtn) {
             const lvl = typeof divineAssassinLevel === 'number' ? divineAssassinLevel : 0;
-            const baseChance = (typeof DIVINE_ASSASSIN_BASE_CHANCE !== 'undefined') ? DIVINE_ASSASSIN_BASE_CHANCE : 0.05;
-            const chance = Math.min(1, baseChance * lvl);
+            const chance = getDivineCritChance();
             const chanceStr = String(+(chance * 100).toFixed(2)); // "5" not "5.00"
             const labelEl2 = asnBtn.querySelector('.upgrade-label');
             if (labelEl2) {
                 if (lvl >= 19) {
                     setHtmlIfChanged(labelEl2, divineCardHtml('Divine Assassin', lvl, `Crit chance ${chanceStr}%`, null));
                 } else {
-                    setHtmlIfChanged(labelEl2, divineCardHtml('Divine Assassin', lvl, `Crit chance ${chanceStr}% → ${(Math.min(1, baseChance * (lvl + 1)) * 100).toFixed(0)}%`, divineAssassinCost || 1));
+                    setHtmlIfChanged(labelEl2, divineCardHtml('Divine Assassin', lvl, `Crit chance ${chanceStr}% → ${+(getDivineCritChance(lvl + 1) * 100).toFixed(2)}%`, divineAssassinCost || 1));
                 }
             }
             // disable button when not affordable or at max level (with visual styling)
@@ -2746,7 +2343,7 @@ function updateDisplays() {
                 const lvl = typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0;
                 const cost = typeof divineSpiritCost !== 'undefined' ? divineSpiritCost : (hasDecimal ? D(1) : 1);
                 const labelEl = spBtn.querySelector('.upgrade-label');
-                setHtmlIfChanged(labelEl, divineCardHtml('Divine Spirit', lvl, `Crits deal x${formatNumber(10 * Math.pow(2, lvl))} → x${formatNumber(10 * Math.pow(2, lvl + 1))}${(typeof divineAssassinLevel === 'number' && divineAssassinLevel > 0) ? '' : ' (needs crit chance)'}`, cost));
+                setHtmlIfChanged(labelEl, divineCardHtml('Divine Spirit', lvl, `Crits deal x${formatNumber(getDivineCritMult())} → x${formatNumber(getDivineCritMult(lvl + 1))}${(typeof divineAssassinLevel === 'number' && divineAssassinLevel > 0) ? '' : ' (needs crit chance)'}`, cost));
                 // robust affordability check with logging
                 try {
                     const afford = !!goldenCanAfford(divineSpiritCost);
@@ -2776,10 +2373,9 @@ function updateDisplays() {
         const colBtn = document.getElementById('divineCollectorBtn');
         if (colBtn) {
             const lvl = typeof divineCollectorLevel === 'number' ? divineCollectorLevel : 0;
-            const bonus = (lvl * DIVINE_COLLECTOR_PER_LEVEL) * 100; // percentage
-            const bonusStr = bonus.toFixed(1);
+            const bonus = getDivineCollectorBonus() * 100; // percentage
             const labelEl3 = colBtn.querySelector('.upgrade-label');
-            setHtmlIfChanged(labelEl3, divineCardHtml('Divine Collector', lvl, `+${Math.round(bonus)}% Golden from prestige → +${Math.round((lvl + 1) * DIVINE_COLLECTOR_PER_LEVEL * 100)}%`, divineCollectorCost || 1));
+            setHtmlIfChanged(labelEl3, divineCardHtml('Divine Collector', lvl, `+${Math.round(bonus)}% Golden from prestige → +${Math.round(getDivineCollectorBonus(lvl + 1) * 100)}%`, divineCollectorCost || 1));
             try {
                 const afford = !!goldenCanAfford(divineCollectorCost);
                 try { colBtn.disabled = !afford; } catch (e) {}
@@ -2801,9 +2397,9 @@ function updateDisplays() {
         const mmBtn = document.getElementById('divineMoneyManBtn');
         if (mmBtn) {
             const lvl = typeof divineMoneyManLevel === 'number' ? divineMoneyManLevel : 0;
-            const startAmount = lvl > 0 ? (DIVINE_MONEYMAN_BASE * Math.pow(10, Math.max(0, lvl - 1))) : DIVINE_MONEYMAN_BASE;
+            const startAmount = getDivineMoneyManStart();
             const labelEl4 = mmBtn.querySelector('.upgrade-label');
-            setHtmlIfChanged(labelEl4, divineCardHtml('Divine Money Man', lvl, lvl > 0 ? `Start runs with ${formatNumber(startAmount)} → ${formatNumber(startAmount * 10)}` : `Start each run with ${formatNumber(DIVINE_MONEYMAN_BASE)}`, divineMoneyManCost || 1));
+            setHtmlIfChanged(labelEl4, divineCardHtml('Divine Money Man', lvl, lvl > 0 ? `Start runs with ${formatNumber(startAmount)} → ${formatNumber(getDivineMoneyManStart(lvl + 1))}` : `Start each run with ${formatNumber(getDivineMoneyManStart(1))}`, divineMoneyManCost || 1));
             try {
                 const afford = !!goldenCanAfford(divineMoneyManCost);
                 try { mmBtn.disabled = !afford; } catch (e) {}
@@ -2826,9 +2422,8 @@ function updateDisplays() {
         if (svBtn) {
             const lvl = typeof divineSimpleVillagerLevel === 'number' ? divineSimpleVillagerLevel : 0;
             const labelEl = svBtn.querySelector('.upgrade-label');
-            const perLevelPercent = 10;
-            const currentMult = 1 / (1 + 0.1 * lvl);
-            const nextMult = 1 / (1 + 0.1 * (lvl + 1));
+            const currentMult = getSimpleVillagerMultiplier();
+            const nextMult = getSimpleVillagerMultiplier(lvl + 1);
             const currentPct = Math.round((1 - currentMult) * 100);
             const nextPct = Math.round((1 - nextMult) * 100);
             setHtmlIfChanged(labelEl, divineCardHtml('Divine Simple Villager', lvl, `Upgrades ${currentPct}% cheaper → ${nextPct}%`, divineSimpleVillagerCost || 1));
@@ -2846,6 +2441,20 @@ function updateDisplays() {
                     svBtn.style.opacity = '0.6';
                 }
             } catch (e) { svBtn.disabled = false; }
+        }
+    } catch (e) {}
+    // update Divine Prophit of Brileyism button label and cost display if present
+    try {
+        const brBtn = document.getElementById('divineBrileyismBtn');
+        if (brBtn) {
+            const lvl = numericLevel(divineBrileyismLevel);
+            const pct = Math.round(lvl * DIVINE_BRILEYISM_PER_LEVEL * 100);
+            const nextPct = Math.round((lvl + 1) * DIVINE_BRILEYISM_PER_LEVEL * 100);
+            setHtmlIfChanged(brBtn.querySelector('.upgrade-label'), divineCardHtml('Divine Prophit of Brileyism', lvl, `Other Divine effects +${pct}% → +${nextPct}%`, divineBrileyismCost || 2));
+            brBtn.disabled = !goldenCanAfford(divineBrileyismCost);
+            if (brBtn.disabled) { brBtn.setAttribute('disabled', 'true'); brBtn.style.opacity = '0.6'; }
+            else { brBtn.removeAttribute('disabled'); brBtn.style.opacity = ''; brBtn.tabIndex = 0; }
+            brBtn.style.pointerEvents = 'auto';
         }
     } catch (e) {}
     document.getElementById('cps').innerText = formatNumber(cps);
@@ -2872,9 +2481,10 @@ function updateDisplays() {
     };
     // show batch cost for the selected bulk amount (in Max mode: as many levels as the player can afford)
     const upgradeCosts = [null, upgrade1Cost, upgrade2Cost, upgrade3Cost, upgrade4Cost, upgrade5Cost, upgrade6Cost, upgrade7Cost, upgrade8Cost, upgrade9Cost, upgrade10Cost, upgrade11Cost, upgrade12Cost,
-        upgrade13Cost, upgrade14Cost, upgrade15Cost, upgrade16Cost, upgrade17Cost, upgrade18Cost, upgrade19Cost, upgrade20Cost, upgrade21Cost, upgrade22Cost, upgrade23Cost, upgrade24Cost];
-    for (let i = 1; i <= 24; i++) {
-        const rate = (i <= 10) ? 1.1 : 1.15;
+        upgrade13Cost, upgrade14Cost, upgrade15Cost, upgrade16Cost, upgrade17Cost, upgrade18Cost, upgrade19Cost, upgrade20Cost, upgrade21Cost, upgrade22Cost, upgrade23Cost, upgrade24Cost,
+        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost];
+    for (let i = 1; i <= UPGRADE_COUNT; i++) {
+        const rate = upgradeCostRate(i);
         const levels = bulkLevelsFor(upgradeCosts[i], rate);
         const batchCost = computeBatchCostWithSimpleVillager(upgradeCosts[i], levels, rate);
         const lvl = getUpgradeLevel(i);
@@ -2923,6 +2533,9 @@ function updateDisplays() {
         try { document.getElementById('upgrade22').style.display = (upgrade21Level >= 1) ? 'flex' : 'none'; } catch (e) {}
         try { document.getElementById('upgrade23').style.display = (upgrade22Level >= 1) ? 'flex' : 'none'; } catch (e) {}
         try { document.getElementById('upgrade24').style.display = (upgrade23Level >= 1) ? 'flex' : 'none'; } catch (e) {}
+        for (let i = 25; i <= UPGRADE_COUNT; i++) {
+            try { document.getElementById('upgrade' + i).style.display = (numericLevel(getUpgradeLevel(i - 1)) >= 1) ? 'flex' : 'none'; } catch (e) {}
+        }
     }
 
     // prestige UI visibility (unlocked at CR lvl 150) - top-left button
@@ -2930,19 +2543,20 @@ function updateDisplays() {
     // with nothing to claim yet the button shows progress toward the first Golden instead of "+0"
     const prestigeAwards = getPotentialPrestigeAwards();
     const prestigeLevels = getTotalUpgradeLevels();
+    const levelsPerGolden = getLevelsPerGolden();
     const prestigeLabel = prestigeAwards > 0
         ? `Prestige <span class="btn-chip">+${formatNumber(prestigeAwards)} Golden</span>`
-        : `Prestige <span class="btn-chip">${formatNumber(prestigeLevels)} / ${formatNumber(LEVELS_PER_GOLDEN)} levels</span>`;
+        : `Prestige <span class="btn-chip">${formatNumber(prestigeLevels)} / ${formatNumber(Math.ceil(levelsPerGolden))} levels</span>`;
     const prestigeTopBtn = document.getElementById('prestigeTopBtn');
     if (prestigeTopBtn) {
         prestigeTopBtn.style.display = (numericLevel(upgrade12Level) >= 150) ? '' : 'none';
         if (prestigeTopBtn.innerHTML !== prestigeLabel) prestigeTopBtn.innerHTML = prestigeLabel;
         prestigeTopBtn.classList.toggle('btn-gold', prestigeAwards > 0);
         prestigeTopBtn.classList.toggle('btn-ghost', prestigeAwards <= 0);
-        const toNext = LEVELS_PER_GOLDEN - (prestigeLevels % LEVELS_PER_GOLDEN);
+        const toNext = Math.max(1, Math.ceil((prestigeAwards + 1) * levelsPerGolden - prestigeLevels));
         const tip = prestigeAwards > 0
             ? `Reset your run for ${prestigeAwards} Golden. About ${toNext} more upgrade levels earns another.`
-            : `Every ${LEVELS_PER_GOLDEN} total upgrade levels earns a Golden when you prestige. ${toNext} to go.`;
+            : `Every ${Math.ceil(levelsPerGolden)} total upgrade levels earns a Golden when you prestige. ${toNext} to go.`;
         if (prestigeTopBtn.title !== tip) prestigeTopBtn.title = tip;
         prestigeTopBtn.disabled = false;
     }
@@ -2968,15 +2582,8 @@ function updateDisplays() {
     const divineArgBtn = document.getElementById('divineArgonBtn');
     if (divineArgBtn) {
         // compute applied percent (base * 2^(level-1)) and next percent for display
-        let appliedPercent = 0;
-        let nextPercent = DIVINE_ARGON_BASE_PERCENT;
-        if (divineArgonLevel > 0) {
-            appliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
-            nextPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, divineArgonLevel);
-        } else {
-            appliedPercent = 0;
-            nextPercent = DIVINE_ARGON_BASE_PERCENT;
-        }
+        const appliedPercent = divineArgonPercentAt();
+        const nextPercent = divineArgonPercentAt(numericLevel(divineArgonLevel) + 1);
         // build HTML label showing level, applied percent (if any), and next cost/percent
         const imgHtml = `<img class="upgrade-img" src="mainimage/divineargonian.png" alt="" width="56" height="56">`;
         const html = imgHtml + '<span class="upgrade-label">' + divineCardHtml('Divine Argonian', divineArgonLevel, `CPS +${formatNumber(appliedPercent)}% → +${formatNumber(nextPercent)}%`, divineArgonCost) + '</span>';
@@ -3014,10 +2621,9 @@ function updateDisplays() {
             const cEl = document.getElementById('statsCritChance');
             const mEl = document.getElementById('statsCritMultiplier');
             try {
-                const hasAssassin = (typeof divineAssassinLevel === 'number' && divineAssassinLevel > 0);
                 const fb = getFollowerBonuses(), ib = getItemBonuses();
-                const chance = Math.min(1, (hasAssassin ? DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel : 0) + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100);
-                const critMult = chance > 0 ? 10 * Math.pow(2, (typeof divineSpiritLevel === 'number' ? divineSpiritLevel : 0)) * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) : 0;
+                const chance = Math.min(1, getDivineCritChance() + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100);
+                const critMult = chance > 0 ? getDivineCritMult() * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) : 0;
                 if (cEl) cEl.innerText = `${(chance * 100).toFixed(2)}%`;
                 if (mEl) mEl.innerText = `x${formatNumber(critMult)}`;
             } catch (e) {
@@ -3115,7 +2721,7 @@ function increment() {
     }
     // Divine Assassin + casino crit buff: chance to perform a critical click that multiplies earnings by 10
     try {
-        let chance = (typeof divineAssassinLevel !== 'undefined' && divineAssassinLevel > 0) ? Math.min(1, DIVINE_ASSASSIN_BASE_CHANCE * divineAssassinLevel) : 0;
+        let chance = getDivineCritChance();
         // Casino crit buff: add bonus crit chance when active
         if (window.casinoCritExpires && window.casinoCritExpires > Date.now()) chance += (window.casinoCritBonus || 0);
         // Followers and items (charms, Loaded Dice): extra crit chance (percentage points)
@@ -3123,10 +2729,8 @@ function increment() {
         chance += (getItemBonuses().critChance || 0) / 100;
         chance = Math.min(1, chance);
         if (chance > 0 && Math.random() < chance) {
-                // compute crit multiplier: base 10x, scaled by Divine Spirit levels (doubles per level)
-                let critMult = 10;
-                // each Divine Spirit level doubles crit damage (level 1 = x20); the old formula made level 1 do nothing
-                if (typeof divineSpiritLevel === 'number' && divineSpiritLevel > 0) critMult = 10 * Math.pow(2, divineSpiritLevel);
+                // compute crit multiplier: base 10x, each Divine Spirit level doubles it (level 1 = x20)
+                let critMult = getDivineCritMult();
                 // Followers and charms: crit damage bonus
                 critMult *= 1 + (getFollowerBonuses().critDmg || 0) / 100;
                 critMult *= 1 + (getItemBonuses().critDmg || 0) / 100;
@@ -4165,6 +3769,73 @@ function buyUpgrade24() {
     else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(typeof upgrade24Cost !== 'undefined' ? upgrade24Cost : 30000000000000000000, purchaseBatch || 1, 1.15)) + '.');
 }
 
+// next stored cost after buying one level of upgrade i
+function nextUpgradeCost(cost, i) { return calc.stepCost(cost, upgradeCostRate(i)); }
+// Price of the next level of upgrade i at a given level: its base cost raised once per level, rounded up like a purchase
+function costForLevel(i, level) { return calc.costAtLevel(UPGRADE_BASE_COSTS[i], upgradeCostRate(i), level); }
+// Recompute every upgrade's next price from its level, so saves made under older prices follow the current balance
+function syncUpgradeCostsFromLevels() {
+    upgrade1Cost = costForLevel(1, upgrade1Level); upgrade2Cost = costForLevel(2, upgrade2Level); upgrade3Cost = costForLevel(3, upgrade3Level);
+    upgrade4Cost = costForLevel(4, upgrade4Level); upgrade5Cost = costForLevel(5, upgrade5Level); upgrade6Cost = costForLevel(6, upgrade6Level);
+    upgrade7Cost = costForLevel(7, upgrade7Level); upgrade8Cost = costForLevel(8, upgrade8Level); upgrade9Cost = costForLevel(9, upgrade9Level);
+    upgrade10Cost = costForLevel(10, upgrade10Level); upgrade11Cost = costForLevel(11, upgrade11Level); upgrade12Cost = costForLevel(12, upgrade12Level);
+    upgrade13Cost = costForLevel(13, upgrade13Level); upgrade14Cost = costForLevel(14, upgrade14Level); upgrade15Cost = costForLevel(15, upgrade15Level);
+    upgrade16Cost = costForLevel(16, upgrade16Level); upgrade17Cost = costForLevel(17, upgrade17Level); upgrade18Cost = costForLevel(18, upgrade18Level);
+    upgrade19Cost = costForLevel(19, upgrade19Level); upgrade20Cost = costForLevel(20, upgrade20Level); upgrade21Cost = costForLevel(21, upgrade21Level);
+    upgrade22Cost = costForLevel(22, upgrade22Level); upgrade23Cost = costForLevel(23, upgrade23Level); upgrade24Cost = costForLevel(24, upgrade24Level);
+    upgrade25Cost = costForLevel(25, upgrade25Level); upgrade26Cost = costForLevel(26, upgrade26Level); upgrade27Cost = costForLevel(27, upgrade27Level);
+    upgrade28Cost = costForLevel(28, upgrade28Level);
+}
+// Bulk-buy loop shared by upgrades 25+ (their CPS comes from the level, so a level only changes level and cost).
+// `levelUp` adds one level and raises the stored cost.
+function buyUpgradeLevels(i, getCost, levelUp) {
+    let bought = 0;
+    for (let n = 0; n < bulkLoopCount(); n++) {
+        const eff = effectiveUpgradeCost(getCost());
+        if (!canAfford(eff)) break;
+        count = hasDecimal ? D(count).minus(D(eff)) : Number(count) - Number(eff);
+        levelUp();
+        bought++;
+    }
+    if (bought > 0) {
+        try { playSfx('audio/purchase.wav'); } catch (e) {}
+        try { window.__lastBoughtButton = 'upgrade' + i; } catch (e) {}
+        updateDisplays();
+        try { setTimeout(animateLastBoughtButton, 40); } catch (e) {}
+    }
+    else notify('Not enough What Happeneds — need ' + needText(computeBatchCostWithSimpleVillager(getCost(), purchaseBatch || 1, upgradeCostRate(i))) + '.');
+}
+function buyUpgrade25() { buyUpgradeLevels(25, () => upgrade25Cost, () => { upgrade25Level = numericLevel(upgrade25Level) + 1; upgrade25Cost = nextUpgradeCost(upgrade25Cost, 25); }); }
+function buyUpgrade26() { buyUpgradeLevels(26, () => upgrade26Cost, () => { upgrade26Level = numericLevel(upgrade26Level) + 1; upgrade26Cost = nextUpgradeCost(upgrade26Cost, 26); }); }
+function buyUpgrade27() { buyUpgradeLevels(27, () => upgrade27Cost, () => { upgrade27Level = numericLevel(upgrade27Level) + 1; upgrade27Cost = nextUpgradeCost(upgrade27Cost, 27); }); }
+function buyUpgrade28() { buyUpgradeLevels(28, () => upgrade28Cost, () => { upgrade28Level = numericLevel(upgrade28Level) + 1; upgrade28Cost = nextUpgradeCost(upgrade28Cost, 28); }); }
+
+// Purchase flow shared by the one-time specials of upgrades 25+: level gate, cost, then `apply` sets the flag and multiplier
+function buyOneTimeSpecial(upgradeIdx, unlockLevel, owned, cost, apply) {
+    if (owned) { notify('Already purchased.'); return; }
+    if (numericLevel(getUpgradeLevel(upgradeIdx)) < unlockLevel) { notify(`Unlocks at ${UPGRADE_NAMES[upgradeIdx]} level ${unlockLevel}.`); return; }
+    if (!canAfford(cost)) { notify('Not enough What Happeneds — need ' + needText(cost) + '.'); return; }
+    count = hasDecimal ? D(count).minus(D(cost)) : Number(count) - Number(cost);
+    apply();
+    saveGame(); try { playSfx('audio/purchase.wav'); } catch (e) {} updateDisplays();
+}
+function buyTomPearl1() { buyOneTimeSpecial(25, 10, tomPearl1Purchased, tomPearl1Cost, () => { tomPearl1Purchased = true; tomPearlMultiplier *= 1.5; }); }
+function buyTomPearl2() { buyOneTimeSpecial(25, 25, tomPearl2Purchased, tomPearl2Cost, () => { tomPearl2Purchased = true; tomPearlMultiplier *= 2; }); }
+function buyTomPearl3() { buyOneTimeSpecial(25, 50, tomPearl3Purchased, tomPearl3Cost, () => { tomPearl3Purchased = true; tomPearlMultiplier *= 2.5; }); }
+function buyTomPearl4() { buyOneTimeSpecial(25, 100, tomPearl4Purchased, tomPearl4Cost, () => { tomPearl4Purchased = true; tomPearlMultiplier *= 3; }); }
+function buyHypergamy1() { buyOneTimeSpecial(26, 10, hypergamy1Purchased, hypergamy1Cost, () => { hypergamy1Purchased = true; hypergamyMultiplier *= 1.5; }); }
+function buyHypergamy2() { buyOneTimeSpecial(26, 25, hypergamy2Purchased, hypergamy2Cost, () => { hypergamy2Purchased = true; hypergamyMultiplier *= 2; }); }
+function buyHypergamy3() { buyOneTimeSpecial(26, 50, hypergamy3Purchased, hypergamy3Cost, () => { hypergamy3Purchased = true; hypergamyMultiplier *= 2.5; }); }
+function buyHypergamy4() { buyOneTimeSpecial(26, 100, hypergamy4Purchased, hypergamy4Cost, () => { hypergamy4Purchased = true; hypergamyMultiplier *= 3; }); }
+function buyEvilPirate1() { buyOneTimeSpecial(27, 10, evilPirate1Purchased, evilPirate1Cost, () => { evilPirate1Purchased = true; evilPirateMultiplier *= 1.5; }); }
+function buyEvilPirate2() { buyOneTimeSpecial(27, 25, evilPirate2Purchased, evilPirate2Cost, () => { evilPirate2Purchased = true; evilPirateMultiplier *= 2; }); }
+function buyEvilPirate3() { buyOneTimeSpecial(27, 50, evilPirate3Purchased, evilPirate3Cost, () => { evilPirate3Purchased = true; evilPirateMultiplier *= 2.5; }); }
+function buyEvilPirate4() { buyOneTimeSpecial(27, 100, evilPirate4Purchased, evilPirate4Cost, () => { evilPirate4Purchased = true; evilPirateMultiplier *= 3; }); }
+function buyOalgo1() { buyOneTimeSpecial(28, 10, oalgo1Purchased, oalgo1Cost, () => { oalgo1Purchased = true; oalgoMultiplier *= 1.5; }); }
+function buyOalgo2() { buyOneTimeSpecial(28, 25, oalgo2Purchased, oalgo2Cost, () => { oalgo2Purchased = true; oalgoMultiplier *= 2; }); }
+function buyOalgo3() { buyOneTimeSpecial(28, 50, oalgo3Purchased, oalgo3Cost, () => { oalgo3Purchased = true; oalgoMultiplier *= 2.5; }); }
+function buyOalgo4() { buyOneTimeSpecial(28, 100, oalgo4Purchased, oalgo4Cost, () => { oalgo4Purchased = true; oalgoMultiplier *= 3; }); }
+
 // SCP special purchases (each doubles SCP contribution)
 function buyScp1() {
     if (numericLevel(upgrade17Level) < 10) { notify('Unlocks at SCP level 10'); return; }
@@ -4840,6 +4511,17 @@ function buyDivineSimpleVillager() {
     saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
 }
 
+function buyDivineBrileyism() {
+    if (!goldenCanAfford(divineBrileyismCost)) {
+        notify('Not enough Golden What Happeneds — need ' + divineBrileyismCost + '.');
+        return;
+    }
+    goldenWhat -= divineBrileyismCost;
+    divineBrileyismLevel = numericLevel(divineBrileyismLevel) + 1;
+    divineBrileyismCost = divineCostFor('brileyism', divineBrileyismLevel);
+    saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
+}
+
 function buySpecial1() {
     if (special1Purchased) return;
     if (upgrade1Level < 10) { notify('Unlocks at OP mouse level 10.'); return; }
@@ -5136,23 +4818,21 @@ function buyCr5() {
 // Sum of levels across all 24 normal upgrades (what prestige awards are based on)
 function getTotalUpgradeLevels() {
     let total = 0;
-    for (let i = 1; i <= 24; i++) {
+    for (let i = 1; i <= UPGRADE_COUNT; i++) {
         try { total += numericLevel(getUpgradeLevel(i)); } catch (e) { }
     }
     return total;
 }
+// Upgrade levels needed per Golden after Divine Collector and Void followers (their bonuses apply before rounding down,
+// so a 25% bonus is worth something even when you'd only earn one Golden)
+function getLevelsPerGolden() {
+    let followerGolden = 0;
+    try { followerGolden = getFollowerBonuses().golden || 0; } catch (e) {}
+    return calc.levelsPerGolden(LEVELS_PER_GOLDEN, getDivineCollectorBonus(), followerGolden);
+}
 // Compute how many golden awards the player would receive if they prestiged now
 function getPotentialPrestigeAwards() {
-    try {
-        let awards = Math.floor(getTotalUpgradeLevels() / LEVELS_PER_GOLDEN);
-        if (typeof divineCollectorLevel !== 'undefined' && divineCollectorLevel > 0) {
-            awards = Math.floor(awards * (1 + DIVINE_COLLECTOR_PER_LEVEL * divineCollectorLevel));
-        }
-        // Followers: Void followers give extra Golden from prestige
-        const fGolden = getFollowerBonuses().golden || 0;
-        if (fGolden > 0) awards = Math.floor(awards * (1 + fGolden / 100));
-        return awards;
-    } catch (e) { return 0; }
+    try { return calc.prestigeAwards(getTotalUpgradeLevels(), getLevelsPerGolden()); } catch (e) { return 0; }
 }
 
 function buyPrestige() {
@@ -5160,9 +4840,8 @@ function buyPrestige() {
 
     // awards are based on the total combined levels of all normal upgrades
     const totalLevels = getTotalUpgradeLevels();
-    const awards = Math.floor(totalLevels / LEVELS_PER_GOLDEN);
-    if (awards === 0) {
-        notify(`You need at least ${LEVELS_PER_GOLDEN} total upgrade levels per Golden. You have ${totalLevels}.`);
+    if (getPotentialPrestigeAwards() === 0) {
+        notify(`You need ${Math.ceil(getLevelsPerGolden())} total upgrade levels for a Golden. You have ${totalLevels}.`);
         return;
     }
 
@@ -5171,11 +4850,15 @@ function buyPrestige() {
 
     if (!confirm(`Gain ${finalAwards} Golden What Happeneds for ${totalLevels} upgrade levels? This will reset your progress.`)) return;
 
+    // The prestige save keeps Golden, Divine upgrades, gems, clan points, shop and settings (WHSave.PRESTIGE_KEEP) and
+    // drops everything else: the reloaded page starts the run again from the defaults. Built before anything changes.
+    const prestigeSave = WHSave.buildPrestigeSave(withCasinoState(buildSaveObject(), true), finalAwards, Date.now());
+
     // award computed goldens and permanently unlock divine menu if applicable
-    goldenWhat += finalAwards;
+    goldenWhat = prestigeSave.goldenWhat;
     // track stats
-    try { prestigeTimes = (Number(prestigeTimes) || 0) + 1; } catch (e) { prestigeTimes = 1; }
-    try { totalGoldenEver = (Number(totalGoldenEver) || 0) + Number(finalAwards || 0); } catch (e) { totalGoldenEver = Number(finalAwards || 0); }
+    prestigeTimes = prestigeSave.prestigeTimes;
+    totalGoldenEver = prestigeSave.totalGoldenEver;
     if (goldenWhat >= 1) divineUnlocked = true;
 
     // Prestige Party: always increment pending; clan page flushes to Firestore when you open Events (avoids Firebase timing on game page)
@@ -5187,126 +4870,9 @@ function buyPrestige() {
         }
     } catch (e) {}
 
-    // reset all special purchased flags and multipliers so special effects do NOT carry over
     try {
-        // multipliers and derived vars
-        clickMultiplier = 1;
-        pirateMultiplier = 1;
-        phonkMultiplier = 1;
-        diddyOtherMultiplier = 1;
-        argonOtherMultiplier = 1;
-        grapeOtherMultiplier = 1;
-        skippieOtherMultiplier = 1;
-        islandOtherMultiplier = 1;
-        tribalOtherMultiplier = 1;
-        diddyMultiplier = 1; argonMultiplier = 1; grapeMultiplier = 1; skippieMultiplier = 1; islandMultiplier = 1; tribalMultiplier = 1;
-
-        // special purchased flags -> reset to false
-        special1Purchased = false; special2Purchased = false; special3Purchased = false; special4Purchased = false; special5Purchased = false;
-        special6Purchased = false; special7Purchased = false; special8Purchased = false;
-        pirateSpec1Purchased = false; pirateSpec2Purchased = false; pirateSpec3Purchased = false; pirateSpec4Purchased = false;
-        goonSpec1Purchased = false; goonSpec2Purchased = false; goonSpec3Purchased = false; goonSpec4Purchased = false;
-        diddy1Purchased = false; diddy2Purchased = false; diddy3Purchased = false; diddy4Purchased = false;
-        argon1Purchased = false; argon2Purchased = false; argon3Purchased = false; argon4Purchased = false;
-        grape1Purchased = false; grape2Purchased = false; grape3Purchased = false; grape4Purchased = false;
-        skippie1Purchased = false; skippie2Purchased = false; skippie3Purchased = false; skippie4Purchased = false;
-        island1Purchased = false; island2Purchased = false; island3Purchased = false; island4Purchased = false;
-        tribal1Purchased = false; tribal2Purchased = false; tribal3Purchased = false; tribal4Purchased = false;
-        phonk1Purchased = false; phonk2Purchased = false; phonk3Purchased = false; phonk4Purchased = false; phonk5Purchased = false;
-
-        // Ropingnecurse specials: reset as well so they do not persist through prestige
-        roping1Purchased = false; roping2Purchased = false; roping3Purchased = false; roping4Purchased = false;
-        ropingOtherMultiplier = 1;
-        // Skibbidi specials: reset as well so they do not persist through prestige
-        skibidi1Purchased = false; skibidi2Purchased = false; skibidi3Purchased = false; skibidi4Purchased = false;
-        skibbidiOtherMultiplier = 1;
-        // Beats specials: reset so they do not persist through prestige
-        beats1Purchased = false; beats2Purchased = false; beats3Purchased = false;
-        beatsOtherMultiplier = 1;
-
-        // also reset phonk/jonathan state that represent purchased-level effects
-        phonkBaseCps = D(0); phonkOtherMultiplier = 1;
-        jonathan1Purchased = false; jonathan2Purchased = false; jonathan3Purchased = false; jonathan4Purchased = false;
-        jonathanBaseCps = D(0); jonathanOtherMultiplier = 1;
-
-        // persist prestige-only save so golden and divine state survive the reset, include explicit resets
+        // no autosave may overwrite the prestige save before the page reloads
         suppressAutosave = true;
-        const prestigeSave = {
-            version: SAVE_VERSION,
-            goldenWhat,
-            // stats persisted for cross-session visibility
-            prestigeTimes,
-            totalGoldenEver,
-            goldenThreshold,
-            // preserve divine upgrades across prestige
-            divineArgonLevel, divineArgonCost, divineArgonPercent,
-            divineSomalianLevel, divineSomalianCost,
-            divineCollectorLevel, divineCollectorCost,
-            divineAssassinLevel, divineAssassinCost,
-            // divine Money Man
-            divineMoneyManLevel, divineMoneyManCost,
-            // preserve Divine Spirit and Divine Simple Villager across prestige
-            divineSpiritLevel, divineSpiritCost,
-            divineSimpleVillagerLevel, divineSimpleVillagerCost,
-            // mark this save as a prestige application so load can apply one-time effects
-            prestige: true,
-            divineUnlocked,
-            // preserve diamonds across prestige
-            diamonds,
-            // preserve clan points across prestige
-            clanPoints,
-            // preserve music settings across prestige
-            musicVolume, musicMuted,
-            // preserve SFX settings across prestige
-            sfxVolume, sfxMuted,
-            // preserve music ownership and current track so purchased tracks survive prestige
-            musicOwned, currentMusicTrack,
-            // preserve shop state across prestige
-            shopDivinePurchased,
-            shopPlatinumPurchased, shopDivineWHPurchased, shopWHVrillPurchased, shopWHNaturePurchased, shopVoidWHPurchased, shopFireWHPurchased, shopIceWHPurchased, shopWHhackerPurchased, shopWHchadPurchased, shopWHbreadPurchased, shopWHlightningPurchased, shopSilverPurchased, shopGoldPurchased,
-            shopMobileManPurchased, shopCasinoDealerPurchased,
-            shopBgPurchased,
-            shopCollectionBgPurchased,
-            shopWHBWPurchased,
-            equippedShopImage,
-            equippedBgImage,
-            // explicit resets to ensure no special effects persist
-            clickMultiplier, pirateMultiplier, phonkMultiplier,
-            diddyOtherMultiplier, argonOtherMultiplier, grapeOtherMultiplier, skippieOtherMultiplier, islandOtherMultiplier, tribalOtherMultiplier,
-            diddyMultiplier, argonMultiplier, grapeMultiplier, skippieMultiplier, islandMultiplier, tribalMultiplier,
-            special1Purchased, special2Purchased, special3Purchased, special4Purchased, special5Purchased,
-            special6Purchased, special7Purchased, special8Purchased,
-            pirateSpec1Purchased, pirateSpec2Purchased, pirateSpec3Purchased, pirateSpec4Purchased,
-            goonSpec1Purchased, goonSpec2Purchased, goonSpec3Purchased, goonSpec4Purchased,
-            diddy1Purchased, diddy2Purchased, diddy3Purchased, diddy4Purchased,
-            argon1Purchased, argon2Purchased, argon3Purchased, argon4Purchased,
-            grape1Purchased, grape2Purchased, grape3Purchased, grape4Purchased,
-            skippie1Purchased, skippie2Purchased, skippie3Purchased, skippie4Purchased,
-            island1Purchased, island2Purchased, island3Purchased, island4Purchased,
-            tribal1Purchased, tribal2Purchased, tribal3Purchased, tribal4Purchased,
-            phonk1Purchased, phonk2Purchased, phonk3Purchased, phonk4Purchased, phonk5Purchased,
-            phonkBaseCps, phonkOtherMultiplier,
-            // skibbidi purchased flags and multiplier (reset)
-            skibidi1Purchased, skibidi2Purchased, skibidi3Purchased, skibidi4Purchased,
-            skibbidiOtherMultiplier,
-            // beats purchased flags and multiplier (reset)
-            beats1Purchased, beats2Purchased, beats3Purchased,
-            beatsOtherMultiplier,
-            jonathan1Purchased, jonathan2Purchased, jonathan3Purchased, jonathan4Purchased,
-            jonathanBaseCps, jonathanOtherMultiplier,
-            // upgrade13 (ropingnecurse) does NOT persist across prestige - reset intentionally
-            // ensure runtime variables for roping/upgrades are reset so saved prestige state reflects reset
-            upgrade13Level: 0,
-            upgrade13Cost: 10000000000,
-            lastSaved: Date.now()
-        };
-        // keep casino state written by gamba.js (daily spin + active buff, win count); dropping it let players re-spin the same day
-        try {
-            const existing = JSON.parse(localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY) || '{}') || {};
-            if (existing.casinoSpin && typeof existing.casinoSpin === 'object') prestigeSave.casinoSpin = existing.casinoSpin;
-            if (existing.casino_total_wins) prestigeSave.casino_total_wins = existing.casino_total_wins;
-            if (existing.shopCasinoDealerPurchased) prestigeSave.shopCasinoDealerPurchased = true;
-        } catch (e) {}
         localStorage.setItem(SAVE_KEY, JSON.stringify(prestigeSave));
         try { localStorage.setItem(SAVE_KEY_LEGACY, JSON.stringify(prestigeSave)); } catch (e) {}
         try { localStorage.setItem('whathappened_prestige_times', String(prestigeTimes || 0)); } catch (e) {}
@@ -6304,15 +5870,9 @@ async function refreshClanBuff() {
         // clan level perks (applied in updateDisplays); cache the level so offline gains can use it on the next load
         window.clanLevel = clanLevelFromXp(d.clanXp);
         try { localStorage.setItem('whathappened_clan_level', String(window.clanLevel)); } catch (e) {}
-        // several clan buffs can run at once (activeBuffs); clans that haven't bought one since then only have activeBuff
-        var toMs = function (v) { return typeof v === 'number' ? v : (v && v.toMillis ? v.toMillis() : 0); };
-        var NAMES = { cps_double_1h: 'Double CPS', click_double_30m: 'Double Click Power', both_triple_20m: 'Triple Everything' };
-        var list = [];
-        var map = (d.activeBuffs && typeof d.activeBuffs === 'object') ? d.activeBuffs : {};
-        Object.keys(map).forEach(function (id) { var b = map[id]; if (b) list.push({ id: id, name: NAMES[id] || 'Clan buff', cpsMult: Number(b.cpsMult) || 1, clickMult: Number(b.clickMult) || 1, expiresAt: toMs(b.expiresAt) }); });
-        var ab = d.activeBuff;
-        if (ab && ab.id && !map[ab.id]) list.push({ id: ab.id, name: NAMES[ab.id] || 'Clan buff', cpsMult: Number(ab.cpsMult) || 1, clickMult: Number(ab.clickMult) || 1, expiresAt: toMs(ab.expiresAt) });
-        window.clanActiveBuffs = list.filter(function (b) { return b.expiresAt > Date.now(); });
+        // Several clan buffs can run at once. The clan document is written by every member's browser, so it only says WHICH buffs
+        // are on and until when: what they multiply comes from the fixed table in core/clan-buffs.js, never from the document.
+        window.clanActiveBuffs = WHClanBuffs.resolveActive(d, Date.now());
         applyClanBuffMults();
     } catch (e) { try { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; } catch (e2) {} }
 }
@@ -6331,6 +5891,7 @@ function initApp() {
     // load saved game (if any) then update displays
     loadGame();
     try { syncDivineCostsFromLevels(); } catch (e) {}
+    try { syncUpgradeCostsFromLevels(); } catch (e) {}
     // saves are only allowed once the real save has been read, so an early click can't overwrite it
     window._saveLoaded = true;
     // the Firebase module may still be downloading (it no longer delays startup), so wait for it
@@ -7338,18 +6899,12 @@ function equipBgImage(path) {
     updateDisplays();
 }
 
-// Secret code redemption helpers
-// Preload known codes here. Keys are upper-case.
-const SECRET_CODES = {
-//put the secret codes here
-// DEV: special development-only code granting a huge amount for testing. Remove before production.
-"D3V9F4A7C2B1D6E8B0C3A9F1E2D7C8B": { type: 'count', amount: '1e100', message: 'Dev grant: +1e100 What Happeneds (dev only)' },
-// Dev diamond grant (testing): use the code below to receive 9,999,999 diamonds
-"X9K4M2V7B1Q8R5T3L6Z0P2S9H4D1F": { type: 'diamonds', amount: 9999999, message: 'Dev grant: +9,999,999 diamonds (dev only)' },
-// Promo code: redeemable by players to receive gems
-"GEMS": { type: 'diamonds', amount: 100, message: 'You received 100 gems!' },
-
-}; // add more codes as needed
+// Secret codes live in Firestore, one document per code: collection "codes", document id = the code in UPPER CASE.
+// Fields: type ('count' | 'golden' | 'diamonds'), amount (number, or a string like '1e100' for count), message (optional),
+// enabled (optional, false turns the code off), expiresAt (optional timestamp). Add, change or delete them in the Firebase
+// console; no redeploy needed. Players can only read a code they already know (see firestore-codes.rules).
+const CODE_TYPES = ['count', 'golden', 'diamonds'];
+const CODE_LOOKUP_MS = 8000;
 const REDEEMED_KEY = 'whathappened_redeemed_codes';
 
 function getRedeemedCodes() {
@@ -7375,17 +6930,57 @@ function showSecretCodeStatus(msg, ok) {
     }
 }
 
-function redeemSecretCode() {
+// Resolves to the code's reward object, null when it doesn't exist, or throws when the database can't be reached
+async function fetchCodeReward(code) {
+    // the Firebase module can still be downloading right after the page loads
+    for (let i = 0; i < 20 && !(window.db && typeof window.getDoc === 'function' && typeof window.doc === 'function'); i++) await new Promise(r => setTimeout(r, 250));
+    if (!(window.db && typeof window.getDoc === 'function')) throw new Error('offline');
+    const snap = await Promise.race([
+        window.getDoc(window.doc(window.db, 'codes', code)),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), CODE_LOOKUP_MS))
+    ]);
+    if (!snap.exists()) return null;
+    const d = snap.data() || {};
+    if (d.enabled === false) return null;
+    const exp = d.expiresAt && (typeof d.expiresAt.toMillis === 'function' ? d.expiresAt.toMillis() : Number(d.expiresAt));
+    if (exp && exp < Date.now()) return { expired: true };
+    // only known reward types with a sane amount are applied, whatever the document holds
+    if (!CODE_TYPES.includes(d.type)) return null;
+    const amt = Number(d.amount);
+    if (!Number.isFinite(amt) || amt <= 0) return null;
+    return { type: d.type, amount: d.type === 'count' ? String(d.amount) : Math.floor(amt), message: typeof d.message === 'string' ? d.message.slice(0, 200) : '' };
+}
+
+let _redeeming = false;
+async function redeemSecretCode() {
+    if (_redeeming) return;
     const inp = document.getElementById('secretCodeInput');
     if (!inp) return showSecretCodeStatus('Input not found', false);
     const raw = (inp.value || '').trim();
     if (!raw) return showSecretCodeStatus('Please enter a code.', false);
     const code = raw.toUpperCase();
+    // document ids can't contain a slash, and anything that long is no code
+    if (code.length > 64 || code.indexOf('/') !== -1) return showSecretCodeStatus('Invalid code.', false);
+    if (getRedeemedCodes().includes(code)) return showSecretCodeStatus('Code already redeemed.', false);
+    _redeeming = true;
+    const btn = document.getElementById('secretCodeBtn');
+    if (btn) btn.disabled = true;
+    showSecretCodeStatus('Checking code…', true);
+    let reward;
+    try {
+        reward = await fetchCodeReward(code);
+    } catch (e) {
+        _redeeming = false;
+        if (btn) btn.disabled = false;
+        return showSecretCodeStatus("Couldn't reach the code server. Check your connection and try again.", false);
+    }
+    _redeeming = false;
+    if (btn) btn.disabled = false;
+    if (!reward) return showSecretCodeStatus('Invalid code.', false);
+    if (reward.expired) return showSecretCodeStatus('This code has expired.', false);
+    // a second tab may have redeemed it while we were waiting
     const redeemed = getRedeemedCodes();
     if (redeemed.includes(code)) return showSecretCodeStatus('Code already redeemed.', false);
-    // check against known codes (none preloaded)
-    const reward = SECRET_CODES[code];
-    if (!reward) return showSecretCodeStatus('Invalid code.', false);
     try {
         // mark redeemed immediately to prevent reuse on errors
         redeemed.push(code);
@@ -7430,7 +7025,6 @@ function redeemSecretCode() {
             showSecretCodeStatus(reward.message || ('You received ' + amt + ' gems!'), true);
             inp.value = '';
         } else {
-            // unknown reward type — just acknowledge
             showSecretCodeStatus(reward.message || 'Code accepted — reward applied!', true);
             inp.value = '';
         }
@@ -7493,11 +7087,11 @@ function buyTribal4() {
 // losing existing saves.
 const SAVE_KEY = 'whathappened_save';
 const SAVE_KEY_LEGACY = 'whathappened_save_v1';
-const SAVE_VERSION = 3;
+const SAVE_VERSION = WHSave.SAVE_VERSION; // versions and migrations: core/save.js
+const DAMAGED_SAVE_KEY = 'whathappened_save_damaged'; // a save that could not be read, kept until the player downloads or clears it
 
-function saveGame() {
-    if (suppressAutosave || !window._saveLoaded) return;
-    try {
+// Every field of the main save as it is in memory right now (Decimal values already turned into strings)
+function buildSaveObject() {
         const save = {
             count,
             baseClickPower,
@@ -7548,20 +7142,21 @@ function saveGame() {
                     goodNoodles1Purchased, goodNoodles2Purchased, goodNoodles3Purchased,
                     goodNoodles4Purchased,
                     goodNoodlesMultiplier,
-                    goodNoodles1Cost, goodNoodles2Cost, goodNoodles3Cost,
-                    goodNoodles4Cost,
                     // Mobile Man 38 specials state
                     mobileMan381Purchased, mobileMan382Purchased, mobileMan383Purchased,
                     mobileMan384Purchased,
                     mobileMan38Multiplier,
-                    mobileMan381Cost, mobileMan382Cost, mobileMan383Cost,
-                    mobileMan384Cost,
                     // Easton Bundy specials state
                     eastonBundy1Purchased, eastonBundy2Purchased, eastonBundy3Purchased,
                     eastonBundy4Purchased,
                     eastonBundyMultiplier,
-                    eastonBundy1Cost, eastonBundy2Cost, eastonBundy3Cost,
-                    eastonBundy4Cost,
+            // upgrades 25-28 (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo) and their specials
+            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level,
+            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier,
+            tomPearl1Purchased, tomPearl2Purchased, tomPearl3Purchased, tomPearl4Purchased,
+            hypergamy1Purchased, hypergamy2Purchased, hypergamy3Purchased, hypergamy4Purchased,
+            evilPirate1Purchased, evilPirate2Purchased, evilPirate3Purchased, evilPirate4Purchased,
+            oalgo1Purchased, oalgo2Purchased, oalgo3Purchased, oalgo4Purchased,
             // phonk state
             phonkBaseCps, phonkOtherMultiplier, phonkMultiplier,
             upgrade10Cost, upgrade10Level,
@@ -7605,7 +7200,6 @@ function saveGame() {
             // ez villager specials
             ez1Purchased, ez2Purchased, ez3Purchased, ez4Purchased,
             ezOtherMultiplier, ezMultiplier,
-            ez1Cost, ez2Cost, ez3Cost, ez4Cost,
             // jonathan purchased flags and state
             jonathan1Purchased, jonathan2Purchased, jonathan3Purchased, jonathan4Purchased,
             jonathanBaseCps, jonathanOtherMultiplier,
@@ -7663,6 +7257,8 @@ function saveGame() {
             divineAssassinLevel, divineAssassinCost,
             // divine Money Man
             divineMoneyManLevel, divineMoneyManCost,
+            // divine Prophit of Brileyism
+            divineBrileyismLevel, divineBrileyismCost,
             // permanent divine unlock
             divineUnlocked,
             lastSaved: Date.now(),
@@ -7670,18 +7266,6 @@ function saveGame() {
                 version: SAVE_VERSION,
             tribalOtherMultiplier, tribalMultiplier,
         };
-        // preserve casino/daily spin state from existing save so main game never overwrites it
-        try {
-            const existingRaw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY);
-            if (existingRaw) {
-                const existing = JSON.parse(existingRaw);
-                if (existing && typeof existing.casinoSpin === 'object' && existing.casinoSpin !== null) {
-                    save.casinoSpin = existing.casinoSpin;
-                }
-                // casino win count (used by the casino dealer unlock and clan challenges) is also owned by gamba.js
-                if (existing && existing.casino_total_wins) save.casino_total_wins = existing.casino_total_wins;
-            }
-        } catch (e) {}
         // serialize Decimal instances to strings so JSON round-trips
         if (hasDecimal) {
             for (const k in save) {
@@ -7691,8 +7275,30 @@ function saveGame() {
                 } catch (e) {}
             }
         }
+        return save;
+}
+
+// The casino page (gamba.js) writes casinoSpin and casino_total_wins straight into the stored save, so they are read
+// back from storage rather than kept in memory; without this the main game would overwrite them with its next save.
+// A prestige also keeps the Casino Dealer unlock, which the casino page sets the same way.
+function withCasinoState(save, includeDealer) {
+    try {
+        const existingRaw = localStorage.getItem(SAVE_KEY) || localStorage.getItem(SAVE_KEY_LEGACY);
+        if (existingRaw) {
+            const existing = JSON.parse(existingRaw);
+            if (existing && typeof existing.casinoSpin === 'object' && existing.casinoSpin !== null) save.casinoSpin = existing.casinoSpin;
+            if (existing && existing.casino_total_wins) save.casino_total_wins = existing.casino_total_wins;
+            if (includeDealer && existing && existing.shopCasinoDealerPurchased) save.shopCasinoDealerPurchased = true;
+        }
+    } catch (e) {}
+    return save;
+}
+
+function saveGame() {
+    if (suppressAutosave || !window._saveLoaded) return;
+    try {
+        const payload = JSON.stringify(withCasinoState(buildSaveObject()));
         // write to the new key; also write to legacy key for backwards compatibility
-        const payload = JSON.stringify(save);
         localStorage.setItem(SAVE_KEY, payload);
         try { localStorage.setItem(SAVE_KEY_LEGACY, payload); } catch (e) {}
         // also persist legacy-friendly stat keys
@@ -7703,33 +7309,24 @@ function saveGame() {
     }
 }
 
+// A save that can't be read is kept (localStorage 'whathappened_save_damaged') before the game starts fresh and the next
+// autosave replaces it. The Settings menu offers it for download.
+function keepDamagedSave(raw, reason) {
+    try { localStorage.setItem(DAMAGED_SAVE_KEY, JSON.stringify({ at: Date.now(), reason, raw: String(raw).slice(0, 2000000) })); } catch (e) {}
+    try { notify('Your saved game could not be read, so you are starting fresh. The damaged save was kept: Settings → Save backup.', 9000); } catch (e) {}
+}
+
 function loadGame() {
     try {
         // prefer the new key, but fall back to the legacy key if present
         let raw = localStorage.getItem(SAVE_KEY);
         if (!raw) raw = localStorage.getItem(SAVE_KEY_LEGACY);
         if (!raw) return;
-        const s = JSON.parse(raw);
-        // ensure save version is present
-        if (typeof s.version === 'undefined') s.version = 1;
-        if (s.version < SAVE_VERSION) {
-            try {
-                console.info('Migrating save from version', s.version, 'to', SAVE_VERSION);
-                // migration steps for introduced fields in version 2
-                if (s.version < 2) {
-                    // SCP upgrade and specials introduced in v2 — provide safe defaults
-                    if (typeof s.upgrade17Level === 'undefined') s.upgrade17Level = 0;
-                    if (typeof s.upgrade17Cost === 'undefined') s.upgrade17Cost = 700000000000;
-                    if (typeof s.scp1Purchased === 'undefined') s.scp1Purchased = false;
-                    if (typeof s.scp2Purchased === 'undefined') s.scp2Purchased = false;
-                    if (typeof s.scp3Purchased === 'undefined') s.scp3Purchased = false;
-                    if (typeof s.scp4Purchased === 'undefined') s.scp4Purchased = false;
-                    if (typeof s.scpMultiplier === 'undefined') s.scpMultiplier = 1;
-                }
-                // bump to latest version after migration
-                s.version = SAVE_VERSION;
-            } catch (e) { console.warn('Save migration failed', e); s.version = SAVE_VERSION; }
-        }
+        const parsed = WHSave.parseSave(raw);
+        if (!parsed.ok) { keepDamagedSave(raw, parsed.reason); return; }
+        // bring a save from an older version up to date: missing fields get defaults (core/save.js)
+        const s = WHSave.migrateSave(parsed.save);
+        if (s.version !== (Number(parsed.save.version) || 1)) console.info('Migrating save from version', parsed.save.version || 1, 'to', s.version);
 
         // Helper: normalize numeric values (Decimal-aware). Use current value as fallback
         function normalizeNumericValue(val, fallback) {
@@ -7829,21 +7426,11 @@ function loadGame() {
             if (typeof s.upgrade24Cost === 'string') upgrade24Cost = D(s.upgrade24Cost);
             if (typeof s.scpMultiplier === 'string') scpMultiplier = D(s.scpMultiplier);
             if (typeof s.goodNoodlesMultiplier === 'string') goodNoodlesMultiplier = D(s.goodNoodlesMultiplier);
-            if (typeof s.goodNoodles1Cost === 'string') goodNoodles1Cost = D(s.goodNoodles1Cost);
-            if (typeof s.goodNoodles2Cost === 'string') goodNoodles2Cost = D(s.goodNoodles2Cost);
-            if (typeof s.goodNoodles3Cost === 'string') goodNoodles3Cost = D(s.goodNoodles3Cost);
             if (typeof s.mobileMan38Multiplier === 'string') mobileMan38Multiplier = D(s.mobileMan38Multiplier);
-            if (typeof s.mobileMan381Cost === 'string') mobileMan381Cost = D(s.mobileMan381Cost);
-            if (typeof s.mobileMan382Cost === 'string') mobileMan382Cost = D(s.mobileMan382Cost);
-            if (typeof s.mobileMan383Cost === 'string') mobileMan383Cost = D(s.mobileMan383Cost);
             if (typeof s.goatisMultiplier === 'string') goatisMultiplier = D(s.goatisMultiplier);
             if (typeof s.rawMultiplier === 'string') rawMultiplier = D(s.rawMultiplier);
             if (typeof s.upgrade17Cost === 'string') upgrade17Cost = D(s.upgrade17Cost);
             if (typeof s.divineSimpleVillagerCost === 'string') divineSimpleVillagerCost = D(s.divineSimpleVillagerCost);
-            if (typeof s.ez1Cost === 'string') ez1Cost = D(s.ez1Cost);
-            if (typeof s.ez2Cost === 'string') ez2Cost = D(s.ez2Cost);
-            if (typeof s.ez3Cost === 'string') ez3Cost = D(s.ez3Cost);
-            if (typeof s.ez4Cost === 'string') ez4Cost = D(s.ez4Cost);
             if (typeof s.ezOtherMultiplier === 'string') ezOtherMultiplier = D(s.ezOtherMultiplier);
             if (typeof s.ezMultiplier === 'string') ezMultiplier = D(s.ezMultiplier);
         } else {
@@ -7873,10 +7460,6 @@ function loadGame() {
             if (typeof s.scpMultiplier === 'string') scpMultiplier = Number(s.scpMultiplier);
             if (typeof s.rawMultiplier === 'string') rawMultiplier = Number(s.rawMultiplier);
             if (typeof s.upgrade17Cost === 'string') upgrade17Cost = Number(s.upgrade17Cost);
-            if (typeof s.ez1Cost === 'string') ez1Cost = Number(s.ez1Cost);
-            if (typeof s.ez2Cost === 'string') ez2Cost = Number(s.ez2Cost);
-            if (typeof s.ez3Cost === 'string') ez3Cost = Number(s.ez3Cost);
-            if (typeof s.ez4Cost === 'string') ez4Cost = Number(s.ez4Cost);
             if (typeof s.ezOtherMultiplier === 'string') ezOtherMultiplier = Number(s.ezOtherMultiplier);
             if (typeof s.ezMultiplier === 'string') ezMultiplier = Number(s.ezMultiplier);
         }
@@ -7907,6 +7490,19 @@ function loadGame() {
             if (typeof s.eastonBundyMultiplier === 'string') eastonBundyMultiplier = Number(s.eastonBundyMultiplier);
             else if (typeof s.eastonBundyMultiplier === 'number') eastonBundyMultiplier = s.eastonBundyMultiplier;
         }
+        // upgrades 25-28 and their specials
+        upgrade25Cost = normalizeNumericValue(s.upgrade25Cost ?? upgrade25Cost, upgrade25Cost); upgrade25Level = numericLevel(s.upgrade25Level);
+        upgrade26Cost = normalizeNumericValue(s.upgrade26Cost ?? upgrade26Cost, upgrade26Cost); upgrade26Level = numericLevel(s.upgrade26Level);
+        upgrade27Cost = normalizeNumericValue(s.upgrade27Cost ?? upgrade27Cost, upgrade27Cost); upgrade27Level = numericLevel(s.upgrade27Level);
+        upgrade28Cost = normalizeNumericValue(s.upgrade28Cost ?? upgrade28Cost, upgrade28Cost); upgrade28Level = numericLevel(s.upgrade28Level);
+        if (Number(s.tomPearlMultiplier) > 0) tomPearlMultiplier = Number(s.tomPearlMultiplier);
+        if (Number(s.hypergamyMultiplier) > 0) hypergamyMultiplier = Number(s.hypergamyMultiplier);
+        if (Number(s.evilPirateMultiplier) > 0) evilPirateMultiplier = Number(s.evilPirateMultiplier);
+        if (Number(s.oalgoMultiplier) > 0) oalgoMultiplier = Number(s.oalgoMultiplier);
+        tomPearl1Purchased = !!s.tomPearl1Purchased; tomPearl2Purchased = !!s.tomPearl2Purchased; tomPearl3Purchased = !!s.tomPearl3Purchased; tomPearl4Purchased = !!s.tomPearl4Purchased;
+        hypergamy1Purchased = !!s.hypergamy1Purchased; hypergamy2Purchased = !!s.hypergamy2Purchased; hypergamy3Purchased = !!s.hypergamy3Purchased; hypergamy4Purchased = !!s.hypergamy4Purchased;
+        evilPirate1Purchased = !!s.evilPirate1Purchased; evilPirate2Purchased = !!s.evilPirate2Purchased; evilPirate3Purchased = !!s.evilPirate3Purchased; evilPirate4Purchased = !!s.evilPirate4Purchased;
+        oalgo1Purchased = !!s.oalgo1Purchased; oalgo2Purchased = !!s.oalgo2Purchased; oalgo3Purchased = !!s.oalgo3Purchased; oalgo4Purchased = !!s.oalgo4Purchased;
         // phonk purchased flags and state
         phonk1Purchased = !!s.phonk1Purchased; phonk2Purchased = !!s.phonk2Purchased; phonk3Purchased = !!s.phonk3Purchased; phonk4Purchased = !!s.phonk4Purchased; phonk5Purchased = !!s.phonk5Purchased;
         if (typeof s.phonkBaseCps === 'string') phonkBaseCps = hasDecimal ? D(s.phonkBaseCps) : Number(s.phonkBaseCps);
@@ -8047,7 +7643,6 @@ function loadGame() {
         ez1Purchased = !!s.ez1Purchased; ez2Purchased = !!s.ez2Purchased; ez3Purchased = !!s.ez3Purchased; ez4Purchased = !!s.ez4Purchased;
         if (typeof s.ezOtherMultiplier === 'number') ezOtherMultiplier = s.ezOtherMultiplier;
         if (typeof s.ezMultiplier === 'number') ezMultiplier = s.ezMultiplier;
-        if (typeof s.ez1Cost === 'number') ez1Cost = s.ez1Cost; if (typeof s.ez2Cost === 'number') ez2Cost = s.ez2Cost; if (typeof s.ez3Cost === 'number') ez3Cost = s.ez3Cost; if (typeof s.ez4Cost === 'number') ez4Cost = s.ez4Cost;
         // divine Collector keys
         if (typeof s.divineCollectorLevel === 'number') divineCollectorLevel = s.divineCollectorLevel;
         if (typeof s.divineCollectorCost === 'number') divineCollectorCost = s.divineCollectorCost;
@@ -8063,11 +7658,14 @@ function loadGame() {
         // divine Spirit keys
         if (typeof s.divineSpiritLevel === 'number') divineSpiritLevel = s.divineSpiritLevel;
         if (typeof s.divineSpiritCost === 'number') divineSpiritCost = s.divineSpiritCost;
+        // divine Prophit of Brileyism keys
+        if (typeof s.divineBrileyismLevel === 'number') divineBrileyismLevel = s.divineBrileyismLevel;
+        if (typeof s.divineBrileyismCost === 'number') divineBrileyismCost = s.divineBrileyismCost;
         // if this save was written by a prestige operation, apply one-time prestige effects (e.g. Divine Money Man)
         try {
             if (s.prestige) {
                 if (typeof divineMoneyManLevel === 'number' && divineMoneyManLevel > 0) {
-                    const add = DIVINE_MONEYMAN_BASE * Math.pow(10, Math.max(0, divineMoneyManLevel - 1));
+                    const add = getDivineMoneyManStart();
                         if (hasBig) addToCount(D(add)); else count = (typeof count === 'number' ? count : 0) + add;
                     try { notify(`Prestige bonus: +${formatNumber(add)} What Happeneds from Divine Money Man (lvl ${divineMoneyManLevel}).`, 6000); } catch (e) {}
                 }
@@ -8124,7 +7722,6 @@ function loadGame() {
             // phonk, ez, jonathan, CR
             phonkBaseCps = normalizeNumericValue(phonkBaseCps, phonkBaseCps); phonkOtherMultiplier = normalizeNumericValue(phonkOtherMultiplier, phonkOtherMultiplier); phonkMultiplier = normalizeNumericValue(phonkMultiplier, phonkMultiplier);
             ezOtherMultiplier = normalizeNumericValue(ezOtherMultiplier, ezOtherMultiplier); ezMultiplier = normalizeNumericValue(ezMultiplier, ezMultiplier);
-            ez1Cost = normalizeNumericValue(ez1Cost, ez1Cost); ez2Cost = normalizeNumericValue(ez2Cost, ez2Cost); ez3Cost = normalizeNumericValue(ez3Cost, ez3Cost); ez4Cost = normalizeNumericValue(ez4Cost, ez4Cost);
             jonathanBaseCps = normalizeNumericValue(jonathanBaseCps, jonathanBaseCps); jonathanOtherMultiplier = normalizeNumericValue(jonathanOtherMultiplier, jonathanOtherMultiplier);
             crBaseCps = normalizeNumericValue(crBaseCps, crBaseCps); crOtherMultiplier = normalizeNumericValue(crOtherMultiplier, crOtherMultiplier);
             // roping/skibbidi/beats
@@ -8142,77 +7739,66 @@ function loadGame() {
             divineCollectorLevel = normalizeNumericValue(divineCollectorLevel, divineCollectorLevel); divineCollectorCost = normalizeNumericValue(divineCollectorCost, divineCollectorCost);
             divineMoneyManLevel = normalizeNumericValue(divineMoneyManLevel, divineMoneyManLevel); divineMoneyManCost = normalizeNumericValue(divineMoneyManCost, divineMoneyManCost);
             divineAssassinLevel = normalizeNumericValue(divineAssassinLevel, divineAssassinLevel); divineAssassinCost = normalizeNumericValue(divineAssassinCost, divineAssassinCost);
+            divineBrileyismLevel = normalizeNumericValue(divineBrileyismLevel, divineBrileyismLevel); divineBrileyismCost = normalizeNumericValue(divineBrileyismCost, divineBrileyismCost);
         } catch (e) { console.warn('Numeric sanitization failed', e); }
 
-        // compute offline gains based on lastSaved
+        // compute offline gains based on lastSaved (the rules live in core/calc.js)
         try {
-            const last = s.lastSaved ? Number(s.lastSaved) : null;
-            if (last && !isNaN(last)) {
-                const elapsedMs = Date.now() - last;
-                const elapsedSec = Math.floor(elapsedMs / 1000);
-                const MAX_OFFLINE = 60 * 60 * 24; // cap to 24 hours
-                const seconds = Math.min(elapsedSec, MAX_OFFLINE);
-                if (seconds > 0) {
-                    // compute effective components using the per-upgrade multiplier logic
-                    const parts = computeEffectiveCpsParts();
-                    const pirateEffective = parts.pirateEffective;
-                    // Build other contribution the same way as updateDisplays so offline matches live CPS
-                    try {
-                        if (hasBig) {
-                            const nonPhonkOtherBase = D(parts.otherEffective);
-                            const jonathanContribution = D(parts.jonathanEffective).times(D(jonathanOtherMultiplier || 1));
-                            const crContribution = D(parts.crEffective).times(D(crOtherMultiplier || 1));
-                            const phonkContribution = D(phonkBaseCps || 0).times(D(phonkOtherMultiplier || 1));
-                            const nonPhonkOther = nonPhonkOtherBase.times(D(diddyOtherMultiplier || 1)).times(D(argonOtherMultiplier || 1)).times(D(grapeOtherMultiplier || 1)).times(D(skippieOtherMultiplier || 1)).times(D(islandOtherMultiplier || 1)).times(D(tribalOtherMultiplier || 1));
-                            let otherCps = nonPhonkOther.plus(jonathanContribution).plus(crContribution).plus(phonkContribution);
-                            let totalCps = D(pirateEffective).times(D(pirateMultiplier || 1)).plus(otherCps.times(D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1)));
-                            const mults = [diddyMultiplier, argonMultiplier, grapeMultiplier, skippieMultiplier, islandMultiplier, tribalMultiplier, phonkMultiplier];
-                            for (const m of mults) totalCps = totalCps.times(D(typeof m !== 'undefined' ? m : 1));
-                            totalCps = totalCps.times(D(1 + getGoldenBonusCount() * 0.1));
-                            if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
-                                const offlineAppliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
-                                totalCps = totalCps.times(D(1 + (offlineAppliedPercent / 100)));
-                            }
-                            // Followers: CPS bonus applies offline too, plus the offline earnings bonus
-                            try { const fb = getFollowerBonuses(); totalCps = totalCps.times(D((1 + fb.cps / 100) * (1 + fb.offline / 100))); } catch (e) {}
-                            // Items: equipped charms' CPS and offline bonuses (consumable boosts don't run while you're away)
-                            try { const ib = getItemBonuses(); totalCps = totalCps.times(D((1 + ib.cps / 100) * (1 + ib.offline / 100))); } catch (e) {}
-                            const gainedD = totalCps.times(D(seconds));
-                            if (gainedD && (typeof gainedD.gt === 'function' ? gainedD.gt(0) : Number(gainedD) > 0)) {
-                                addToCount(gainedD);
-                                try { showWelcomeBackModal(gainedD, seconds); } catch (e) {}
-                            }
-                        } else {
-                            const nonPhonkOtherBase = parts.otherEffective;
-                            const jonathanContribution = parts.jonathanEffective * (jonathanOtherMultiplier || 1);
-                            const crContribution = parts.crEffective * (crOtherMultiplier || 1);
-                            const phonkContribution = (phonkBaseCps || 0) * (phonkOtherMultiplier || 1);
-                            const nonPhonkOther = nonPhonkOtherBase * (diddyOtherMultiplier || 1) * (argonOtherMultiplier || 1) * (grapeOtherMultiplier || 1) * (skippieOtherMultiplier || 1) * (islandOtherMultiplier || 1) * (tribalOtherMultiplier || 1);
-                            let otherCps = nonPhonkOther + jonathanContribution + crContribution + phonkContribution;
-                            let totalCps = (pirateEffective * (pirateMultiplier || 1)) + (otherCps * (typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1));
-                            totalCps = totalCps * (typeof diddyMultiplier !== 'undefined' ? diddyMultiplier : 1) * (typeof argonMultiplier !== 'undefined' ? argonMultiplier : 1) * (typeof grapeMultiplier !== 'undefined' ? grapeMultiplier : 1) * (typeof skippieMultiplier !== 'undefined' ? skippieMultiplier : 1) * (typeof islandMultiplier !== 'undefined' ? islandMultiplier : 1) * (typeof tribalMultiplier !== 'undefined' ? tribalMultiplier : 1) * (typeof phonkMultiplier !== 'undefined' ? phonkMultiplier : 1);
-                            // apply golden prestige multiplier to offline gains
-                            const offlineGoldenMult = 1 + getGoldenBonusCount() * 0.1;
-                            totalCps = totalCps * offlineGoldenMult;
-                            if (typeof divineArgonLevel !== 'undefined' && divineArgonLevel > 0) {
-                                const offlineAppliedPercent = DIVINE_ARGON_BASE_PERCENT * Math.pow(2, Math.max(0, divineArgonLevel - 1));
-                                const offlineDivineMult = 1 + (offlineAppliedPercent / 100);
-                                totalCps = totalCps * offlineDivineMult;
-                            }
-                            // permanent clan level perk (level cached by refreshClanBuff on the last visit)
-                            totalCps = totalCps * (1 + getClanLevelPerk().cps / 100);
-                            // Followers: CPS bonus applies offline too, plus the offline earnings bonus
-                            try { const fb = getFollowerBonuses(); totalCps = totalCps * (1 + fb.cps / 100) * (1 + fb.offline / 100); } catch (e) {}
-                            // Items: equipped charms' CPS and offline bonuses (consumable boosts don't run while you're away)
-                            try { const ib = getItemBonuses(); totalCps = totalCps * (1 + ib.cps / 100) * (1 + ib.offline / 100); } catch (e) {}
-                            const gained = totalCps * seconds;
-                            if (gained > 0) {
-                                count = (typeof count === 'number' ? count : Number(count)) + Number(gained);
-                                try { showWelcomeBackModal(gained, seconds); } catch (e) {}
-                            }
+            const seconds = calc.offlineSeconds(s.lastSaved, Date.now());
+            if (seconds > 0) {
+                // compute effective components using the per-upgrade multiplier logic
+                const parts = computeEffectiveCpsParts();
+                const pirateEffective = parts.pirateEffective;
+                // Build other contribution the same way as updateDisplays so offline matches live CPS
+                try {
+                    if (hasBig) {
+                        const nonPhonkOtherBase = D(parts.otherEffective);
+                        const jonathanContribution = D(parts.jonathanEffective).times(D(jonathanOtherMultiplier || 1));
+                        const crContribution = D(parts.crEffective).times(D(crOtherMultiplier || 1));
+                        const phonkContribution = D(phonkBaseCps || 0).times(D(phonkOtherMultiplier || 1));
+                        const nonPhonkOther = nonPhonkOtherBase.times(D(diddyOtherMultiplier || 1)).times(D(argonOtherMultiplier || 1)).times(D(grapeOtherMultiplier || 1)).times(D(skippieOtherMultiplier || 1)).times(D(islandOtherMultiplier || 1)).times(D(tribalOtherMultiplier || 1));
+                        let otherCps = nonPhonkOther.plus(jonathanContribution).plus(crContribution).plus(phonkContribution);
+                        let totalCps = D(pirateEffective).times(D(pirateMultiplier || 1)).plus(otherCps.times(D(typeof goonMultiplier !== 'undefined' ? goonMultiplier : 1)));
+                        const mults = [diddyMultiplier, argonMultiplier, grapeMultiplier, skippieMultiplier, islandMultiplier, tribalMultiplier, phonkMultiplier];
+                        for (const m of mults) totalCps = totalCps.times(D(typeof m !== 'undefined' ? m : 1));
+                        totalCps = totalCps.times(D(1 + getGoldenBonusCount() * 0.1)).times(D(getDivineCpsMult()));
+                        // permanent clan level perk (level cached by refreshClanBuff on the last visit)
+                        totalCps = totalCps.times(D(1 + getClanLevelPerk().cps / 100));
+                        // Followers: CPS bonus applies offline too, plus the offline earnings bonus
+                        try { const fb = getFollowerBonuses(); totalCps = totalCps.times(D((1 + fb.cps / 100) * (1 + fb.offline / 100))); } catch (e) {}
+                        // Items: equipped charms' CPS and offline bonuses (consumable boosts don't run while you're away)
+                        try { const ib = getItemBonuses(); totalCps = totalCps.times(D((1 + ib.cps / 100) * (1 + ib.offline / 100))); } catch (e) {}
+                        const gainedD = totalCps.times(D(seconds));
+                        if (gainedD && (typeof gainedD.gt === 'function' ? gainedD.gt(0) : Number(gainedD) > 0)) {
+                            addToCount(gainedD);
+                            try { showWelcomeBackModal(gainedD, seconds); } catch (e) {}
                         }
-                    } catch (e) { console.error('Offline gain calc failed', e); }
-                }
+                    } else {
+                        let fb = {}, ib = {};
+                        try { fb = getFollowerBonuses() || {}; } catch (e) {}
+                        try { ib = getItemBonuses() || {}; } catch (e) {}
+                        const totalCps = calc.offlineCps({
+                            pirateEffective, otherEffective: parts.otherEffective, jonathanEffective: parts.jonathanEffective, crEffective: parts.crEffective,
+                            phonkBaseCps,
+                            diddyOther: diddyOtherMultiplier, argonOther: argonOtherMultiplier, grapeOther: grapeOtherMultiplier, skippieOther: skippieOtherMultiplier,
+                            islandOther: islandOtherMultiplier, tribalOther: tribalOtherMultiplier,
+                            jonathanOther: jonathanOtherMultiplier, crOther: crOtherMultiplier, phonkOther: phonkOtherMultiplier,
+                            pirateMultiplier, goonMultiplier,
+                            diddyMultiplier, argonMultiplier, grapeMultiplier, skippieMultiplier, islandMultiplier, tribalMultiplier, phonkMultiplier,
+                            golden: getGoldenBonusCount(), divineCpsMult: getDivineCpsMult(),
+                            // permanent clan level perk (level cached by refreshClanBuff on the last visit)
+                            clanPerkPercent: getClanLevelPerk().cps,
+                            // Followers and Items: CPS bonus plus the offline earnings bonus (consumable boosts don't run while you're away)
+                            followerCpsPercent: fb.cps, followerOfflinePercent: fb.offline,
+                            itemCpsPercent: ib.cps, itemOfflinePercent: ib.offline,
+                        });
+                        const gained = totalCps * seconds;
+                        if (gained > 0) {
+                            count = (typeof count === 'number' ? count : Number(count)) + Number(gained);
+                            try { showWelcomeBackModal(gained, seconds); } catch (e) {}
+                        }
+                    }
+                } catch (e) { console.error('Offline gain calc failed', e); }
             }
         } catch (e) { console.error('Offline gain calc failed', e); }
     } catch (e) {
@@ -8221,7 +7807,7 @@ function loadGame() {
 }
 
 function resetGame() {
-    if (!confirm('Reset all progress?')) return;
+    if (!confirm('Reset all progress? This cannot be undone.\n\nIf you might want it back, press Cancel and use "Download save file" in Settings first.')) return;
     // prevent autosave from writing during the unload/reload
     suppressAutosave = true;
     try {
@@ -8230,38 +7816,10 @@ function resetGame() {
         try { localStorage.removeItem(SAVE_KEY_LEGACY); } catch (e) {}
     } catch (e) { console.error('resetGame cleanup failed', e); }
     try { localStorage.removeItem(REDEEMED_KEY); } catch (e) {}
+    try { localStorage.removeItem('whathappened_guide'); } catch (e) {} // a fresh start gets the first-run guide again
     try { if (window.WHF) localStorage.removeItem(window.WHF.STORAGE_KEY); } catch (e) {}
     try { if (window.WHI) localStorage.removeItem(window.WHI.STORAGE_KEY); } catch (e) {}
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }
-
-// Cookie consent helpers
-function initCookieConsent() {
-    try {
-        const banner = document.getElementById('cookie-consent-banner');
-        if (!banner) return;
-        const accepted = localStorage.getItem('wh_cookie_consent');
-        const acceptBtn = document.getElementById('cookie-accept-btn');
-        if (accepted === 'accepted') {
-            banner.style.display = 'none';
-            return;
-        }
-        // show banner
-        banner.style.display = 'flex';
-        if (acceptBtn) {
-            acceptBtn.addEventListener('click', () => {
-                acceptCookies();
-            });
-        }
-    } catch (e) { console.warn('initCookieConsent failed', e); }
-}
-
-function acceptCookies() {
-    try { localStorage.setItem('wh_cookie_consent', 'accepted'); } catch (e) {}
-    try { const b = document.getElementById('cookie-consent-banner'); if (b) b.style.display = 'none'; } catch (e) {}
-}
-
-// wire up on DOM ready
-try { document.addEventListener('DOMContentLoaded', initCookieConsent); } catch (e) {}
-
+// Ad and cookie consent lives in core/consent.js

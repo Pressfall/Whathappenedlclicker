@@ -1,13 +1,13 @@
 /**
  * Accounts and cloud saves (Firebase Authentication + Firestore). Used by account.html (account.js) and the game page.
  *
- * - Progress = every localStorage key the game keeps progress in (SYNC_KEYS / SYNC_PREFIXES), uploaded as one JSON
- *   string to saves/{uid}. Only the signed-in owner can read or write that document (see firestore-saves.rules).
- * - Every upload bumps the document's `rev`. Each device remembers the rev and a hash of what it last synced
- *   (META_KEY), so it can tell "another device saved since" from "this device changed since". Progress is never
- *   replaced silently: when both happened, the player chooses which to keep.
- * - Whichever progress gets replaced (this device's or the account's) is kept on this device (BACKUP_KEY) and can be
- *   restored from the account page.
+ * - The sync rules (what counts as progress, when this device and the account conflict, backups, export/import) are in
+ *   core/progress.js, which has no Firebase in it and is tested on its own. This file gives it the browser's
+ *   localStorage and the account's Firestore document, and adds sign-in and the screens.
+ * - Progress is uploaded as one JSON string to saves/{uid}. Only the signed-in owner can read or write that document
+ *   (see firestore-saves.rules). Every upload bumps the document's `rev`.
+ * - Progress is never replaced silently: when this device and the account both changed, the player chooses which to
+ *   keep. Whichever progress gets replaced is kept on this device and can be restored from the account page.
  */
 import { initializeApp, getApps, getApp } from 'https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js';
 import {
@@ -31,102 +31,63 @@ export const auth = getAuth(app);
 const db = getFirestore(app);
 try { auth.useDeviceLanguage(); } catch (e) {}
 
-const SAVE_KEY = 'whathappened_save', SAVE_KEY_LEGACY = 'whathappened_save_v1';
-const META_KEY = 'whathappened_cloud_meta';       // { uid, rev, hash, at }: what this device last synced
-const BACKUP_KEY = 'whathappened_cloud_backup';   // { at, kind: 'device' | 'account', payload, summary }
-const APPLIED_KEY = 'whathappened_cloud_applied'; // written when account progress replaces this device's: open game tabs reload instead of saving over it
+const WHProgress = globalThis.WHProgress;
+if (!WHProgress) throw new Error('core/progress.js must be loaded before cloud.js');
+export const { SyncConflict, summarize, furtherAhead, hasProgress } = WHProgress;
+const { countLog10, syncError } = WHProgress;
+
 const NOTICE_KEY = 'whathappened_cloud_notice';   // sessionStorage: message for the game page to show after it reloads
-const MAX_PAYLOAD = 900000;                       // Firestore caps a document at 1 MiB
 const SYNC_EVERY_MS = 2 * 60 * 1000;              // while the game is visible; also on leaving the tab
 const MIN_GAP_MS = 60 * 1000;
-// Opening the game always changes the save a little (offline earnings, timestamps), and the last save before a tab
-// closes often can't finish uploading. So when the account has newer progress and this device was only played this
-// long since it last synced (and didn't prestige), the account's progress loads without asking (this device's is
-// still kept as a backup).
-const SMALL_PLAY_SEC = 180;
 
-// Progress keys. Device settings, chat state, half-played casino rounds and cross-tab signals stay on the device.
-const SYNC_KEYS = new Set([
-    SAVE_KEY, 'whathappened_followers', 'whathappened_items',
-    'unlocked_titles', 'equipped_title', 'whathappened_ach_new',
-    'whathappened_lifetime_clicks', 'whathappened_clicks_since_prestige', 'whathappened_playtime_seconds',
-    'whathappened_prestige_times', 'whathappened_total_golden', 'whathappened_last_prestige_ts', 'whathappened_golden',
-    'whathappened_redeemed_codes', 'whathappened_casino_stats', 'gamba_total_wins', 'shopCasinoDealerPurchased',
-    'whathappened_specials_owned', 'whathappened_specials_total', 'whathappened_specials_fullsets',
-    'player_username', 'player_clanId', 'player_clanName', 'player_clanRole',
-    'whathappened_clan_level', 'whathappened_clan_donated', 'whathappened_clan_checkin',
-]);
-// achievement flags (ach_<key>) and clan event rewards already claimed (so they can't be claimed again on another device)
-const SYNC_PREFIXES = ['ach_', 'whathappened_pp_claimed_', 'whathappened_bf_claimed_', 'whathappened_eb_claimed_',
-    'whathappened_cvc_claimed_', 'whathappened_race_claimed_', 'whathappened_con_claimed_'];
-function isSyncKey(k) { return typeof k === 'string' && k.length <= 120 && (SYNC_KEYS.has(k) || SYNC_PREFIXES.some(p => k.startsWith(p))); }
-
-function syncError(code, message) { const e = new Error(message); e.code = code; return e; }
-function readJSON(store, key) { try { return JSON.parse(store.getItem(key) || 'null'); } catch (e) { return null; } }
-
-// cyrb53: a fast 53-bit string hash, only used to notice that progress changed (not for security)
-function hash(str) {
-    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
-    for (let i = 0; i < str.length; i++) {
-        const ch = str.charCodeAt(i);
-        h1 = Math.imul(h1 ^ ch, 2654435761);
-        h2 = Math.imul(h2 ^ ch, 1597334677);
-    }
-    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-}
-
-// ---------------- this device's progress ----------------
-// All progress keys, sorted so the same progress always gives the same JSON and hash
-export function collectLocal() {
-    const data = {};
-    for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (isSyncKey(k)) data[k] = localStorage.getItem(k);
-    }
-    if (!(SAVE_KEY in data) && localStorage.getItem(SAVE_KEY_LEGACY) != null) data[SAVE_KEY] = localStorage.getItem(SAVE_KEY_LEGACY);
-    const sorted = {};
-    Object.keys(data).sort().forEach(k => { sorted[k] = data[k]; });
-    const json = JSON.stringify(sorted);
-    return { data: sorted, json, hash: hash(json) };
-}
-// A few headline numbers, shown when choosing between saves and stored next to the cloud save
-export function summarize(data) {
-    let s = {};
-    try { s = JSON.parse(data[SAVE_KEY] || '{}') || {}; } catch (e) { s = {}; }
-    const num = v => Number(v) || 0;
-    let followers = 0;
-    try { const f = JSON.parse(data.whathappened_followers || 'null'); followers = (f && Array.isArray(f.list)) ? f.list.length : 0; } catch (e) {}
+// ---------------- the account's save (Firestore saves/{uid}) as the sync engine sees it ----------------
+function cloudFromSnap(snap) {
+    const d = snap.data() || {};
     return {
-        count: String(s.count == null ? '0' : s.count).slice(0, 40),
-        golden: num(s.goldenWhat),
-        totalGolden: num(s.totalGoldenEver),
-        prestiges: Math.max(num(s.prestigeTimes), num(data.whathappened_prestige_times)),
-        gems: num(s.diamonds),
-        playSeconds: num(data.whathappened_playtime_seconds),
-        achievements: Object.keys(data).filter(k => k.startsWith('ach_') && k !== 'ach_clicks' && data[k] === '1').length,
-        followers,
+        rev: Number(d.rev) || 0,
+        payload: typeof d.payload === 'string' ? d.payload : '',
+        summary: (d.summary && typeof d.summary === 'object') ? d.summary : {},
+        device: typeof d.device === 'string' ? d.device : '',
+        updatedAt: (d.updatedAt && typeof d.updatedAt.toMillis === 'function') ? d.updatedAt.toMillis() : 0,
     };
 }
-function countLog10(c) {
-    const m = String(c || '0').match(/^(\d+(?:\.\d+)?)e\+?(\d+)$/i);
-    if (m) return Math.log10(Number(m[1]) || 1) + Number(m[2]);
-    const n = Number(c) || 0;
-    return n > 0 ? Math.log10(n) : 0;
-}
-// true when a has gone further than b: prestiges first, then Golden earned, then What Happeneds, then play time
-export function furtherAhead(a, b) {
-    const keys = [x => x.prestiges || 0, x => x.totalGolden || 0, x => countLog10(x.count), x => x.playSeconds || 0];
-    for (const k of keys) { if (k(a) !== k(b)) return k(a) > k(b); }
-    return false;
-}
-// A brand-new device (nothing worth asking about) can take the account's progress without a prompt
-export function hasProgress(data) {
-    if (!data[SAVE_KEY]) return false;
-    const s = summarize(data);
-    return s.prestiges > 0 || s.totalGolden > 0 || s.golden > 0 || s.gems > 0 || s.followers > 0 || countLog10(s.count) >= 3;
-}
+const remote = {
+    async fetch(uid) {
+        const snap = await getDoc(doc(db, 'saves', uid));
+        return snap.exists() ? cloudFromSnap(snap) : null;
+    },
+    // decide(current | null) returns the document to write (or throws to refuse); updatedAt must be the server's clock
+    transaction(uid, decide) {
+        const ref = doc(db, 'saves', uid);
+        return runTransaction(db, async (tx) => {
+            const snap = await tx.get(ref);
+            const next = decide(snap.exists() ? cloudFromSnap(snap) : null);
+            tx.set(ref, { ...next, updatedAt: serverTimestamp() });
+            return next.rev;
+        });
+    },
+};
+// localStorage is looked up on each call, so a browser that blocks it fails inside the sync code's try/catch, not at import
+const store = {
+    getItem: (k) => localStorage.getItem(k),
+    setItem: (k, v) => localStorage.setItem(k, v),
+    removeItem: (k) => localStorage.removeItem(k),
+    key: (i) => localStorage.key(i),
+    get length() { return localStorage.length; },
+};
+const engine = WHProgress.create({
+    store,
+    now: Date.now,
+    deviceLabel,
+    // the game must not save its in-memory state over progress we are about to write
+    beforeReplace() { if (typeof window.freezeSavesForReload === 'function') window.freezeSavesForReload(); },
+    remote,
+});
+export const {
+    collectLocal, readMeta, readBackup, fetchCloud, uploadLocal, loadCloudIntoDevice, keepDeviceProgress, restoreBackup, reconcile,
+    exportProgress, previewImport, importProgress,
+} = engine;
+
 
 const SUFFIXES = ['K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid'];
 // Format a count that may be a huge Decimal string ("1.5e+40") the same way the game does
@@ -157,153 +118,6 @@ function deviceLabel() {
     const browser = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
     const os = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'ChromeOS' : /Mac OS X/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
     return (browser + (os ? ' on ' + os : '')).slice(0, 40);
-}
-
-// ---------------- sync bookkeeping ----------------
-export function readMeta() {
-    const m = readJSON(localStorage, META_KEY);
-    if (!m || typeof m !== 'object') return { uid: '', rev: 0, hash: '', at: 0, play: null, prestiges: 0 };
-    return { uid: String(m.uid || ''), rev: Number(m.rev) || 0, hash: String(m.hash || ''), at: Number(m.at) || 0,
-        play: m.play == null ? null : Number(m.play) || 0, prestiges: Number(m.prestiges) || 0 };
-}
-// rev and hash of what was synced, plus its play time and prestiges (see SMALL_PLAY_SEC)
-function writeMeta(uid, rev, synced) {
-    const s = summarize(synced.data);
-    try { localStorage.setItem(META_KEY, JSON.stringify({ uid, rev, hash: synced.hash, at: Date.now(), play: s.playSeconds, prestiges: s.prestiges })); } catch (e) {}
-}
-function barelyPlayedSince(data, meta) {
-    const s = summarize(data);
-    return meta.play != null && s.prestiges <= meta.prestiges && s.playSeconds - meta.play <= SMALL_PLAY_SEC;
-}
-function clearMeta() { try { localStorage.removeItem(META_KEY); } catch (e) {} }
-export function readBackup() {
-    const b = readJSON(localStorage, BACKUP_KEY);
-    return (b && typeof b.payload === 'string') ? b : null;
-}
-function writeBackup(kind, payload, summary) {
-    try { localStorage.setItem(BACKUP_KEY, JSON.stringify({ at: Date.now(), kind, payload, summary })); }
-    catch (e) { throw syncError('sync/no-space', 'Not enough browser storage to keep a backup, so nothing was replaced.'); }
-}
-
-// ---------------- the account's progress ----------------
-function cloudFromSnap(snap) {
-    const d = snap.data() || {};
-    return {
-        rev: Number(d.rev) || 0,
-        payload: typeof d.payload === 'string' ? d.payload : '',
-        summary: (d.summary && typeof d.summary === 'object') ? d.summary : {},
-        device: typeof d.device === 'string' ? d.device : '',
-        updatedAt: (d.updatedAt && typeof d.updatedAt.toMillis === 'function') ? d.updatedAt.toMillis() : 0,
-    };
-}
-export async function fetchCloud(uid) {
-    const snap = await getDoc(doc(db, 'saves', uid));
-    return snap.exists() ? cloudFromSnap(snap) : null;
-}
-// Only progress keys with string values are accepted from the account; anything else in the document is ignored
-function parsePayload(json) {
-    if (typeof json !== 'string' || !json || json.length > MAX_PAYLOAD) throw syncError('sync/bad-data', 'The progress in your account could not be read.');
-    let obj;
-    try { obj = JSON.parse(json); } catch (e) { obj = null; }
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) throw syncError('sync/bad-data', 'The progress in your account could not be read.');
-    const out = {};
-    for (const k of Object.keys(obj)) if (isSyncKey(k) && typeof obj[k] === 'string') out[k] = obj[k];
-    if (out[SAVE_KEY]) { try { JSON.parse(out[SAVE_KEY]); } catch (e) { throw syncError('sync/bad-data', 'The progress in your account could not be read.'); } }
-    return out;
-}
-
-export class SyncConflict extends Error {
-    constructor(cloud) { super('This account was saved from another device since this one last synced.'); this.code = 'sync/conflict'; this.cloud = cloud; }
-}
-// Save this device's progress to the account. Refuses (SyncConflict) when another device saved since this one last
-// synced, unless force (the player chose this device's progress).
-export async function uploadLocal(user, opts) {
-    const force = !!(opts && opts.force);
-    const local = collectLocal();
-    if (local.json.length > MAX_PAYLOAD) throw syncError('sync/too-large', 'Your progress is too large to save to an account.');
-    const meta = readMeta();
-    const known = meta.uid === user.uid ? meta.rev : -1;
-    const ref = doc(db, 'saves', user.uid);
-    const rev = await runTransaction(db, async tx => {
-        const snap = await tx.get(ref);
-        const cur = snap.exists() ? (Number(snap.data().rev) || 0) : 0;
-        if (!force && snap.exists() && cur !== known) throw new SyncConflict(cloudFromSnap(snap));
-        tx.set(ref, { v: 1, rev: cur + 1, payload: local.json, summary: summarize(local.data), device: deviceLabel(), updatedAt: serverTimestamp() });
-        return cur + 1;
-    });
-    writeMeta(user.uid, rev, local);
-    return { rev, local };
-}
-
-// Replace this device's progress with `json` (from the account or a backup). The game page reloads afterwards.
-function applyPayload(json) {
-    const data = parsePayload(json);
-    // the game must not save its in-memory state over what we write (this tab: main.js; other tabs: the storage event)
-    try { if (typeof window.freezeSavesForReload === 'function') window.freezeSavesForReload(); } catch (e) {}
-    const remove = [];
-    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (isSyncKey(k) && !(k in data)) remove.push(k); }
-    remove.forEach(k => localStorage.removeItem(k));
-    try {
-        for (const k in data) localStorage.setItem(k, data[k]);
-        if (data[SAVE_KEY]) localStorage.setItem(SAVE_KEY_LEGACY, data[SAVE_KEY]);
-        else localStorage.removeItem(SAVE_KEY_LEGACY);
-    } catch (e) { throw syncError('sync/no-space', 'Not enough browser storage to load your progress.'); }
-    try { localStorage.setItem(APPLIED_KEY, String(Date.now())); } catch (e) {}
-    return collectLocal();
-}
-// Load the account's progress onto this device, keeping this device's progress as a backup first.
-// Returns true when a backup was kept.
-export function loadCloudIntoDevice(user, cloud) {
-    const local = collectLocal();
-    const backedUp = hasProgress(local.data);
-    if (backedUp) writeBackup('device', local.json, summarize(local.data));
-    const applied = applyPayload(cloud.payload);
-    writeMeta(user.uid, cloud.rev, applied);
-    return backedUp;
-}
-// Keep this device's progress: the account's progress is backed up on this device, then overwritten
-export async function keepDeviceProgress(user, cloud) {
-    if (cloud && cloud.payload) writeBackup('account', cloud.payload, cloud.summary);
-    return uploadLocal(user, { force: true });
-}
-// Put the backed-up progress back on this device (the progress it replaces becomes the new backup).
-// When signed in, the restored progress is then saved to the account on the next sync.
-export async function restoreBackup(user) {
-    const b = readBackup();
-    if (!b) throw syncError('sync/no-backup', 'There is no backup on this device.');
-    const local = collectLocal();
-    const cloud = user ? await fetchCloud(user.uid) : null;
-    const applied = applyPayload(b.payload);
-    if (hasProgress(local.data)) writeBackup('device', local.json, summarize(local.data));
-    else localStorage.removeItem(BACKUP_KEY);
-    // in step with the account's current rev, but changed: the next sync uploads the restored progress
-    if (user) writeMeta(user.uid, cloud ? cloud.rev : 0, { data: applied.data, hash: 'restored' });
-    else clearMeta();
-    return applied;
-}
-
-// Bring this device and the account in line after signing in or opening the game.
-// askUser(localSummary, cloud) resolves 'local', 'cloud' or 'later' when both sides changed.
-// Returns { state: 'synced' | 'uploaded' | 'loaded' | 'conflict', cloud, backedUp }.
-export async function reconcile(user, askUser) {
-    const local = collectLocal(), meta = readMeta();
-    const cloud = await fetchCloud(user.uid);
-    if (!cloud) { await uploadLocal(user); return { state: 'uploaded', cloud: null }; }
-    const mine = meta.uid === user.uid;
-    // exactly the same progress on both sides (e.g. signing back in on this device): nothing to ask
-    if (cloud.payload && hash(cloud.payload) === local.hash) { writeMeta(user.uid, cloud.rev, local); return { state: 'synced', cloud }; }
-    if (mine && cloud.rev === meta.rev) {
-        if (local.hash === meta.hash) return { state: 'synced', cloud };
-        try { await uploadLocal(user); return { state: 'uploaded', cloud }; }
-        catch (e) { if (!(e instanceof SyncConflict)) throw e; return reconcile(user, askUser); }
-    }
-    // the account has progress this device hasn't seen
-    const untouched = mine && cloud.rev > meta.rev && (local.hash === meta.hash || barelyPlayedSince(local.data, meta));
-    if (untouched || !hasProgress(local.data)) return { state: 'loaded', cloud, backedUp: loadCloudIntoDevice(user, cloud) };
-    const choice = askUser ? await askUser(summarize(local.data), cloud) : 'later';
-    if (choice === 'cloud') return { state: 'loaded', cloud, backedUp: loadCloudIntoDevice(user, cloud) };
-    if (choice === 'local') { await keepDeviceProgress(user, cloud); return { state: 'uploaded', cloud }; }
-    return { state: 'conflict', cloud };
 }
 
 // ---------------- accounts ----------------
@@ -342,7 +156,7 @@ export async function deleteAccount(password) {
     await reauth(user, password);
     await deleteDoc(doc(db, 'saves', user.uid));
     await deleteUser(user);
-    clearMeta();
+    engine.clearMeta();
 }
 // clearDevice: also remove the game's progress from this device (shared computers). The progress is saved to the
 // account first; if that fails, nothing is removed. A plain sign-out keeps this device's sync record (META_KEY), so
@@ -353,12 +167,7 @@ export async function signOutUser(clearDevice) {
     if (clearDevice) {
         const local = collectLocal(), meta = readMeta();
         if (!(meta.uid === user.uid && local.hash === meta.hash)) await uploadLocal(user);
-        try { if (typeof window.freezeSavesForReload === 'function') window.freezeSavesForReload(); } catch (e) {}
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (isSyncKey(k)) keys.push(k); }
-        keys.concat([SAVE_KEY_LEGACY, BACKUP_KEY]).forEach(k => localStorage.removeItem(k));
-        try { localStorage.setItem(APPLIED_KEY, String(Date.now())); } catch (e) {}
-        clearMeta();
+        engine.wipeDevice();
     }
     await signOut(auth);
 }

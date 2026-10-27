@@ -87,6 +87,21 @@
         });
     }
 
+    // Skeleton placeholders for the parts of a page that wait on the database. Styles are in theme.css.
+    // Each returns markup to drop into innerHTML; screen readers get one "Loading" status instead of the grey boxes.
+    const sk = (cls, extra) => '<div class="sk ' + cls + '"' + (extra || '') + '></div>';
+    const WHSk = {
+        // a list of rows: avatar, two text lines and a button, like members or chat
+        rows(n) { return '<div class="sk-list" role="status" aria-label="Loading">' + Array.from({ length: n || 5 }, () => '<div class="sk-item">' + sk('sk-avatar') + '<div class="sk-stack">' + sk('sk-line w60') + sk('sk-line w40') + '</div>' + sk('sk-btn') + '</div>').join('') + '</div>'; },
+        // a grid of cards, like the clan browser
+        cards(n) { return '<div class="sk-grid" role="status" aria-label="Loading">' + Array.from({ length: n || 6 }, () => '<div class="sk-block">' + sk('sk-line w60') + sk('sk-line') + sk('sk-line w80') + sk('sk-btn') + '</div>').join('') + '</div>'; },
+        // one card with a heading and some lines
+        panel(lines) { return '<div class="sk-block" role="status" aria-label="Loading">' + sk('sk-head') + Array.from({ length: lines || 4 }, (_, i) => sk('sk-line' + (i % 3 === 2 ? ' w60' : i % 3 === 1 ? ' w80' : ''))).join('') + '</div>'; },
+        // table body rows
+        tableRows(n, cols) { const widths = ['w40', 'w80', 'w60', 'w40', 'w60']; return Array.from({ length: n || 8 }, () => '<tr class="sk-tr" aria-hidden="true">' + Array.from({ length: cols || 4 }, (_, c) => '<td>' + sk('sk-line ' + widths[c % widths.length]) + '</td>').join('') + '</tr>').join(''); },
+    };
+    window.WHSk = WHSk;
+
     window.WHSite = { alerts, applyNavBadges, refreshSiteNav, setBadge, PAGES };
 
     function init() {

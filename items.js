@@ -29,6 +29,11 @@
     // a charm copy past 5 stars turns into something else: Common/Uncommon into seconds of CPS, Rare and up into gems
     const DUP_CPS_SEC = [120, 300];
     const DUP_GEMS = [0, 0, 1, 2, 5, 12];
+    // Selling: a copy is worth a fraction of a gem (hundredths of a gem, by rarity). Only whole gems are paid and the
+    // remainder is saved (state.dust), so rounding never favours the player. Kept far below every other use of an item:
+    // a charm copy past 5 stars already turns into DUP_GEMS (more than this), and a Treasury box costs 50-1000 gems for a
+    // handful of items, so buying boxes to sell what's inside loses over 97% of the gems.
+    const SELL_CENTI = [5, 15, 50, 150, 400, 1000];
 
     // same rarity colors as followers
     const RARITIES = [
@@ -142,6 +147,7 @@
             boosts: [],         // running consumables: { id, until, total }
             spawnIn: rand(FIRST_SPAWN_SEC[0], FIRST_SPAWN_SEC[1]),
             lureUntil: 0,
+            dust: 0,            // hundredths of a gem from sales that haven't added up to a whole gem yet
             stats: { collected: 0, opened: 0, merged: 0, missed: 0, bought: 0, bestTier: 0, gemsFound: 0, charmsSeen: 0 },
         };
     }
@@ -165,6 +171,7 @@
         if (Array.isArray(s.boosts)) f.boosts = s.boosts.filter(b => b && ITEMS_BY_ID[b.id] && Number(b.until) > now).map(b => ({ id: b.id, until: Number(b.until), total: Number(b.total) || 60000 }));
         if (Number.isFinite(Number(s.spawnIn))) f.spawnIn = Math.min(SPAWN_SEC[1], Number(s.spawnIn));
         f.lureUntil = Number(s.lureUntil) || 0;
+        f.dust = Math.min(99, count(s.dust));
         if (s.stats && typeof s.stats === 'object') for (const k in f.stats) f.stats[k] = count(s.stats[k]);
         return f;
     }
@@ -670,6 +677,33 @@
         showMergeAllReveal(gained, top, merges);
         afterChange();
     }
+    // hundredths of a gem one copy sells for; 0 when it can't be sold (gem and Golden items: use them instead)
+    function sellValue(it) {
+        if (!it || (it.kind === 'use' && (it.effect.type === 'gems' || it.effect.type === 'golden'))) return 0;
+        return SELL_CENTI[it.rarity] || 0;
+    }
+    // copies that can be sold: every consumable, and every charm copy beyond the first
+    function sellableCount(it) {
+        const n = st().items[it.id] || 0;
+        return sellValue(it) ? Math.max(0, it.kind === 'charm' ? n - 1 : n) : 0;
+    }
+    function centiText(c) { return String(+(c / 100).toFixed(2)); }
+    function sellItems(id, qty, btn) {
+        const s = st(), it = ITEMS_BY_ID[id];
+        if (!it) return 0;
+        const n = Math.min(Math.floor(Number(qty)) || 0, sellableCount(it));
+        if (n < 1) return 0;
+        const total = (s.dust || 0) + n * sellValue(it);
+        const gems = Math.floor(total / 100);
+        s.items[id] -= n;
+        s.dust = total % 100;
+        save();
+        const left = s.dust ? ` ${centiText(s.dust)} gem saved toward the next one.` : '';
+        toast(`Sold ${n} ${it.name}: ${gems ? '+' + gems + (gems === 1 ? ' gem.' : ' gems.') : 'no whole gem yet.'}${left}`);
+        if (gems) { try { addGems(gems, btn ? centerOf(btn) : defaultPoint()); } catch (err) {} }
+        afterChange();
+        return gems;
+    }
     function useItem(id, btn) {
         const s = st(), it = ITEMS_BY_ID[id];
         if (!it || it.kind !== 'use' || !(s.items[id] > 0)) return;
@@ -867,7 +901,7 @@
         menuOpener = document.activeElement;
         menu.classList.add('open');
         overlayEl.classList.add('open');
-        renderInventory();
+        renderInventory(true);
         const btn = document.getElementById('itemsTopBtn');
         if (btn) btn.classList.add('active');
         try { menu.querySelector('.modal-close').focus({ preventScroll: true }); } catch (e) {}
@@ -882,7 +916,7 @@
     }
     function onMenuClick(e) {
         const tabBtn = e.target.closest('[data-itab]');
-        if (tabBtn) { curTab = tabBtn.dataset.itab; renderInventory(); menu.querySelector('.items-content').scrollTop = 0; return; }
+        if (tabBtn) { if (tabBtn.dataset.itab !== curTab) { curTab = tabBtn.dataset.itab; renderInventory(true); } menu.querySelector('.items-content').scrollTop = 0; return; }
         const b = e.target.closest('[data-act]');
         if (!b || b.disabled) return;
         const tier = Number(b.dataset.tier), id = b.dataset.id;
@@ -895,11 +929,43 @@
             case 'mergeAll': mergeAll(); break;
             case 'equip': toggleEquip(id); break;
             case 'use': useItem(id, b); break;
+            case 'sell': sellItems(id, 1, b); break;
+            case 'sellAll': {
+                const it = ITEMS_BY_ID[id], n = it ? sellableCount(it) : 0;
+                if (n && window.confirm(`Sell ${n} ${it.name} for about ${centiText(n * sellValue(it))} gems? Only whole gems are paid; the rest is saved.`)) sellItems(id, n, b);
+                break;
+            }
             case 'buySlot': buySlot(); break;
         }
     }
-    function renderInventory() {
+    // Placeholder cards shaped like the tab being loaded, so the content area keeps its layout while it "loads"
+    function skeletonHtml(tab) {
+        const card = n => Array.from({ length: n }, () => `<div class="sk-card"><div class="sk-row"><div class="sk sk-art"></div><div style="flex:1;display:grid;gap:8px"><div class="sk sk-line"></div><div class="sk sk-line w40"></div></div></div><div class="sk sk-line"></div><div class="sk sk-line w60"></div><div class="sk sk-btn"></div></div>`).join('');
+        if (tab === 'boxes') return `<div class="sk sk-head"></div><div class="box-ladder">${Array.from({ length: BOXES.length }, () => '<div class="sk-card sk-box"><div class="sk sk-art"></div><div class="sk sk-line w60"></div><div class="sk sk-line"></div><div class="sk sk-btn"></div></div>').join('')}</div>`;
+        return `<div class="sk sk-head"></div><div class="item-grid">${card(6)}</div>`;
+    }
+    const SKELETON_MS = 220;
+    let skeletonTimer = null;
+    // withSkeleton: show the placeholders for a moment first (opening the menu, switching tabs)
+    function renderInventory(withSkeleton) {
         if (!menu) return;
+        // refreshes from elsewhere (HUD, boosts, a pickup) wait for the pending skeleton, whose timer renders fresh content
+        if (skeletonTimer && withSkeleton !== true) return;
+        clearTimeout(skeletonTimer);
+        skeletonTimer = null;
+        if (withSkeleton === true && !reducedMotion() && !lowPerf()) {
+            const content = menu.querySelector('.items-content');
+            content.setAttribute('aria-busy', 'true');
+            content.innerHTML = skeletonHtml(curTab);
+            menu.querySelectorAll('[data-itab]').forEach(b => {
+                const on = b.dataset.itab === curTab;
+                b.classList.toggle('active', on);
+                b.setAttribute('aria-selected', on ? 'true' : 'false');
+            });
+            skeletonTimer = setTimeout(() => { skeletonTimer = null; renderInventory(); }, SKELETON_MS);
+            return;
+        }
+        menu.querySelector('.items-content').removeAttribute('aria-busy');
         menu.querySelectorAll('[data-itab]').forEach(b => {
             const on = b.dataset.itab === curTab;
             b.classList.toggle('active', on);
@@ -931,8 +997,11 @@
             <p class="items-hint">Lootboxes pop up on the main screen every few minutes. Grab them before they vanish! Merge ${MERGE_COUNT} of a kind into the next tier for better loot.</p>
             <button type="button" class="btn btn-ghost btn-sm" data-act="mergeAll"${canMerge ? '' : ' disabled'}>Merge all</button>
         </div><div class="box-ladder">`;
+        // only the lootboxes you have right now
+        if (!s.boxes.some(n => n > 0)) h += '<p class="items-hint items-empty">You have no lootboxes right now. Grab one when it pops up on the main screen.</p>';
         BOXES.forEach((b, t) => {
             const n = s.boxes[t], next = BOXES[t + 1];
+            if (!n) return;
             const dots = Array.from({ length: MERGE_COUNT }, (_, i) => `<i${i < n ? ' class="on"' : ''}></i>`).join('');
             h += `<div class="box-card${n ? '' : ' is-empty'}" style="--tc:${b.color}">
                 <div class="box-card-art">${boxSvg(t)}${n ? `<span class="box-count">×${n}</span>` : ''}</div>
@@ -954,11 +1023,17 @@
         </div>`;
         return h;
     }
-    function unknownCard(it) {
-        return `<div class="item-card is-unknown" style="--rc:${RARITIES[it.rarity].color}">
-            <div class="item-card-head"><span class="item-art is-unknown" aria-hidden="true">?</span><div><div class="item-name">???</div><div class="item-rarity">${RARITIES[it.rarity].name}</div></div></div>
-            <p class="item-flavor">Not found yet. Open lootboxes to discover it.</p>
-        </div>`;
+    function sellButtons(it) {
+        const n = sellableCount(it), v = sellValue(it);
+        if (!n) return '';
+        const gem = `<img src="${GEM_IMG}" alt="" class="gem-ico gem-ico--sm">`;
+        let h = `<button type="button" class="btn btn-ghost btn-sm" data-act="sell" data-id="${it.id}" title="Sell one copy. Only whole gems are paid; the rest is saved.">Sell ${gem}${centiText(v)}</button>`;
+        if (n > 1) h += `<button type="button" class="btn btn-ghost btn-sm" data-act="sellAll" data-id="${it.id}" title="Sell ${it.kind === 'charm' ? 'every extra copy (you keep one)' : 'all of them'}">All ${n}</button>`;
+        return h;
+    }
+    function sellHint() {
+        const d = st().dust || 0;
+        return `Extras sell for a fraction of a gem. Only whole gems are paid and the rest is saved${d ? ` (${centiText(d)} / 1 saved now)` : ''}.`;
     }
     function charmsTabHtml() {
         const s = st();
@@ -979,10 +1054,12 @@
             <div class="charm-slots">${slots}</div>
             <p class="charm-summary">${parts.length ? 'From charms: <b>' + parts.join(' · ') + '</b>' : 'Equip charms for bonuses that last as long as they are equipped.'}</p>
             <h5 class="items-section-h">Collection <span>${found} / ${CHARMS.length}</span></h5>
-            <p class="items-hint">Every copy of a charm adds a star (up to ${MAX_STARS}), and each star adds half its base bonus. Copies past ${MAX_STARS} stars turn into What Happeneds or gems.</p>
+            <p class="items-hint">Every copy of a charm adds a star (up to ${MAX_STARS}), and each star adds half its base bonus. Copies past ${MAX_STARS} stars turn into What Happeneds or gems. You can also sell extra copies (you always keep one). ${sellHint()}</p>
             <div class="item-grid">`;
-        CHARMS.forEach(it => {
-            if (!s.seen[it.id]) { h += unknownCard(it); return; }
+        // only the charms you have right now
+        const ownedCharms = CHARMS.filter(it => (s.items[it.id] || 0) > 0);
+        if (!ownedCharms.length) h += '<p class="items-hint items-empty">You have no charms yet. Open lootboxes to find some.</p>';
+        ownedCharms.forEach(it => {
             const n = s.items[it.id] || 0, sc = stars(it.id), eq = s.equipped.indexOf(it.id) !== -1, r = RARITIES[it.rarity];
             h += `<div class="item-card${eq ? ' is-equipped' : ''}" style="--rc:${r.color}">
                 <div class="item-card-head">${artHtml(it)}<div><div class="item-name">${esc(it.name)}</div><div class="item-rarity">${r.name}</div></div></div>
@@ -991,23 +1068,25 @@
                 <div class="item-next">${sc < MAX_STARS ? `Next star: ${esc(effectText(it, sc + 1))}` : `Max stars. Copies turn into ${dupText(it)}.`}</div>
                 <p class="item-flavor">${esc(it.flavor)}</p>
                 <div class="item-foot"><span class="item-copies">×${n}</span>
-                    <button type="button" class="btn btn-sm ${eq ? 'btn-ghost' : 'btn-primary'}" data-act="equip" data-id="${it.id}">${eq ? 'Unequip' : 'Equip'}</button></div>
+                    <span class="item-btns">${sellButtons(it)}<button type="button" class="btn btn-sm ${eq ? 'btn-ghost' : 'btn-primary'}" data-act="equip" data-id="${it.id}">${eq ? 'Unequip' : 'Equip'}</button></span></div>
             </div>`;
         });
         return h + '</div>';
     }
     function useTabHtml() {
         const s = st();
-        let h = `<p class="items-hint">Consumables come from lootboxes. Different boosts stack, and using one that is already running adds to its time.</p><div class="item-grid">`;
-        USABLES.forEach(it => {
-            if (!s.seen[it.id]) { h += unknownCard(it); return; }
+        let h = `<p class="items-hint">Consumables come from lootboxes. Different boosts stack, and using one that is already running adds to its time. Gem and Golden items can't be sold, so use them. ${sellHint()}</p><div class="item-grid">`;
+        // only the consumables you have right now
+        const owned = USABLES.filter(it => (s.items[it.id] || 0) > 0);
+        if (!owned.length) h += '<p class="items-hint items-empty">You have no consumables right now. Open lootboxes to find some.</p>';
+        owned.forEach(it => {
             const n = s.items[it.id] || 0, r = RARITIES[it.rarity];
-            h += `<div class="item-card${n ? '' : ' is-out'}" style="--rc:${r.color}">
+            h += `<div class="item-card" style="--rc:${r.color}">
                 <div class="item-card-head">${artHtml(it)}<div><div class="item-name">${esc(it.name)}</div><div class="item-rarity">${r.name}</div></div></div>
                 <div class="item-effect">${esc(effectText(it))}</div>
                 <p class="item-flavor">${esc(it.flavor)}</p>
                 <div class="item-foot"><span class="item-copies">×${n}</span>
-                    <button type="button" class="btn btn-primary btn-sm" data-act="use" data-id="${it.id}"${n ? '' : ' disabled'}>Use</button></div>
+                    <span class="item-btns">${sellButtons(it)}<button type="button" class="btn btn-primary btn-sm" data-act="use" data-id="${it.id}"${n ? '' : ' disabled'}>Use</button></span></div>
             </div>`;
         });
         return h + '</div>';
@@ -1213,7 +1292,7 @@
 
     window.WHI = {
         STORAGE_KEY, RARITIES, BOXES, ITEMS, ITEMS_BY_ID,
-        bonuses, renderHud, gemBurst, shakeChip, confirmSpend, renderTreasury,
+        sellItems, sellValue, sellableCount, bonuses, renderHud, gemBurst, shakeChip, confirmSpend, renderTreasury,
         openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary,
     };
 })();

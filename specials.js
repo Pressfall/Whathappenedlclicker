@@ -38,6 +38,10 @@
         noodles: 'Good Noodles CPS',
         mobile: 'Mobile Man 38 CPS',
         easton: 'Easton Bundy CPS',
+        tomPearl: 'Tom Pearl CPS',
+        hypergamy: 'Hypergamy CPS',
+        evilPirate: 'Evil Somalian Pirate CPS',
+        oalgo: 'O\'algo CPS',
     };
     const CREW_NOTE = 'Crew = every upgrade except the Pirate, Jonathan, CR lurker and The Phonk Man.';
     const TIER_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -193,6 +197,30 @@
             ['eastonBundy2', 25, 'buyEastonBundy2', 'eastonBundy2Purchased', 'eastonBundy2Cost', 'easton', null, 2, 'Corner Office', 'Great view, comfy chair, triple monitors. Output doubles.'],
             ['eastonBundy3', 50, 'buyEastonBundy3', 'eastonBundy3Purchased', 'eastonBundy3Cost', 'easton', null, 2.5, 'Silent Partner', 'He doesn\'t just run operations anymore. He is the operation.'],
             ['eastonBundy4', 100, 'buyEastonBundy4', 'eastonBundy4Purchased', 'eastonBundy4Cost', 'easton', null, 3, 'The Bundy Empire', 'Everything you can see belongs to Easton Bundy. Somehow, that includes you.'],
+        ] },
+        { key: 'tomPearl', up: 25, img: 'tompearl.webp', items: [
+            ['tomPearl1', 10, 'buyTomPearl1', 'tomPearl1Purchased', 'tomPearl1Cost', 'tomPearl', null, 1.5, 'Purple Shades', 'They block out 100% of sunlight and 0% of the vibes.'],
+            ['tomPearl2', 25, 'buyTomPearl2', 'tomPearl2Purchased', 'tomPearl2Cost', 'tomPearl', null, 2, 'Phonk Remix', 'Somebody slowed it down and added cowbell. It is now twice as powerful.'],
+            ['tomPearl3', 50, 'buyTomPearl3', 'tomPearl3Purchased', 'tomPearl3Cost', 'tomPearl', null, 2.5, 'Electric Grin', 'That smile has been measured at 40,000 volts.'],
+            ['tomPearl4', 100, 'buyTomPearl4', 'tomPearl4Purchased', 'tomPearl4Cost', 'tomPearl', null, 3, 'Pearl Jam', 'The whole server is listening. Nobody can turn it off.'],
+        ] },
+        { key: 'hypergamy', up: 26, img: 'hypergamy.webp', items: [
+            ['hypergamy1', 10, 'buyHypergamy1', 'hypergamy1Purchased', 'hypergamy1Cost', 'hypergamy', null, 1.5, 'More Arrows', 'The diagram needed more arrows. Productivity agrees.'],
+            ['hypergamy2', 25, 'buyHypergamy2', 'hypergamy2Purchased', 'hypergamy2Cost', 'hypergamy', null, 2, 'Expectation Arrow', 'Anything above the arrow is a catch. Your CPS is now above the arrow.'],
+            ['hypergamy3', 50, 'buyHypergamy3', 'hypergamy3Purchased', 'hypergamy3Cost', 'hypergamy', null, 2.5, 'Peer Review', 'Three guys on a forum looked at it and said "true." Science.'],
+            ['hypergamy4', 100, 'buyHypergamy4', 'hypergamy4Purchased', 'hypergamy4Cost', 'hypergamy', null, 3, 'The Top 20%', 'Every What Happened now wants to be in your portfolio.'],
+        ] },
+        { key: 'evilPirate', up: 27, img: 'evilpirate.webp', items: [
+            ['evilPirate1', 10, 'buyEvilPirate1', 'evilPirate1Purchased', 'evilPirate1Cost', 'evilPirate', null, 1.5, 'Black Flag', 'The good pirate flies a blue flag. This one does not.'],
+            ['evilPirate2', 25, 'buyEvilPirate2', 'evilPirate2Purchased', 'evilPirate2Cost', 'evilPirate', null, 2, 'Mutiny', 'He took over the good pirate\'s ship. And his speedboat. And his hat.'],
+            ['evilPirate3', 50, 'buyEvilPirate3', 'evilPirate3Purchased', 'evilPirate3Cost', 'evilPirate', null, 2.5, 'No Ransom', 'He doesn\'t negotiate. He just takes the What Happeneds.'],
+            ['evilPirate4', 100, 'buyEvilPirate4', 'evilPirate4Purchased', 'evilPirate4Cost', 'evilPirate', null, 3, 'Scourge of the Gulf', 'Every ship on the horizon now belongs to him. Every single one.'],
+        ] },
+        { key: 'oalgo', up: 28, img: 'oalgo.webp', items: [
+            ['oalgo1', 10, 'buyOalgo1', 'oalgo1Purchased', 'oalgo1Cost', 'oalgo', null, 1.5, 'Chapter One', 'Ad hominem, strawman, slippery slope. He took notes.'],
+            ['oalgo2', 25, 'buyOalgo2', 'oalgo2Purchased', 'oalgo2Cost', 'oalgo', null, 2, 'The Queen of Spades', 'A small pin, a big statement. Output doubles.'],
+            ['oalgo3', 50, 'buyOalgo3', 'oalgo3Purchased', 'oalgo3Cost', 'oalgo', null, 2.5, 'Socratic Method', 'He asks one question. The CPS answers it.'],
+            ['oalgo4', 100, 'buyOalgo4', 'oalgo4Purchased', 'oalgo4Cost', 'oalgo', null, 3, 'Philosopher King', 'He finished the book. He wrote the sequel. Every argument is now his.'],
         ] },
     ];
 
@@ -455,6 +483,8 @@
     }
 
     window.SPECIAL_UPGRADES = SPECIALS;
+    // plain data for the first-run guide: each special, the upgrade it belongs to, the level that unlocks it, and whether it is owned
+    window.specialsSnapshot = () => SPECIALS.map(sp => ({ name: sp.name, upgrade: sp.group.up, upgradeName: sp.group.name, level: sp.lvl, owned: isOwned(sp) }));
     window.updateSpecialsMenu = updateSpecialsMenu;
     window.hideSpecialTip = () => hideTip(true);
 })();

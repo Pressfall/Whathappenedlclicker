@@ -62,11 +62,11 @@
     </div>
 
     <div id="tabEvents" style="display:none">
-      <div class="card"><div class="muted">Loading events…</div></div>
+      <div class="card" role="status" aria-label="Loading"><div class="sk sk-head"></div><div class="sk sk-line" style="margin-top:10px"></div><div class="sk sk-line w80" style="margin-top:10px"></div><div class="sk sk-line w60" style="margin-top:10px"></div><div class="sk sk-line" style="margin-top:10px"></div></div>
     </div>
 
     <div id="tabShop" style="display:none">
-      <div class="card"><div class="muted">Loading the clan shop…</div></div>
+      <div class="card" role="status" aria-label="Loading"><div class="sk sk-head"></div><div class="sk sk-line" style="margin-top:10px"></div><div class="sk sk-line w80" style="margin-top:10px"></div><div class="sk sk-line w60" style="margin-top:10px"></div><div class="sk sk-line" style="margin-top:10px"></div><div class="sk sk-line w80" style="margin-top:10px"></div></div>
     </div>
   </main>
   <div id="clanToasts" aria-live="polite"></div>
@@ -760,8 +760,11 @@
   function checkinReward(streak){ return CHECKIN_CP_BASE + 2 * Math.min(Math.max(0, streak - 1), 5); }
   function readCheckinState(){ try{ return JSON.parse(localStorage.getItem('whathappened_clan_checkin') || '{}') || {}; }catch(e){ return {}; } }
   function roleSlug(role){ return String(roleLabel(role || 'member')).replace(/\s+/g, '-'); }
+  function isEmbeddedLogo(url){ return typeof url === 'string' && url.length <= 900000 && /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+\/=]+$/.test(url); }
   function clanIconHtml(c){
-    if(c.clanIcon === 'custom' && c.clanCustomLogoUrl) return `<img src="${escapeHtml(c.clanCustomLogoUrl)}" alt="">`;
+    // the logo field is writable by any member's browser: only show an image that is embedded in the document (what the shop uploads),
+    // never a link to some other site, which would tell that site who is looking at the clan
+    if(c.clanIcon === 'custom' && isEmbeddedLogo(c.clanCustomLogoUrl)) return `<img src="${escapeHtml(c.clanCustomLogoUrl)}" alt="">`;
     const ic = c.clanIcon ? getClanIconById(c.clanIcon) : getClanIconForLevel(clanLevelFromXp(c.clanXp).level);
     return `<span>${ic.emoji || '⚔'}</span>`;
   }
@@ -785,7 +788,7 @@
     const area = document.getElementById('clanDetailArea'); if(!area || !clanId) return;
     closeClanView();
     _clanView.id = clanId;
-    area.innerHTML = '<div class="card"><div class="muted">Loading clan…</div></div>';
+    area.innerHTML = window.WHSk ? '<div class="card">' + WHSk.panel(6) + '</div>' : '<div class="card"><div class="muted">Loading clan…</div></div>';
     currentClanUnsub = onSnapshot(doc(db,'clans',clanId), async snap => {
       try{
         if(_clanView.id !== clanId) return;
@@ -838,7 +841,7 @@
           ${isMember ? '<section class="card checkin-card" id="checkinCard"></section>' : ''}
           <section class="card members-card">
             <div class="sec-head"><h2>Members <span class="count" id="memberCount"></span></h2><span class="online-count" id="onlineCount"></span></div>
-            <div id="membersList" class="members-list"><div class="muted">Loading members…</div></div>
+            <div id="membersList" class="members-list">${window.WHSk ? WHSk.rows(6) : '<div class="muted">Loading members…</div>'}</div>
           </section>
         </div>
         <section class="card chat-card">
@@ -1140,7 +1143,7 @@
   }
   async function renderClanBrowser(force){
     const box = document.getElementById('searchResults'); if(!box) return;
-    if(!_clanList.list.length) box.innerHTML = '<div class="muted">Loading clans…</div>';
+    if(!_clanList.list.length) box.innerHTML = window.WHSk ? WHSk.cards(6) : '<div class="muted">Loading clans…</div>';
     let list;
     try{ list = await fetchClanList(force); }catch(e){ console.warn('clan list failed', e); box.innerHTML = '<div class="muted">Couldn\'t load clans. Check your connection and try again.</div>'; return; }
     const term = ((document.getElementById('searchClanName') || {}).value || '').trim().toLowerCase();
@@ -1311,7 +1314,7 @@
     if(String(localStorage.getItem('player_clanId') || '') !== String(clanId)){ box.innerHTML = '<div class="muted">Join the clan to view messages.</div>'; return; }
     try{ if(typeof window.currentChatUnsub === 'function') window.currentChatUnsub(); }catch(e){}
     window.currentChatUnsub = null;
-    box.innerHTML = '<div class="muted chat-empty">Loading messages…</div>';
+    box.innerHTML = window.WHSk ? WHSk.rows(5) : '<div class="muted chat-empty">Loading messages…</div>';
     let first = true;
     const q = query(collection(db,'clan_chat'), where('clanId','==',clanId), limit(200));
     window.currentChatUnsub = onSnapshot(q, snap => {

@@ -233,3 +233,21 @@ input[type=range] { accent-color: var(--gold); width: 100%; }
     .site-nav-link .sn-txt { display: none; }
     .site-nav-link.current .sn-txt { display: inline; font-size: 13px; }
 }
+
+/* ========== Skeleton loaders (placeholders shown while a page waits for data; see WHSk in site.js) ========== */
+.sk { position: relative; overflow: hidden; border-radius: 8px; background: var(--surface-3, rgba(255, 255, 255, 0.07)); }
+.sk::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%); background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.09), transparent); animation: sk-shimmer 1.2s infinite; }
+@keyframes sk-shimmer { to { transform: translateX(100%); } }
+.sk-line { height: 12px; width: 100%; }
+.sk-line.w40 { width: 40%; }
+.sk-line.w60 { width: 60%; }
+.sk-line.w80 { width: 80%; }
+.sk-btn { height: 30px; width: 84px; border-radius: 10px; flex: none; }
+.sk-head { height: 16px; width: 140px; margin: 4px 0 14px; }
+.sk-avatar { width: 36px; height: 36px; border-radius: 50%; flex: none; }
+.sk-stack { flex: 1; min-width: 0; display: grid; gap: 7px; }
+.sk-list { display: grid; gap: 6px; }
+.sk-item { display: flex; align-items: center; gap: 10px; padding: 8px 4px; }
+.sk-grid { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.sk-block { display: grid; gap: 10px; padding: 14px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+@media (prefers-reduced-motion: reduce) { .sk::after { animation: none; } }

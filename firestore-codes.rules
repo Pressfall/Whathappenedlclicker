@@ -1,0 +1,33 @@
+// Firestore security rules for redeem codes (main.js redeemSecretCode reads codes/{CODE}).
+//
+// HOW CODES WORK: each code is one document in the "codes" collection, and the document id is the code in UPPER CASE.
+// Add, edit or delete them in the Firebase console (Firestore Database > codes) and players see the change straight away,
+// with no redeploy. Fields:
+//   type       string   'count' (What Happeneds), 'golden' (Golden), or 'diamonds' (gems)       required
+//   amount     number   how many (for 'count' you can also use a string such as '1e100')      required
+//   message    string   shown to the player when they redeem it                                  optional
+//   enabled    boolean  set to false to switch a code off without deleting it                    optional
+//   expiresAt  timestamp the code stops working after this time                                  optional
+// Example: document id GEMS -> { type: 'diamonds', amount: 100, message: 'You received 100 gems!' }
+//
+// HOW TO USE THE RULES: copy the `match /codes/{code}` block into your existing rules (Firebase console > Firestore
+// Database > Rules), inside `match /databases/{database}/documents { ... }`, then Publish. Don't replace your whole rules
+// with this file: your clan, chat, leaderboard and saves collections need their own rules.
+//
+// IMPORTANT: Firestore allows a request if ANY matching rule allows it. If your rules contain a catch-all such as
+//     match /{document=**} { allow read, write: if true; }
+// then anyone can read the whole codes collection and also create or change codes (including ones that give a huge
+// reward). Remove the catch-all and write rules for each collection you use.
+//
+// `get` (read one document by id) is allowed, `list` (browse the collection) is not, so a player can only check a code
+// they already know. Writes are denied to every client; only you, in the console, can change codes.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /codes/{code} {
+      allow get: if true;
+      allow list, create, update, delete: if false;
+    }
+  }
+}

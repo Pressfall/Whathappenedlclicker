@@ -1,0 +1,143 @@
+// Firestore security rules for the public, player-written collections: leaderboard, global_chat, clan_chat, profiles.
+// DRAFT. Read docs/trust-boundaries.md first: what these rules can and cannot do, and what is still open.
+//
+// WHAT THIS FILE IS
+//   The other rules files (firestore-saves.rules, firestore-codes.rules) cover the signed-in, private parts. The social
+//   features were never covered by a rules file in this repo, and tools/notes.txt says "CHANGE RULES IN FIREBASE
+//   EVENTUALLY", so the rules live only in the Firebase console and may still be test-mode or a catch-all. This file
+//   is what those collections should say, written from what the client code actually sends today.
+//
+// WHAT IT CANNOT DO
+//   Players of the social features are NOT signed in: the game picks a username in the browser and writes under it.
+//   A rule has no way to tell who is writing, so it cannot stop someone posting a score, a chat message or a profile
+//   under another name. These rules only (1) make the leaderboard and chat append-only, (2) check the shape, size and
+//   type of what is written, (3) stop deletes of live data, and (4) stamp times with the server's clock. Trusting a
+//   score, a clan's points or a reward needs a signed-in writer and a server that checks the number (see the doc).
+//
+// HOW TO USE
+//   Firebase console > Firestore Database > Rules: copy the four `match` blocks and the helper functions below into your
+//   rules, inside `match /databases/{database}/documents { ... }`, next to the saves and codes blocks. Keep a copy of your
+//   current rules so you can put them back. Then test in the Rules Playground (checklist at the bottom) BEFORE Publish.
+//   NOT RUN against the Firestore emulator (it needs Java, which was not available when this was written).
+//
+// IMPORTANT: Firestore allows a request if ANY matching rule allows it. A catch-all such as
+//     match /{document=**} { allow read, write: if true; }
+// or a time-limited test-mode rule makes every block below pointless. Remove it, and write a block for each collection
+// you use (clans, clans/{id}/members and events are not covered here: see the doc).
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---- leaderboard: one document per submission (the game writes an 'alltime' and a 'monthly' copy) ----
+    // Anyone can read. Anyone can add an entry of the right shape. Nobody can change or delete one.
+    match /leaderboard/{id} {
+      allow read: if true;
+      allow create: if validLeaderboardEntry();
+      allow update, delete: if false;
+    }
+
+    // ---- global chat ----
+    // Messages are append-only. Trimming (the game deletes the oldest when there are too many) is allowed only for messages
+    // older than an hour, so a visitor cannot wipe the live conversation.
+    match /global_chat/{id} {
+      allow read: if true;
+      allow create: if validChat(['name', 'message', 'title', 'createdAt', 'scrollToBottom']);
+      allow update: if false;
+      allow delete: if isOldMessage();
+    }
+
+    // ---- clan chat ----
+    // Players write {clanId, name, message, title, createdAt, scrollToBottom}; the game also posts SYSTEM lines
+    // (joined, left, level up) with system / color flags. Pinning edits only the three pin fields.
+    match /clan_chat/{id} {
+      allow read: if true;
+      allow create: if validChat(['clanId', 'name', 'message', 'title', 'createdAt', 'scrollToBottom', 'system', 'color']) && request.resource.data.clanId is string;
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned', 'pinnedBy', 'pinnedByRole'])
+        && request.resource.data.pinned is bool;
+      allow delete: if isOldMessage();                    // see note 1
+    }
+
+    // ---- profiles: one document per username ----
+    // Written by the game page (score, Golden, title), the clan page (clanId, clanName, clanRole, kick notice).
+    // Anyone can read. A write may only touch known fields, within bounds. Documents are never deleted.
+    match /profiles/{username} {
+      allow read: if true;
+      allow create: if request.resource.data.keys().hasOnly(profileFields()) && validProfile(username);
+      allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(profileFields()) && validProfile(username);
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------- helpers
+
+    function validLeaderboardEntry() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['name', 'title', 'score', 'type', 'createdAt'])
+        && d.keys().hasAll(['name', 'score', 'type', 'createdAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 32
+        && (!('title' in d) || (d.title is string && d.title.size() <= 64))
+        && d.score is number && d.score >= 0              // NaN fails this; there is no upper bound a rule can state portably
+        && d.type in ['alltime', 'monthly']
+        && d.createdAt == request.time;                    // the server's clock, not the player's
+    }
+
+    // `allowed` lists every field a chat message may carry
+    function validChat(allowed) {
+      let d = request.resource.data;
+      return d.keys().hasOnly(allowed)
+        && d.keys().hasAll(['name', 'message', 'createdAt'])
+        && d.name is string && d.name.size() > 0 && d.name.size() <= 32
+        && d.message is string && d.message.size() > 0 && d.message.size() <= 500
+        && (!('title' in d) || d.title == null || (d.title is string && d.title.size() <= 64))
+        && (!('scrollToBottom' in d) || d.scrollToBottom is bool)
+        && (!('system' in d) || d.system is bool)
+        && (!('color' in d) || (d.color is string && d.color.size() <= 16))
+        && d.createdAt == request.time;
+    }
+
+    function isOldMessage() {
+      return resource.data.createdAt < request.time - duration.value(1, 'h');
+    }
+
+    function profileFields() {
+      return ['username', 'title', 'score', 'points', 'totalScore', 'golden', 'goldenWhat', 'totalGoldenEver', 'totalGolden',
+        'clanPoints', 'updatedAt', 'clanId', 'clanName', 'clanRole', 'kickedMessage', 'kickedAt'];
+    }
+
+    // bounds for whichever of the fields are present in the document after the write
+    function validProfile(username) {
+      let d = request.resource.data;
+      return (!('username' in d) || d.username == username)
+        && username.size() > 0 && username.size() <= 32
+        && (!('title' in d) || d.title == null || (d.title is string && d.title.size() <= 64))
+        && (!('score' in d) || (d.score is number && d.score >= 0))
+        && (!('points' in d) || (d.points is number && d.points >= 0))
+        && (!('totalScore' in d) || (d.totalScore is number && d.totalScore >= 0))
+        && (!('golden' in d) || (d.golden is number && d.golden >= 0))
+        && (!('goldenWhat' in d) || (d.goldenWhat is number && d.goldenWhat >= 0))
+        && (!('totalGoldenEver' in d) || (d.totalGoldenEver is number && d.totalGoldenEver >= 0))
+        && (!('totalGolden' in d) || (d.totalGolden is number && d.totalGolden >= 0))
+        && (!('clanPoints' in d) || (d.clanPoints is number && d.clanPoints >= 0))
+        && (!('clanId' in d) || d.clanId == null || (d.clanId is string && d.clanId.size() <= 64))
+        && (!('clanName' in d) || d.clanName == null || (d.clanName is string && d.clanName.size() <= 64))
+        && (!('clanRole' in d) || d.clanRole == null || (d.clanRole is string && d.clanRole.size() <= 20))
+        && (!('kickedMessage' in d) || d.kickedMessage == null || (d.kickedMessage is string && d.kickedMessage.size() <= 300));
+    }
+  }
+}
+
+// NOTE 1: the clan page deletes a clan's chat when the clan is disbanded (clan.html, the disband handler) and the game trims the
+// oldest messages. Deletes of messages younger than an hour are refused, so a disbanded clan's recent chat lingers until it is
+// an hour old, and trimming a very busy chat can be partly refused. Both fail quietly in the client (try / catch).
+//
+// RULES PLAYGROUND CHECKLIST (do these before publishing; each should ALLOW unless it says DENY)
+//   leaderboard create {name:'A', title:'', score: 5000, type:'alltime', createdAt: request.time}      ALLOW
+//   leaderboard create with score -1, or type 'x', or an extra field 'admin': true, or name of 33 chars  DENY
+//   leaderboard update / delete anything                                                                  DENY
+//   global_chat create {name:'A', message:'hi', title:null, createdAt: request.time, scrollToBottom:true} ALLOW
+//   global_chat create with a message of 501 characters, or createdAt set to a past time                  DENY
+//   global_chat delete of a message created 2 hours ago ALLOW; of one created 1 minute ago                DENY
+//   clan_chat create with clanId, then pin: update {pinned:true, pinnedBy:'A', pinnedByRole:'leader'}     ALLOW
+//   clan_chat update that changes `message`                                                               DENY
+//   profiles/A create {username:'A', score:10, golden:0, clanId:null, updatedAt: request.time}            ALLOW
+//   profiles/A merge-update {clanRole:'leader'} ALLOW; {username:'B'} DENY; {isAdmin:true} DENY; any delete DENY

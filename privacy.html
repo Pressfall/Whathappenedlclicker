@@ -11,6 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="theme.css">
+  <link rel="stylesheet" href="consent.css">
   <style>
     body{max-width:860px;margin:0 auto;padding:80px 22px 40px;background:var(--bg);line-height:1.6}
     h1{font-family:var(--font-display);font-weight:400;color:var(--gold)}
@@ -22,7 +23,7 @@
 <body>
   <a class="page-back" href="index.html">← Back to game</a>
   <h1>Privacy Policy</h1>
-  <p>Effective date: January 9, 2026</p>
+  <p>Effective date: October 26, 2026</p>
 
   <h2>Overview</h2>
   <p>This privacy policy explains what information <strong>WHAT HAPPENED clicker</strong> collects and how it is used. The site stores game state locally (via <code>localStorage</code>), and optionally posts public leaderboard entries to a leaderboard server when enabled. This page focuses on how data related to the game's features is handled.</p>
@@ -32,11 +33,12 @@
 
   <h2>Information We Collect</h2>
   <ul>
-    <li><strong>Local save data:</strong> Your game progress (counts, levels, settings, and divine/golden state) is stored in your browser's <code>localStorage</code>. This data stays on your device unless you sign in to an account (see below) or intentionally share it.</li>
+    <li><strong>Local save data:</strong> Your game progress (counts, levels, settings, and divine/golden state) is stored in your browser's <code>localStorage</code>. This data stays on your device unless you sign in to an account (see below) or intentionally share it. You can also download your progress as a file (Settings &rarr; Save backup) and import it again; that file is created on your device and goes nowhere unless you send it.</li>
     <li><strong>Accounts and cloud saves (optional):</strong> If you create an account or sign in, we store your email address (and, for Google sign-in, your Google account name and profile picture) with Google Firebase Authentication, and a copy of your game progress, the time it was saved and a short device description such as "Chrome on Windows" in Google Cloud Firestore. Passwords are handled by Firebase Authentication; the game never sees or stores them.</li>
-    <li><strong>Leaderboard entries:</strong> When you save a username and submit a score to the leaderboard, the leaderboard stores the <em>username</em>, a string representation of your count, and a timestamp. If you run the optional leaderboard server, that server will persist these entries.</li>
+    <li><strong>Leaderboard entries:</strong> When you save a username and submit a score to the leaderboard, the leaderboard stores the <em>username</em>, your equipped title, your score (a number) and a timestamp, and shows them to everyone. Scores come from players' own browsers and are not verified. If you run the optional leaderboard server, that server will persist these entries.</li>
     <li><strong>Server logs & metadata:</strong> If you submit leaderboard data to a hosted leaderboard server (for example, Firestore/Firestore REST endpoints), that server may also log IP addresses, request metadata, and other technical information necessary to operate and secure the service.</li>
-    <li><strong>Third-party services:</strong> Third-party services used to display content or provide features may collect information in order to operate. This can include cookies, device identifiers, and signals about your interactions. The site itself does not send these signals to third parties beyond what those services collect when loaded in the browser.</li>
+    <li><strong>Chat, clans and profiles:</strong> If you chat, join a clan or play with a username, that username, your messages, your clan membership and some game numbers (your What Happeneds, Golden, clan points and equipped title) are stored in Google Cloud Firestore and are visible to other players. Do not use your real name or other personal details as a username.</li>
+    <li><strong>Third-party services:</strong> Ads (Google AdSense) and visit counting (Google Analytics) are loaded <em>only after you choose Accept</em> in the ad and cookie notice (see Advertising below). Google Fonts (the game's text fonts) and Google Firebase (accounts, cloud saves, chat, clans and the leaderboard) are used to run the site, so your browser contacts Google servers for them and Google receives your IP address and ordinary request data. These services may use cookies or similar storage as described in their own policies.</li>
   </ul>
 
   <h2>How We Use Information</h2>
@@ -52,25 +54,26 @@
   <ul>
     <li><strong>Performance of a contract / provision of service:</strong> storing and restoring your game progress in <code>localStorage</code> and enabling game functionality.</li>
     <li><strong>Legitimate interests:</strong> operating and securing leaderboard services and preventing abuse.</li>
-    <li><strong>Consent:</strong> where required (for example, personalized advertising consent in some jurisdictions), we will obtain consent before using cookies or storing trackers for ad personalization.</li>
+    <li><strong>Consent:</strong> ads and visit counting (Google AdSense, including personalized ads, and Google Analytics) are loaded only if you accept them. You can withdraw consent at any time (see Advertising); declining does not affect the game.</li>
   </ul>
 
   <h2>Advertising</h2>
-  <p>The site may display ads via Google AdSense (publisher ID <strong>ca-pub-7259344384263515</strong>). Google may use cookies and other identifiers to provide, personalize, and measure ads. The use of AdSense on this site is subject to Google's policies and privacy practices. For details, see:</p>
+  <p>The site can show ads through Google AdSense (publisher ID <strong>ca-pub-7259344384263515</strong>) on the game, achievements, casino and leaderboard pages, and counts visits to the game page with Google Analytics (through Firebase). <strong>Neither is loaded until you choose Accept</strong> in the notice shown on your first visit. If you choose Decline, or have not chosen yet, no AdSense or Analytics code is loaded, your browser does not contact Google for them, and no space is kept for ads. Accept and Decline are offered equally.</p>
+  <p>If you accept, Google may use cookies and other identifiers to provide, personalize and measure ads and to count visits. The use of AdSense and Analytics on this site is subject to Google's policies and privacy practices. For details, see:</p>
   <ul>
     <li><a href="https://policies.google.com/technologies/ads" target="_blank" rel="noopener">Google Ads technologies</a></li>
-    <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy & Terms</a></li>
+    <li><a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google Privacy &amp; Terms</a></li>
   </ul>
-  <h3>Ad personalization & opt-out</h3>
+  <h3>Changing your choice</h3>
+  <p>In the game, open Settings &rarr; Help &amp; privacy &rarr; <strong>Ad &amp; cookie choices</strong>. On the other pages, use the <strong>Ad &amp; cookie choices</strong> link at the bottom of the page. Choosing Decline stops new ad and Analytics requests; ads already on the page go away when you reload it. Cookies that Google already set stay in your browser until you delete them in your browser's settings. Your choice is stored in your browser (<code>localStorage</code>, key <code>wh_ad_consent</code>); if you accepted in the earlier notice (key <code>wh_cookie_consent</code>), that still counts until you change it.</p>
+  <h3>Ad personalization &amp; opt-out</h3>
   <p>If you want to opt out of ad personalization by Google, visit <a href="https://adssettings.google.com/" target="_blank" rel="noopener">Google Ads Settings</a>. You can also opt out of many third-party ad networks via the Network Advertising Initiative (NAI) or the Digital Advertising Alliance (DAA).</p>
 
   <h2>Cookies and Local Storage</h2>
-  <p>The site itself uses <code>localStorage</code> to save game data and user preferences. We do not use server-side cookies for tracking. However, third-party scripts or services may set cookies in your browser according to their own policies.</p>
-
-  <p>If you operate the site for users in the European Union, you should display a cookie/consent banner and obtain consent for non-essential cookies or personalized advertising as required by local law.</p>
+  <p>The site itself uses <code>localStorage</code> to save your game, your settings and your ad choice. The game needs these to work and they are not shared with advertisers. We do not set our own cookies. If you accept, Google AdSense and Google Analytics may set cookies or similar storage; Google Fonts and Firebase may also store small amounts of data, each according to its own policy.</p>
 
   <h2>Leaderboard Server</h2>
-  <p>When you submit a score to the public leaderboard, only the username (up to 20 characters), your score (string), and a timestamp are sent to the configured leaderboard API endpoint. If you run your own local leaderboard server, that server's operator controls how the data is stored and processed. The client will not automatically share your local save file—only the explicit leaderboard submission is sent.</p>
+  <p>When you submit a score to the public leaderboard, only the username (up to 32 characters), your equipped title, your score (a number), and a timestamp are sent to the configured leaderboard API endpoint. If you run your own local leaderboard server, that server's operator controls how the data is stored and processed. The client will not automatically share your local save file—only the explicit leaderboard submission is sent.</p>
 
   <p><strong>Third-party hosting:</strong> the default leaderboard implementation may use Google Firebase / Firestore. See Firebase privacy information: <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener">https://firebase.google.com/support/privacy</a>. The leaderboard server operator may collect additional data such as IP addresses or request logs necessary for security and abuse prevention.</p>
 
@@ -83,9 +86,9 @@
 
   <h2>Your Rights & Controls</h2>
   <ul>
-    <li>You can delete your local save at any time using the game's "Clear Save" button in Settings.</li>
+    <li>You can delete your local save at any time using the "Reset progress" button in Settings (download a save file first if you might want it back).</li>
     <li>You can request removal of a leaderboard entry by contacting the leaderboard server operator (if one is configured). The client provides a delete endpoint when a server is configured.</li>
-    <li>To control cookies and ad personalization, follow the browser controls and the links above for Google Ads Settings and opt-out resources.</li>
+    <li>To control ads, visit counting and cookies, use <strong>Ad &amp; cookie choices</strong> (see Advertising), your browser controls, and the links above for Google Ads Settings and opt-out resources.</li>
   </ul>
 
   <p><strong>EU/EEA / UK rights:</strong> you may have the right to access, correct, delete, restrict processing of, or obtain a copy of your personal data. To exercise these rights, contact <strong>whathappenedclicker@gmail.com</strong>. We will verify requests and typically respond within 30 days. In some cases we may request additional information to confirm your identity.</p>
@@ -119,6 +122,7 @@
   <hr style="border-color:#333;margin:24px 0;">
   <p style="font-size:13px;color:#bbb;">This privacy notice describes practices for the <em>WHAT HAPPENED clicker</em> site. It may be updated occasionally; please check back for changes.</p>
 
+<script src="core/consent.js"></script>
 <script src="site.js"></script>
 </body>
 </html>

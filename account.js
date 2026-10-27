@@ -185,7 +185,7 @@ function renderSync(status, kind) {
     const b = readBackup();
     show($('backupBox'), !!b);
     if (b) {
-        $('backupWhat').textContent = (b.kind === 'account' ? 'Your account\'s progress from before this device\'s replaced it' : 'This device\'s progress from before your account\'s was loaded') + `, kept ${fmtAgo(b.at)}.`;
+        $('backupWhat').textContent = (b.kind === 'account' ? 'Your account\'s progress from before this device\'s replaced it' : b.kind === 'import' ? 'This device\'s progress from before a save file was imported' : 'This device\'s progress from before your account\'s was loaded') + `, kept ${fmtAgo(b.at)}.`;
         $('backupStats').innerHTML = statsHtml(b.summary || {});
     }
 }

@@ -29,7 +29,12 @@
             <p class="acc-sub">Save your progress to an account and keep playing on any device.</p>
         </header>
 
-        <div id="accLoading" class="acc-card glass-panel acc-loading" role="status">Checking your account…</div>
+        <div id="accLoading" class="acc-card glass-panel acc-loading" role="status" aria-label="Checking your account">
+            <div class="sk sk-head"></div>
+            <div class="sk sk-line" style="margin-top:10px"></div>
+            <div class="sk sk-line w80" style="margin-top:10px"></div>
+            <div class="sk sk-btn" style="width:100%;margin-top:14px"></div>
+        </div>
 
         <!-- ========== Signed out: Google or email, plus what this device has ========== -->
         <section id="accSignedOut" class="acc-grid" hidden>
@@ -203,6 +208,8 @@
 
         <p class="acc-foot">Accounts and saves are stored with Google Firebase. See the <a href="privacy.html">privacy policy</a>.</p>
     </main>
+    <script src="core/save.js"></script>
+    <script src="core/progress.js"></script>
     <script src="site.js"></script>
     <script type="module" src="account.js"></script>
 </body>

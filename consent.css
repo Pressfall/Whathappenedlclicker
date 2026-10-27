@@ -1,0 +1,34 @@
+/* Ad and visit-counting notice (core/consent.js). Self-contained: loaded by every page that has ads or a privacy link. */
+.wh-consent {
+    position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 2500;
+    display: flex; justify-content: center; pointer-events: none;
+    font-family: var(--font, system-ui, sans-serif);
+}
+.wh-consent-inner {
+    pointer-events: auto; width: min(760px, 100%);
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 18px;
+    padding: 14px 16px; border-radius: var(--radius, 12px);
+    background: var(--surface-solid, #131722); color: var(--text, #f3f5fa);
+    border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.16));
+    box-shadow: var(--shadow-lg, 0 24px 60px rgba(0, 0, 0, 0.6));
+}
+.wh-consent-copy { flex: 1 1 320px; min-width: 0; }
+.wh-consent-copy strong { display: block; margin-bottom: 4px; font-size: 14px; }
+.wh-consent-copy p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-dim, #a7b0c4); }
+.wh-consent-copy a { color: var(--gold, #ffc83d); }
+.wh-consent-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+/* Accept and Decline look the same on purpose: neither is nudged */
+.wh-consent-btn {
+    min-width: 96px; padding: 9px 16px; border-radius: var(--radius-sm, 8px); font-weight: 700; font-size: 14px;
+    background: var(--surface-3, #232a3c); color: var(--text, #f3f5fa); border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.16));
+}
+.wh-consent-btn:hover { background: rgba(255, 255, 255, 0.14); }
+.wh-consent-link {
+    display: block; margin: 18px auto 14px; padding: 4px 8px; background: none; border: 0;
+    color: var(--text-faint, #6d7690); font-size: 12px; text-decoration: underline; cursor: pointer;
+}
+.wh-consent-link:hover { color: var(--text-dim, #a7b0c4); }
+@media (max-width: 520px) {
+    .wh-consent-actions { width: 100%; }
+    .wh-consent-btn { flex: 1; }
+}
