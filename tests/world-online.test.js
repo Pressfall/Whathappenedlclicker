@@ -93,6 +93,68 @@ test('a parry notice needs only to come from nearby', () => {
     assert.equal(O.validateHit({ k: 'parry' }, ctx({ me: { x: 900, y: 100 } })).reason, 'range');
 });
 
+// ---------- PvP: abilities ----------
+
+const ab = (id, dmg, over) => O.validateHit(O.makeHit(id, 'ab', dmg, 0, false), ctx(Object.assign({ weapon: 'sword_1' }, over)));
+
+test('an ability hit is taken at PvP strength, its damage capped by the weapon the caster shows', () => {
+    const r = ab('whirlwind', 20);
+    assert.equal(r.ok, true);
+    assert.equal(r.dmg, 20 * O.PVP.mult);
+    assert.equal(r.ability, D.ABILITIES.whirlwind, 'the effects come from the game table');
+    assert.deepEqual(r.rate, { start: 10, n: 1 });
+    const huge = ab('whirlwind', 1e9);
+    assert.equal(huge.dmg, O.abilityMaxHit(D.ABILITIES.whirlwind, 'sword_1') * O.PVP.mult);
+    assert.ok(ab('whirlwind', 1e9, { weapon: 'sword_5' }).dmg > huge.dmg, 'better weapons hit harder');
+    assert.ok(O.abilityMaxHit(D.ABILITIES.lunge, 'spear_1') > O.abilityMaxHit(D.ABILITIES.sweep, 'spear_1') * 2, 'momentum abilities may hit much harder');
+    assert.ok(D.ABILITY_ORDER.every(id => id.length <= 24), 'every id fits the hit rule for w');
+});
+
+test('ability hits are refused for unknown or harmless abilities, from too far, in town, or with no damage', () => {
+    assert.equal(ab('nope', 5).reason, 'ability');
+    assert.equal(ab('constructor', 5).reason, 'ability', 'no prototype keys');
+    assert.equal(ab('second_wind', 5).reason, 'ability', 'a heal hurts nobody');
+    assert.equal(ab('berserk', 5).reason, 'ability');
+    assert.equal(ab('whirlwind', 5, { me: { x: 100 + O.abilityReach(D.ABILITIES.whirlwind) + 5, y: 100 } }).reason, 'range');
+    assert.equal(ab('chain_lightning', 5, { me: { x: 900, y: 100 } }).ok, true, 'lightning jumps far');
+    assert.equal(ab('whirlwind', 5, { zone: 'town' }).reason, 'town');
+    assert.equal(ab('whirlwind', 0).reason, 'dmg');
+    assert.equal(ab('whirlwind', 5, { me: { x: 140, y: 100, protected: true } }).reason, 'protected');
+    assert.deepEqual([ab('smoke_bomb', 0).ok, ab('smoke_bomb', 0).dmg], [true, 0], 'Smoke Bomb only dazes');
+    assert.equal(ab('smoke_bomb', 50).reason, 'dmg');
+    assert.ok(O.playerStun(2.2) < 2.2 && O.playerStun(99) === O.PVP.stunMax, 'stuns hold players for less time');
+});
+
+test('one cast hits a player at most as often as it could: once, once per knife or arrow, once per tick of an area', () => {
+    const run = (id, times) => { let rate; return times.map((t) => { const r = ab(id, 5, { now: t, abRate: rate }); if (r.ok) rate = r.rate; return r.ok; }); };
+    assert.deepEqual(run('whirlwind', [10, 10.1]), [true, false]);
+    const cd = D.ABILITIES.whirlwind.cd;
+    assert.deepEqual(run('whirlwind', [10, 10 + cd * 0.3, 10 + cd * 0.5]), [true, false, true], 'the next cast only after its cooldown (perks cut it to 40%)');
+    const volley = D.ABILITIES.arrow_volley;
+    assert.deepEqual(run('arrow_volley', Array(volley.count + 1).fill(10)), [...Array(volley.count).fill(true), false]);
+    const rain = D.ABILITIES.rain_of_arrows, ticks = O.abilityBurst(rain).n;
+    assert.equal(ticks, 9);
+    const times = Array.from({ length: ticks + 1 }, (_, i) => 10 + rain.delay + i * rain.tick);
+    assert.deepEqual(run('rain_of_arrows', times), [...Array(ticks).fill(true), false]);
+});
+
+test('a cast rides along with the position; short positions still read; junk casts are refused', () => {
+    const base = { x: 100, y: 200, a: 0, r: 0, sa: 0, fl: 0, hp: 50, mhp: 100, shot: 0, k: 1 };
+    assert.equal(O.packPos(base).split(',').length, 10, 'no cast yet: the short form');
+    const s = O.packPos(Object.assign({ cs: 3, ci: 'chain_lightning', cx: 3150.4, cy: 99 }, base));
+    const u = O.unpackPos(s);
+    assert.deepEqual([u.cs, u.ci, u.cx, u.cy, u.hp], [3, 'chain_lightning', 3150, 99, 50]);
+    assert.equal(O.packPos(Object.assign({ cs: 3, ci: 'nope' }, base)).split(',').length, 10);
+    assert.equal(O.unpackPos(O.packPos(base) + ',3,nope,1,1'), null);
+    assert.equal(O.unpackPos(O.packPos(base) + ',3,whirlwind,x,1'), null);
+    assert.equal(O.unpackPos(O.packPos(base) + ',3,whirlwind'), null);
+    // the longest id at the far corner still fits the database's 120 characters
+    const longest = D.ABILITY_ORDER.reduce((a, b) => (b.length > a.length ? b : a));
+    const worst = O.packPos({ x: 99999, y: 99999, a: -3.14, r: 200, sa: -3.14, fl: 255, hp: 99999, mhp: 99999, shot: 999999999, k: 999999, cs: 999999999, ci: longest, cx: 99999, cy: 99999 });
+    assert.ok(worst.length <= 120, worst.length + ' characters');
+    assert.ok(O.unpackPos(worst));
+});
+
 // ---------- loot ----------
 
 test('loot bags: only real, droppable materials; the killer gets first pick; old bags expire', () => {

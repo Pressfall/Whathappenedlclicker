@@ -184,13 +184,25 @@ async function main() {
         const press = async (k, code, vk) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key: k, code, text: k, windowsVirtualKeyCode: vk }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key: k, code, windowsVirtualKeyCode: vk }); };
         await evalJs('WHWorldDebug.rubies(500)');
         await press('k', 'KeyK', 75); await sleep(200);
-        check('wilds: K opens the classes menu on the Warrior', await evalJs('WHW.ui.isOpen() && !!document.querySelector("[data-learn=whirlwind]")'));
+        check('wilds: K opens the skill tree on the Warrior', await evalJs('WHW.ui.isOpen() && !!document.querySelector("[data-learn=whirlwind]") && document.querySelectorAll(".w-branch").length === 3 && document.querySelectorAll(".w-node").length === 12'));
         await evalJs('document.querySelector("[data-tab=rogue]").click()');
         check('wilds: a locked class shows its challenge', await evalJs('/Land 10 backstabs/.test(document.getElementById("wModalBody").textContent) && !!document.querySelector("[data-unlock=rogue][disabled]")'));
+        await evalJs('document.querySelector("[data-tab=lancer]").click()');
+        check('wilds: the Lancer is there with its spear challenge', await evalJs('/charging spear thrusts/.test(document.getElementById("wModalBody").textContent) && !!document.querySelector("[data-unlock=lancer][disabled]")'));
         await evalJs('document.querySelector("[data-tab=warrior]").click()');
+        check('wilds: only the top of each branch can be learned at first', await evalJs('!document.querySelector("[data-learn=honed_edge]") && /Learn Whirlwind first/.test(document.getElementById("wModalBody").textContent)'));
         await evalJs('document.querySelector("[data-learn=whirlwind]").click()');
         await sleep(100);
         check('wilds: learning Whirlwind puts it on Z', (await evalJs('WHWorld.abilityKit(WHWorldDebug.state())[0]')) === 'whirlwind');
+        check('wilds: the next skill in its branch opens up', await evalJs('!!document.querySelector("[data-learn=honed_edge]:not([disabled])")'));
+        await evalJs('document.querySelector("[data-learn=honed_edge]").click()');
+        await sleep(100);
+        check('wilds: a perk changes your stats', (await evalJs('WHW.game.pstats.dmgBy.sword')) > 1.2);
+        await evalJs('document.querySelector("[data-equip=whirlwind][data-slot=\'2\']").click()');
+        await sleep(100);
+        check('wilds: the key buttons move an ability to C', (await evalJs('WHWorld.abilityKit(WHWorldDebug.state()).join()')) === ',,whirlwind');
+        await evalJs('document.querySelector("[data-equip=whirlwind][data-slot=\'0\']").click()');
+        await sleep(100);
         await evalJs('WHW.ui.closeModal()');
         await sleep(200);
         await evalJs('(() => { const d = WHW.game.actors.find(a => a.id === ' + JSON.stringify(dummy) + '); d.x = WHW.game.player.x + 40; d.y = WHW.game.player.y; d.hp = d.maxHp; })()');
@@ -198,34 +210,48 @@ async function main() {
         await press('z', 'KeyZ', 90); await sleep(150);
         check('wilds: Whirlwind (Z) hurts the monster next to you', (await evalJs(`WHWorldDebug.actorHp(${JSON.stringify(dummy)})`)) < hpA);
         check('wilds: the ability goes on cooldown', (await evalJs('document.querySelector(".w-abil .cd") && !document.querySelector(".w-abil .cd").hidden')) === true);
-        // every class's abilities cast without errors and do their job
+        // every ability of every class casts without errors and does its job; aim to the right, where the monster stands
+        await mouseTo(0, 90); await sleep(50);
         const cast = await evalJs(`(() => {
-            const D = WHWorldData, W = WHWorld, g = WHW.game, p = g.player, s = g.state, out = {}, hurt = {}, bad = [];
+            const D = WHWorldData, W = WHWorld, g = WHW.game, p = g.player, s = g.state, T = WHW.engine.time, out = {}, hurt = {}, bad = [];
             const d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
+            const x0 = p.x, y0 = p.y;
             for (const c of D.CLASS_ORDER) {
                 s.classes.unlocked[c] = true; W.setClass(s, c); g.pstats = W.playerStats(s);
-                D.CLASSES[c].abilities.forEach((id, key) => {
-                    s.abilities.learned[id] = true;
-                    p.abCd = {}; p.stam.val = 100; p.hp = 40; p.skinUntil = p.berserkUntil = 0;
-                    d.dead = false; d.hp = d.maxHp; d.x = p.x + 40; d.y = p.y;
-                    const shots = g.projectiles.length;
-                    out[id] = WHW.actors.castAbility(key);
+                for (const br of D.CLASSES[c].branches) for (const id of br.skills) {
+                    if (!D.ABILITIES[id]) continue;
+                    s.skills.learned[id] = true; W.equipAbility(s, id, 0);
+                    p.x = x0; p.y = y0; p.abCd = {}; p.buffs = {}; p.stam.val = 100; p.hp = 40;
+                    d.dead = false; d.hp = d.maxHp; d.x = p.x + 40; d.y = p.y; d.status.stunUntil = 0;
+                    const shots = g.projectiles.length, fields = g.fields.length;
+                    out[id] = WHW.actors.castAbility(0);
                     hurt[id] = d.hp < d.maxHp;
-                    if (id === 'second_wind' && !(p.hp > 40)) bad.push('second_wind heal');
-                    if (id === 'stoneskin' && !(p.skinUntil > WHW.engine.time)) bad.push('stoneskin');
-                    if (id === 'berserk' && !(p.berserkUntil > WHW.engine.time)) bad.push('berserk');
-                    if (id === 'fan_of_knives' && g.projectiles.length - shots !== 12) bad.push('knives');
-                    if (id === 'arrow_volley' && g.projectiles.length - shots !== 7) bad.push('volley');
-                    if (id === 'smoke_bomb' && !(d.status.stunUntil > WHW.engine.time)) bad.push('smoke stun');
-                    if (WHW.actors.castAbility(key)) bad.push(id + ' ignored its cooldown');
-                });
+                    const a = D.ABILITIES[id];
+                    if (a.kind === 'heal' && !(p.hp > 40)) bad.push(id + ' heal');
+                    if (a.kind === 'buff' && !WHW.actors.buffOn(p, id)) bad.push(id + ' buff');
+                    if (a.kind === 'knives' && g.projectiles.length - shots !== a.count) bad.push(id + ' knives');
+                    if (a.kind === 'volley' && g.projectiles.length - shots !== a.count) bad.push(id + ' volley');
+                    if (a.kind === 'shot' && g.projectiles.length - shots !== 1) bad.push(id + ' shot');
+                    if (a.kind === 'field' && g.fields.length - fields !== 1) bad.push(id + ' field');
+                    if (a.kind === 'smoke' && !(d.status.stunUntil > T)) bad.push(id + ' stun');
+                    if (WHW.actors.castAbility(0)) bad.push(id + ' ignored its cooldown');
+                }
             }
+            p.x = x0; p.y = y0; p.buffs = {}; g.fields = []; g.projectiles = [];
             W.setClass(s, 'warrior'); g.pstats = W.playerStats(s);
-            return { ok: out, bad, novas: ['whirlwind', 'fire_nova', 'frost_nova', 'chain_lightning', 'disengage'].filter(id => !hurt[id]) };
+            const instant = ['nova', 'cone', 'charge', 'leap', 'line', 'chain', 'step'];
+            return { ok: out, bad, missed: D.ABILITY_ORDER.filter(id => instant.includes(D.ABILITIES[id].kind) && !hurt[id]) };
         })()`);
-        check('wilds: every class ability can be cast', Object.values(cast.ok).length === 15 && Object.values(cast.ok).every(Boolean), cast);
-        check('wilds: novas and chain lightning hurt a monster next to you', cast.novas.length === 0, cast.novas);
-        check('wilds: heals, buffs, knives, volley, smoke and cooldowns work', cast.bad.length === 0, cast.bad);
+        check('wilds: all 36 abilities can be cast', Object.values(cast.ok).length === 36 && Object.values(cast.ok).every(Boolean), cast.ok);
+        check('wilds: novas, cones, charges, leaps, lines, lightning and Shadowstep hurt a monster in front of you', cast.missed.length === 0, cast.missed);
+        check('wilds: heals, buffs, knives, volleys, shots, areas, smoke and cooldowns work', cast.bad.length === 0, cast.bad);
+        // an area keeps hurting what stands in it
+        await evalJs(`(() => { const D = WHWorldData, W = WHWorld, g = WHW.game, p = g.player, s = g.state, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
+            s.classes.unlocked.mystic = true; W.setClass(s, 'mystic'); g.pstats = W.playerStats(s); s.skills.learned.blizzard = true; W.equipAbility(s, 'blizzard', 0);
+            p.abCd = {}; p.stam.val = 100; d.dead = false; d.hp = d.maxHp; d.x = p.x + 70; d.y = p.y; WHW.actors.castAbility(0); return true; })()`);
+        await sleep(700);
+        check('wilds: Blizzard hurts a monster standing in it over time', (await evalJs(`WHWorldDebug.actorHp(${JSON.stringify(dummy)})`)) < (await evalJs(`WHW.game.actors.find(a => a.id === ${JSON.stringify(dummy)}).maxHp`)));
+        await evalJs('(() => { const W = WHWorld, g = WHW.game; g.fields = []; W.setClass(g.state, "warrior"); g.pstats = W.playerStats(g.state); return true; })()');
         await evalJs('WHWorldDebug.grant({ gems: 2, boxes: [0, 1, 0, 0, 0] })');
         await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
         await sleep(600);

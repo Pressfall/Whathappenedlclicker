@@ -286,22 +286,53 @@ test('a full save stays small', () => {
     assert.ok(size < 60000, size + ' bytes');
 });
 
-test('classes: you start as a Warrior with its kit on Z X C, nothing learned yet', () => {
+const beat = (s, ...ids) => { for (const id of ids) s.bosses[id] = { kills: 1, lastKillDay: '', lastKillWeek: '', mythicWeek: '' }; };
+
+test('skill trees: you start as a Warrior with an empty loadout, and learn skills from the top of a branch down', () => {
     const s = W.freshState(NOW);
     assert.equal(s.classes.active, 'warrior');
     assert.deepEqual(Object.keys(s.classes.unlocked), ['warrior']);
     assert.deepEqual(W.abilityKit(s), [null, null, null]);
-    s.rubies = 1000;
-    assert.ok(W.learnAbility(s, 'whirlwind').ok);
+    s.rubies = 5000;
+    assert.deepEqual(W.learnSkill(s, 'whirlwind'), { ok: true, slot: 0 }, 'a new ability goes on the first free key');
     assert.deepEqual(W.abilityKit(s), ['whirlwind', null, null]);
-    assert.equal(s.rubies, 1000 - D.ABILITIES.whirlwind.cost);
-    assert.equal(W.learnAbility(s, 'whirlwind').reason, 'known');
-    assert.equal(W.learnAbility(s, 'shockwave').reason, 'boss');
-    assert.equal(W.learnAbility(s, 'blink').reason, 'class', "another class's ability needs that class");
-    assert.equal(W.learnAbility(s, 'nope').reason, 'unknown');
+    assert.equal(s.rubies, 5000 - D.ABILITIES.whirlwind.cost);
+    assert.equal(W.learnSkill(s, 'whirlwind').reason, 'known');
+    assert.deepEqual(W.learnSkill(s, 'deep_cuts'), { ok: false, reason: 'req', need: 'execute' });
+    assert.equal(W.learnSkill(s, 'shockwave').need, 'thick_skin', 'the skill above comes first');
+    assert.deepEqual(W.learnSkill(s, 'honed_edge'), { ok: true, slot: -1 }, 'a perk never goes on a key');
+    assert.equal(W.learnSkill(s, 'execute').reason, 'boss');
+    beat(s, 'overgrown');
+    assert.ok(W.learnSkill(s, 'execute').ok);
+    assert.deepEqual(W.abilityKit(s), ['whirlwind', 'execute', null]);
+    assert.equal(W.learnSkill(s, 'blink').reason, 'class', "another class's skill needs that class");
+    assert.equal(W.learnSkill(s, 'nope').reason, 'unknown');
+    s.rubies = 1;
+    assert.equal(W.learnSkill(s, 'war_cry').reason, 'rubies');
+    assert.deepEqual(W.validate(s), []);
 });
 
-test('classes: a challenge, then rubies, unlock a class; switching changes the kit and the bonuses', () => {
+test('loadout: up to three abilities on Z X C; equipping swaps keys and perks or unlearned abilities never go on', () => {
+    const s = W.freshState(NOW);
+    s.rubies = 99999;
+    beat(s, 'overgrown', 'inferno');
+    for (const id of ['whirlwind', 'war_cry', 'honed_edge', 'execute', 'bloodthirst']) assert.ok(W.learnSkill(s, id).ok, id);
+    assert.deepEqual(W.abilityKit(s), ['whirlwind', 'war_cry', 'execute']);
+    assert.deepEqual(W.learnSkill(s, 'berserk'), { ok: true, slot: -1 }, 'a full loadout stays as it is');
+    assert.deepEqual(W.equipAbility(s, 'berserk', 1), { ok: true, fresh: true });
+    assert.deepEqual(W.abilityKit(s), ['whirlwind', 'berserk', 'execute']);
+    assert.deepEqual(W.equipAbility(s, 'whirlwind', 1), { ok: true, fresh: false }, 'moving to another key swaps');
+    assert.deepEqual(W.abilityKit(s), ['berserk', 'whirlwind', 'execute']);
+    assert.equal(W.equipAbility(s, 'honed_edge', 0).ok, false);
+    assert.equal(W.equipAbility(s, 'earthsplitter', 0).ok, false);
+    assert.equal(W.equipAbility(s, 'berserk', 3).ok, false);
+    assert.ok(W.unequipAbility(s, 'warrior', 2));
+    assert.equal(W.unequipAbility(s, 'warrior', 2), false);
+    assert.deepEqual(W.abilityKit(s), ['berserk', 'whirlwind', null]);
+    assert.deepEqual(W.validate(s), []);
+});
+
+test('classes: a challenge, then rubies, unlock a class; each class keeps its own loadout and perks', () => {
     const s = W.freshState(NOW);
     s.rubies = 5000;
     let r = W.classState(s, 'guardian');
@@ -319,77 +350,155 @@ test('classes: a challenge, then rubies, unlock a class; switching changes the k
     assert.equal(W.unlockClass(s, 'guardian').reason, 'known');
     assert.equal(s.classes.active, 'warrior', 'unlocking does not switch');
     assert.equal(W.setClass(s, 'rogue'), false, 'locked');
+    W.learnSkill(s, 'whirlwind');
     const before = W.playerStats(s);
     assert.ok(W.setClass(s, 'guardian'));
     const after = W.playerStats(s);
-    assert.equal(after.maxHp, before.maxHp - 15 + 25);
-    assert.equal(after.armor, before.armor + 8);
-    assert.equal(after.blockStam, 0.65);
+    assert.equal(after.maxHp, before.maxHp - 10 + 15);
+    assert.equal(after.armor, before.armor + 4);
     assert.deepEqual(after.dmgBy, {}, 'the Warrior sword bonus is gone');
-    assert.ok(W.learnAbility(s, 'second_wind').ok);
-    assert.deepEqual(W.abilityKit(s), ['second_wind', null, null]);
+    assert.deepEqual(W.abilityKit(s), [null, null, null], "the Guardian's own loadout");
+    assert.ok(W.learnSkill(s, 'shield_slam').ok);
+    assert.ok(W.learnSkill(s, 'steady_guard').ok);
+    assert.equal(W.playerStats(s).blockStam, 0.65);
+    assert.deepEqual(W.abilityKit(s), ['shield_slam', null, null]);
+    W.setClass(s, 'warrior');
+    assert.deepEqual(W.abilityKit(s), ['whirlwind', null, null], 'switching back brings the Warrior loadout back');
+    assert.equal(W.playerStats(s).blockStam, 1, 'Guardian perks only count while you are a Guardian');
     assert.deepEqual(W.validate(s), []);
 });
 
-test('classes: the Mystic unlocks by beating The Overgrown', () => {
+test('classes: the Mystic unlocks by beating The Overgrown, the Lancer with charging spear thrusts', () => {
     const s = W.freshState(NOW);
-    s.rubies = 5000;
+    s.rubies = 9000;
     assert.equal(W.unlockClass(s, 'mystic').reason, 'req');
-    s.bosses.overgrown = { kills: 1, lastKillDay: '', lastKillWeek: '', mythicWeek: '' };
+    beat(s, 'overgrown');
     assert.ok(W.unlockClass(s, 'mystic').ok);
     W.setClass(s, 'mystic');
-    const ps = W.playerStats(s);
-    assert.equal(ps.abilityCd, 0.75);
-    assert.equal(ps.abilityDmg, 1.25);
+    let ps = W.playerStats(s);
+    assert.equal(ps.abilityCd, 0.9);
+    assert.equal(ps.abilityDmg, 1.15);
+    W.learnSkill(s, 'chain_lightning'); W.learnSkill(s, 'conduit');
+    assert.ok(Math.abs(W.playerStats(s).abilityCd - 0.9 * 0.85) < 1e-9, 'multipliers stack');
+    assert.equal(W.classState(s, 'lancer').reason, 'req');
+    s.stats.rushHits = 20;
+    assert.ok(W.unlockClass(s, 'lancer').ok);
+    W.setClass(s, 'lancer');
+    ps = W.playerStats(s);
+    assert.equal(ps.momentum, 0.2);
+    assert.equal(ps.dmgBy.spear, 1.15);
+    W.learnSkill(s, 'lunge'); W.learnSkill(s, 'gathering_speed'); W.learnSkill(s, 'javelin'); W.learnSkill(s, 'skewer');
+    ps = W.playerStats(s);
+    assert.ok(Math.abs(ps.momentum - 0.5) < 1e-9);
+    assert.equal(ps.pierce, 1);
+    assert.deepEqual(W.abilityKit(s), ['lunge', 'javelin', null]);
 });
 
-test('classes and abilities survive a save; damaged data is cleaned', () => {
+test('perks add up with the class bonus, and the extremes are capped', () => {
+    const s = W.freshState(NOW);
+    s.rubies = 99999; s.stats.backstabs = 10;
+    beat(s, 'overgrown', 'gilded', 'inferno', 'frozen');
+    W.unlockClass(s, 'rogue'); W.setClass(s, 'rogue');
+    for (const id of W.treeOrder('rogue')) assert.ok(W.learnSkill(s, id).ok, id);
+    const ps = W.playerStats(s);
+    assert.ok(Math.abs(ps.speed - (1 + 0.05 + 0.08)) < 1e-9);
+    assert.ok(Math.abs(ps.dmgBy.dagger - 1.2 * 1.1) < 1e-9);
+    assert.equal(ps.dodge, 0.12);
+    assert.equal(ps.backstab, 0.5);
+    assert.equal(ps.crit, 0.08);
+    assert.equal(ps.dashCd, 0.7);
+    assert.ok(Math.abs(ps.abilityStam - 0.7) < 1e-9);
+    assert.ok(Math.abs(ps.stamRegen - 1.1) < 1e-9);
+    assert.equal(W.abilityKit(s).filter(Boolean).length, 3, 'only three of the six abilities are on keys');
+    assert.equal(Object.keys(s.skills.learned).length, 12);
+    assert.deepEqual(W.validate(s), []);
+});
+
+test('classes, skills and loadouts survive a save; damaged data is cleaned', () => {
     const s = W.freshState(NOW);
     s.rubies = 5000; s.stats.backstabs = 10;
-    W.unlockClass(s, 'rogue'); W.setClass(s, 'rogue'); W.learnAbility(s, 'blink');
+    W.unlockClass(s, 'rogue'); W.setClass(s, 'rogue'); W.learnSkill(s, 'blink'); W.learnSkill(s, 'envenom');
+    W.equipAbility(s, 'envenom', 2);
     const back = W.migrate(JSON.parse(W.serialize(s, NOW, 0)), NOW);
     assert.deepEqual(back.classes, s.classes);
-    assert.deepEqual(back.abilities, s.abilities);
+    assert.deepEqual(back.skills, s.skills);
+    assert.deepEqual(W.abilityKit(back), ['blink', null, 'envenom']);
     assert.equal(back.stats.backstabs, 10);
-    const bad = W.migrate({ v: 1, classes: { active: 'mystic', unlocked: { fake: true, ranger: true } }, abilities: { learned: { fake: true, disengage: true } } }, NOW);
+    const bad = W.migrate({ v: 1,
+        classes: { active: 'mystic', unlocked: { fake: true, ranger: true }, loadout: { ranger: ['disengage', 'eagle_eye', 'disengage', 'arrow_volley'], warrior: ['blink', 'nope', null], fake: ['x'] } },
+        skills: { learned: { fake: true, disengage: true, eagle_eye: true } } }, NOW);
     assert.deepEqual(bad.classes.unlocked, { warrior: true, ranger: true });
     assert.equal(bad.classes.active, 'warrior', 'a locked active class falls back to the Warrior');
-    assert.deepEqual(bad.abilities.learned, { disengage: true });
+    assert.deepEqual(bad.skills.learned, { disengage: true, eagle_eye: true });
+    assert.deepEqual(bad.classes.loadout, { warrior: [null, null, null], ranger: ['disengage', null, null] }, 'perks, unlearned, foreign and repeated abilities are taken off');
     assert.deepEqual(W.validate(bad), []);
-    assert.deepEqual(W.migrate({ v: 1, classes: 7, abilities: 7 }, NOW).classes, { active: 'warrior', unlocked: { warrior: true } });
+    assert.deepEqual(W.migrate({ v: 1, classes: 7, skills: 7 }, NOW).classes, { active: 'warrior', unlocked: { warrior: true }, loadout: {} });
 });
 
-test('saves from before classes keep their abilities: those classes unlock and the first slotted one is active', () => {
+test('older saves keep their abilities: classes unlock, and each class gets its learned abilities on its keys', () => {
+    // from before classes: any ability in any slot
     const old = { v: 1, abilities: { learned: { whirlwind: true, blink: true, fire_nova: true }, slots: ['blink', 'whirlwind', null] } };
     const s = W.migrate(old, NOW);
     assert.deepEqual(s.classes.unlocked, { warrior: true, rogue: true, mystic: true });
     assert.equal(s.classes.active, 'rogue');
     assert.deepEqual(W.abilityKit(s), ['blink', null, null]);
-    assert.equal(s.abilities.slots, undefined);
+    assert.deepEqual(s.skills.learned, { whirlwind: true, blink: true, fire_nova: true });
+    assert.equal(s.abilities, undefined);
+    // from before skill trees: three fixed abilities per class
+    const t = W.migrate({ v: 1, classes: { active: 'warrior', unlocked: { warrior: true } }, abilities: { learned: { whirlwind: true, shockwave: true, berserk: true } } }, NOW);
+    assert.deepEqual(W.abilityKit(t), ['whirlwind', 'shockwave', 'berserk'], 'the same keys as before');
+    assert.deepEqual(W.validate(t), []);
 });
 
-test('every class has three real abilities, each ability belongs to exactly one class', () => {
+test('every class has a tree of three branches, four skills deep, and every skill is sound', () => {
     const seen = new Set();
+    const bossAt = (b) => (b ? D.ZONE_ORDER.indexOf(D.BOSSES[b].zone) : -1);
+    const KINDS = ['nova', 'cone', 'blink', 'charge', 'knives', 'volley', 'shot', 'chain', 'smoke', 'heal', 'buff', 'leap', 'line', 'field', 'step'];
+    const BONUS = ['maxHp', 'armor', 'speed', 'crit', 'dmg', 'blockStam', 'arrowSave', 'abilityCd', 'abilityDmg', 'abilityStam', 'stamRegen', 'lifesteal',
+        'dashCd', 'dashStam', 'momentum', 'backstab', 'regen', 'pierce', 'thorns', 'dodge', 'fireResist'];
+    const stats = W.freshState(NOW).stats;
+    for (const id of D.ABILITY_ORDER) assert.ok(!D.PERKS[id], id + ' is both an ability and a perk');
     for (const c of D.CLASS_ORDER) {
         const k = D.CLASSES[c];
-        assert.ok(k.name && k.icon && k.passive && k.bonus, c);
-        assert.equal(k.abilities.length, D.ABILITY_KEYS.length, c);
+        assert.ok(k.name && k.icon && k.passive && k.desc && k.bonus, c);
+        for (const key in k.bonus) assert.ok(BONUS.includes(key), c + ' bonus ' + key);
         if (k.unlock && k.unlock.boss) assert.ok(D.BOSSES[k.unlock.boss], c);
-        if (k.unlock && k.unlock.stat) assert.ok(k.unlock.stat in W.freshState(NOW).stats, c + ' counts a real stat');
-        k.abilities.forEach((id, i) => {
-            assert.ok(D.ABILITIES[id], id);
-            assert.ok(!seen.has(id), id + ' is in two classes');
-            seen.add(id);
-            assert.equal(D.ABILITIES[id].cls, c);
-            assert.equal(D.ABILITIES[id].key, i);
+        if (k.unlock && k.unlock.stat) assert.ok(k.unlock.stat in stats, c + ' counts a real stat');
+        assert.equal(k.branches.length, 3, c);
+        let abilities = 0;
+        k.branches.forEach((br, b) => {
+            assert.ok(br.name, c + ' branch name');
+            assert.equal(br.skills.length, 4, c + ' ' + br.name);
+            let gate = -1;
+            br.skills.forEach((id, row) => {
+                const sk = D.ABILITIES[id] || D.PERKS[id];
+                assert.ok(sk, id);
+                assert.ok(!seen.has(id), id + ' is in two trees');
+                seen.add(id);
+                assert.equal(sk.cls, c); assert.equal(sk.branch, b); assert.equal(sk.row, row);
+                assert.equal(sk.req, row ? br.skills[row - 1] : null);
+                assert.ok(sk.name && sk.icon && sk.desc && sk.cost > 0, id);
+                if (row === 0) assert.equal(sk.boss, null, id + ': the top of a branch needs no boss');
+                if (sk.boss) { assert.ok(D.BOSSES[sk.boss], id); assert.ok(bossAt(sk.boss) >= gate, id + ' needs an earlier boss than the skill above it'); gate = bossAt(sk.boss); }
+                if (sk.type === 'ability') {
+                    abilities++;
+                    assert.ok(KINDS.includes(sk.kind), id + ' kind ' + sk.kind);
+                    assert.ok(sk.cd > 0 && sk.stam >= 0 && sk.color, id);
+                    if (sk.kind === 'field') assert.ok(sk.r > 0 && sk.tick > 0 && sk.time > (sk.delay || 0) && (sk.at === 'self' || sk.range > 0), id);
+                    if (sk.kind === 'line') assert.ok(sk.len > 0 && sk.width > 0, id);
+                    if (sk.kind === 'leap') assert.ok(sk.dist > 0 && sk.radius > 0, id);
+                    if (sk.kind === 'step') assert.ok(sk.range > 0, id);
+                    if (sk.kind === 'buff') assert.ok(sk.time > 0, id);
+                } else {
+                    assert.equal(sk.type, 'perk', id);
+                    assert.ok(Object.keys(sk.bonus).length, id);
+                    for (const key in sk.bonus) assert.ok(BONUS.includes(key), id + ' bonus ' + key);
+                }
+            });
         });
-        assert.equal(k.abilities.map(id => D.ABILITIES[id]).filter(a => !a.boss).length >= 1, true, c + ' has one ability with no boss gate');
+        assert.ok(abilities > D.ABILITY_KEYS.length, c + ' has more abilities than keys, so the loadout is a choice');
     }
-    assert.equal(seen.size, D.ABILITY_ORDER.length, 'no ability without a class');
+    assert.equal(seen.size, D.ABILITY_ORDER.length + D.PERK_ORDER.length, 'no skill outside a tree');
     assert.equal(D.CLASSES[D.STARTER_CLASS].unlock, null);
-    for (const id of D.ABILITY_ORDER) {
-        const a = D.ABILITIES[id];
-        assert.ok(a.name && a.icon && a.desc && a.cost > 0 && a.cd > 0 && a.kind, id);
-        if (a.boss) assert.ok(D.BOSSES[a.boss], id);
-    }
+    assert.ok(D.CLASSES.lancer, 'the spear class');
 });

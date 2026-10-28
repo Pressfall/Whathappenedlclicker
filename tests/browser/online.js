@@ -129,6 +129,23 @@ async function main() {
         check('the attacker sees the raised shield', (await view(a)).players[0].shield === true);
         const shielded = await oneHit();
         check('the shield takes most of a hit', open > 0 && shielded > 0 && shielded < open * 0.7, [open, shielded]);
+        // abilities: the other player sees the cast, takes the hit, and is stunned by a Net Shot
+        await b.evalJs('(() => { WHW.shieldWanted = () => false; const p = WHW.game.player; p.shield.up = false; p.hp = 300; p.iframes = 0; window.__casts = []; const rc = WHW.actors.remoteCast; WHW.actors.remoteCast = function (x, y, id) { window.__casts.push(id); return rc.apply(this, arguments); }; })()');
+        await a.evalJs('(() => { const r = WHW.online.here()[0]; WHWorldDebug.teleport(r.x - 30, r.y); })()');
+        await a.mouse(pp.x + 90, pp.y);
+        await sleep(400);
+        const castOn = (cls, id) => `(() => { const W = WHWorld, g = WHW.game, s = g.state, p = g.player; s.classes.unlocked.${cls} = true; W.setClass(s, '${cls}'); g.pstats = W.playerStats(s);
+            s.skills.learned.${id} = true; W.equipAbility(s, '${id}', 0); p.abCd = {}; p.stam.val = 100; return WHW.actors.castAbility(0); })()`;
+        check('the attacker casts Whirlwind next to them', await a.evalJs(castOn('warrior', 'whirlwind')) === true);
+        check('Whirlwind hurts the other player (on their page)', await b.waitFor('WHW.game.player.hp < 300', 5000), await b.evalJs('WHW.game.player.hp'));
+        check('they see the Whirlwind being cast', await b.waitFor('window.__casts.includes("whirlwind")', 3000), await b.evalJs('window.__casts'));
+        await b.evalJs('(() => { const p = WHW.game.player; p.hp = 300; p.iframes = 0; })()');
+        await sleep(400);
+        check('the attacker fires a Net Shot at them', await a.evalJs(castOn('ranger', 'net_shot')) === true);
+        check('a Net Shot stuns the other player, for less time than a monster', await b.waitFor('WHW.game.player.stunUntil > WHW.engine.time', 5000) &&
+            await b.evalJs('WHW.game.player.stunUntil - WHW.engine.time <= WHWorldOnline.playerStun(WHWorldData.ABILITIES.net_shot.stun)'));
+        await a.evalJs('(() => { const W = WHWorld, g = WHW.game; W.setClass(g.state, "warrior"); g.pstats = W.playerStats(g.state); })()');
+        await sleep(1300);
         // knocked out while carrying ore: it drops as loot for the winner
         await b.evalJs('(() => { const g = WHW.game; WHW.shieldWanted = () => false; g.player.shield.up = false; g.state.bag = { iron_ore: 10, copper_ore: 6 }; g.player.hp = 1; g.player.iframes = 0; })()');
         await swing(30);

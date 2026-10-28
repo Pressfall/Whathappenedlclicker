@@ -27,6 +27,10 @@
         minGapMult: 0.6,    // hits from one attacker at least this share of the weapon's hit cooldown apart
         arrowGap: 0.15,
         hitR: 13,
+        // abilities: most a hit can be worth (x weapon damage x the ability's own dmg): best quality x Berserk x Hunter's Mark x
+        // ability perks; momentum abilities x3 and Execute x2 on top. Casts of one ability at least this share of its cooldown apart
+        // (perks bring it down to 0.4, less a little for network jitter). Stuns on players are this share as long, at most stunMax s.
+        abilityCap: 4.5, abilityCdMin: 0.36, moveAllow: 220, stunMult: 0.5, stunMax: 1.2,
     };
     const LOOT = { share: 0.3, ownerSec: 10, lifeSec: 300, maxTypes: 12, maxEach: 999, pickR: 30 };
     const BOSS = { idleResetSec: 60, minShare: 0.03, hostHz: 8, flushSec: 0.25, confirmSec: 4 };
@@ -47,18 +51,28 @@
     // x, y, weapon angle, reach/draw, shield angle, flags, hp, max hp, shot counter, heartbeat: one short string, sent ~10 times
     // a second while anything changes. The heartbeat (k) changes every second, because the database tells nobody about a write
     // that changes nothing, and a player standing still must still look present.
+    // Once a player has cast an ability, four more fields follow so others can see it: a cast counter (cs), the ability (ci) and
+    // where it was aimed (cx, cy). A player who never casts sends the short form.
     function packPos(o) {
-        return [Math.round(o.x), Math.round(o.y), Math.round((o.a || 0) * 100), Math.round(o.r || 0), Math.round((o.sa || 0) * 100),
-            o.fl | 0, Math.ceil(o.hp || 0), Math.round(o.mhp || 0), o.shot | 0, o.k | 0].join(',');
+        const out = [Math.round(o.x), Math.round(o.y), Math.round((o.a || 0) * 100), Math.round(o.r || 0), Math.round((o.sa || 0) * 100),
+            o.fl | 0, Math.ceil(o.hp || 0), Math.round(o.mhp || 0), o.shot | 0, o.k | 0];
+        if (o.cs > 0 && abilityById(o.ci)) out.push(o.cs | 0, o.ci, Math.round(o.cx || 0), Math.round(o.cy || 0));
+        return out.join(',');
     }
     function unpackPos(str) {
         if (typeof str !== 'string' || str.length > 120) return null;
         const p = str.split(',');
-        if (p.length !== 10) return null;
-        const n = p.map(Number);
+        if (p.length !== 10 && p.length !== 14) return null;
+        const n = p.slice(0, 10).map(Number);
         if (n.some(v => !Number.isFinite(v))) return null;
-        return { x: num(n[0], 0, 1e5), y: num(n[1], 0, 1e5), a: num(n[2] / 100, -7, 7), r: num(n[3], 0, 200), sa: num(n[4] / 100, -7, 7),
+        const out = { x: num(n[0], 0, 1e5), y: num(n[1], 0, 1e5), a: num(n[2] / 100, -7, 7), r: num(n[3], 0, 200), sa: num(n[4] / 100, -7, 7),
             fl: int(n[5], 0, 255), hp: int(n[6], 0, 1e5), mhp: int(n[7], 1, 1e5, 100), shot: int(n[8], 0, 1e9), k: int(n[9], 0, 1e9) };
+        if (p.length === 14) {
+            const c = [p[10], p[12], p[13]].map(Number);
+            if (!abilityById(p[11]) || c.some(v => !Number.isFinite(v))) return null;
+            Object.assign(out, { cs: int(c[0], 0, 1e9), ci: p[11], cx: num(c[1], 0, 1e5), cy: num(c[2], 0, 1e5) });
+        }
+        return out;
     }
 
     // ---------------- who a player is ----------------
@@ -112,16 +126,77 @@
         const P = D.WEAPON_CLASSES[b.cls];
         return (b.cls === 'spear' ? P.reachMax : (P.len || 0)) + PVP.hitR + PVP.lag;
     }
+    // ---------------- PvP: abilities ----------------
+    // An ability hit is { k: 'ab', w: ability id, dmg, ang }. What it does besides damage (stun, chill, burn, push) comes from the
+    // ability's own entry in world-data.js, never from the sender.
+    function abilityById(id) { return typeof id === 'string' && Object.prototype.hasOwnProperty.call(D.ABILITIES, id) ? D.ABILITIES[id] : null; }
+    const HARMLESS = { heal: true, buff: true };
+    // How far from where the caster was last seen it can reach a player (px), lag included. Areas and projectiles also allow
+    // for the caster walking on while they last.
+    function abilityReach(a) {
+        let r = 0;
+        switch (a.kind) {
+            case 'nova': case 'smoke': r = a.radius; break;
+            case 'cone': r = a.range; break;
+            case 'blink': r = a.radius || 0; break; // Disengage's kick
+            case 'charge': r = a.dist + a.width; break;
+            case 'leap': r = a.dist + a.radius; break;
+            case 'line': r = a.len + a.width; break;
+            case 'knives': case 'volley': case 'shot': r = a.speed * a.life; break;
+            case 'chain': r = a.range + a.jump * a.jumps; break;
+            case 'step': r = a.range + 40; break;
+            case 'field': r = (a.at === 'self' ? 0 : a.range) + a.r; break;
+        }
+        return r + (a.time || a.life || 0) * PVP.moveAllow + PVP.hitR + PVP.lag;
+    }
+    // How many times one cast can hit the same player (n), all within span seconds of the first
+    function abilityBurst(a) {
+        if (a.kind === 'field') return { n: Math.floor((a.time - (a.delay || 0)) / a.tick + 1e-6) + 1, span: a.time + 1 };
+        if (a.kind === 'knives' || a.kind === 'volley') return { n: a.count, span: a.life + 1 };
+        return { n: 1, span: 1 };
+    }
+    // The most one hit of this ability can be worth, from the weapon the caster is showing
+    function abilityMaxHit(a, weaponId) {
+        const b = D.GEAR_BY_ID[weaponId];
+        const wd = b && b.slot === 'weapon' ? b.dmg : D.GEAR_BY_ID.sword_0.dmg;
+        return wd * (a.dmg || 0) * PVP.abilityCap * (a.momentum === true ? 3 : 1) * (a.execute ? 2 : 1);
+    }
+    // ctx.abRate: this attacker's last burst of this ability ({ start, n }); the result's rate is the one to keep
+    function validateAbility(hit, ctx) {
+        const a = abilityById(hit.w);
+        if (!a || HARMLESS[a.kind]) return { ok: false, reason: 'ability' };
+        const at = ctx.attacker;
+        if (Math.hypot(at.x - ctx.me.x, at.y - ctx.me.y) > abilityReach(a)) return { ok: false, reason: 'range' };
+        const burst = abilityBurst(a), prev = ctx.abRate;
+        let rate;
+        if (prev && ctx.now - prev.start <= burst.span) {
+            if (prev.n >= burst.n) return { ok: false, reason: 'rate' };
+            rate = { start: prev.start, n: prev.n + 1 };
+        } else {
+            if (prev && ctx.now - prev.start < a.cd * PVP.abilityCdMin) return { ok: false, reason: 'rate' };
+            rate = { start: ctx.now, n: 1 };
+        }
+        const dmg = Number(hit.dmg);
+        // Smoke Bomb only dazes; everything else must hurt
+        if (!a.dmg) return Number.isFinite(dmg) && dmg === 0 ? { ok: true, dmg: 0, ability: a, rate } : { ok: false, reason: 'dmg' };
+        if (!Number.isFinite(dmg) || dmg <= 0) return { ok: false, reason: 'dmg' };
+        return { ok: true, dmg: Math.min(dmg, abilityMaxHit(a, ctx.weapon)) * PVP.mult, ability: a, rate };
+    }
+    // How long an ability's stun holds a player (shorter than on monsters)
+    function playerStun(sec) { return Math.min(PVP.stunMax, sec * PVP.stunMult); }
+
     // A hit someone sent us. Returns { ok: true, dmg } with the damage to take (PvP strength), or { ok: false, reason }.
-    // ctx: { zone, attacker: unpacked position, me: { x, y, protected }, now (s), lastAt (s, this attacker's last hit) }
+    // ctx: { zone, attacker: unpacked position, me: { x, y, protected }, now (s), lastAt (s, this attacker's last weapon hit),
+    // weapon (the weapon the attacker shows), abRate (abilities, see validateAbility) }
     function validateHit(hit, ctx) {
         if (!isObj(hit)) return { ok: false, reason: 'shape' };
         if (ctx.zone === 'town' || !D.ZONES[ctx.zone]) return { ok: false, reason: 'town' };
-        const kind = ['melee', 'thrust', 'bash', 'arrow', 'parry'].includes(hit.k) ? hit.k : null;
+        const kind = ['melee', 'thrust', 'bash', 'arrow', 'parry', 'ab'].includes(hit.k) ? hit.k : null;
         if (!kind) return { ok: false, reason: 'kind' };
         const a = ctx.attacker;
         if (!a || (a.fl & FLAGS.dead)) return { ok: false, reason: 'attacker' };
         if (kind !== 'parry' && ctx.me.protected) return { ok: false, reason: 'protected' };
+        if (kind === 'ab') return validateAbility(hit, ctx);
         const b = D.GEAR_BY_ID[hit.w];
         if (kind !== 'parry' && (!b || b.slot !== 'weapon')) return { ok: false, reason: 'weapon' };
         if (kind === 'arrow' && b.cls !== 'bow') return { ok: false, reason: 'weapon' };
@@ -207,7 +282,7 @@
     return {
         ROOT, RATE, PVP, LOOT, BOSS, CHAT, EMOTES, FLAGS, SAFE_WORDS,
         packPos, unpackPos, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor,
-        maxHit, reachFor, validateHit, makeHit, sanitizeLoot, canClaim, lootExpired,
+        maxHit, reachFor, validateHit, makeHit, abilityById, abilityReach, abilityBurst, abilityMaxHit, playerStun, sanitizeLoot, canClaim, lootExpired,
         sanitizeBoss, bossNeedsReset, bossDeadFor, earnedReward, hostOf, sanitizeHost, lerpAngle, interpolate,
     };
 }));

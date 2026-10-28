@@ -20,13 +20,13 @@
     // ---------------- creation ----------------
     function base(kind, team, x, y, r) {
         return { id: 'a' + (nextId++), kind, team, x, y, r, vx: 0, vy: 0, kbx: 0, kby: 0, facing: Math.PI / 2, flash: 0, dead: false,
-            status: { burnUntil: 0, burnDps: 0, chillUntil: 0, stunUntil: 0 }, cds: [], atk: null, mass: r / 14 };
+            status: { burnUntil: 0, burnDps: 0, chillUntil: 0, stunUntil: 0, poisonUntil: 0, poisonDps: 0 }, cds: [], atk: null, mass: r / 14 };
     }
     A.makePlayer = function (x, y) {
         const p = base('player', 'player', x, y, D.COMBAT.player.r || D.COMBAT.player.radius);
         Object.assign(p, { hp: 100, maxHp: 100, weapon: null, weaponUid: null, stam: { val: D.COMBAT.stamina.max, idle: 0, winded: false },
             dashT: 0, dashCd: 0, dashX: 0, dashY: 0, iframes: 0, lastHurt: -99, combo: {}, trail: [], power: 0, powerHit: false, perfectFlash: 0,
-            aimHold: 0, slow: 0, lavaT: 0, mass: 1, abCd: {}, skinUntil: 0, berserkUntil: 0 });
+            aimHold: 0, slow: 0, lavaT: 0, mass: 1, abCd: {}, buffs: {} });
         // the shield turns toward the mouse like a weapon; up while the block button is held
         p.shield = Object.assign(C.newWeapon('shield', Math.PI / 2), { up: false, raisedAt: -9, brokenUntil: 0 });
         return p;
@@ -75,6 +75,19 @@
     A.hurtPlayer = function (dmg, opts = {}) {
         const g = game(), p = g.player;
         if (p.dead || p.iframes > 0 || g.inTown) return 0;
+        const st = g.pstats;
+        if (st.dodge && !opts.unblockable && rnd() < st.dodge) { p.iframes = 0.25; E.floatText(p.x, p.y - 30, 'DODGE', '#9ad7ff', 14); WHW.sfx('dash'); return 0; }
+        if (opts.projectile && buffOn(p, 'reflect')) {
+            const pr = opts.projectile;
+            reflectProjectile(pr, pr.x, pr.y, Math.atan2(-pr.vy, -pr.vx));
+            p.iframes = 0.15; E.floatText(p.x, p.y - 30, 'REFLECT', '#bfe3ff', 14); WHW.sfx('parry');
+            return 0;
+        }
+        // Spiked Shield: whoever hits you up close takes part of the hit back (never another player: theirs has no kind)
+        const src = opts.from;
+        if (st.thorns && src && !opts.projectile && !src.dead && (src.kind === 'monster' || src.kind === 'boss' || src.kind === 'clone' || src.kind === 'rival')) {
+            A.damage(src, dmg * st.thorns, { from: p, text: 'THORNS' });
+        }
         if (p.shield.up && !opts.unblockable) {
             const fromAngle = opts.fromAngle !== undefined ? opts.fromAngle : opts.from ? angTo(p, opts.from) : null;
             const r = fromAngle === null ? null : C.blockHit(p.shield, shieldStats(), fromAngle, dmg, E.time, p.stam.val);
@@ -94,10 +107,10 @@
                 if (dmg < 0.5) { p.iframes = 0.15; return 0; }
             }
         }
-        const st = g.pstats;
         let d = C.mitigate(dmg, st.armor);
         if (opts.fire) d *= 1 - st.fireResist;
-        if (E.time < p.skinUntil) { d *= 1 - D.ABILITIES.stoneskin.reduce; opts = Object.assign({}, opts, { kb: 0 }); }
+        d *= 1 - buffMax(p, 'reduce');
+        if (buffOn(p, 'noKb')) opts = Object.assign({}, opts, { kb: 0 });
         d = Math.max(1, d);
         p.hp -= d;
         p.iframes = 0.35;
@@ -132,13 +145,13 @@
         else if (a && (a.kind === 'boss' || a.kind === 'clone')) { a.status.stunUntil = E.time + S.bossParryStun; a.atk = null; }
         else if (a && a.kind === 'rival') a.ai.staggerUntil = E.time + S.rivalStagger;
         if (opts.onParry) opts.onParry();
-        const pr = opts.projectile;
-        if (pr) {
-            const sp = Math.hypot(pr.vx, pr.vy);
-            const ang = p.shield.theta;
-            game().projectiles.push({ kind: pr.kind, team: 'player', x: bx, y: by, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: pr.r, life: 1.2,
-                dmg: pr.dmg * S.reflectMult, color: pr.color, burn: pr.burn, chill: pr.chill, kb: 120, hit: new Set(), reflected: true });
-        }
+        if (opts.projectile) reflectProjectile(opts.projectile, bx, by, p.shield.theta);
+    }
+    // an enemy projectile sent back the way it came (parries and Mirror Guard)
+    function reflectProjectile(pr, x, y, ang) {
+        const sp = Math.hypot(pr.vx, pr.vy);
+        game().projectiles.push({ kind: pr.kind, team: 'player', x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: pr.r, life: 1.2,
+            dmg: pr.dmg * D.COMBAT.shield.reflectMult, color: pr.color, burn: pr.burn, chill: pr.chill, kb: 120, hit: new Set(), reflected: true });
     }
 
     // Damage any non-player combatant. info: { from, kbAngle, kb, s, perfect, crit, burn, chill, text }
@@ -158,6 +171,7 @@
         // the Frozen WH's frost armor melts under fire
         if (info.burn && t.kind === 'boss' && t.def.emberStrips) t.armorBrokenUntil = E.time + 4;
         if (info.chill) t.status.chillUntil = E.time + 2;
+        if (info.poison) { t.status.poisonUntil = E.time + 4; t.status.poisonDps = Math.max(t.status.poisonDps || 0, dmg * 0.25); }
         if (WHW.settings.dmgNumbers) {
             const col = info.perfect ? '#ffc83d' : info.crit ? '#ff9a3d' : '#ffffff';
             E.floatText(t.x + (rnd() - 0.5) * 10, t.y - t.r - 6, Math.round(dmg) + (info.perfect ? '!' : ''), col, info.perfect ? 18 : 14);
@@ -207,27 +221,40 @@
 
     // ---------------- the player ----------------
     A.tryDash = function (p, mv) {
-        const S = D.COMBAT.stamina, DA = D.COMBAT.dash;
-        if (p.dashCd > 0 || p.dashT > 0 || p.stam.val < S.dash) return;
+        const S = D.COMBAT.stamina, DA = D.COMBAT.dash, ps = game().pstats;
+        const cost = S.dash * ps.dashStam;
+        if (p.dashCd > 0 || p.dashT > 0 || p.stam.val < cost) return;
         let dx = mv.x, dy = mv.y;
         if (!dx && !dy) { const aim = E.aimPoint(p.x, p.y); if (aim) { const a = angTo(p, aim); dx = Math.cos(a); dy = Math.sin(a); } else { dx = 0; dy = 1; } }
         const l = Math.hypot(dx, dy) || 1;
         p.dashX = dx / l; p.dashY = dy / l;
-        p.dashT = DA.time; p.dashCd = DA.cooldown; p.iframes = Math.max(p.iframes, DA.iframes);
-        p.stam.val -= S.dash; p.stam.idle = 0;
+        p.dashT = DA.time; p.dashCd = DA.cooldown * ps.dashCd; p.iframes = Math.max(p.iframes, DA.iframes);
+        p.stam.val -= cost; p.stam.idle = 0;
         E.burst(p.x, p.y + 8, 'rgba(255,255,255,0.6)', 6, 60, { life: 0.3 });
         WHW.sfx('dash');
     };
     // ---------------- abilities ----------------
-    // Key 0..2 (Z, X, C) casts that ability of the active class. Hurts monsters, bosses and rivals; other players are
-    // never hit by abilities.
+    // Z, X and C cast the abilities on the active class's loadout. They hurt monsters, bosses and rivals, and other players
+    // outside town: a hit on a player is sent to them (world-online.js), and their page applies it.
     A.abilityCd = function (p, id) { return Math.max(0, (p.abCd[id] || 0) - E.time); };
-    function abilityTargets() { return game().actors.filter(t => !t.dead && C.canDamage('player', t.team)); }
+    // buffs running now (Berserk, Stoneskin, Envenom...) and what they add up to
+    function activeBuffs(p) { const out = []; for (const id in p.buffs) if (p.buffs[id] > E.time) out.push(D.ABILITIES[id]); return out; }
+    function buffMult(p, key) { let m = 1; for (const a of activeBuffs(p)) if (a[key]) m *= a[key]; return m; }
+    function buffSum(p, key) { let n = 0; for (const a of activeBuffs(p)) if (typeof a[key] === 'number') n += a[key]; return n; }
+    function buffMax(p, key) { let n = 0; for (const a of activeBuffs(p)) if (a[key] > n) n = a[key]; return n; }
+    function buffOn(p, key) { return activeBuffs(p).some(a => a[key]); }
+    function dmgBuff(p) { return buffMult(p, 'dmgMult'); }
+    A.buffOn = (p, id) => (p.buffs[id] || 0) > E.time;
+    function abilityTargets() { return game().actors.filter(t => !t.dead && C.canDamage('player', t.team)).concat(pvpTargets()); }
     function abilityHit(p, t, a, base, angle, opts = {}) {
         let dmg = base * (opts.dmg !== undefined ? opts.dmg : a.dmg);
+        let text = opts.text;
+        if (a.execute && t.hp <= t.maxHp * a.execute) { dmg *= 2; text = 'EXECUTE'; }
+        // another player: their page checks it and takes it with their own shield and armor
+        if (t.kind === 'remote') { WHW.online.hitRemote(t, { kind: 'ab', w: a.id, dmg, ang: angle, perfect: false }); return; }
         if (t.def && t.def.resist) dmg *= 1 - t.def.resist * 0.5; // abilities cut through resistance better than weapons do
         dmg = C.mitigate(dmg, t.armorBrokenUntil > E.time ? 0 : t.armor);
-        A.damage(t, dmg, { from: p, kbAngle: angle, kb: opts.kb !== undefined ? opts.kb : a.kb || 0, s: 1, burn: a.burn, chill: a.chill, text: opts.text });
+        A.damage(t, dmg, { from: p, kbAngle: angle, kb: opts.kb !== undefined ? opts.kb : a.kb || 0, s: 1, burn: a.burn, chill: a.chill, text });
         if (a.stun) stun(t, a.stun);
     }
     function stun(t, sec) {
@@ -264,27 +291,65 @@
     }
     function abilityShot(p, a, ang, base, extra) {
         game().projectiles.push(Object.assign({ kind: 'arrow', team: 'player', x: p.x + Math.cos(ang) * 16, y: p.y + Math.sin(ang) * 16, vx: Math.cos(ang) * a.speed, vy: Math.sin(ang) * a.speed,
-            r: 4, life: a.life, dmg: base * a.dmg, kb: 110, hit: new Set(), ability: true, color: a.color }, extra));
+            r: 4, life: a.life, dmg: base * a.dmg, kb: 110, hit: new Set(), ability: true, abil: a.id, color: a.color }, extra));
     }
+    // A player stunned by another player's ability: can't move, attack, block or cast for a moment
+    A.stunPlayer = function (sec) {
+        const p = game().player;
+        p.stunUntil = Math.max(p.stunUntil || 0, E.time + sec);
+        p.staggerUntil = Math.max(p.staggerUntil || 0, p.stunUntil);
+        p.shield.up = false;
+        if (p.weapon && p.weapon.drawing) { p.weapon.drawing = false; p.weapon.draw = 0; }
+        E.floatText(p.x, p.y - 30, 'STUNNED', '#ffe14d', 14);
+    };
+    // Another player cast an ability: show it. x, y: where they are now; tx, ty: where they aimed (or the area's centre).
+    // Only for show: their page sends any hits.
+    A.remoteCast = function (x, y, id, tx, ty) {
+        const a = D.ABILITIES[id], g = game();
+        if (!a) return;
+        const ang = Math.atan2(ty - y, tx - x);
+        const fxShot = (aa, kind, extra) => g.projectiles.push(Object.assign({ kind, team: 'fx', x: x + Math.cos(aa) * 16, y: y + Math.sin(aa) * 16, vx: Math.cos(aa) * a.speed, vy: Math.sin(aa) * a.speed,
+            r: 4, life: a.life, hit: new Set(), ability: true, color: a.color }, extra));
+        if (a.kind === 'nova' || a.kind === 'smoke') { ringFx(x, y, a.radius, a.color); E.burst(x, y, a.color, 20, a.radius * 2, { life: 0.5, size: a.kind === 'smoke' ? 7 : 4 }); }
+        else if (a.kind === 'cone') { for (let i = 0; i < 18; i++) { const aa = ang + (i / 17 - 0.5) * a.arc; E.burst(x + Math.cos(aa) * a.range * 0.7, y + Math.sin(aa) * a.range * 0.7, a.color, 2, 90, { angle: aa, spread: 0.3, life: 0.4 }); } }
+        else if (a.kind === 'leap') { ringFx(x, y, a.radius, a.color); E.burst(x, y + 6, '#cbb89a', 18, 160, { life: 0.5 }); }
+        else if (a.kind === 'line') { for (let d = 10; d <= a.len; d += 12) E.burst(x + Math.cos(ang) * d, y + Math.sin(ang) * d, a.color, 2, 70, { angle: ang, spread: 0.6, life: 0.4 }); }
+        else if (a.kind === 'knives') { for (let i = 0; i < a.count; i++) fxShot(ang + i / a.count * TAU, 'knife'); }
+        else if (a.kind === 'volley') { for (let i = 0; i < a.count; i++) fxShot(ang + (i / (a.count - 1) - 0.5) * a.spread, 'arrow'); }
+        else if (a.kind === 'shot') fxShot(ang, a.look === 'spear' ? 'javelin' : a.stun ? 'net' : 'arrow', { big: !!a.big });
+        else if (a.kind === 'chain') boltFx({ x, y }, { x: tx, y: ty }, a.color);
+        else if (a.kind === 'field') g.fields.push({ id, a, x: tx, y: ty, t: 0, next: a.delay || 0, base: 0, fx: true,
+            spikes: id === 'caltrops' ? Array.from({ length: 14 }, () => { const aa = rnd() * TAU, rr = Math.sqrt(rnd()) * a.r * 0.9; return { x: Math.cos(aa) * rr, y: Math.sin(aa) * rr, a: rnd() * TAU }; }) : null });
+        else E.burst(x, y, a.color, 14, 100, { life: 0.5 }); // blinks, charges, steps, heals and buffs: a flash where they are
+        if (a.kind === 'buff' || a.kind === 'heal') E.floatText(x, y - 30, a.name.toUpperCase(), a.color, 13, 0.9);
+    };
     A.castAbility = function (key) {
         const g = game(), p = g.player, s = g.state;
-        if (!p || p.dead) return false;
-        const cls = W.classOf(s);
+        if (!p || p.dead || p.stunUntil > E.time) return false;
         const id = W.abilityKit(s)[key], a = D.ABILITIES[id];
-        if (!a) {
-            const want = D.ABILITIES[cls.abilities[key]];
-            WHW.hint(want ? cls.name + ' ability ' + D.ABILITY_KEYS[key] + ' is ' + want.name + ': learn it in the Classes menu (K).' : 'Nothing on that key.');
-            return false;
-        }
+        if (!a) { WHW.hint('Nothing on ' + D.ABILITY_KEYS[key] + ': learn abilities and equip them in the Classes menu (K).'); return false; }
         if (A.abilityCd(p, id) > 0) return false;
-        if (p.stam.val < a.stam) { WHW.hint('Not enough stamina for ' + a.name + '.'); return false; }
         const ps = g.pstats;
-        const wst = W.gearStats(weaponItem());
-        const base = (wst ? wst.dmg : 8) * berserkMult(p) * ps.abilityDmg;
+        const stam = a.stam * ps.abilityStam;
+        if (p.stam.val < stam) { WHW.hint('Not enough stamina for ' + a.name + '.'); return false; }
         const aim = E.aimPoint(p.x, p.y);
         const ang = aim && Math.hypot(aim.x - p.x, aim.y - p.y) > 8 ? angTo(p, aim) : p.facing;
+        // Shadowstep needs someone to step behind; with nobody in reach nothing is spent
+        let prey = null;
+        if (a.kind === 'step') {
+            const at = aim || { x: p.x + Math.cos(ang) * 100, y: p.y + Math.sin(ang) * 100 };
+            prey = abilityTargets().filter(t => dist(p, t) <= a.range + t.r && !E.wallBetween(p.x, p.y, t.x, t.y)).sort((u, v) => dist(u, at) - dist(v, at))[0];
+            if (!prey) { WHW.hint('No enemy close enough to ' + a.name + ' to.'); return false; }
+        }
+        const wst = W.gearStats(weaponItem());
+        // momentum abilities hit harder the faster you are moving toward where you aim, like a spear thrust
+        const mom = a.momentum === true ? C.momentumMult(p.vx * Math.cos(ang) + p.vy * Math.sin(ang), ps.momentum + buffSum(p, 'momentum')) : 1;
+        const momText = mom >= 1.25 ? 'CHARGE x' + mom.toFixed(1) : '';
+        const base = (wst ? wst.dmg : 8) * dmgBuff(p) * ps.abilityDmg * mom;
         p.abCd[id] = E.time + a.cd * ps.abilityCd;
-        p.stam.val -= a.stam; if (a.stam) p.stam.idle = 0;
+        p.stam.val -= stam; if (stam) p.stam.idle = 0;
+        // what other players are told (world-online.js): which ability, and where it was aimed (an area changes it to its centre)
+        p.cast = { seq: (p.cast ? p.cast.seq : 0) + 1, id, x: aim ? aim.x : p.x + Math.cos(ang) * 100, y: aim ? aim.y : p.y + Math.sin(ang) * 100 };
         const near = (r) => abilityTargets().filter(t => Math.hypot(t.x - p.x, t.y - p.y) <= r + t.r && !E.wallBetween(p.x, p.y, t.x, t.y));
         if (a.kind === 'nova') {
             const hit = near(a.radius);
@@ -316,11 +381,34 @@
             for (const t of abilityTargets()) {
                 let d = Infinity;
                 for (let i = 1; i < path.length; i++) d = Math.min(d, segDist(t.x, t.y, path[i - 1], path[i]));
-                if (d <= a.width + t.r) abilityHit(p, t, a, base, ang, { text: 'CHARGED' });
+                if (d <= a.width + t.r) abilityHit(p, t, a, base, ang, { text: momText || 'CHARGED' });
             }
             for (const pt of path) E.burst(pt.x, pt.y + 8, a.color, 2, 60, { life: 0.35 });
             E.addShake(6);
             WHW.sfx('clash');
+        } else if (a.kind === 'leap') {
+            // up to dist toward the cursor (not past it), then a crash where you land
+            const x0 = p.x, y0 = p.y;
+            slide(p, ang, aim ? Math.min(a.dist, Math.max(20, Math.hypot(aim.x - p.x, aim.y - p.y))) : a.dist);
+            p.iframes = Math.max(p.iframes, a.iframes);
+            for (let i = 0; i <= 8; i++) { const f = i / 8; E.burst(x0 + (p.x - x0) * f, y0 + (p.y - y0) * f - Math.sin(f * Math.PI) * 30, a.color, 1, 30, { life: 0.35 }); }
+            for (const t of near(a.radius)) abilityHit(p, t, a, base, angTo(p, t));
+            ringFx(p.x, p.y, a.radius, a.color);
+            E.burst(p.x, p.y + 6, '#cbb89a', 18, 160, { life: 0.5 });
+            E.addShake(6);
+            WHW.sfx('boss');
+        } else if (a.kind === 'line') {
+            // everything in a band len long toward the cursor, cut short by walls
+            const cx = Math.cos(ang), cy = Math.sin(ang);
+            let len = 0;
+            while (len < a.len) { const tt = E.tileAt(p.x + cx * (len + 8), p.y + cy * (len + 8)); if (tt === G.T.WALL || tt === G.T.BUILDING) break; len += 8; }
+            for (const t of abilityTargets()) {
+                const dx = t.x - p.x, dy = t.y - p.y, along = dx * cx + dy * cy, off = Math.abs(dx * cy - dy * cx);
+                if (along >= -t.r && along <= len + t.r && off <= a.width + t.r) abilityHit(p, t, a, base, ang, { text: momText || undefined });
+            }
+            for (let d = 10; d <= len; d += 12) E.burst(p.x + cx * d + (rnd() - 0.5) * a.width, p.y + cy * d + (rnd() - 0.5) * a.width, a.color, 2, 70, { angle: ang, spread: 0.6, life: 0.4 });
+            E.addShake(5); E.addHitStop(0.04);
+            WHW.sfx('boss');
         } else if (a.kind === 'knives') {
             for (let i = 0; i < a.count; i++) abilityShot(p, a, ang + i / a.count * Math.PI * 2, base, { kind: 'knife', kb: 140 });
             WHW.sfx('bow');
@@ -328,7 +416,8 @@
             for (let i = 0; i < a.count; i++) abilityShot(p, a, ang + (i / (a.count - 1) - 0.5) * a.spread, base);
             WHW.sfx('bow');
         } else if (a.kind === 'shot') {
-            abilityShot(p, a, ang, base, { r: 6, pierce: 99, kb: 260, big: true });
+            abilityShot(p, a, ang, base, { kind: a.look === 'spear' ? 'javelin' : a.stun ? 'net' : 'arrow', r: a.big ? 6 : 5, pierce: a.pierce || 0, kb: a.kb || 260,
+                big: !!a.big, stun: a.stun || 0, text: momText || undefined });
             E.addShake(3);
             WHW.sfx('bow');
         } else if (a.kind === 'chain') {
@@ -348,8 +437,30 @@
             }
             if (!done.size) boltFx(p, from, a.color); // nothing in range: a harmless flash, the cooldown still runs
             WHW.sfx('perfect');
+        } else if (a.kind === 'step') {
+            // reappear just behind the target (the side it isn't facing) and stab
+            const t = prey, x0 = p.x, y0 = p.y, back = t.r + p.r + 4;
+            const spot = { x: t.x - Math.cos(t.facing) * back, y: t.y - Math.sin(t.facing) * back };
+            slide(p, angTo(p, spot), dist(p, spot));
+            p.iframes = Math.max(p.iframes, a.iframes);
+            p.facing = p.aimHold = angTo(p, t);
+            abilityHit(p, t, a, base, angTo(p, t), { text: 'SHADOWSTEP' });
+            E.burst(x0, y0, a.color, 16, 90, { life: 0.5 });
+            E.burst(p.x, p.y, a.color, 16, 120, { life: 0.4 });
+            WHW.sfx('perfect');
+        } else if (a.kind === 'field') {
+            let fx = p.x, fy = p.y;
+            if (a.at === 'cursor') {
+                const d = aim ? Math.min(a.range, Math.hypot(aim.x - p.x, aim.y - p.y)) : a.range / 2;
+                fx = p.x + Math.cos(ang) * d; fy = p.y + Math.sin(ang) * d;
+            }
+            const spikes = id === 'caltrops' ? Array.from({ length: 14 }, () => { const aa = rnd() * TAU, rr = Math.sqrt(rnd()) * a.r * 0.9; return { x: Math.cos(aa) * rr, y: Math.sin(aa) * rr, a: rnd() * TAU }; }) : null;
+            g.fields.push({ id, a, x: fx, y: fy, t: 0, next: a.delay || 0, base, spikes });
+            p.cast.x = fx; p.cast.y = fy;
+            WHW.sfx(a.delay ? 'dash' : 'perfect');
         } else if (a.kind === 'smoke') {
             for (const t of near(a.radius)) {
+                if (t.kind === 'remote') { WHW.online.hitRemote(t, { kind: 'ab', w: id, dmg: 0, ang: angTo(p, t) }); continue; }
                 stun(t, a.stun);
                 if (t.kind === 'monster' || t.kind === 'rival') t.aggro = false;
             }
@@ -363,8 +474,7 @@
             E.burst(p.x, p.y, a.color, 18, 90, { life: 0.8, grav: -70 });
             WHW.sfx('drink');
         } else if (a.kind === 'buff') {
-            if (id === 'stoneskin') p.skinUntil = E.time + a.time;
-            else p.berserkUntil = E.time + a.time;
+            p.buffs[id] = E.time + a.time;
             E.floatText(p.x, p.y - 30, a.name.toUpperCase(), a.color, 15, 1);
             E.burst(p.x, p.y, a.color, 16, 110, { life: 0.6 });
             WHW.sfx('perfect');
@@ -372,17 +482,86 @@
         if (WHW.ui && WHW.ui.renderAbilities) WHW.ui.renderAbilities();
         return true;
     };
+    // Ability areas on the ground (Sanctuary, Caltrops, Rain of Arrows, Singularity, Meteor, Blizzard): after the
+    // delay they hit every tick seconds until their time runs out
+    A.updateFields = function (dt) {
+        const g = game(), p = g.player;
+        for (const f of g.fields) {
+            const a = f.a;
+            f.t += dt;
+            while (f.t >= f.next && f.next <= a.time) {
+                const first = f.next === (a.delay || 0);
+                f.next += a.tick;
+                if (first && a.delay) { E.burst(f.x, f.y, a.color, 40, a.r * 2.4, { life: 0.6, size: 5 }); ringFx(f.x, f.y, a.r, a.color); E.addShake(f.fx ? 3 : 8); WHW.sfx('boss'); }
+                if (f.fx) continue;
+                for (const t of abilityTargets()) {
+                    const d = Math.hypot(t.x - f.x, t.y - f.y);
+                    if (d > a.r + t.r || E.wallBetween(f.x, f.y, t.x, t.y)) continue;
+                    // a rift pulls toward its centre, harder at the edge; anything else pushes out
+                    const inward = Math.atan2(f.y - t.y, f.x - t.x);
+                    abilityHit(p, t, a, f.base, a.pull ? inward : inward + Math.PI, { kb: a.pull ? a.pull * Math.min(1, d / a.r) : a.kb || 0 });
+                }
+                if (a.heal && !p.dead && Math.hypot(p.x - f.x, p.y - f.y) <= a.r + p.r) {
+                    const before = p.hp;
+                    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * a.heal);
+                    if (p.hp - before >= 1) E.floatText(p.x, p.y - 28, '+' + Math.round(p.hp - before), '#7dff9a', 12, 0.6);
+                }
+            }
+            if (E.perf !== 'low' && f.t >= (a.delay || 0)) fieldFx(f, dt);
+            if (f.t >= a.time) f.gone = true;
+        }
+        g.fields = g.fields.filter(f => !f.gone);
+    };
+    // what each area looks like while it lasts
+    function fieldFx(f, dt) {
+        const a = f.a, at = () => { const aa = rnd() * TAU, rr = Math.sqrt(rnd()) * a.r; return { x: f.x + Math.cos(aa) * rr, y: f.y + Math.sin(aa) * rr }; };
+        if (f.id === 'rain_of_arrows') { for (let i = 0; i < 3; i++) { const q = at(); E.burst(q.x, q.y - 26, a.color, 1, 260, { angle: Math.PI / 2, spread: 0.05, life: 0.1, size: 2 }); } }
+        else if (f.id === 'blizzard') { if (rnd() < dt * 40) { const q = at(); E.burst(q.x, q.y, '#ffffff', 1, 40, { angle: 0.6, spread: 0.4, life: 0.6, size: 3 }); } }
+        else if (f.id === 'singularity') { if (rnd() < dt * 30) { const aa = rnd() * TAU; E.burst(f.x + Math.cos(aa) * a.r, f.y + Math.sin(aa) * a.r, a.color, 1, a.r * 1.6, { angle: aa + Math.PI, spread: 0.1, life: 0.5, size: 3 }); } }
+        else if (f.id === 'sanctuary') { if (rnd() < dt * 18) { const q = at(); E.burst(q.x, q.y, a.color, 1, 20, { life: 0.9, grav: -60, size: 3 }); } }
+    }
+    A.drawFields = function (ctx) {
+        for (const f of game().fields) {
+            const a = f.a;
+            ctx.save();
+            if (a.delay && f.t < a.delay) {
+                // where it will land, filling up until it does
+                const k = f.t / a.delay;
+                ctx.globalAlpha = 0.18 + 0.2 * k; ctx.fillStyle = a.color;
+                ctx.beginPath(); ctx.arc(f.x, f.y, a.r * k, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 0.85; ctx.strokeStyle = a.color; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
+                ctx.beginPath(); ctx.arc(f.x, f.y, a.r, 0, TAU); ctx.stroke();
+            } else {
+                const fade = Math.max(0, Math.min(1, (a.time - f.t) / 0.35));
+                ctx.globalAlpha = (0.14 + Math.sin(E.time * 6) * 0.04) * fade; ctx.fillStyle = a.color;
+                ctx.beginPath(); ctx.arc(f.x, f.y, a.r, 0, TAU); ctx.fill();
+                ctx.globalAlpha = 0.6 * fade; ctx.strokeStyle = a.color; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(f.x, f.y, a.r, 0, TAU); ctx.stroke();
+                if (a.pull) {
+                    ctx.beginPath();
+                    for (let i = 0; i < 3; i++) for (let j = 0; j <= 20; j++) { const u = j / 20, aa = E.time * -4 + i * TAU / 3 + u * 3, rr = a.r * (1 - u); const x = f.x + Math.cos(aa) * rr, y = f.y + Math.sin(aa) * rr; if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+                    ctx.stroke();
+                }
+                if (f.spikes) {
+                    ctx.globalAlpha = fade; ctx.strokeStyle = '#d9dde6'; ctx.lineWidth = 2;
+                    for (const k of f.spikes) for (let i = 0; i < 3; i++) { const aa = k.a + i * TAU / 3; ctx.beginPath(); ctx.moveTo(f.x + k.x, f.y + k.y); ctx.lineTo(f.x + k.x + Math.cos(aa) * 5, f.y + k.y + Math.sin(aa) * 5); ctx.stroke(); }
+                }
+            }
+            ctx.restore();
+        }
+    };
 
     A.updatePlayer = function (p, dt) {
         const g = game(), st = g.pstats, T = G.T;
-        const mv = E.moveInput();
+        const stunned = p.stunUntil > E.time;
+        const mv = stunned ? { x: 0, y: 0 } : E.moveInput();
         const tile = E.tileAt(p.x, p.y);
-        if (E.consumeKey(' ') || E.consumeKey('Shift')) A.tryDash(p, mv);
+        if ((E.consumeKey(' ') || E.consumeKey('Shift')) && !stunned) A.tryDash(p, mv);
         let speed = D.COMBAT.player.speed * st.speed;
         const w = p.weapon;
         if (w && w.cls === 'bow' && w.drawing) speed *= D.WEAPON_CLASSES.bow.moveMult;
         const sh = p.shield;
-        const want = !!(WHW.shieldWanted && WHW.shieldWanted()) && !!shieldItem() && E.time >= sh.brokenUntil;
+        const want = !stunned && !!(WHW.shieldWanted && WHW.shieldWanted()) && !!shieldItem() && E.time >= sh.brokenUntil;
         if (want && !sh.up) {
             sh.up = true; sh.raisedAt = E.time;
             if (w && w.drawing) { w.drawing = false; w.draw = 0; w.fullFor = 0; } // can't hold a bow string and a shield
@@ -391,7 +570,7 @@
         if (sh.up) speed *= D.COMBAT.shield.moveMult;
         if (E.time < p.status.chillUntil) speed *= 0.7;
         if (p.slow) speed *= 1 - p.slow;
-        if (E.time < p.berserkUntil) speed *= D.ABILITIES.berserk.speedMult;
+        speed *= buffMult(p, 'speedMult');
         if (p.dashT > 0) {
             p.dashT -= dt;
             p.vx = p.dashX * D.COMBAT.player.speed * D.COMBAT.dash.speedMult;
@@ -421,7 +600,7 @@
         } else p.status.burnDps = 0;
         // regen: fast in town, slow once out of a fight for a while
         if (g.inTown) p.hp = Math.min(p.maxHp, p.hp + D.COMBAT.player.regenTown * dt);
-        else if (E.time - p.lastHurt > 6) p.hp = Math.min(p.maxHp, p.hp + 1.5 * dt);
+        else p.hp = Math.min(p.maxHp, p.hp + ((E.time - p.lastHurt > 6 ? 1.5 : 0) + st.regen) * dt);
         A.updatePlayerWeapon(p, dt);
     };
 
@@ -479,7 +658,7 @@
     // Called by world.js when the button goes down / up
     A.press = function (p) {
         const w = p.weapon, b = W.baseOf(weaponItem());
-        if (!w || !b) return;
+        if (!w || !b || p.stunUntil > E.time) return;
         if (b.cls === 'bow') {
             if (p.shield.up) return;
             if ((game().state.cons.arrow || 0) <= 0) { WHW.toast('Out of arrows. Make them at the Workbench or buy them from the Trader.', 'bad'); return; }
@@ -502,12 +681,12 @@
         const st = W.gearStats(weaponItem());
         const a = w.theta + shot.angleOff;
         g.projectiles.push({ kind: 'arrow', team: 'player', x: p.x + Math.cos(a) * 16, y: p.y + Math.sin(a) * 16, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed,
-            r: 4, life: P.life, dmg: st.dmg * shot.dmgMult * berserkMult(p) * (g.pstats.dmgBy.bow || 1), steady: shot.steady, w: weaponItem().base, kb: P.kb, chill: st.chill, burn: st.burn, crit: st.crit + g.pstats.crit, lifesteal: st.lifesteal, hit: new Set() });
+            r: 4, life: P.life, dmg: st.dmg * shot.dmgMult * dmgBuff(p) * (g.pstats.dmgBy.bow || 1), steady: shot.steady, w: weaponItem().base, kb: P.kb, chill: st.chill, burn: st.burn,
+            crit: st.crit + g.pstats.crit + buffSum(p, 'crit'), lifesteal: (st.lifesteal || 0) + g.pstats.lifesteal, poison: buffOn(p, 'venom'), hit: new Set() });
         if (shot.steady) { E.floatText(p.x, p.y - 30, 'STEADY', '#ffc83d', 12); }
         WHW.sfx('bow');
     };
 
-    function berserkMult(p) { return E.time < p.berserkUntil ? D.ABILITIES.berserk.dmgMult : 1; }
     function contactPoint(px, py, angle, r) { return { x: px + Math.cos(angle) * r, y: py + Math.sin(angle) * r }; }
     // A player weapon struck a combatant
     function strike(p, t, info) {
@@ -516,14 +695,15 @@
         const P = D.WEAPON_CLASSES[cls];
         const combo = C.comboHit(p.combo, dir, E.time, swingId);
         // a spear thrust gains damage from the speed you are moving toward the target (dash into it for the most)
-        const mom = cls === 'spear' ? C.momentumMult(p.vx * Math.cos(angle) + p.vy * Math.sin(angle)) : 1;
-        const hd = C.hitDamage(info.baseDmg, s, combo, (assist ? D.COMBAT.assist.mult : 1) * mom * berserkMult(p) * (g.pstats.dmgBy[cls] || 1));
+        const mom = cls === 'spear' ? C.momentumMult(p.vx * Math.cos(angle) + p.vy * Math.sin(angle), g.pstats.momentum + buffSum(p, 'momentum')) : 1;
+        const hd = C.hitDamage(info.baseDmg, s, combo, (assist ? D.COMBAT.assist.mult : 1) * mom * dmgBuff(p) * (g.pstats.dmgBy[cls] || 1));
+        const critChance = st.crit + g.pstats.crit + buffSum(p, 'crit');
         const charge = mom >= 1.25 ? 'CHARGE x' + mom.toFixed(1) : '';
         if (t.kind === 'remote') {
             // another player: they check the hit and take it on their own page (shield, armor and all)
             let m = 1;
             if (P.backstab && C.fromBehind(angle, t.facing)) m *= P.backstab;
-            if (rnd() < st.crit + g.pstats.crit) m *= 1.5;
+            if (rnd() < critChance) m *= 1.5;
             WHW.online.hitRemote(t, { kind: cls === 'spear' ? 'thrust' : 'melee', dmg: hd.dmg * m, ang: angle + dir * Math.PI / 2 * 0.7, perfect: hd.perfect, x: cx, y: cy });
             E.burst(cx, cy, hd.perfect ? '#ffc83d' : '#ffffff', hd.perfect ? 12 : 7, 160, { angle: angle + dir * Math.PI / 2, spread: 1.4, life: 0.35 });
             E.addHitStop(D.COMBAT.hitStop * (0.5 + s));
@@ -532,8 +712,9 @@
         }
         let mult = 1, text = '';
         if (P.armored && t.armor > 0) mult *= P.armored;
-        if (P.backstab && C.fromBehind(angle, t.facing) && t.kind !== 'dummy') { mult *= P.backstab; text = 'BACKSTAB'; g.state.stats.backstabs++; }
-        const crit = rnd() < st.crit + g.pstats.crit;
+        if (P.backstab && C.fromBehind(angle, t.facing) && t.kind !== 'dummy') { mult *= P.backstab + g.pstats.backstab; text = 'BACKSTAB'; g.state.stats.backstabs++; }
+        if (mom >= 1.25 && t.kind !== 'dummy') g.state.stats.rushHits++; // the Lancer's challenge
+        const crit = rnd() < critChance;
         if (crit) mult *= 1.5;
         if (t.def && t.def.shell && !C.fromBehind(angle, t.facing)) { mult *= t.def.shell; text = 'SHELL'; }
         if (t.def && t.def.resist) { const tier = W.baseOf(weaponItem()).tier; if (!t.def.resistBy.includes(tier)) { mult *= 1 - t.def.resist; text = text || 'RESISTS'; } }
@@ -543,8 +724,9 @@
         const dmg = C.mitigate(hd.dmg * mult, armor);
         if (combo >= 2 && !text) text = 'COMBO x' + (combo + 1);
         if (charge) text = charge;
-        A.damage(t, dmg, { from: p, kbAngle: angle + dir * Math.PI / 2 * 0.7, kb: P.kb * st.kbMult, s, perfect: hd.perfect, crit, burn: st.burn, chill: st.chill, text });
-        if (st.lifesteal) p.hp = Math.min(p.maxHp, p.hp + dmg * st.lifesteal);
+        A.damage(t, dmg, { from: p, kbAngle: angle + dir * Math.PI / 2 * 0.7, kb: P.kb * st.kbMult, s, perfect: hd.perfect, crit, burn: st.burn, chill: st.chill, poison: buffOn(p, 'venom'), text });
+        const steal = (st.lifesteal || 0) + g.pstats.lifesteal;
+        if (steal) p.hp = Math.min(p.maxHp, p.hp + dmg * steal);
         E.burst(cx, cy, hd.perfect ? '#ffc83d' : '#ffffff', hd.perfect ? 12 : 7, 160, { angle: angle + dir * Math.PI / 2, spread: 1.4, life: 0.35 });
         if (hd.perfect) p.perfectFlash = 0.25;
         E.addHitStop(D.COMBAT.hitStop * (0.5 + s));
@@ -597,8 +779,9 @@
         const targets = g.actors.concat(pvpTargets()).filter(t => !t.dead && C.canDamage('player', t.team) && Math.abs(t.x - p.x) < 140 && Math.abs(t.y - p.y) < 140);
         if (w.armed && vr >= P.vMin) {
             let pierced = w.pierced || 0;
+            const pierce = P.pierce + g.pstats.pierce;
             for (const t of targets) {
-                if (pierced >= P.pierce) break;
+                if (pierced >= pierce) break;
                 if ((w.hitCd.get(t.id) || 0) > E.time) continue;
                 const h = C.thrustHit(p.x, p.y, w.theta, w.rPrev, w.r, t.x, t.y, t.r);
                 if (!h) continue;
@@ -610,7 +793,7 @@
                 pierced++;
             }
             w.pierced = pierced;
-            if (pierced >= P.pierce || w.r >= P.reachMax - 0.5) { w.armed = false; w.thrusts = (w.thrusts || 0) + 1; w.pierced = 0; }
+            if (pierced >= pierce || w.r >= P.reachMax - 0.5) { w.armed = false; w.thrusts = (w.thrusts || 0) + 1; w.pierced = 0; }
         }
         if (w.r < P.reachMin + (P.reachMax - P.reachMin) * 0.5) w.pierced = 0;
         // a fast sideways sweep bashes with the shaft
@@ -848,6 +1031,12 @@
             if (t.hp <= 0 && t.kind !== 'dummy') A.kill(t, game().player);
             if (t.kind === 'dummy') t.hp = t.maxHp;
         } else t.status.burnDps = 0;
+        if (E.time < t.status.poisonUntil && t.status.poisonDps) {
+            t.hp -= t.status.poisonDps * dt;
+            if (E.perf !== 'low' && rnd() < dt * 6) E.burst(t.x, t.y - t.r * 0.4, '#7dff6b', 1, 30, { life: 0.5, grav: -50 });
+            if (t.hp <= 0 && t.kind !== 'dummy') A.kill(t, game().player);
+            if (t.kind === 'dummy') t.hp = t.maxHp;
+        } else t.status.poisonDps = 0;
     }
 
     // ---------------- bosses ----------------
@@ -1080,26 +1269,29 @@
             if (t === G.T.WALL || t === G.T.BUILDING) { pr.life = 0; E.burst(pr.x, pr.y, '#c9b38f', 3, 60, { life: 0.3 }); continue; }
             if (pr.team === 'fx') continue; // another player's arrow, only for show: its hit arrives from their page
             if (pr.team === 'player') {
-                for (const a of g.actors.concat(pr.reflected || pr.ability ? [] : pvpTargets())) {
+                for (const a of g.actors.concat(pr.reflected ? [] : pvpTargets())) {
                     if (a.dead || !C.canDamage('player', a.team) || pr.hit.has(a.id)) continue;
                     if (Math.hypot(a.x - pr.x, a.y - pr.y) > a.r + pr.r) continue;
                     pr.hit.add(a.id);
                     const ang = Math.atan2(pr.vy, pr.vx);
                     if (a.kind === 'remote') {
-                        WHW.online.hitRemote(a, { kind: 'arrow', w: pr.w, dmg: pr.dmg * (rnd() < (pr.crit || 0) ? 1.5 : 1), ang, perfect: pr.steady, x: pr.x, y: pr.y });
+                        if (pr.ability) WHW.online.hitRemote(a, { kind: 'ab', w: pr.abil, dmg: pr.dmg, ang });
+                        else WHW.online.hitRemote(a, { kind: 'arrow', w: pr.w, dmg: pr.dmg * (rnd() < (pr.crit || 0) ? 1.5 : 1), ang, perfect: pr.steady, x: pr.x, y: pr.y });
                         E.burst(pr.x, pr.y, '#ffffff', 6, 120, { life: 0.3 });
                         WHW.sfx('hit');
+                        if (pr.ability && pr.pierce > 0) { pr.pierce--; continue; }
                         pr.life = 0;
                         break;
                     }
-                    let mult = 1, text = '';
+                    let mult = 1, text = pr.text || '';
                     if (a.def && a.def.shell && !C.fromBehind(ang, a.facing)) { mult *= a.def.shell; text = 'SHELL'; }
                     if (a.kind === 'boss' && a.exposedUntil > E.time) { mult *= a.def.exposeMult || 2; text = 'CORE HIT'; }
                     if (a.def && a.def.resist && !a.def.resistBy.includes(W.baseOf(weaponItem()) ? W.baseOf(weaponItem()).tier : 0)) mult *= 1 - a.def.resist;
                     const crit = rnd() < (pr.crit || 0);
                     if (crit) mult *= 1.5;
                     const dmg = C.mitigate(pr.dmg * mult, a.armorBrokenUntil > E.time ? 0 : a.armor);
-                    A.damage(a, dmg, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.5, perfect: pr.steady, crit, burn: pr.burn, chill: pr.chill, text });
+                    A.damage(a, dmg, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.5, perfect: pr.steady, crit, burn: pr.burn, chill: pr.chill, poison: pr.poison, text });
+                    if (pr.stun) stun(a, pr.stun);
                     if (pr.lifesteal) p.hp = Math.min(p.maxHp, p.hp + dmg * pr.lifesteal);
                     if (pr.kind === 'arrow' && !pr.ability && !pr.reflected && a.kind !== 'dummy') g.state.stats.arrowHits++;
                     WHW.sfx('hit');
@@ -1253,9 +1445,12 @@
             ctx.beginPath(); ctx.arc(p.x, p.y - 1, p.r - 1, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
         }
         if (p.flash > 0) circle(ctx, p.x, p.y, p.r + 2, 'rgba(255,80,90,0.45)');
-        if (p.skinUntil > E.time) circle(ctx, p.x, p.y, p.r + 5, 'rgba(185,169,138,0.22)', 'rgba(210,195,160,0.9)', 2.5);
-        if (p.berserkUntil > E.time) circle(ctx, p.x, p.y, p.r + 6 + Math.sin(E.time * 14) * 1.5, 'rgba(255,60,60,0.14)', 'rgba(255,90,90,0.8)', 2);
+        for (const a of activeBuffs(p)) {
+            if (a.reduce) circle(ctx, p.x, p.y, p.r + 5, 'rgba(185,169,138,0.22)', 'rgba(210,195,160,0.9)', 2.5);
+            else circle(ctx, p.x, p.y, p.r + 6 + Math.sin(E.time * 14) * 1.5, null, a.color, 2);
+        }
         if (p.protectedUntil > E.time && !g.inTown) circle(ctx, p.x, p.y, p.r + 7, 'rgba(120,200,255,0.12)', 'rgba(150,215,255,0.6)', 1.5);
+        if (p.stunUntil > E.time) { ctx.fillStyle = '#ffe14d'; for (let i = 0; i < 3; i++) { const a = E.time * 5 + i * TAU / 3; ctx.fillRect(p.x + Math.cos(a) * p.r * 0.8 - 2, p.y - p.r - 8 + Math.sin(a) * 3, 4, 4); } }
         ctx.globalAlpha = 1;
         if (b) {
             drawTrail(ctx, p);
@@ -1438,6 +1633,7 @@
         }
         if (m.status.burnUntil > E.time) circle(ctx, x, y, r + 2, null, 'rgba(255,140,40,0.6)', 2);
         if (m.status.chillUntil > E.time) circle(ctx, x, y, r + 2, 'rgba(160,220,255,0.25)');
+        if (m.status.poisonUntil > E.time) circle(ctx, x, y, r + 4, null, 'rgba(125,255,107,0.65)', 2);
         if (m.status.stunUntil > E.time) { ctx.fillStyle = '#ffe14d'; for (let i = 0; i < 3; i++) { const a = E.time * 5 + i * TAU / 3; ctx.fillRect(x + Math.cos(a) * r * 0.8 - 2, y - r - 6 + Math.sin(a) * 3, 4, 4); } }
         hpBar(ctx, m);
         if (m.elite) { ctx.font = '700 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a3'; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3; ctx.strokeText(d.name, x, y - r - 18); ctx.fillText(d.name, x, y - r - 18); }
@@ -1531,6 +1727,19 @@
                 ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(a);
                 ctx.fillStyle = '#d9dde6'; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(-4, -3); ctx.lineTo(-4, 3); ctx.fill();
                 ctx.fillStyle = '#6b4423'; ctx.fillRect(-8, -1.5, 4, 3);
+                ctx.restore();
+            } else if (pr.kind === 'javelin') {
+                const a = Math.atan2(pr.vy, pr.vx);
+                ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(a);
+                ctx.strokeStyle = '#a8763e'; ctx.lineWidth = 3;
+                ctx.beginPath(); ctx.moveTo(-26, 0); ctx.lineTo(4, 0); ctx.stroke();
+                ctx.fillStyle = '#dfe6ee'; ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(2, -4); ctx.lineTo(2, 4); ctx.fill();
+                ctx.restore();
+            } else if (pr.kind === 'net') {
+                ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(E.time * 6);
+                ctx.strokeStyle = '#e9e2c8'; ctx.lineWidth = 1.5;
+                for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke(); ctx.rotate(Math.PI / 4); }
+                ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.stroke();
                 ctx.restore();
             } else if (pr.kind === 'arrow') {
                 const a = Math.atan2(pr.vy, pr.vx);

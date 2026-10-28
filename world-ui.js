@@ -219,16 +219,16 @@
         const shield = W.findGear(s, s.equip.offhand);
         if (shield) html += `<span class="w-slot w-slot--cons w-slot--shield" id="shieldSlot" title="${esc(W.gearName(shield))}: hold right-click or F to block" aria-label="Shield: hold right-click or F to block"><span class="k">RMB</span>🛡️<i class="q" style="background:${W.qualityOf(shield.score).color}"></i></span>`;
         html += `<button class="w-slot w-slot--cons" data-potion="1" title="Drink a potion (Q)" aria-label="Drink a potion, ${potions} left"><span class="k">Q</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span></button>`;
-        const cls = W.classOf(s), kit = W.abilityKit(s);
-        cls.abilities.forEach((id, i) => {
+        const cls = W.classOf(s);
+        W.abilityKit(s).forEach((id, i) => {
             const a = D.ABILITIES[id], k = D.ABILITY_KEYS[i];
-            html += kit[i] ? `<button class="w-slot w-slot--cons w-abil" data-abil="${i}" title="${esc(a.name)} (${k}): ${esc(a.desc)}" aria-label="${esc(a.name)}, key ${k}"><span class="k">${k}</span>${a.icon}<span class="cd" hidden></span></button>`
-                : `<button class="w-slot w-slot--cons w-abil is-empty" data-abil="${i}" title="${esc(a.name)}: not learned yet. Learn it in the Classes menu (K)." aria-label="${esc(a.name)}, not learned yet"><span class="k">${k}</span>${a.icon}</button>`;
+            html += a ? `<button class="w-slot w-slot--cons w-abil" data-abil="${i}" title="${esc(a.name)} (${k}): ${esc(a.desc)}" aria-label="${esc(a.name)}, key ${k}"><span class="k">${k}</span>${a.icon}<span class="cd" hidden></span></button>`
+                : `<button class="w-slot w-slot--cons w-abil is-empty" data-abil="${i}" title="Nothing on ${k}: learn and equip abilities in the Classes menu (K)" aria-label="Key ${k}: no ability. Open the Classes menu"><span class="k">${k}</span>+</button>`;
         });
         el.innerHTML = html;
         const sb = $('btnSkills');
-        if (sb) { sb.textContent = cls.icon; sb.title = cls.name + ': classes and abilities (K)'; }
-        el.querySelectorAll('[data-abil]').forEach(b => b.addEventListener('click', () => WHW.actions.castAbility(Number(b.dataset.abil))));
+        if (sb) { sb.textContent = cls.icon; sb.title = cls.name + ': classes and skills (K)'; }
+        el.querySelectorAll('[data-abil]').forEach(b => b.addEventListener('click', () => (b.classList.contains('is-empty') ? openSkills() : WHW.actions.castAbility(Number(b.dataset.abil)))));
         el.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => WHW.actions.selectSlot(Number(b.dataset.slot))));
         el.querySelector('[data-potion]').addEventListener('click', () => WHW.actions.usePotion());
     }
@@ -243,7 +243,7 @@
             const c = b.querySelector('.cd');
             c.hidden = cd <= 0;
             if (cd > 0) c.textContent = cd >= 10 ? Math.ceil(cd) : cd.toFixed(1);
-            b.classList.toggle('is-on', (id === 'stoneskin' && p.skinUntil > E.time) || (id === 'berserk' && p.berserkUntil > E.time));
+            b.classList.toggle('is-on', !!id && WHW.actors.buffOn(p, id));
         });
         for (let i = 0; i < D.ABILITY_KEYS.length; i++) {
             const t = $('tAb' + i);
@@ -253,11 +253,11 @@
             if (a) { t.textContent = a.icon; t.classList.toggle('is-cd', WHW.actors.abilityCd(p, id) > 0); }
         }
     }
-    // ---------------- classes and abilities ----------------
+    // ---------------- classes and skill trees ----------------
     let classTab = null;
     function openSkills(tab) {
         classTab = tab || classTab || game().state.classes.active;
-        modal('Classes', '', { wide: true, render: renderSkills });
+        modal('Classes & skills', '', { wide: true, render: renderSkills });
         renderSkills();
     }
     function renderSkills() {
@@ -268,7 +268,7 @@
         const labels = {};
         for (const k of D.CLASS_ORDER) labels[k] = (s.classes.unlocked[k] ? D.CLASSES[k].icon : '🔒') + ' ' + D.CLASSES[k].name;
         let html = tabs(D.CLASS_ORDER, id, null, labels);
-        html += `<p class="w-note">Your class gives you passive bonuses and three abilities on <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd>. Unlock new classes by completing their challenge, then learn each ability with rubies (most need a boss beaten first). You can change class in town. Abilities hurt monsters, bosses and rivals, never other players, and use your weapon's damage.</p>`;
+        html += `<p class="w-note">Every class has its own skill tree. Learn skills with rubies from the top of a branch down. <b>Abilities</b> (square icons) go on <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd>: up to three equipped at a time. <b>Perks</b> (round icons) are passive bonuses that work while you are that class. Change class in town. Abilities use your weapon's damage, and outside town they hit other players too (at PvP strength, with shorter stuns).</p>`;
         let action;
         if (active) action = '<span class="w-class-on">Your class</span>';
         else if (unlocked) action = g.inTown ? `<button class="btn btn-sm btn-primary" data-become="${id}">Become a ${esc(c.name)}</button>` : '<span class="muted">Change class in town</span>';
@@ -279,25 +279,46 @@
                 <button class="btn btn-sm btn-primary" data-unlock="${id}" ${st.ok ? '' : 'disabled'}>Unlock · ${fmt(c.cost)} rubies</button>`;
         }
         html += `<div class="w-class" style="border-color:${c.color}"><div class="w-class-ico" style="border-color:${c.color}">${c.icon}</div>
-            <div class="w-class-text"><div class="w-card-name">${esc(c.name)}</div><div class="w-card-sub">${esc(c.desc)}</div><div class="w-class-passive"><b>Passive:</b> ${esc(c.passive)}</div></div>
+            <div class="w-class-text"><div class="w-card-name">${esc(c.name)}</div><div class="w-card-sub">${esc(c.desc)}</div><div class="w-class-passive"><b>Class bonus:</b> ${esc(c.passive)}</div></div>
             <div class="w-class-act">${action}</div></div>`;
-        html += '<div class="w-grid">' + c.abilities.map((aid, i) => {
-            const a = D.ABILITIES[aid], known = !!s.abilities.learned[aid];
-            const st = W.abilityState(s, aid);
-            let act;
-            if (known) act = active ? `<span class="w-class-on">On <kbd>${D.ABILITY_KEYS[i]}</kbd></span>` : '<span class="muted">Learned</span>';
-            else if (st.reason === 'class') act = `<span class="lock">🔒 Unlock the ${esc(c.name)} first</span>`;
-            else if (st.reason === 'boss') act = `<span class="lock">🔒 Beat ${esc(D.BOSSES[a.boss].name)}</span>`;
-            else act = `<button class="btn btn-sm btn-primary" data-learn="${aid}" ${st.ok ? '' : 'disabled'}>Learn · ${fmt(a.cost)} rubies</button>`;
-            const facts = [`Cooldown <b>${a.cd}s</b>`, a.stam ? `Stamina <b>${a.stam}</b>` : ''].filter(Boolean).join(' · ');
-            return `<div class="w-card${known ? ' is-equipped' : ''}"><span class="tag">${D.ABILITY_KEYS[i]}</span><div class="w-card-top"><div class="w-card-ico" style="border-color:${a.color}">${a.icon}</div><div><div class="w-card-name">${esc(a.name)}</div><div class="w-card-sub">${facts}</div></div></div>
-                <div class="w-card-sub">${esc(a.desc)}</div><div class="w-card-actions">${act}</div></div>`;
-        }).join('') + '</div>';
+        if (unlocked) {
+            const lo = s.classes.loadout[id] || [];
+            html += `<div class="w-loadout"><span class="w-loadout-label">Loadout${active ? '' : ' as a ' + esc(c.name)}</span>` + D.ABILITY_KEYS.map((k, i) => {
+                const a = D.ABILITIES[lo[i]];
+                return a ? `<button class="w-load is-set" data-unequip="${i}" title="Take ${esc(a.name)} off ${k}" aria-label="${k}: ${esc(a.name)}. Take it off"><kbd>${k}</kbd><span>${a.icon} ${esc(a.name)}</span><i aria-hidden="true">×</i></button>`
+                    : `<span class="w-load"><kbd>${k}</kbd><span class="muted">Empty</span></span>`;
+            }).join('') + '</div>';
+        }
+        html += '<div class="w-tree">' + c.branches.map(br => `<div class="w-branch"><h4>${esc(br.name)}</h4>${br.skills.map(sid => skillNode(s, id, sid, active)).join('')}</div>`).join('') + '</div>';
         body.innerHTML = html;
         wireTabs(body, (t) => { classTab = t; renderSkills(); });
-        on(body, '[data-learn]', (d) => WHW.actions.learnAbility(d.learn));
+        on(body, '[data-learn]', (d) => WHW.actions.learnSkill(d.learn));
+        on(body, '[data-equip]', (d) => WHW.actions.equipAbility(d.equip, Number(d.slot)));
+        on(body, '[data-unequip]', (d) => WHW.actions.unequipAbility(id, Number(d.unequip)));
         on(body, '[data-unlock]', (d) => WHW.actions.unlockClass(d.unlock));
         on(body, '[data-become]', (d) => WHW.actions.setClass(d.become));
+    }
+    // One skill in the tree: what it does and what you can do with it (learn it, or put an ability on a key)
+    function skillNode(s, cls, sid, active) {
+        const sk = W.skillDef(sid), known = !!s.skills.learned[sid], isAb = sk.type === 'ability';
+        const st = W.skillState(s, sid);
+        const cost = `<span class="w-node-cost">${fmt(sk.cost)} rubies</span>`;
+        let act;
+        if (known && isAb) {
+            const on = (s.classes.loadout[cls] || []).indexOf(sid);
+            act = '<span class="w-node-keys" role="group" aria-label="Equip on a key">' + D.ABILITY_KEYS.map((k, i) => (on === i
+                ? `<button class="w-key is-on" data-unequip="${i}" aria-pressed="true" title="On ${k}: click to take it off" aria-label="${esc(sk.name)} is on ${k}: take it off">${k}</button>`
+                : `<button class="w-key" data-equip="${sid}" data-slot="${i}" aria-pressed="false" title="Put it on ${k}" aria-label="Put ${esc(sk.name)} on ${k}">${k}</button>`)).join('') + '</span>';
+        } else if (known) act = `<span class="w-class-on">✓ ${active ? 'Active' : 'Learned'}</span>`;
+        else if (st.reason === 'class') act = (sk.boss ? `<span class="lock">Needs ${esc(D.BOSSES[sk.boss].name)} beaten</span>` : '') + cost;
+        else if (st.reason === 'req') act = `<span class="lock">🔒 Learn ${esc(W.skillDef(st.need).name)} first</span>` + cost;
+        else if (st.reason === 'boss') act = `<span class="lock">🔒 Beat ${esc(D.BOSSES[sk.boss].name)}</span>` + cost;
+        else act = `<button class="btn btn-sm btn-primary" data-learn="${sid}" ${st.ok ? '' : 'disabled'}>Learn · ${fmt(sk.cost)} rubies</button>`;
+        const state = known ? 'is-known' : (st.ok || st.reason === 'rubies') ? 'is-open' : 'is-locked';
+        const kind = isAb ? `Ability · ${sk.cd}s cooldown${sk.stam ? ' · ' + sk.stam + ' stamina' : ''}` : 'Perk · always on';
+        return `<div class="w-node ${state}${sk.req && s.skills.learned[sk.req] ? ' is-linked' : ''}${isAb ? ' is-ability' : ''}">
+            <div class="w-node-top"><span class="w-node-ico" style="border-color:${isAb ? sk.color : 'var(--border-strong)'}">${sk.icon}</span><div><div class="w-card-name">${esc(sk.name)}</div><div class="w-node-kind">${kind}</div></div></div>
+            <div class="w-card-sub">${esc(sk.desc)}</div><div class="w-card-actions">${act}</div></div>`;
     }
     // swing meter, every frame
     function renderPower(p) {
@@ -620,8 +641,8 @@
             <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move, <kbd>Space</kbd> or <kbd>Shift</kbd> to dash (you can't be hit during a dash), <kbd>1</kbd>–<kbd>5</kbd> or the mouse wheel to switch what you hold, <kbd>Q</kbd> for a potion, <kbd>E</kbd> to use things, <kbd>I</kbd> for your bag, <kbd>M</kbd> for the map.</p>
             <p><b>Your weapon follows the mouse.</b> To hit hard you have to <b>swing</b>: move the mouse quickly across the target, like the real thing. A slow drag just bumps it. The swing meter under your hotbar shows how fast your blade is moving: past the first mark it hurts, past the second it's a <b style="color:#ffc83d">Perfect</b> hit. Slashing back and forth builds a combo; the tip of the blade hits harder than the hilt. Heavy weapons like axes turn slower but hit harder.</p>
             <ul><li><b>Shields</b>: hold <kbd>right-click</kbd> (or <kbd>F</kbd>) to raise your shield toward the mouse. Hits from in front are mostly blocked but cost stamina; if you run out, your guard breaks. Raise it <i>just</i> as a hit lands to <b style="color:#ffc83d">parry</b>: no damage, the attacker is stunned and projectiles fly back. You can't attack with your weapon while blocking. Falling rocks and meteors can't be blocked.</li>
-            <li><b>Classes</b> (<kbd>K</kbd>): you start as a Warrior. Unlock the Guardian, Rogue, Ranger and Mystic by completing their challenges, and change class in town. Each class has passive bonuses and three abilities on <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd>, learned with rubies (most after beating a boss). Abilities have cooldowns and hurt monsters, bosses and rivals, not other players.</li>
-            <li><b>Spears</b>: flick the mouse outward from your character to thrust, then pull back. A thrust hits harder the faster you are moving toward the target: dash into it for up to +90%.</li>
+            <li><b>Classes</b> (<kbd>K</kbd>): you start as a Warrior. Unlock the Guardian, Rogue, Ranger, Lancer and Mystic by completing their challenges, and change class in town. Each class has a bonus and its own skill tree of abilities and perks, learned with rubies from the top of each branch down (some after beating a boss). Equip up to three abilities on <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd>; an ability you equip outside town starts on its cooldown. Abilities hurt monsters, bosses and rivals, and other players outside town (at PvP strength; stuns on players are shorter).</li>
+            <li><b>Spears</b>: flick the mouse outward from your character to thrust, then pull back. A thrust hits harder the faster you are moving toward the target: dash into it for up to +90%. The Lancer class builds on this.</li>
             <li><b>Bows</b>: press anywhere, pull the mouse <i>away</i> from where you want to shoot, and let go. Hold a full draw briefly for a steady shot. They need arrows.</li>
             <li><b>Daggers</b> are quick and hit much harder from behind.</li></ul>
             <h3>Gathering</h3>

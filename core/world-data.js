@@ -631,10 +631,10 @@
         frost_armor:  { name: 'Frost Armor',  icon: '🧊', cost: 250,  boss: null,     bonus: { armor: 6, maxHp: 15 }, desc: '+6 armor and +15 max health.' },
         clarity:      { name: 'Clarity',      icon: '🌙', cost: 900,  boss: null,     bonus: { stamRegen: 0.25, abilityStam: 0.8 }, desc: '+25% stamina regen, and abilities cost 20% less stamina.' },
     };
-    // every skill knows its class, branch, row and the skill it needs (the one above it)
+    // every skill knows its id, class, branch, row and the skill it needs (the one above it)
     for (const c of CLASS_ORDER) CLASSES[c].branches.forEach((br, b) => br.skills.forEach((id, row) => {
         const sk = ABILITIES[id] || PERKS[id];
-        Object.assign(sk, { cls: c, branch: b, row, req: row ? br.skills[row - 1] : null, type: ABILITIES[id] ? 'ability' : 'perk' });
+        Object.assign(sk, { id, cls: c, branch: b, row, req: row ? br.skills[row - 1] : null, type: ABILITIES[id] ? 'ability' : 'perk' });
     }));
     const ABILITY_KEYS = ['Z', 'X', 'C'];
     const ABILITY_ORDER = Object.keys(ABILITIES);

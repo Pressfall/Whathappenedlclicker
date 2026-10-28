@@ -101,7 +101,7 @@
             return W.freshState(now());
         }
     }
-    const g = WHW.game = { state: null, zoneId: 'town', map: null, player: null, actors: [], nodes: [], projectiles: [], hazards: [], respawns: [], ack: 0,
+    const g = WHW.game = { state: null, zoneId: 'town', map: null, player: null, actors: [], nodes: [], projectiles: [], hazards: [], fields: [], respawns: [], ack: 0,
         inTown: true, pstats: null, faceSrc: 'mainimage/whathappened.jpeg', bossDeadUntil: 0, maps: {}, canSave: true, useHeld: false, usePressed: false, harvestT: 0 };
     let saveWarned = false;
     function save() {
@@ -195,7 +195,7 @@
         const t = now();
         g.nodes = g.map.nodes.map(n => { const r = A.makeNode(n); r.readyAt = W.nodeReadyAt(s, n.key); return r; });
         E.buildNodeGrid(g.nodes);
-        g.projectiles = []; g.hazards = []; g.rivalAt = 0;
+        g.projectiles = []; g.hazards = []; g.fields = []; g.rivalAt = 0;
         if (zoneId !== from || !g.actors.length) populate();
         const p = g.player;
         let pos = opts.pos;
@@ -273,13 +273,30 @@
             if (!g.player || g.player.dead || WHW.ui.isOpen()) return;
             A.castAbility(slot);
         },
-        learnAbility(id) {
-            const r = W.learnAbility(g.state, id);
-            const a = D.ABILITIES[id];
-            if (!r.ok) { WHW.toast(r.reason === 'boss' ? 'Beat the boss first.' : r.reason === 'class' ? 'Unlock that class first.' : (reasonText[r.reason] || "Can't learn that."), 'bad'); return; }
-            const mine = a.cls === g.state.classes.active;
-            WHW.toast(a.icon + ' Learned ' + a.name + (mine ? ' (key ' + D.ABILITY_KEYS[a.key] + ')' : '') + '!', 'gold');
-            WHW.sfx('craft'); save(); WHW.ui.renderHotbar(); WHW.ui.refresh();
+        learnSkill(id) {
+            const r = W.learnSkill(g.state, id);
+            const sk = W.skillDef(id);
+            if (!r.ok) {
+                const why = { boss: 'Beat the boss first.', class: 'Unlock that class first.', req: r.need ? 'Learn ' + W.skillDef(r.need).name + ' first.' : '' }[r.reason];
+                WHW.toast(why || reasonText[r.reason] || "Can't learn that.", 'bad');
+                return;
+            }
+            const where = r.slot >= 0 ? ' It is on ' + D.ABILITY_KEYS[r.slot] + '.' : sk.type === 'ability' ? ' Equip it on Z, X or C from its card.' : '';
+            WHW.toast(sk.icon + ' Learned ' + sk.name + '!' + where, 'gold');
+            WHW.sfx('craft'); refreshPlayer(); save(); WHW.ui.refresh();
+        },
+        // Put an ability on Z / X / C. Outside town, one that wasn't equipped starts on its cooldown (no swapping in a
+        // fresh set of abilities mid-fight).
+        equipAbility(id, slot) {
+            const s = g.state, a = D.ABILITIES[id];
+            const r = W.equipAbility(s, id, slot);
+            if (!r.ok) return;
+            if (r.fresh && !g.inTown && a.cls === s.classes.active) g.player.abCd[id] = Math.max(g.player.abCd[id] || 0, E.time + a.cd * g.pstats.abilityCd);
+            save(); WHW.ui.renderHotbar(); WHW.ui.refresh();
+        },
+        unequipAbility(cls, slot) {
+            if (!W.unequipAbility(g.state, cls, slot)) return;
+            save(); WHW.ui.renderHotbar(); WHW.ui.refresh();
         },
         unlockClass(id) {
             const r = W.unlockClass(g.state, id);
@@ -506,6 +523,7 @@
         E.collideTiles(p);
         A.updateProjectiles(dt);
         A.updateHazards(dt);
+        A.updateFields(dt);
         g.actors = g.actors.filter(a => !a.dead);
         // respawns, away from the player
         if (g.respawns.length) {
@@ -592,6 +610,7 @@
         if (!p) return;
         drawStructures(ctx);
         A.drawTelegraphs(ctx);
+        A.drawFields(ctx);
         if (WHW.online) WHW.online.drawGround(ctx);
         if (g.state.grave && g.state.grave.zone === g.zoneId) A.drawGrave(ctx, g.state.grave);
         // y-sorted things

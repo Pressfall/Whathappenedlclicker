@@ -4,8 +4,9 @@
  * on localhost via world-net-dev.js). Monsters stay on each player's own page.
  * - Presence: each page writes its position (~10 a second) and its look; leaving or closing the page removes them.
  * - PvP (everywhere but town): a hit on another player is sent to them; their page checks it (core/world-online.js
- *   validateHit) and takes it with its own shield and armor. A player knocked out by another drops part of what they carry
- *   as a loot bag; the winner gets first pick.
+ *   validateHit) and takes it with its own shield and armor. Abilities hit players too: the hit names the ability, and the
+ *   player hit applies its effects from the game's own table. Each player's last cast rides along with their position, so
+ *   everyone sees it. A player knocked out by another drops part of what they carry as a loot bag; the winner gets first pick.
  * - Chat: a short line or an emote shown above the speaker.
  * - Shared bosses: one health bar for everyone in the arena. One page (the host: lowest id in the arena) runs the boss and
  *   shares where it is and what it does; the others replay that. Everyone who did enough damage gets the reward.
@@ -27,7 +28,7 @@
         status: 'off', error: '', db: null, uid: null, zone: null, wantZone: null, connectedOnce: false,
         remotes: new Map(), loot: new Map(), log: [], subs: [],
         lastSent: '', sendT: 0, infoKey: '', infoT: 0, chipT: 0,
-        lastHitAt: {}, sayAt: -99, myBubble: null, seenKills: new Set(), claiming: new Set(), lockHintAt: 0,
+        lastHitAt: {}, abRate: {}, sayAt: -99, myBubble: null, seenKills: new Set(), claiming: new Set(), lockHintAt: 0,
         boss: null, bossPending: 0, bossGen: '', rewardedGen: '', bossT: 0, hostT: 0, followSeq: -1, hostSeenAt: 0, lastHost: null, resetAt: -9,
         isHost: false, hostUid: null,
     };
@@ -147,7 +148,7 @@
         let r = ON.remotes.get(uid);
         if (!r) {
             r = { uid, id: 'r' + uid, kind: 'remote', team: 'remote', x: 0, y: 0, vx: 0, vy: 0, r: 13, facing: 0, mass: 1, hp: 100, maxHp: 100, armor: 0,
-                status: { burnUntil: 0, burnDps: 0, chillUntil: 0, stunUntil: 0 }, info: null, buf: [], last: 0, fl: 0, shot: -1,
+                status: { burnUntil: 0, burnDps: 0, chillUntil: 0, stunUntil: 0 }, info: null, buf: [], last: 0, fl: 0, shot: -1, cs: -1,
                 weapon: C.newWeapon('sword', 0), shield: { theta: 0, up: false }, trail: [], flash: 0, dead: false, protected: false, stale: true, bubble: null, sayT: 0 };
             ON.remotes.set(uid, r);
         }
@@ -170,6 +171,10 @@
             game().projectiles.push({ kind: 'arrow', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * 900, vy: Math.sin(u.a) * 900, r: 4, life: 0.9, hit: new Set() });
         }
         r.shot = u.shot;
+        // they cast an ability: show it (their page sends the hits)
+        const cs = u.cs || 0;
+        if (r.cs >= 0 && cs > r.cs && ON.zone) A.remoteCast(u.x, u.y, u.ci, u.cx, u.cy);
+        r.cs = cs;
     }
     function onInfo(uid, val) {
         if (uid === ON.uid) return;
@@ -199,7 +204,9 @@
         if (p.dashT > 0) fl |= F.dash;
         if (p.protectedUntil > E.time) fl |= F.protect;
         if (w && w.drawing) fl |= F.draw;
-        return O.packPos({ x: p.x, y: p.y, a: w ? w.theta : p.facing, r, sa: p.shield.theta, fl, hp: p.hp, mhp: p.maxHp, shot: p.shotSeq || 0, k: Math.floor(ON.db.serverNow() / 1000) % 1e6 });
+        const c = p.cast || {};
+        return O.packPos({ x: p.x, y: p.y, a: w ? w.theta : p.facing, r, sa: p.shield.theta, fl, hp: p.hp, mhp: p.maxHp, shot: p.shotSeq || 0, k: Math.floor(ON.db.serverNow() / 1000) % 1e6,
+            cs: c.seq, ci: c.id, cx: c.x, cy: c.y });
     }
     function sendPos() {
         const str = myPos();
@@ -274,7 +281,7 @@
         hit.t = ON.db.serverNow();
         ON.db.push(Z('h/' + r.uid), hit);
         r.flash = 0.12;
-        if (WHW.settings.dmgNumbers) E.floatText(r.x, r.y - r.r - 6, Math.round(h.dmg * O.PVP.mult), h.perfect ? '#ffc83d' : '#ffd0d5', h.perfect ? 17 : 13);
+        if (WHW.settings.dmgNumbers && h.dmg > 0) E.floatText(r.x, r.y - r.r - 6, Math.round(h.dmg * O.PVP.mult), h.perfect ? '#ffc83d' : '#ffd0d5', h.perfect ? 17 : 13);
     };
     function onHit(key, raw) {
         ON.db.remove(Z('h/' + ON.uid + '/' + key)); // each hit is used once
@@ -284,8 +291,11 @@
         if (raw.t && ON.db.serverNow() - Number(raw.t) > 3000) return; // too old to have been fair
         const r = ON.remotes.get(raw.from);
         const last = r && r.buf.length ? r.buf[r.buf.length - 1] : null;
-        const v = O.validateHit(raw, { zone: ON.zone, attacker: last, me: { x: p.x, y: p.y, protected: p.protectedUntil > E.time }, now: E.time, lastAt: ON.lastHitAt[raw.from] });
+        const rateKey = raw.from + '|' + raw.w;
+        const v = O.validateHit(raw, { zone: ON.zone, attacker: last, me: { x: p.x, y: p.y, protected: p.protectedUntil > E.time }, now: E.time, lastAt: ON.lastHitAt[raw.from],
+            weapon: r && r.info ? r.info.w : null, abRate: ON.abRate[rateKey] });
         if (!v.ok) return;
+        if (raw.k === 'ab') { ON.abRate[rateKey] = v.rate; takeAbility(raw, v, r, last); return; }
         if (raw.k === 'parry') {
             // they parried us: knocked off balance for a moment
             p.staggerUntil = E.time + 0.6;
@@ -300,6 +310,26 @@
             from: { x: last.x, y: last.y }, kb: 160,
             onParry: () => ON.db.push(Z('h/' + raw.from), { from: ON.uid, k: 'parry', t: ON.db.serverNow() }),
         });
+    }
+    // Another player's ability hit me. Its effects come from the game's table (v.ability), not from what they sent.
+    function takeAbility(raw, v, r, last) {
+        const g = game(), p = g.player, a = v.ability;
+        g.lastPvp = { uid: raw.from, name: r && r.info ? r.info.n : 'Someone', at: E.time };
+        p.protectedUntil = 0;
+        // ang is the way the hit pushes; it comes from the other side, so that is where a shield must face
+        const ang = Number(raw.ang) || 0;
+        const from = { x: p.x - Math.cos(ang) * 40, y: p.y - Math.sin(ang) * 40 };
+        let landed = 1;
+        if (v.dmg > 0) {
+            landed = A.hurtPlayer(v.dmg, {
+                from, kb: Math.min(350, (a.pull || a.kb || 0) * 0.5), burn: a.burn, chill: a.chill, fire: !!a.burn,
+                // areas fall from above and lightning arcs round a shield
+                unblockable: a.kind === 'field' || a.kind === 'chain',
+                onParry: () => ON.db.push(Z('h/' + raw.from), { from: ON.uid, k: 'parry', t: ON.db.serverNow() }),
+            });
+        }
+        if (landed > 0 && a.stun) A.stunPlayer(O.playerStun(a.stun));
+        if (v.rate.n === 1) E.floatText(p.x, p.y - 46, a.icon + ' ' + a.name, '#ffd0d5', 12, 0.9);
     }
     // Was I just knocked out by another player?
     ON.pvpKiller = function () { const l = game().lastPvp; return l && E.time - l.at < 6 ? l : null; };
