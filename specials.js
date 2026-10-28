@@ -42,6 +42,7 @@
         hypergamy: 'Hypergamy CPS',
         evilPirate: 'Evil Somalian Pirate CPS',
         oalgo: 'O\'algo CPS',
+        siberianHitman: 'Siberian Hitman CPS',
     };
     const CREW_NOTE = 'Crew = every upgrade except the Pirate, Jonathan, CR lurker and The Phonk Man.';
     const TIER_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -222,6 +223,12 @@
             ['oalgo3', 50, 'buyOalgo3', 'oalgo3Purchased', 'oalgo3Cost', 'oalgo', null, 2.5, 'Socratic Method', 'He asks one question. The CPS answers it.'],
             ['oalgo4', 100, 'buyOalgo4', 'oalgo4Purchased', 'oalgo4Cost', 'oalgo', null, 3, 'Philosopher King', 'He finished the book. He wrote the sequel. Every argument is now his.'],
         ] },
+        { key: 'siberianHitman', up: 29, img: 'mainimage/siberianHitman.webp', items: [
+            ['siberianHitman1', 10, 'buySiberianHitman1', 'siberianHitman1Purchased', 'siberianHitman1Cost', 'siberianHitman', 'siberianHitmanMultiplier', 1.5, 'Cold Precision', 'Every target is acquired. Every What Happened lands exactly where it should.'],
+            ['siberianHitman2', 25, 'buySiberianHitman2', 'siberianHitman2Purchased', 'siberianHitman2Cost', 'siberianHitman', 'siberianHitmanMultiplier', 2, 'Winter Operations', 'The Siberian cold slows everyone else down. The Hitman works twice as fast.'],
+            ['siberianHitman3', 50, 'buySiberianHitman3', 'siberianHitman3Purchased', 'siberianHitman3Cost', 'siberianHitman', 'siberianHitmanMultiplier', 2.5, 'No Witnesses', 'No loose ends, no wasted What Happeneds.'],
+            ['siberianHitman4', 100, 'buySiberianHitman4', 'siberianHitman4Purchased', 'siberianHitman4Cost', 'siberianHitman', 'siberianHitmanMultiplier', 3, 'The Last Contract', 'The contract is complete. Siberian Hitman output triples.'],
+        ] },
     ];
 
     const SPECIALS = [];
@@ -271,13 +278,16 @@
     function build() {
         const root = document.getElementById('specialContent');
         if (!root) return false;
-        root.innerHTML = GROUPS.map(g => `<section class="sp-group" data-group="${g.key}" hidden>
-            <header class="sp-group-head"><img src="mainimage/upgrades/thumbs/${g.img.replace(/\.png$/, '.webp')}" alt=""><span class="sp-group-name">${g.name}</span><span class="sp-group-count"></span></header>
+        root.innerHTML = GROUPS.map(g => {
+            const image = g.img.startsWith('mainimage/') ? g.img : `mainimage/upgrades/thumbs/${g.img.replace(/\.png$/, '.webp')}`;
+            return `<section class="sp-group" data-group="${g.key}" hidden>
+            <header class="sp-group-head"><img src="${image}" alt=""><span class="sp-group-name">${g.name}</span><span class="sp-group-count"></span></header>
             <div class="sp-tiles">${g.items.map(sp => `<button type="button" class="sp-tile sp-tier-${sp.tier + 1}" data-sp="${sp.id}" aria-label="${sp.name}">
-                <img src="mainimage/upgrades/thumbs/${g.img.replace(/\.png$/, '.webp')}" alt="" loading="lazy" draggable="false">
+                <img src="${image}" alt="" loading="lazy" draggable="false">
                 <span class="sp-numeral">${TIER_NUMERALS[sp.tier]}</span><span class="sp-mark" aria-hidden="true"></span>
             </button>`).join('')}</div>
-        </section>`).join('') + '<p class="sp-empty" hidden></p><p class="sp-more" hidden></p>';
+        </section>`;
+        }).join('') + '<p class="sp-empty" hidden></p><p class="sp-more" hidden></p>';
         root.querySelectorAll('.sp-tile').forEach(el => { tiles[el.dataset.sp] = el; });
         root.addEventListener('click', onTileClick);
         root.addEventListener('mouseover', e => { const t = e.target.closest('.sp-tile'); if (t && !touchUI() && !tipPinned) showTip(t.dataset.sp, t); });

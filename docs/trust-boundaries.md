@@ -29,6 +29,26 @@ own browsers. This page lists what each one trusts, what was changed, and what i
 | `codes/{CODE}` | read-only | reward definition | Nothing: `firestore-codes.rules` allows `get` only | already in `firestore-codes.rules` | Redemption is remembered in the player's own save, so clearing it re-redeems; fine for giveaways, not for scarce rewards |
 | `saves/{uid}` | cloud.js | the player's own save | Nothing beyond their own document | already in `firestore-saves.rules` (owner only, rev must go up by exactly one) | - |
 
+## The Wilds (world.html)
+
+The adventure's save (`whathappened_world`) and the rewards it sends to the main game (gems, Golden What Happened, lootboxes,
+through `core/world-bridge.js`) are trusted exactly like the main save, so a player editing their own storage only affects themselves.
+The bridge clamps every reward entry (`LIMITS`), and the world caps what it sends per day and week (`CAPS` in `core/world-data.js`)
+so normal play keeps gems scarce, whatever happens online.
+
+**Online play** (Realtime Database, `database.rules.json`) is shared, so it has the same limits as the clan features, but it was
+designed around them:
+
+| What | Who decides | What a modified page can do | What limits it |
+|---|---|---|---|
+| Positions, looks, chat (`p`, `i`) | each player, for themselves | Lie about where they are or what they hold | Rules: signed-in writers only write their own entry; sizes checked. Chat is cleaned and length-capped; the swear filter applies on display |
+| PvP hits (`h`) | the player who is hit | Send hits that never happened | The hit player's page checks range against the attacker's last position, the hit rate against the weapon, and caps damage at the most that weapon could do (`validateHit`); then shield and armor apply. Rules: hits are signed with the sender's id and only the target can read them |
+| Loot bags (`l`) | the knocked-out player drops; anyone takes | Drop bags of materials from nowhere | Only Wilds materials (never keys), at most 999 each; they never reach the main game except through crafting, which is capped |
+| Shared boss (`b`) | everyone in the arena | Report fake damage or a fake kill | Rewards still come from each page's own `bossLoot` under the daily caps; the worst case is a free boss kill |
+
+A cheater can't take gems or Golden from other players, and anything they make up stays inside the Wilds' caps. Making online fights
+authoritative would need a server (e.g. Cloud Functions or a small game server) deciding hits and loot.
+
 ## Fixed in the code
 
 - **Clan buffs trusted the clan document's multipliers.** `refreshClanBuff` in `main.js` read `cpsMult` / `clickMult` / expiry

@@ -1,0 +1,98 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "wilds": {
+      "v1": {
+        "zones": {
+          "$zone": {
+            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost)$/)",
+            "p": {
+              ".read": "auth != null",
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.isString() && newData.val().length <= 120"
+              }
+            },
+            "i": {
+              ".read": "auth != null",
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.hasChild('n')",
+                "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
+                "f": { ".validate": "newData.isString() && newData.val().length <= 80" },
+                "w": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "sh": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "q": { ".validate": "newData.isNumber()" },
+                "c": { ".validate": "newData.isNumber()" },
+                "h": { ".validate": "newData.isNumber()" },
+                "b": { ".validate": "newData.isNumber()" },
+                "t": { ".validate": "newData.isNumber()" },
+                "say": {
+                  ".validate": "newData.hasChildren(['m', 't'])",
+                  "m": { ".validate": "newData.isString() && newData.val().length <= 60" },
+                  "t": { ".validate": "newData.isNumber()" },
+                  "e": { ".validate": "newData.isBoolean()" },
+                  "$other": { ".validate": false }
+                },
+                "$other": { ".validate": false }
+              }
+            },
+            "h": {
+              "$victim": {
+                ".read": "auth != null && auth.uid === $victim",
+                ".write": "auth != null && auth.uid === $victim && !newData.exists()",
+                "$hid": {
+                  ".write": "auth != null && ((!data.exists() && newData.child('from').val() === auth.uid) || (auth.uid === $victim && !newData.exists()))",
+                  ".validate": "newData.hasChildren(['from', 'k', 't'])",
+                  "from": { ".validate": "newData.isString()" },
+                  "k": { ".validate": "newData.isString() && newData.val().length <= 8" },
+                  "w": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                  "dmg": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() < 100000" },
+                  "ang": { ".validate": "newData.isNumber()" },
+                  "pf": { ".validate": "newData.isBoolean()" },
+                  "t": { ".validate": "newData.isNumber()" },
+                  "$other": { ".validate": false }
+                }
+              }
+            },
+            "l": {
+              ".read": "auth != null",
+              "$lid": {
+                ".write": "auth != null && (data.exists() ? !newData.exists() : newData.child('o').val() === auth.uid)",
+                ".validate": "newData.hasChildren(['x', 'y', 'm', 't', 'o'])",
+                "x": { ".validate": "newData.isNumber()" },
+                "y": { ".validate": "newData.isNumber()" },
+                "t": { ".validate": "newData.isNumber()" },
+                "o": { ".validate": "newData.isString()" },
+                "k": { ".validate": "newData.isString() && newData.val().length <= 64" },
+                "by": { ".validate": "newData.isString() && newData.val().length <= 16" },
+                "m": {
+                  "$mat": { ".validate": "$mat.length <= 24 && newData.isNumber() && newData.val() > 0 && newData.val() <= 999" }
+                },
+                "$other": { ".validate": false }
+              }
+            },
+            "b": {
+              ".read": "auth != null",
+              ".write": "auth != null && newData.child('gen').val() !== data.child('gen').val()",
+              "hp": { ".write": "auth != null", ".validate": "newData.isNumber()" },
+              "max": { ".validate": "newData.isNumber() && newData.val() > 0 && newData.val() <= 1000000" },
+              "gen": { ".validate": "newData.isString() && newData.val().length <= 24" },
+              "t": { ".write": "auth != null", ".validate": "newData.isNumber()" },
+              "killedAt": { ".write": "auth != null", ".validate": "newData.isNumber()" },
+              "f": {
+                "$uid": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isNumber()" }
+              },
+              "h": {
+                ".write": "auth != null && newData.child('u').val() === auth.uid",
+                ".validate": "newData.hasChildren(['u', 'x', 'y'])"
+              },
+              "$other": { ".validate": false }
+            }
+          }
+        }
+      }
+    }
+  }
+}

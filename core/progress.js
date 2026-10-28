@@ -41,6 +41,7 @@
         'whathappened_specials_owned', 'whathappened_specials_total', 'whathappened_specials_fullsets',
         'player_username', 'player_clanId', 'player_clanName', 'player_clanRole',
         'whathappened_clan_level', 'whathappened_clan_donated', 'whathappened_clan_checkin',
+        'whathappened_world', 'whathappened_world_ack',
     ]);
     // achievement flags (ach_<key>) and clan event rewards already claimed (so they can't be claimed again on another device)
     const SYNC_PREFIXES = ['ach_', 'whathappened_pp_claimed_', 'whathappened_bf_claimed_', 'whathappened_eb_claimed_',

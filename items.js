@@ -148,7 +148,7 @@
             spawnIn: rand(FIRST_SPAWN_SEC[0], FIRST_SPAWN_SEC[1]),
             lureUntil: 0,
             dust: 0,            // hundredths of a gem from sales that haven't added up to a whole gem yet
-            stats: { collected: 0, opened: 0, merged: 0, missed: 0, bought: 0, bestTier: 0, gemsFound: 0, charmsSeen: 0 },
+            stats: { collected: 0, opened: 0, merged: 0, missed: 0, bought: 0, bestTier: 0, gemsFound: 0, charmsSeen: 0, fromWorld: 0 },
         };
     }
     function load() {
@@ -774,6 +774,24 @@
             afterChange();
         });
     }
+    // Lootboxes earned in the Wilds (main.js applyWorldRewards). counts: boxes per tier. Returns how many were added.
+    function grantBoxes(counts, opts) {
+        const s = st();
+        let n = 0;
+        BOXES.forEach((_, i) => {
+            const k = Math.max(0, Math.floor(Number(counts && counts[i]) || 0));
+            if (!k) return;
+            s.boxes[i] += k;
+            n += k;
+            noteTier(i);
+        });
+        if (!n) return 0;
+        s.stats.fromWorld += n;
+        save();
+        afterChange();
+        if (!(opts && opts.quiet)) sfx('spawn');
+        return n;
+    }
     function buyLure() {
         pay(LURE.cost, { title: 'Lootbox Lure', desc: `Lootboxes show up ${LURE.mult}× as often for ${dur(LURE.ms / 1000)}.`, art: '🧲' }).then(ok => {
             if (!ok) return;
@@ -1293,6 +1311,6 @@
     window.WHI = {
         STORAGE_KEY, RARITIES, BOXES, ITEMS, ITEMS_BY_ID,
         sellItems, sellValue, sellableCount, bonuses, renderHud, gemBurst, shakeChip, confirmSpend, renderTreasury,
-        openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary,
+        openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary, grantBoxes,
     };
 })();

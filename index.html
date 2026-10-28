@@ -47,7 +47,7 @@
     <div id="leftBarOverlay" onclick="closeLeftBar()"></div>
     <aside id="leftBar">
         <div class="leftBarScroll">
-            <!-- Normal / Divine menu switcher; then upgrade buttons 1–28 -->
+            <!-- Normal / Divine menu switcher; then upgrade buttons 1–29 -->
             <ul>
         <li>
             <div class="menu-tabs">
@@ -223,6 +223,12 @@
                 <img class="upgrade-img" src="mainimage/upgrades/thumbs/oalgo.webp" loading="lazy" decoding="async" alt="O'algo" height="50" width="50">
             </button>
         </li>
+        <li>
+            <button id="upgrade29" class="upgrade-full-btn" onclick="buyUpgrade29()" style="display:none;">
+                <span class="upgrade-label">Siberian Hitman</span>
+                <img class="upgrade-img" src="mainimage/siberianHitman.webp" loading="lazy" decoding="async" alt="Siberian Hitman" height="50" width="50">
+            </button>
+        </li>
             </ul>
         </div>
         <div class="bulk-bar">
@@ -302,6 +308,14 @@
                     <span class="nav-sidebar-meta">
                         <span class="nav-txt nav-sidebar-name">Followers</span>
                         <span class="nav-sidebar-desc">Hatch eggs & manage pets</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <button id="worldTopBtn" class="nav-btn nav-sidebar-btn" onclick="window.location.href='world.html'">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">⚔️</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">The Wilds</span>
+                        <span class="nav-sidebar-desc">Explore, fight, mine &amp; craft gear</span>
                     </span>
                     <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
                 </button>
@@ -1617,6 +1631,7 @@
         <script src="core/guide.js"></script>
         <script src="core/consent.js"></script>
         <script src="core/clan-buffs.js"></script>
+        <script src="core/world-bridge.js"></script>
         <script src="followers-data.js"></script>
         <script src="achievements-data.js"></script>
         <script src="main.js"></script>
@@ -1628,7 +1643,7 @@
         <script>
             // badges on the nav buttons for things waiting on other pages (new achievements, eggs, daily spin, clan check-in)
             (function () {
-                const map = { achievements: 'achievementsTopBtn', followers: 'followersTopBtn', casino: 'casinoTopBtn', clan: 'clanToggle' };
+                const map = { achievements: 'achievementsTopBtn', followers: 'followersTopBtn', casino: 'casinoTopBtn', clan: 'clanToggle', world: 'worldTopBtn' };
                 const refresh = () => {
                     try {
                         WHSite.applyNavBadges(map);

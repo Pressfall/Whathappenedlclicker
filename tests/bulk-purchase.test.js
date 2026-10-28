@@ -12,7 +12,7 @@ function model(startCost, levels, rate) {
 }
 const rateFor = (i) => (i <= 10 ? 1.1 : 1.15);
 const BASE = [0, 100, 500, 1000, 3000, 10000, 250000, 1e6, 5e6, 2e7, 1e8, 5e8, 4.3e10, 4e13, 1.5e14, 3.6e14, 1.2e15, 3.3e16,
-    1.7e19, 1.3e20, 3.1e20, 7e22, 6.8e23, 6e25, 1.8e26, 8.5e26, 4.2e27, 3e31, 1e33];
+    1.7e19, 1.3e20, 3.1e20, 7e22, 6.8e23, 6e25, 1.8e26, 8.5e26, 4.2e27, 3e31, 1e33, 3e34];
 
 const game = (count) => {
     const g = loadGame({ now: 1_700_000_000_000 });
@@ -33,10 +33,10 @@ test('buying a batch of 1, 5, 10, 25, 50 or 100 levels charges the compounding p
     }
 });
 
-test('every upgrade (1-28) follows its own price curve when bought in bulk', () => {
+test('every upgrade (1-29) follows its own price curve when bought in bulk', () => {
     const g = game(0); // one page load; each upgrade is independent
     g.eval('setBulkPurchase(10)');
-    for (let i = 1; i <= 28; i++) {
+    for (let i = 1; i <= 29; i++) {
         g.eval('count = 1e300');
         const base = g.eval(`Number(upgrade${i}Cost)`);
         assert.equal(base, BASE[i], `upgrade ${i} starting price`);

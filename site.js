@@ -11,6 +11,7 @@
         { href: 'index.html', label: 'Game', icon: '🎮' },
         { href: 'achievements.html', label: 'Achievements', icon: '🎖️', alert: 'achievements' },
         { href: 'followers.html', label: 'Followers', icon: '🦎', alert: 'followers' },
+        { href: 'world.html', label: 'The Wilds', icon: '⚔️', alert: 'world' },
         { href: 'gamba.html', label: 'Casino', icon: '🎰', alert: 'casino' },
         { href: 'clan.html', label: 'Clans', icon: '🛡️', alert: 'clan' },
         { href: 'leaderboard.html', label: 'Leaderboard', icon: '🏆' },
@@ -38,6 +39,9 @@
         const cid = localStorage.getItem('player_clanId');
         const checkin = readJSON('whathappened_clan_checkin') || {};
         if (cid && cid !== 'undefined' && checkin.day !== new Date().toISOString().slice(0, 10)) out.clan = { count: 0, text: 'Check in with your clan today' };
+        // the Wilds: the bag dropped on the last death is still out there
+        const world = readJSON('whathappened_world');
+        if (world && world.grave) out.world = { count: 0, text: 'Your dropped bag is waiting in the Wilds' };
         return out;
     }
 

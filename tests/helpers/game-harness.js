@@ -1,6 +1,6 @@
 'use strict';
 /**
- * Loads the real game scripts (followers-data, achievements-data, main, specials, items) into a jsdom copy of
+ * Loads the real game scripts (core/*, followers-data, achievements-data, main, specials, items) into a jsdom copy of
  * index.html so tests can drive the same code the browser runs: saveGame / loadGame / buyPrestige / buy functions.
  *
  * - Scripts are evaluated with vm so main.js's top-level `let` state stays reachable via game.eval().
@@ -14,7 +14,7 @@ const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'specials.js', 'items.js', 'guide.js', 'save-tools.js'];
+const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/world-bridge.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'specials.js', 'items.js', 'guide.js', 'save-tools.js'];
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 let cache = null;

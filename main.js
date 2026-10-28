@@ -5,7 +5,7 @@
  * - Decimal/currency helpers, core state (count, clickPower, cps)
  * - Clan sync (syncClanStats), main image size, formatNumber
  * - Achievements, titles, batch cost, level multipliers, effective CPS
- * - Upgrade tooltips, upgrade state and buy functions (1–28, divine, specials)
+ * - Upgrade tooltips, upgrade state and buy functions (1–29, divine, specials)
  * - Prestige, save/load, increment (click handler + mainClicks for clan events)
  * - UI: falling images, displays, shop, settings, init
  */
@@ -593,6 +593,7 @@ function getUpgradeLevel(idx) {
         case 26: return upgrade26Level || 0;
         case 27: return upgrade27Level || 0;
         case 28: return upgrade28Level || 0;
+        case 29: return upgrade29Level || 0;
         default: return 0;
     }
 }
@@ -921,27 +922,28 @@ UPGRADE_DESCRIPTIONS.upgrade25 = 'Tom Pearl turns the phonk all the way up. Nobo
 UPGRADE_DESCRIPTIONS.upgrade26 = 'A diagram so powerful it rewires the entire economy. Anything above the arrow is a catch.';
 UPGRADE_DESCRIPTIONS.upgrade27 = 'The Somalian Pirate had a twin all along. This one does not ask for a price. (Meant to be reached after a few prestiges.)';
 UPGRADE_DESCRIPTIONS.upgrade28 = "O'algo has read Logical Fallacies for Dummies cover to cover. Your CPS can no longer be argued with. (Meant to be reached after many prestiges.)";
+UPGRADE_DESCRIPTIONS.upgrade29 = 'The Siberian Hitman has arrived from the cold, bringing precise and relentless What Happened production.';
 
-// Display names for upgrades 1..28 (index 0 unused), used in the left-bar button labels
+// Display names for upgrades 1..29 (index 0 unused), used in the left-bar button labels
 const UPGRADE_NAMES = [null, 'OP mouse', 'Somalian Pirate', 'Goonsaw Man', 'Diddy blud', 'Argonian Autist', 'Grape God', 'Skippie Toilet', 'Mysterious Island',
     'Tribal Camp', 'The Phonk Man', 'Jonathan', 'CR lurker', 'ropingnecurse', 'skibbidi scimitar', 'What Happened Beats', 'ez villager', 'scp wish I knew.',
     'The Goatis', 'goatises raw liver', 'The Landon Stream', 'The Bass', 'Good Noodles', 'Mobile Man 38', 'Easton Bundy',
-    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo"];
+    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo", 'Siberian Hitman'];
 const UPGRADE_COUNT = UPGRADE_NAMES.length - 1;
 
-// Balance tables for upgrades 1..28 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
+// Balance tables for upgrades 1..29 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
 // Each level costs 10% more than the last for upgrades 1-10 and 15% more from upgrade 11 on.
 // Later upgrades take longer to pay for themselves, so each new one is a goal rather than an instant unlock.
 const UPGRADE_CPS = [0, 1, 1, 5, 20, 100, 500, 5000, 20000, 100000, 500000, 1500000, 5000000,
     20000000, 50000000, 500000000, 2000000000, 10000000000, 150000000000, 2000000000000, 50000000000000, 1e15, 5e16, 5e17, 1e18,
-    1e19, 1e20, 1e21, 1e22];
+    1e19, 1e20, 1e21, 1e22, 1e23];
 // Costs from CR lurker (12) on were tuned with a simulated player so each new upgrade takes a bit longer to reach than the last
 // (about 5 minutes apart at CR lurker, 10-13 minutes apart by Easton Bundy) instead of the whole late game unlocking in two minutes.
 // Evil Somalian Pirate (27) and O'algo (28) are meant for after prestiges: out of reach in a first run, Evil Pirate after about
 // 2 prestiges, O'algo several prestiges later, and each gets quicker to reach as your Divine upgrades grow.
 const UPGRADE_BASE_COSTS = [0, 100, 500, 1000, 3000, 10000, 250000, 1000000, 5000000, 20000000, 100000000, 500000000, 4.3e10,
     4e13, 1.5e14, 3.6e14, 1.2e15, 3.3e16, 1.7e19, 1.3e20, 3.1e20, 7e22, 6.8e23, 6e25, 1.8e26,
-    8.5e26, 4.2e27, 3e31, 1e33];
+    8.5e26, 4.2e27, 3e31, 1e33, 3e34];
 function upgradeCostRate(i) { return i <= 10 ? 1.1 : 1.15; }
 
 // Special upgrade prices: a multiple of what the level that unlocks the special costs, so a special is never pocket change
@@ -1179,14 +1181,16 @@ let upgrade25Cost = UPGRADE_BASE_COSTS[25], upgrade25Level = 0;
 let upgrade26Cost = UPGRADE_BASE_COSTS[26], upgrade26Level = 0;
 let upgrade27Cost = UPGRADE_BASE_COSTS[27], upgrade27Level = 0;
 let upgrade28Cost = UPGRADE_BASE_COSTS[28], upgrade28Level = 0;
+let upgrade29Cost = UPGRADE_BASE_COSTS[29], upgrade29Level = 0;
 // each one's specials multiply only its own CPS
-let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1;
+let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1, siberianHitmanMultiplier = 1;
 function lateTierMultiplier(i) {
     switch (i) {
         case 25: return Number(tomPearlMultiplier) || 1;
         case 26: return Number(hypergamyMultiplier) || 1;
         case 27: return Number(evilPirateMultiplier) || 1;
         case 28: return Number(oalgoMultiplier) || 1;
+        case 29: return Number(siberianHitmanMultiplier) || 1;
         default: return 1;
     }
 }
@@ -1199,6 +1203,8 @@ let evilPirate1Cost = specialCost(27, 10, 'own'), evilPirate2Cost = specialCost(
 let evilPirate1Purchased = false, evilPirate2Purchased = false, evilPirate3Purchased = false, evilPirate4Purchased = false;
 let oalgo1Cost = specialCost(28, 10, 'own'), oalgo2Cost = specialCost(28, 25, 'own'), oalgo3Cost = specialCost(28, 50, 'own'), oalgo4Cost = specialCost(28, 100, 'own');
 let oalgo1Purchased = false, oalgo2Purchased = false, oalgo3Purchased = false, oalgo4Purchased = false;
+let siberianHitman1Cost = specialCost(29, 10, 'own'), siberianHitman2Cost = specialCost(29, 25, 'own'), siberianHitman3Cost = specialCost(29, 50, 'own'), siberianHitman4Cost = specialCost(29, 100, 'own');
+let siberianHitman1Purchased = false, siberianHitman2Purchased = false, siberianHitman3Purchased = false, siberianHitman4Purchased = false;
 // Landon Stream specials (one-time multipliers that apply to upgrade20 contribution)
 let landon1Cost = specialCost(20, 10, 'own');
 let landon2Cost = specialCost(20, 25, 'own');
@@ -2046,6 +2052,12 @@ try {
         if (ev.key === 'whathappened_cloud_applied' && ev.newValue) { suppressAutosave = true; location.reload(); }
     });
 } catch (e) {}
+// rewards sent from the Wilds (world.html) open in another tab
+try {
+    window.addEventListener('storage', (ev) => {
+        if (window.WHWorldBridge && ev.key === window.WHWorldBridge.WORLD_KEY && ev.newValue) { try { applyWorldRewards(); } catch (e) {} }
+    });
+} catch (e) {}
 
 function getActiveCasinoBuff() {
     const now = Date.now();
@@ -2482,7 +2494,7 @@ function updateDisplays() {
     // show batch cost for the selected bulk amount (in Max mode: as many levels as the player can afford)
     const upgradeCosts = [null, upgrade1Cost, upgrade2Cost, upgrade3Cost, upgrade4Cost, upgrade5Cost, upgrade6Cost, upgrade7Cost, upgrade8Cost, upgrade9Cost, upgrade10Cost, upgrade11Cost, upgrade12Cost,
         upgrade13Cost, upgrade14Cost, upgrade15Cost, upgrade16Cost, upgrade17Cost, upgrade18Cost, upgrade19Cost, upgrade20Cost, upgrade21Cost, upgrade22Cost, upgrade23Cost, upgrade24Cost,
-        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost];
+        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost, upgrade29Cost];
     for (let i = 1; i <= UPGRADE_COUNT; i++) {
         const rate = upgradeCostRate(i);
         const levels = bulkLevelsFor(upgradeCosts[i], rate);
@@ -3784,7 +3796,7 @@ function syncUpgradeCostsFromLevels() {
     upgrade19Cost = costForLevel(19, upgrade19Level); upgrade20Cost = costForLevel(20, upgrade20Level); upgrade21Cost = costForLevel(21, upgrade21Level);
     upgrade22Cost = costForLevel(22, upgrade22Level); upgrade23Cost = costForLevel(23, upgrade23Level); upgrade24Cost = costForLevel(24, upgrade24Level);
     upgrade25Cost = costForLevel(25, upgrade25Level); upgrade26Cost = costForLevel(26, upgrade26Level); upgrade27Cost = costForLevel(27, upgrade27Level);
-    upgrade28Cost = costForLevel(28, upgrade28Level);
+    upgrade28Cost = costForLevel(28, upgrade28Level); upgrade29Cost = costForLevel(29, upgrade29Level);
 }
 // Bulk-buy loop shared by upgrades 25+ (their CPS comes from the level, so a level only changes level and cost).
 // `levelUp` adds one level and raises the stored cost.
@@ -3809,6 +3821,7 @@ function buyUpgrade25() { buyUpgradeLevels(25, () => upgrade25Cost, () => { upgr
 function buyUpgrade26() { buyUpgradeLevels(26, () => upgrade26Cost, () => { upgrade26Level = numericLevel(upgrade26Level) + 1; upgrade26Cost = nextUpgradeCost(upgrade26Cost, 26); }); }
 function buyUpgrade27() { buyUpgradeLevels(27, () => upgrade27Cost, () => { upgrade27Level = numericLevel(upgrade27Level) + 1; upgrade27Cost = nextUpgradeCost(upgrade27Cost, 27); }); }
 function buyUpgrade28() { buyUpgradeLevels(28, () => upgrade28Cost, () => { upgrade28Level = numericLevel(upgrade28Level) + 1; upgrade28Cost = nextUpgradeCost(upgrade28Cost, 28); }); }
+function buyUpgrade29() { buyUpgradeLevels(29, () => upgrade29Cost, () => { upgrade29Level = numericLevel(upgrade29Level) + 1; upgrade29Cost = nextUpgradeCost(upgrade29Cost, 29); }); }
 
 // Purchase flow shared by the one-time specials of upgrades 25+: level gate, cost, then `apply` sets the flag and multiplier
 function buyOneTimeSpecial(upgradeIdx, unlockLevel, owned, cost, apply) {
@@ -3835,6 +3848,10 @@ function buyOalgo1() { buyOneTimeSpecial(28, 10, oalgo1Purchased, oalgo1Cost, ()
 function buyOalgo2() { buyOneTimeSpecial(28, 25, oalgo2Purchased, oalgo2Cost, () => { oalgo2Purchased = true; oalgoMultiplier *= 2; }); }
 function buyOalgo3() { buyOneTimeSpecial(28, 50, oalgo3Purchased, oalgo3Cost, () => { oalgo3Purchased = true; oalgoMultiplier *= 2.5; }); }
 function buyOalgo4() { buyOneTimeSpecial(28, 100, oalgo4Purchased, oalgo4Cost, () => { oalgo4Purchased = true; oalgoMultiplier *= 3; }); }
+function buySiberianHitman1() { buyOneTimeSpecial(29, 10, siberianHitman1Purchased, siberianHitman1Cost, () => { siberianHitman1Purchased = true; siberianHitmanMultiplier *= 1.5; }); }
+function buySiberianHitman2() { buyOneTimeSpecial(29, 25, siberianHitman2Purchased, siberianHitman2Cost, () => { siberianHitman2Purchased = true; siberianHitmanMultiplier *= 2; }); }
+function buySiberianHitman3() { buyOneTimeSpecial(29, 50, siberianHitman3Purchased, siberianHitman3Cost, () => { siberianHitman3Purchased = true; siberianHitmanMultiplier *= 2.5; }); }
+function buySiberianHitman4() { buyOneTimeSpecial(29, 100, siberianHitman4Purchased, siberianHitman4Cost, () => { siberianHitman4Purchased = true; siberianHitmanMultiplier *= 3; }); }
 
 // SCP special purchases (each doubles SCP contribution)
 function buyScp1() {
@@ -6222,6 +6239,8 @@ function initApp() {
         }
     } catch (e) {}
     // removed console-invokable debug helper
+    // rewards earned in the Wilds since the last visit
+    try { applyWorldRewards(); } catch (e) {}
     
     } catch (e) {
         console.error('initApp failed', e);
@@ -6403,6 +6422,8 @@ function renderExtraStats() {
             rows.push(['🧿 Charms found', `${it.charms} / ${it.charmsTotal}`, null]);
         }
     } catch (e) {}
+    const wd = readJSON('whathappened_world');
+    if (wd && wd.stats) rows.push(['⚔️ The Wilds', `${formatNumber(Math.floor(Number(wd.rubies) || 0))} rubies · ${formatNumber(Math.floor(Number(wd.stats.kills) || 0))} monsters defeated`, 'world.html']);
     const cs = readJSON('whathappened_casino_stats');
     if (cs && cs.rounds) {
         const decided = (cs.wins || 0) + (cs.losses || 0);
@@ -6536,6 +6557,54 @@ function addGolden(n) {
     if (goldenWhat >= 1) divineUnlocked = true;
     try { saveGame(); } catch (e) {}
     try { updateDisplays(); } catch (e) {}
+}
+// Rewards from the Wilds (world.html, core/world-bridge.js). That page only writes its own save and this one only
+// writes the ack (the last reward applied), so neither overwrites the other. Gems and Golden are saved before the ack
+// moves; if the save fails nothing changes and the rewards wait for the next try.
+let _worldRewardsBusy = false;
+let _worldAckApplied = 0; // in case writing the ack fails: never apply the same reward twice in one visit
+function applyWorldRewards() {
+    const B = window.WHWorldBridge;
+    if (!B || suppressAutosave || !window._saveLoaded || _worldRewardsBusy) return false;
+    const run = () => {
+        if (suppressAutosave) return false;
+        _worldRewardsBusy = true;
+        const before = { diamonds, goldenWhat, totalGoldenEver, divineUnlocked };
+        try {
+            const plan = B.pending(localStorage, _worldAckApplied); // read here: another game tab may have just applied them
+            if (!plan.entries.length) return false;
+            const t = plan.totals;
+            const hasBoxes = t.boxes.some(n => n > 0);
+            if (hasBoxes && !(window.WHI && typeof window.WHI.grantBoxes === 'function')) return false;
+            diamonds = getGems() + t.gems;
+            if (t.golden) {
+                goldenWhat = (Number(goldenWhat) || 0) + t.golden;
+                totalGoldenEver = (Number(totalGoldenEver) || 0) + t.golden;
+                if (goldenWhat >= 1) divineUnlocked = true;
+            }
+            if (!saveGame()) {
+                diamonds = before.diamonds; goldenWhat = before.goldenWhat; totalGoldenEver = before.totalGoldenEver; divineUnlocked = before.divineUnlocked;
+                return false;
+            }
+            _worldAckApplied = plan.lastSeq;
+            if (hasBoxes) { try { window.WHI.grantBoxes(t.boxes, { quiet: true }); } catch (e) {} }
+            B.writeAck(localStorage, plan.lastSeq);
+            const msg = B.describe(t);
+            if (msg) notify(msg, 6000);
+            try { updateDisplays(); } catch (e) {}
+            try { checkDataAchievements(true); } catch (e) {}
+            return true;
+        } catch (e) {
+            console.error('World rewards failed', e);
+            return false;
+        } finally { _worldRewardsBusy = false; }
+    };
+    // two game tabs: only one applies (the other then finds nothing above the ack)
+    if (navigator.locks && typeof navigator.locks.request === 'function') {
+        navigator.locks.request('whathappened_world_bridge', run).catch(() => {});
+        return true;
+    }
+    return run();
 }
 
 // Shop menu toggle (tab: which tab to open on, default the skins)
@@ -7151,12 +7220,13 @@ function buildSaveObject() {
                     eastonBundy4Purchased,
                     eastonBundyMultiplier,
             // upgrades 25-28 (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo) and their specials
-            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level,
-            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier,
+            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level, upgrade29Cost, upgrade29Level,
+            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier, siberianHitmanMultiplier,
             tomPearl1Purchased, tomPearl2Purchased, tomPearl3Purchased, tomPearl4Purchased,
             hypergamy1Purchased, hypergamy2Purchased, hypergamy3Purchased, hypergamy4Purchased,
             evilPirate1Purchased, evilPirate2Purchased, evilPirate3Purchased, evilPirate4Purchased,
             oalgo1Purchased, oalgo2Purchased, oalgo3Purchased, oalgo4Purchased,
+            siberianHitman1Purchased, siberianHitman2Purchased, siberianHitman3Purchased, siberianHitman4Purchased,
             // phonk state
             phonkBaseCps, phonkOtherMultiplier, phonkMultiplier,
             upgrade10Cost, upgrade10Level,
@@ -7295,7 +7365,7 @@ function withCasinoState(save, includeDealer) {
 }
 
 function saveGame() {
-    if (suppressAutosave || !window._saveLoaded) return;
+    if (suppressAutosave || !window._saveLoaded) return false;
     try {
         const payload = JSON.stringify(withCasinoState(buildSaveObject()));
         // write to the new key; also write to legacy key for backwards compatibility
@@ -7304,8 +7374,10 @@ function saveGame() {
         // also persist legacy-friendly stat keys
         try { localStorage.setItem('whathappened_prestige_times', String(prestigeTimes || 0)); } catch (e) {}
         try { localStorage.setItem('whathappened_total_golden', String(totalGoldenEver || 0)); } catch (e) {}
+        return true;
     } catch (e) {
         console.error('Save failed', e);
+        return false;
     }
 }
 
@@ -7495,14 +7567,17 @@ function loadGame() {
         upgrade26Cost = normalizeNumericValue(s.upgrade26Cost ?? upgrade26Cost, upgrade26Cost); upgrade26Level = numericLevel(s.upgrade26Level);
         upgrade27Cost = normalizeNumericValue(s.upgrade27Cost ?? upgrade27Cost, upgrade27Cost); upgrade27Level = numericLevel(s.upgrade27Level);
         upgrade28Cost = normalizeNumericValue(s.upgrade28Cost ?? upgrade28Cost, upgrade28Cost); upgrade28Level = numericLevel(s.upgrade28Level);
+        upgrade29Cost = normalizeNumericValue(s.upgrade29Cost ?? upgrade29Cost, upgrade29Cost); upgrade29Level = numericLevel(s.upgrade29Level);
         if (Number(s.tomPearlMultiplier) > 0) tomPearlMultiplier = Number(s.tomPearlMultiplier);
         if (Number(s.hypergamyMultiplier) > 0) hypergamyMultiplier = Number(s.hypergamyMultiplier);
         if (Number(s.evilPirateMultiplier) > 0) evilPirateMultiplier = Number(s.evilPirateMultiplier);
         if (Number(s.oalgoMultiplier) > 0) oalgoMultiplier = Number(s.oalgoMultiplier);
+        if (Number(s.siberianHitmanMultiplier) > 0) siberianHitmanMultiplier = Number(s.siberianHitmanMultiplier);
         tomPearl1Purchased = !!s.tomPearl1Purchased; tomPearl2Purchased = !!s.tomPearl2Purchased; tomPearl3Purchased = !!s.tomPearl3Purchased; tomPearl4Purchased = !!s.tomPearl4Purchased;
         hypergamy1Purchased = !!s.hypergamy1Purchased; hypergamy2Purchased = !!s.hypergamy2Purchased; hypergamy3Purchased = !!s.hypergamy3Purchased; hypergamy4Purchased = !!s.hypergamy4Purchased;
         evilPirate1Purchased = !!s.evilPirate1Purchased; evilPirate2Purchased = !!s.evilPirate2Purchased; evilPirate3Purchased = !!s.evilPirate3Purchased; evilPirate4Purchased = !!s.evilPirate4Purchased;
         oalgo1Purchased = !!s.oalgo1Purchased; oalgo2Purchased = !!s.oalgo2Purchased; oalgo3Purchased = !!s.oalgo3Purchased; oalgo4Purchased = !!s.oalgo4Purchased;
+        siberianHitman1Purchased = !!s.siberianHitman1Purchased; siberianHitman2Purchased = !!s.siberianHitman2Purchased; siberianHitman3Purchased = !!s.siberianHitman3Purchased; siberianHitman4Purchased = !!s.siberianHitman4Purchased;
         // phonk purchased flags and state
         phonk1Purchased = !!s.phonk1Purchased; phonk2Purchased = !!s.phonk2Purchased; phonk3Purchased = !!s.phonk3Purchased; phonk4Purchased = !!s.phonk4Purchased; phonk5Purchased = !!s.phonk5Purchased;
         if (typeof s.phonkBaseCps === 'string') phonkBaseCps = hasDecimal ? D(s.phonkBaseCps) : Number(s.phonkBaseCps);
@@ -7819,6 +7894,7 @@ function resetGame() {
     try { localStorage.removeItem('whathappened_guide'); } catch (e) {} // a fresh start gets the first-run guide again
     try { if (window.WHF) localStorage.removeItem(window.WHF.STORAGE_KEY); } catch (e) {}
     try { if (window.WHI) localStorage.removeItem(window.WHI.STORAGE_KEY); } catch (e) {}
+    try { if (window.WHWorldBridge) { localStorage.removeItem(window.WHWorldBridge.WORLD_KEY); localStorage.removeItem(window.WHWorldBridge.ACK_KEY); } } catch (e) {}
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }

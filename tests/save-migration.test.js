@@ -31,6 +31,37 @@ test('upgrade prices are recomputed from the levels, so a save made under old pr
     assert.equal(g.eval('upgrade1Cost'), 270); // 100 x 1.1 ten times, rounded up each step
 });
 
+test('Siberian Hitman upgrade and special state survive save/load', () => {
+    const g = withSave({ version: 3, count: 1e100, upgrade29Level: 12, siberianHitman1Purchased: true, siberianHitmanMultiplier: 1.5 });
+    assert.equal(g.eval('upgrade29Level'), 12);
+    assert.equal(g.eval('upgrade29Cost'), g.eval('costForLevel(29, 12)'));
+    assert.equal(g.eval('siberianHitman1Purchased'), true);
+    assert.equal(g.eval('siberianHitmanMultiplier'), 1.5);
+    const out = resaved(g);
+    assert.equal(out.upgrade29Level, 12);
+    assert.equal(out.siberianHitman1Purchased, true);
+    assert.equal(out.siberianHitmanMultiplier, 1.5);
+});
+
+test('Siberian Hitman special purchases apply their own-tier multiplier and persist', () => {
+    const g = withSave({ version: 3, count: 1e100, upgrade29Level: 10 });
+    const before = g.eval("getUpgradeCps('upgrade29')");
+    g.eval('buySiberianHitman1()');
+    assert.equal(g.eval('siberianHitman1Purchased'), true);
+    assert.equal(g.eval('siberianHitmanMultiplier'), 1.5);
+    assert.equal(g.eval("getUpgradeCps('upgrade29')"), before * 1.5);
+    assert.equal(g.savedState().siberianHitman1Purchased, true);
+});
+
+test('achievement snapshots include Siberian Hitman in the full roster count', () => {
+    const g = withSave({ version: 3, upgrade29Level: 1 });
+    const snap = g.window.WHA.snapshot();
+    assert.equal(snap.upgrades.length, 30);
+    assert.equal(snap.upgradesOwned, 1);
+    const roster = g.window.WHA.ACHIEVEMENTS.find((achievement) => achievement.key === 'x_roster');
+    assert.equal(roster.target, 29);
+});
+
 test('a save under only the legacy key still loads', () => {
     const g = withSave({ version: 2, count: 777 }, 'whathappened_save_v1');
     assert.equal(g.eval('count'), 777);
