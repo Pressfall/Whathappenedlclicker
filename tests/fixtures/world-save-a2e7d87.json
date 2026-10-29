@@ -1,0 +1,220 @@
+{
+ "v": 1,
+ "createdAt": 1790791200000,
+ "savedAt": 1792519200000,
+ "writer": "",
+ "rubies": 12195,
+ "mats": {
+  "oak_log": 17,
+  "copper_ore": 17,
+  "iron_ore": 17,
+  "boar_hide": 17,
+  "golem_core": 17,
+  "mithril_ore": 17,
+  "star_fragment": 17
+ },
+ "bag": {
+  "herb": 4
+ },
+ "gear": [
+  {
+   "uid": 1,
+   "base": "shield_0",
+   "score": 40,
+   "aff": [],
+   "at": 1790791200000
+  },
+  {
+   "uid": 2,
+   "base": "sword_0",
+   "score": 40,
+   "aff": [],
+   "at": 1790791200000
+  },
+  {
+   "uid": 3,
+   "base": "pickaxe_0",
+   "score": 40,
+   "aff": [],
+   "at": 1790791200000
+  },
+  {
+   "uid": 4,
+   "base": "axe_0",
+   "score": 40,
+   "aff": [],
+   "at": 1790791200000
+  },
+  {
+   "uid": 5,
+   "base": "sword_2",
+   "score": 88,
+   "aff": [
+    "keen"
+   ],
+   "at": 1792432800000
+  },
+  {
+   "uid": 6,
+   "base": "dagger_3",
+   "score": 99,
+   "aff": [
+    "swift",
+    "vampiric"
+   ],
+   "at": 1792432800000
+  },
+  {
+   "uid": 7,
+   "base": "helmet_2",
+   "score": 61,
+   "aff": [],
+   "at": 1792432800000
+  },
+  {
+   "uid": 8,
+   "base": "chest_3",
+   "score": 74,
+   "aff": [],
+   "at": 1792432800000
+  }
+ ],
+ "nextUid": 9,
+ "equip": {
+  "helmet": 7,
+  "chest": 8,
+  "boots": null,
+  "ring": null,
+  "offhand": 1
+ },
+ "hotbar": [
+  2,
+  3,
+  4,
+  5,
+  6
+ ],
+ "sel": 0,
+ "cons": {
+  "potion_small": 3,
+  "potion_big": 0,
+  "potion_max": 0,
+  "arrow": 0
+ },
+ "zone": "ember",
+ "pos": {
+  "x": 900,
+  "y": 700
+ },
+ "hp": 77,
+ "unlocked": {
+  "zones": {
+   "town": true,
+   "greenwood": true,
+   "mines": true,
+   "ember": true
+  },
+  "camps": {
+   "greenwood": true,
+   "mines": true
+  }
+ },
+ "bosses": {
+  "overgrown": {
+   "kills": 3,
+   "lastKillDay": "2026-10-19",
+   "lastKillWeek": "2026-W43"
+  },
+  "gilded": {
+   "kills": 1,
+   "lastKillDay": "2026-10-18",
+   "lastKillWeek": "2026-W42"
+  },
+  "inferno": {
+   "kills": 1,
+   "lastKillDay": "2026-10-17",
+   "lastKillWeek": "2026-W42"
+  }
+ },
+ "rivals": {},
+ "nodes": {},
+ "grave": null,
+ "pendingCraft": null,
+ "caps": {
+  "day": "2026-09-30",
+  "gems": 0,
+  "golden": 0,
+  "week": "2026-W40",
+  "boxPts": 0,
+  "exGems": 0,
+  "exGolden": 0,
+  "mythic": 0
+ },
+ "outSeq": 0,
+ "outbox": [],
+ "overflow": null,
+ "tutorial": {
+  "buckler": true
+ },
+ "classes": {
+  "active": "rogue",
+  "unlocked": {
+   "warrior": true,
+   "rogue": true
+  },
+  "loadout": {
+   "rogue": [
+    "envenom",
+    "blink",
+    "fan_of_knives"
+   ],
+   "warrior": [
+    "whirlwind",
+    null,
+    null
+   ]
+  }
+ },
+ "skills": {
+  "learned": {
+   "blink": true,
+   "envenom": true,
+   "quick_hands": true,
+   "light_feet": true,
+   "vicious": true,
+   "caltrops": true,
+   "shadowstep": true,
+   "fan_of_knives": true,
+   "cunning": true,
+   "phantom": true,
+   "assassin": true,
+   "smoke_bomb": true,
+   "whirlwind": true
+  }
+ },
+ "stats": {
+  "kills": 412,
+  "elites": 0,
+  "deaths": 0,
+  "crafted": 0,
+  "bestScore": 0,
+  "legendaries": 0,
+  "mined": 0,
+  "chopped": 0,
+  "gathered": 0,
+  "rubiesEarned": 62345,
+  "playSec": 0,
+  "bossKills": 0,
+  "rivalsBeaten": 0,
+  "boxesCrafted": 0,
+  "gemsSent": 0,
+  "goldenSent": 0,
+  "lostGear": 0,
+  "pvpWins": 0,
+  "pvpLosses": 0,
+  "blocks": 25,
+  "backstabs": 40,
+  "arrowHits": 50,
+  "rushHits": 0
+ }
+}

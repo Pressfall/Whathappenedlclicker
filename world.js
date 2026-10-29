@@ -41,13 +41,8 @@
     }
     WHW.mainSave = mainSave;
     WHW.wornSkin = wornSkin;
-    // the worn skin as the small thumbnail (same rule as main.js thumbFor)
-    function faceFromSkin() {
-        const p = wornSkin();
-        const m = p.match(/^(mainimage)\/([^/]+)\.(png|jpe?g|webp)$/i);
-        if (m && !/^(whathappened|mainbg|gem|shop|lbicon|wheel|divineargonian|divinesimplevillager)$/.test(m[2])) return `${m[1]}/thumbs/${m[2]}.webp`;
-        return /^mainimage\//.test(p) ? p : 'mainimage/whathappened.jpeg';
-    }
+    // the worn skin as the small thumbnail (core/skins.js, the same rule the Skins tab uses)
+    function faceFromSkin() { return Skins.thumb(wornSkin()); }
 
     // ---------------- sound (synthesized; follows the game's sound settings) ----------------
     const SOUNDS = {
@@ -628,7 +623,13 @@
             b.x += dx / d * push * mb; b.y += dy / d * push * mb;
         }
     }
-    let hudT = 0, statT = 0, questT = 0;
+    let hudT = 0, statT = 0, questT = 0, achT = 5;
+    // Achievements (achievements-data.js) read the Wilds save, so they are checked here as you play too, a few seconds after
+    // the save is written. The game and the achievements page unlock the same ones, so it does not matter which sees it first.
+    function noticeAchievements() {
+        if (!window.WHA || !g.canSave) return;
+        try { WHW.ui.showAchievements(window.WHA.checkAll()); } catch (e) {}
+    }
     // "quest done" once for each quest that gets there (not for ones already done when the page opened)
     const questsNoticed = new Set();
     function noticeQuests(quiet) {
@@ -694,6 +695,8 @@
         interactions(dt);
         questT -= dt;
         if (questT <= 0) { questT = 0.5; noticeQuests(); }
+        achT -= dt;
+        if (achT <= 0) { achT = 6; noticeAchievements(); }
         statT += dt;
         if (statT >= 1) { g.state.stats.playSec += Math.floor(statT); statT -= Math.floor(statT); }
         hudT += dt;

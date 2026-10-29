@@ -23,15 +23,8 @@
         const d = new Date(now);
         return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
     }
-    function weekKey(now) {
-        const d = new Date(now);
-        const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-        const dow = t.getUTCDay() || 7;
-        t.setUTCDate(t.getUTCDate() + 4 - dow); // the Thursday of this week decides its year
-        const year = t.getUTCFullYear();
-        const week = Math.ceil(((t - Date.UTC(year, 0, 1)) / 86400000 + 1) / 7);
-        return year + '-W' + String(week).padStart(2, '0');
-    }
+    // the bridge's, so the Wilds' weekly caps and the game's weekly Golden trade limit turn over together
+    const weekKey = Bridge.weekKey;
 
     // ---------------- state ----------------
     function freshCaps(now) {
@@ -153,7 +146,9 @@
         s.caps = { day: String(c.day || dayKey(now)), gems: int(c.gems), golden: int(c.golden), week: String(c.week || weekKey(now)), boxPts: int(c.boxPts), exGems: int(c.exGems), exGolden: int(c.exGolden), mythic: int(c.mythic) };
         s.outSeq = int(raw.outSeq);
         s.inAck = int(raw.inAck);
-        s.outbox = (Array.isArray(raw.outbox) ? raw.outbox : []).map(Bridge.clampEntry).filter(Boolean).slice(-Bridge.MAX_OUTBOX);
+        // a full outbox can also hold each one-time purchase on top (Bridge.push never holds a purchase back), so keep room for
+        // those: cutting to MAX_OUTBOX would drop the oldest reward the game hasn't collected yet
+        s.outbox = (Array.isArray(raw.outbox) ? raw.outbox : []).map(Bridge.clampEntry).filter(Boolean).slice(-(Bridge.MAX_OUTBOX + Object.keys(Bridge.BUYS).length));
         for (const e of s.outbox) if (e.seq > s.outSeq) s.outSeq = e.seq;
         if (isObj(raw.overflow)) {
             const o = raw.overflow;
@@ -229,7 +224,10 @@
             if (!npc || !isObj(r)) continue;
             const rec = { step: int(r.step, npc.chain.length), active: null, dailyDone: typeof r.dailyDone === 'string' ? r.dailyDone.slice(0, 12) : '' };
             const a = r.active, q = isObj(a) && Object.prototype.hasOwnProperty.call(D.QUESTS, a.id) ? D.QUESTS[a.id] : null;
-            if (q && q.npc === id) rec.active = { id: q.id, prog: int(a.prog, q.goal.n || 1) };
+            if (q && q.npc === id) {
+                rec.active = { id: q.id, prog: int(a.prog, q.goal.n || 1) };
+                if (q.daily && typeof a.day === 'string') rec.active.day = a.day.slice(0, 12);
+            }
             out[id] = rec;
         }
         return out;
@@ -1009,7 +1007,8 @@
         if (!o || o.doneToday) return { ok: false, reason: 'none' };
         if (o.active) return { ok: false, reason: 'active' };
         if (o.locked) return { ok: false, reason: 'locked' };
-        questRec(s, npcId).active = { id: o.id, prog: 0 };
+        // a daily remembers the day it was for, so finishing it after midnight doesn't use up the next day's
+        questRec(s, npcId).active = o.daily ? { id: o.id, prog: 0, day: dayKey(now) } : { id: o.id, prog: 0 };
         return { ok: true, id: o.id };
     }
     // Hand a finished quest in: deliveries are taken, the rubies (and any potions) paid, and the NPC moves on
@@ -1021,7 +1020,7 @@
         if (q.goal.kind === 'deliver' && !take(s, q.goal.mats)) return { ok: false, reason: 'materials' };
         const rubies = addRubies(s, questRubies(s, q));
         if (q.cons) for (const id in q.cons) s.cons[id] = (s.cons[id] || 0) + q.cons[id];
-        if (q.daily) rec.dailyDone = dayKey(now);
+        if (q.daily) rec.dailyDone = rec.active.day || dayKey(now);
         else if (D.NPCS[npcId].chain[rec.step] === q.id) rec.step++;
         rec.active = null;
         s.stats.questsDone++;

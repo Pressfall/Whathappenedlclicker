@@ -387,7 +387,8 @@
         const key = text + '\u0001' + o.font + '\u0001' + o.fill + '\u0001' + (o.stroke || '') + lw + align + '\u0001' + scale.toFixed(2);
         let sp = labelCache.get(key);
         if (!sp) {
-            if (labelCache.size > 400) labelCache.clear();
+            // past 400 (damage numbers are nearly all different), forget the oldest hundred; names and signs come straight back
+            if (labelCache.size > 400) { let n = 0; for (const k of labelCache.keys()) { labelCache.delete(k); if (++n >= 100) break; } }
             if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
             measureCtx.font = o.font;
             const size = Number((o.font.match(/(\d+(?:\.\d+)?)px/) || [0, 14])[1]);

@@ -49,6 +49,8 @@
     .badge { flex: 0 0 48px; width: 48px; height: 48px; border-radius: 14px; display: inline-flex; align-items: center; justify-content: center; font-size: 24px; background: rgba(0, 0, 0, 0.35); border: 2px solid var(--border); }
     .ach.done .badge { border-color: var(--rc); box-shadow: 0 0 14px color-mix(in srgb, var(--rc) 40%, transparent); }
     .ach:not(.done) .badge { filter: grayscale(1); opacity: 0.6; }
+    .ach.is-hidden { border-style: dashed; }
+    .ach.is-hidden .name, .ach.is-hidden .desc, .ach.is-hidden .t, .ach.is-hidden .r { letter-spacing: 0.2em; color: var(--text-dim); }
     .body { flex: 1; min-width: 0; display: grid; gap: 4px; }
     .name { font-weight: 800; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .new-tag { padding: 1px 7px; border-radius: 999px; background: var(--gold); color: #2a1600; font-size: 10px; font-weight: 900; letter-spacing: 0.5px; }
@@ -127,11 +129,13 @@
       const eq = equipped();
       const all = WHA.ACHIEVEMENTS;
       const done = all.filter(a => WHA.isUnlocked(a));
+      // a hidden achievement that is still locked shows ??? (and is left out of the rarity counts, which would give it away)
+      const veiled = a => a.hidden && !WHA.isUnlocked(a);
       document.getElementById('achSummary').textContent = `${done.length} / ${all.length} unlocked`;
       document.getElementById('achSummaryText').textContent = done.length === all.length ? 'Every single one. What happened?!' : `${Math.round(done.length / all.length * 100)}% complete`;
       document.getElementById('achSummaryFill').style.width = (done.length / all.length * 100) + '%';
       document.getElementById('rarityRow').innerHTML = RARITY_ORDER.map(r => {
-        const n = all.filter(a => a.rarity === r).length;
+        const n = all.filter(a => a.rarity === r && !veiled(a)).length;
         if (!n) return '';
         return `<span class="r-chip" style="color:${WHA.RARITY_COLORS[r]}">${r[0].toUpperCase() + r.slice(1)} ${done.filter(a => a.rarity === r).length}/${n}</span>`;
       }).join('');
@@ -147,29 +151,32 @@
           const got = WHA.isUnlocked(a);
           if (filter === 'done' && !got) return false;
           if (filter === 'todo' && got) return false;
-          return !term || (a.name + ' ' + a.desc + ' ' + a.title).toLowerCase().includes(term);
+          return !term || (veiled(a) ? '???' : a.name + ' ' + a.desc + ' ' + a.title).toLowerCase().includes(term);
         });
         if (!items.length) continue;
         const catAll = all.filter(a => a.cat === cat.id);
         const catDone = catAll.filter(a => WHA.isUnlocked(a)).length;
-        chips += `<a href="#cat-${cat.id}">${cat.icon} ${esc(cat.id)} ${catDone}/${catAll.length}</a>`;
-        html += `<section class="cat" id="cat-${cat.id}"><div class="cat-head"><h2>${cat.icon} ${esc(cat.id)}</h2><span>${catDone} / ${catAll.length}</span></div><div class="grid">`;
+        const slug = 'cat-' + cat.id.toLowerCase().replace(/[^a-z0-9]+/g, '-'); // "The Wilds" -> cat-the-wilds
+        chips += `<a href="#${slug}">${cat.icon} ${esc(cat.id)} ${catDone}/${catAll.length}</a>`;
+        html += `<section class="cat" id="${slug}"><div class="cat-head"><h2>${cat.icon} ${esc(cat.id)}</h2><span>${catDone} / ${catAll.length}</span></div><div class="grid">`;
         for (const a of items) {
           const got = WHA.isUnlocked(a);
+          const veil = veiled(a);
           const pr = WHA.progress(a, snap);
-          const color = WHA.RARITY_COLORS[a.rarity] || '#bfc7c9';
+          const color = veil ? '#6f7788' : WHA.RARITY_COLORS[a.rarity] || '#bfc7c9';
           const fmt = v => a.unit === 'h' ? (Math.round(v * 10) / 10) + 'h' : short(v);
           let prog;
           if (got) prog = '';
+          else if (veil) prog = '<div class="hint">A secret. It shows itself once you find it.</div>';
           else if (a.event) prog = `<div class="hint">${esc(a.hint || 'Happens when it happens.')}</div>`;
           else prog = `<div class="prog"><span class="bar"><i style="width:${Math.min(100, pr.value / pr.target * 100)}%"></i></span>${fmt(pr.value)} / ${fmt(pr.target)}</div>`;
           const equipBtn = got ? (eq === a.title ? '<button type="button" class="equip on" data-unequip>Equipped</button>' : `<button type="button" class="equip" data-equip="${esc(a.title)}">Equip</button>`) : '';
-          html += `<article class="ach${got ? ' done' : ''}${freshKeys.has(a.key) && got ? ' is-new' : ''}" style="--rc:${color}">
-            <div class="badge" aria-hidden="true">${a.badge}</div>
+          html += `<article class="ach${got ? ' done' : ''}${veil ? ' is-hidden' : ''}${freshKeys.has(a.key) && got ? ' is-new' : ''}" style="--rc:${color}">
+            <div class="badge" aria-hidden="true">${veil ? '❔' : a.badge}</div>
             <div class="body">
-              <div class="name">${esc(a.name)}${freshKeys.has(a.key) && got ? '<span class="new-tag">NEW</span>' : ''}</div>
-              <div class="desc">${esc(a.desc)}</div>
-              <div class="title-line"><span>Title:</span><span class="t">${esc(a.title)}</span><span class="r">${a.rarity}</span>${equipBtn}</div>
+              <div class="name">${veil ? '???' : esc(a.name)}${freshKeys.has(a.key) && got ? '<span class="new-tag">NEW</span>' : ''}</div>
+              <div class="desc">${veil ? '???' : esc(a.desc)}</div>
+              <div class="title-line"><span>Title:</span><span class="t">${veil ? '???' : esc(a.title)}</span><span class="r">${veil ? '???' : a.rarity}</span>${equipBtn}</div>
               ${prog}
             </div>
           </article>`;
@@ -193,6 +200,8 @@
     });
     window.addEventListener('storage', render);
     render();
+    // a link straight to a section (the Wilds' Bag links to #cat-the-wilds): the list is drawn by script, so scroll once it is there
+    if (location.hash) { const el = document.getElementById(decodeURIComponent(location.hash.slice(1))); if (el) el.scrollIntoView(); }
     // seen: clear the "new" list (the highlights stay until the page is left)
     WHA.clearNew();
   </script>

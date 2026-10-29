@@ -420,6 +420,15 @@ async function main() {
         await evalJs('document.querySelector(".w-skin[data-skin=game]").click()');
         await sleep(100);
         check('skins: "Same as the game" goes back to the game\'s skin', await evalJs('WHW.game.state.skin === null && WHW.game.faceSrc !== "mainimage/thumbs/goldwh.webp"'));
+        // achievements in the Bag's Stats tab, and the banner when one unlocks here
+        await evalJs('document.querySelector("[data-tab=stats]").click()');
+        await sleep(150);
+        const achTab = await evalJs('({ next: document.querySelectorAll(".w-ach-next > div").length, head: (document.querySelector(".w-ach-bar") && document.querySelector(".w-ach-bar").closest(".w-section").querySelector("h3").textContent) || "", link: !!document.querySelector("a[href=\\"achievements.html#cat-the-wilds\\"]") })');
+        check('achievements: the Stats tab shows Wilds progress and the three closest', achTab.next === 3 && /\d+ \/ \d+ in the Wilds/.test(achTab.head) && achTab.link, achTab);
+        await evalJs('(() => { WHW.ui.closeModal(); WHW.ui.showAchievements([WHA.BY_KEY.w_kill1, WHA.BY_KEY.w_door]); return true; })()');
+        // (achievements unlocked earlier in this run may be queued first: wait for these to come round)
+        check('achievements: unlocking one here shows a banner', await waitFor('[...document.querySelectorAll(".w-ach")].some(e => /Achievement unlocked/.test(e.textContent) && /First Blood/.test(e.textContent))', 40000));
+        check('achievements: a hidden one says so when it pops', await waitFor('[...document.querySelectorAll(".w-ach.is-hidden")].some(e => /Hidden achievement unlocked/.test(e.textContent) && /Open Sesame/.test(e.textContent))', 40000));
         // and in a recipe
         await evalJs('(() => { WHW.ui.closeModal(); WHW.ui.openStation("forge"); return true; })()');
         await sleep(150);
@@ -443,6 +452,22 @@ async function main() {
         const rate = await evalJs('WHWorldBridge.GOLDEN_RUBIES');
         check('golden trade: the menu says the rubies are waiting', new RegExp(rate.toLocaleString('en-US') + ' rubies are waiting').test(await evalJs('document.getElementById("goldenTradeNote").textContent')));
         check('hall of gods: the statue raised in the Wilds blesses the game', (await evalJs('getGodBonuses().cps')) === 5 && /Solarus \(level 1\)/.test(await evalJs('document.getElementById("godBlessings").textContent')));
+        // achievements: the hidden "Hands Off" is ??? on the achievements page until the Auto Clicker is unlocked
+        await navigate(`http://localhost:${PORT}/achievements.html`, 'typeof WHA === "object" && document.querySelectorAll(".ach").length > 20');
+        const veiled = await evalJs(`(() => { const cards = [...document.querySelectorAll('.ach')]; const q = cards.filter(c => c.classList.contains('is-hidden'));
+            return { hiddenCards: q.length, text: q.map(c => c.querySelector('.name').textContent + '|' + c.querySelector('.desc').textContent + '|' + c.querySelector('.t').textContent), leaks: /Hands Off|Unlock the Auto Clicker|Hands-Free/.test(document.getElementById('achList').textContent), sesame: /Open Sesame/.test(document.getElementById('achList').textContent),
+                wilds: !!document.getElementById('cat-the-wilds') }; })()`);
+        // (the hidden room was opened earlier in this run, so Open Sesame is already unlocked and shown; Hands Off is the one still veiled)
+        check('achievements: a hidden one shows ??? for name, description and title, until it is unlocked', veiled.hiddenCards === 1 && veiled.text.every((t) => t === '???|???|???') && !veiled.leaks && veiled.sesame && veiled.wilds, veiled);
+        await evalJs('(() => { const el = document.getElementById("achSearch"); el.value = "hands"; el.dispatchEvent(new Event("input")); return true; })()');
+        check('achievements: searching does not give a hidden one away', (await evalJs('document.querySelectorAll(".ach.is-hidden").length')) === 0);
+        await evalJs('(() => { const el = document.getElementById("achSearch"); el.value = ""; el.dispatchEvent(new Event("input")); return true; })()');
+        check('achievements: the Wilds have their own section', (await evalJs('document.querySelectorAll("#cat-the-wilds .ach").length')) >= 30);
+        check('achievements: hidden cards hint at a secret, without telling', /A secret. It shows itself once you find it./.test(await evalJs('(document.querySelector(".ach.is-hidden") || {}).textContent || ""')));
+        await navigate(`http://localhost:${PORT}/achievements.html#cat-the-wilds`, 'typeof WHA === "object" && document.querySelectorAll(".ach").length > 20');
+        check('achievements: the link from the Wilds lands on its section', (await evalJs('Math.abs(document.getElementById("cat-the-wilds").getBoundingClientRect().top) < 400')) === true);
+        await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
+        await sleep(600);
         // the Auto Clicker charm: equipped and put on the image, it clicks about 10 times a second by itself
         await evalJs('(() => { showNormalMenu(); WHI.grantSpecial("autoClicker"); WHI.toggleEquip("autoClicker"); window.__autoN = 0; window.__autoT0 = performance.now(); const inc = increment; increment = function (o) { if (o && o.auto) window.__autoN++; return inc.apply(this, arguments); }; setAutoTarget("image"); return true; })()');
         await sleep(1500);
@@ -451,7 +476,14 @@ async function main() {
         check('auto clicker: on the image, it clicks about 10 times a second', auto.n >= 10 && auto.n / auto.s >= 7 && auto.n / auto.s <= 12, auto);
         check('auto clicker: its bar and the clicker on the image show', await evalJs('!document.getElementById("autoClicker").hidden && !document.getElementById("autoClickerBadge").hidden'));
         if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-auto-clicker.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+        // ...and unlocking it unlocks Hands Off, which then shows its real name
+        await evalJs('checkDataAchievements(true)');
+        check('achievements: unlocking the Auto Clicker unlocks Hands Off', (await evalJs('localStorage.getItem("ach_w_hands_off")')) === '1');
         await evalJs('setAutoTarget(null)');
+        await navigate(`http://localhost:${PORT}/achievements.html`, 'typeof WHA === "object" && document.querySelectorAll(".ach").length > 20');
+        const revealed = await evalJs(`(() => { const c = [...document.querySelectorAll('.ach.done')].find(x => /Hands Off/.test(x.textContent)); return c ? { name: c.querySelector('.name').textContent.replace('NEW', '').trim(), desc: c.querySelector('.desc').textContent, title: c.querySelector('.t').textContent, hiddenLeft: document.querySelectorAll('.ach.is-hidden').length, equip: !!c.querySelector('[data-equip]') } : null; })()`);
+        check('achievements: once unlocked it shows its name, description and title', revealed && revealed.name === 'Hands Off' && /Auto Clicker/.test(revealed.desc) && revealed.title === 'Hands-Free' && revealed.hiddenLeft === 0 && revealed.equip, revealed);
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-achievements.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
         await navigate(`http://localhost:${PORT}/world.html?whdebug`, 'typeof window.WHWorldDebug === "object" && WHWorldDebug.frames() > 30');
         await sleep(500);
         check('golden trade: the Wilds collects the rubies when it opens', (await evalJs('WHWorldDebug.state().rubies')) === rubiesBefore + rate && (await evalJs('WHWorldDebug.state().inAck')) >= 1,

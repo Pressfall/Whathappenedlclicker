@@ -279,6 +279,8 @@ function formatNumber(n) {
 function notify(message, durationMs) {
     try {
         const text = String(message);
+        // the Auto Clicker on an upgrade you can't afford yet just waits for it, without a message 10 times a second
+        if (_autoClicking && /^Not enough/.test(text)) return;
         const ms = durationMs || 2600;
         let box = document.getElementById('toastContainer');
         if (!box) {
@@ -359,11 +361,13 @@ function renderAchievementPopup(title, message, summary) {
         setTimeout(() => { popup.classList.remove('in'); setTimeout(() => { try { popup.remove(); } catch (e) {} }, 300); }, summary ? 7000 : 5000);
     } catch (e) { try { console.warn('achievement popup failed', e); } catch (e2) {} }
 }
+// A hidden achievement (??? on the achievements page) says so when it is finally found
+function achievementPopupName(a) { return (a.hidden ? '🔓 Hidden achievement: ' : '') + a.name; }
 // Unlock an event achievement (crit, click count...) by its key in achievements-data.js and announce it
 function unlockAchievement(key) {
     try {
         const a = window.WHA && window.WHA.unlock(key);
-        if (a) { showAchievementPopup(a.name, `${a.desc} Title: ${a.title}`); try { populateTitleSelect(); } catch (e) {} }
+        if (a) { showAchievementPopup(achievementPopupName(a), `${a.desc} Title: ${a.title}`); try { populateTitleSelect(); } catch (e) {} }
     } catch (e) {}
 }
 
@@ -389,7 +393,7 @@ function checkDataAchievements(force) {
         };
         if (window.SPECIAL_UPGRADES) { live.specialsOwned = owned; live.specialsTotal = window.SPECIAL_UPGRADES.length; }
         const fresh = window.WHA.checkAll(window.WHA.snapshot(live));
-        fresh.forEach(a => showAchievementPopup(a.name, `${a.desc} Title: ${a.title}`));
+        fresh.forEach(a => showAchievementPopup(achievementPopupName(a), `${a.desc} Title: ${a.title}`));
         if (fresh.length) { try { populateTitleSelect(); } catch (e) {} }
     } catch (e) { try { console.warn('checkDataAchievements failed', e); } catch (e2) {} }
 }
@@ -2950,13 +2954,15 @@ try {
     document.addEventListener('keydown', (e) => { if (_autoPlacing && e.key === 'Escape') toggleAutoPlacing(); });
 } catch (e) {}
 // One auto click; runs 10 times a second
+var _autoClicking = false; // true while the Auto Clicker presses a button (see notify; var, as notify can run before this line)
 function autoClickTick() {
     renderAutoClicker();
     if (!autoClickRate() || !_autoTarget || _autoPlacing || document.hidden || suppressAutosave || !window._saveLoaded) return false;
     if (_autoTarget === 'image') { increment({ auto: true }); return true; }
     const el = autoTargetEl(_autoTarget);
     if (!el || el.disabled) return false;
-    el.click();
+    _autoClicking = true;
+    try { el.click(); } finally { _autoClicking = false; }
     return true;
 }
 // The bar under the image (while the charm is equipped), and the little clicker sitting on whatever it clicks
@@ -6712,6 +6718,7 @@ function settleWorldPurchases(tell) {
         goldenWhat = (Number(goldenWhat) || 0) - buy.golden;
         if (!saveGame()) { diamonds = before.diamonds; goldenWhat = before.goldenWhat; left.push(id); continue; }
         window.WHI.grantSpecial(buy.item);
+        try { checkDataAchievements(true); } catch (e) {} // Hands Off
         notify(buy.name + ' has arrived from the Wilds! ' + formatNumber(buy.gems) + ' gems and ' + formatNumber(buy.golden) + ' Golden What Happened paid. Equip it in Items (🎒).', 9000);
     }
     writeWorldOwed(left);

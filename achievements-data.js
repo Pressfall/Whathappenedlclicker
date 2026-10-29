@@ -7,18 +7,19 @@
 (function () {
     'use strict';
 
-    const SAVE_KEY = 'whathappened_save', SAVE_KEY_LEGACY = 'whathappened_save_v1', FOLLOWERS_KEY = 'whathappened_followers', ITEMS_KEY = 'whathappened_items';
+    const SAVE_KEY = 'whathappened_save', SAVE_KEY_LEGACY = 'whathappened_save_v1', FOLLOWERS_KEY = 'whathappened_followers', ITEMS_KEY = 'whathappened_items', WORLD_KEY = 'whathappened_world';
 
     // Display order of the categories on the achievements page
     const CATEGORIES = [
         { id: 'Clicking', icon: '👆' }, { id: 'Income', icon: '💸' }, { id: 'Upgrades', icon: '📈' }, { id: 'Prestige', icon: '🔁' },
         { id: 'Divine', icon: '✨' }, { id: 'Specials', icon: '⭐' }, { id: 'Followers', icon: '🦎' }, { id: 'Casino', icon: '🎰' },
-        { id: 'Clans', icon: '🛡️' }, { id: 'Lootboxes', icon: '🎁' }, { id: 'Dedication', icon: '⏳' }, { id: 'Collector', icon: '💎' },
+        { id: 'Clans', icon: '🛡️' }, { id: 'The Wilds', icon: '⚔️' }, { id: 'Lootboxes', icon: '🎁' }, { id: 'Dedication', icon: '⏳' }, { id: 'Collector', icon: '💎' },
     ];
 
     // stat: a snapshot field name, or a function (snapshot) => number. Unlocks when stat >= target.
     // event: unlocked by the game when it happens (a crit, a casino win...), never by checkAll. hint explains how.
     // unit: 'h' shows progress in hours.
+    // hidden: the achievements page shows ??? for its name, description and title (and gives no progress) until it is unlocked.
     const ACHIEVEMENTS = [
         // ---- the original achievements (old keys) ----
         { key: 'gettingStarted', cat: 'Clicking', name: 'Getting Started', desc: 'Click the main button 10 times.', title: 'What Happened Beginner', rarity: 'common', badge: '🐣', stat: 'clicks', target: 10 },
@@ -122,6 +123,44 @@
         { key: 'x_box_diamond', cat: 'Lootboxes', name: 'Shine Bright', desc: 'Get a Diamond Chest.', title: 'Diamond Digger', rarity: 'rare', badge: '💠', stat: 'bestBoxTier', target: 4 },
         { key: 'x_box_mythic', cat: 'Lootboxes', name: 'Into the Vault', desc: 'Get a Mythic Vault.', title: 'Vault Breaker', rarity: 'legendary', badge: '🌌', stat: 'bestBoxTier', target: 5 },
         { key: 'x_charms_all', cat: 'Lootboxes', name: 'Charmed, I\'m Sure', desc: 'Find all 15 charms.', title: 'Charmer', rarity: 'epic', badge: '🧿', stat: 'charmsSeen', target: 15 },
+        // ---- The Wilds (world.html): read from its own save, so they unlock in the game, the Wilds and the achievements page ----
+        { key: 'w_start', cat: 'The Wilds', name: 'Into the Wilds', desc: 'Step through the gates of Wildgate Town.', title: 'Wanderer', rarity: 'common', badge: '🥾', stat: 'wildsStarted', target: 1 },
+        { key: 'w_kill1', cat: 'The Wilds', name: 'First Blood', desc: 'Defeat a monster in the Wilds.', title: 'Slime Poker', rarity: 'common', badge: '🗡️', stat: 'wildsKills', target: 1 },
+        { key: 'w_kill100', cat: 'The Wilds', name: 'Pest Control', desc: 'Defeat 100 monsters.', title: 'Exterminator', rarity: 'uncommon', badge: '🪲', stat: 'wildsKills', target: 100 },
+        { key: 'w_kill1000', cat: 'The Wilds', name: 'Grass Is Greener', desc: 'Defeat 1,000 monsters.', title: 'Grim Mower', rarity: 'rare', badge: '☠️', stat: 'wildsKills', target: 1000 },
+        { key: 'w_elite25', cat: 'The Wilds', name: 'Elite Taste', desc: 'Defeat 25 elite monsters.', title: 'Elite Hunter', rarity: 'rare', badge: '⭐', stat: 'wildsElites', target: 25 },
+        { key: 'w_boss1', cat: 'The Wilds', name: 'Big Game', desc: 'Defeat a boss.', title: 'Boss Slayer', rarity: 'uncommon', badge: '👑', stat: 'wildsBosses', target: 1 },
+        { key: 'w_boss4', cat: 'The Wilds', name: 'Four Down', desc: 'Defeat all four bosses: The Overgrown, the Gilded Golem, Inferno WH and Frozen WH.', title: 'Wilds Champion', rarity: 'epic', badge: '🏆', stat: 'wildsBosses', target: 4 },
+        { key: 'w_rival1', cat: 'The Wilds', name: 'Friendly Rivalry', desc: 'Beat a rival adventurer.', title: 'Rival Beater', rarity: 'uncommon', badge: '🤺', stat: 'wildsRivals', target: 1 },
+        { key: 'w_rival10', cat: 'The Wilds', name: 'No Contest', desc: 'Beat 10 rival adventurers.', title: 'Undefeated', rarity: 'rare', badge: '🥇', stat: 'wildsRivals', target: 10 },
+        { key: 'w_frost', cat: 'The Wilds', name: 'Cold Feet', desc: 'Open every zone, all the way to Frostveil.', title: 'Frostbitten', rarity: 'rare', badge: '❄️', stat: 'wildsZones', target: 5 },
+        { key: 'w_gather500', cat: 'The Wilds', name: 'Resource Goblin', desc: 'Chop, mine or pick 500 resources.', title: 'Resource Goblin', rarity: 'uncommon', badge: '⛏️', stat: 'wildsGathered', target: 500 },
+        { key: 'w_craft1', cat: 'The Wilds', name: 'Apprentice Smith', desc: 'Craft your first piece of gear.', title: 'Apprentice Smith', rarity: 'common', badge: '🔨', stat: 'wildsCrafted', target: 1 },
+        { key: 'w_master', cat: 'The Wilds', name: 'Practice Makes Perfect', desc: 'Score 90 or better in a crafting minigame.', title: 'Master Smith', rarity: 'rare', badge: '🛠️', stat: 'wildsBestScore', target: 90 },
+        { key: 'w_legend', cat: 'The Wilds', name: 'Hammer of Legend', desc: 'Craft a Legendary piece of gear.', title: 'Legendary Smith', rarity: 'legendary', badge: '🌟', stat: 'wildsLegendaries', target: 1 },
+        { key: 'w_box1', cat: 'The Wilds', name: 'Crate Expectations', desc: 'Craft a lootbox at the Rune Altar.', title: 'Box Maker', rarity: 'uncommon', badge: '📦', stat: 'wildsBoxes', target: 1 },
+        { key: 'w_rubies10k', cat: 'The Wilds', name: 'Ruby Rush', desc: 'Earn 10,000 rubies.', title: 'Ruby Collector', rarity: 'uncommon', badge: '♦️', stat: 'wildsRubies', target: 1e4 },
+        { key: 'w_rubies100k', cat: 'The Wilds', name: 'Ruby Baron', desc: 'Earn 100,000 rubies.', title: 'Ruby Baron', rarity: 'rare', badge: '💰', stat: 'wildsRubies', target: 1e5 },
+        { key: 'w_rubies1m', cat: 'The Wilds', name: 'Ruby Emperor', desc: 'Earn 1,000,000 rubies.', title: 'Ruby Emperor', rarity: 'legendary', badge: '🔴', stat: 'wildsRubies', target: 1e6 },
+        { key: 'w_quest10', cat: 'The Wilds', name: 'Errand Runner', desc: 'Hand in 10 quests.', title: 'Errand Runner', rarity: 'uncommon', badge: '📜', stat: 'wildsQuests', target: 10 },
+        { key: 'w_quest50', cat: 'The Wilds', name: 'Odd Job Legend', desc: 'Hand in 50 quests.', title: 'Odd Jobber', rarity: 'rare', badge: '📚', stat: 'wildsQuests', target: 50 },
+        { key: 'w_class1', cat: 'The Wilds', name: 'Career Change', desc: 'Unlock a second class.', title: 'Class Act', rarity: 'uncommon', badge: '🎭', stat: 'wildsClasses', target: 1 },
+        { key: 'w_class5', cat: 'The Wilds', name: 'Jack of All Trades', desc: 'Unlock all six classes.', title: 'Jack of All Trades', rarity: 'epic', badge: '🃏', stat: 'wildsClasses', target: 5 },
+        { key: 'w_skills20', cat: 'The Wilds', name: 'Skill Tree Hugger', desc: 'Learn 20 skills.', title: 'Skilled', rarity: 'uncommon', badge: '🌳', stat: 'wildsSkills', target: 20 },
+        { key: 'w_skills_all', cat: 'The Wilds', name: 'Skill Issue? Not Anymore', desc: 'Learn every skill of every class.', title: 'Fully Skilled', rarity: 'legendary', badge: '🧠', stat: 'wildsSkills', target: 72 },
+        { key: 'w_god1', cat: 'The Wilds', name: 'Say Your Prayers', desc: 'Raise a statue in the Hall of Gods.', title: 'Faithful', rarity: 'uncommon', badge: '🏛️', stat: 'wildsGodsRaised', target: 1 },
+        { key: 'w_god6', cat: 'The Wilds', name: 'Full Pantheon', desc: 'Raise all six statues in the Hall of Gods.', title: 'Pantheon Keeper', rarity: 'rare', badge: '🕍', stat: 'wildsGodsRaised', target: 6 },
+        { key: 'w_god10', cat: 'The Wilds', name: 'Devout', desc: 'Bring a god to level 10.', title: 'Devout', rarity: 'rare', badge: '🙏', stat: 'wildsGodTop', target: 10 },
+        { key: 'w_god20', cat: 'The Wilds', name: 'Zealot', desc: 'Bring a god to level 20. There is no limit.', title: 'Zealot', rarity: 'legendary', badge: '🔆', stat: 'wildsGodTop', target: 20 },
+        { key: 'w_pvp1', cat: 'The Wilds', name: 'Player Versus Player', desc: 'Knock out another player in the Wilds.', title: 'Duelist', rarity: 'uncommon', badge: '⚔️', stat: 'wildsPvpWins', target: 1 },
+        { key: 'w_pvp25', cat: 'The Wilds', name: 'Arena Regular', desc: 'Knock out 25 other players.', title: 'Gladiator', rarity: 'epic', badge: '🛡️', stat: 'wildsPvpWins', target: 25 },
+        { key: 'w_death10', cat: 'The Wilds', name: 'Learning Experience', desc: 'Get knocked out 10 times.', title: 'Respawn Regular', rarity: 'common', badge: '💫', stat: 'wildsDeaths', target: 10 },
+        { key: 'w_gems10', cat: 'The Wilds', name: 'Care Package', desc: 'Send 10 gems home from the Wilds.', title: 'Gem Courier', rarity: 'uncommon', badge: '💎', stat: 'wildsGemsSent', target: 10 },
+        { key: 'w_hours10', cat: 'The Wilds', name: 'Frontier Regular', desc: 'Spend 10 hours in the Wilds.', title: 'Frontiersman', rarity: 'uncommon', badge: '⏱️', stat: 'wildsHours', target: 10, unit: 'h' },
+        { key: 'w_hours100', cat: 'The Wilds', name: 'Wilds Veteran', desc: 'Spend 100 hours in the Wilds.', title: 'Wilds Veteran', rarity: 'epic', badge: '🏕️', stat: 'wildsHours', target: 100, unit: 'h' },
+        // hidden ones: ??? on the achievements page until unlocked
+        { key: 'w_door', cat: 'The Wilds', name: 'Open Sesame', desc: 'Find the way into the hidden room at the far end of the Hall of Gods.', title: 'Doorkeeper', rarity: 'epic', badge: '🚪', hidden: true, stat: 'wildsHall', target: 1 },
+        { key: 'w_hands_off', cat: 'The Wilds', name: 'Hands Off', desc: 'Unlock the Auto Clicker.', title: 'Hands-Free', rarity: 'mythic', badge: '🖲️', hidden: true, stat: 'autoClicker', target: 1 },
         // ---- misc ----
         { key: 'x_gems_100', cat: 'Collector', name: 'Shiny Rocks', desc: 'Hold 100 gems at once.', title: 'Gem Hoarder', rarity: 'uncommon', badge: '💎', stat: 'gems', target: 100 },
     ];
@@ -135,7 +174,14 @@
     function snapshot(live) {
         const s = readJSON(SAVE_KEY) || readJSON(SAVE_KEY_LEGACY) || {};
         const f = readJSON(FOLLOWERS_KEY) || {};
-        const items = (readJSON(ITEMS_KEY) || {}).stats || {};
+        const itemsSave = readJSON(ITEMS_KEY) || {};
+        const items = itemsSave.stats || {};
+        // The Wilds keep their own save: whathappened_world (written only by world.html)
+        const w = readJSON(WORLD_KEY) || {}, ws = w.stats || {}, wc = n => Math.max(0, Number(n) || 0);
+        const truthy = o => Object.keys(o && typeof o === 'object' ? o : {}).filter(k => o[k]);
+        const wBosses = w.bosses && typeof w.bosses === 'object' ? Object.keys(w.bosses).filter(b => w.bosses[b] && w.bosses[b].kills > 0).length : 0;
+        const wGods = w.gods && typeof w.gods === 'object' ? w.gods : {};
+        const wHall = Object.keys(wGods).filter(g => g !== 'briley'); // the six statues in the Hall; the hidden god has its own room
         const list = Array.isArray(f.list) ? f.list : [];
         const W = window.WHF;
         const sp = id => (W && W.SPECIES_BY_ID[id]) || null;
@@ -187,6 +233,21 @@
             boxesMerged: Number(items.merged) || 0,
             bestBoxTier: Number(items.bestTier) || 0, // 1 = Wooden Crate ... 5 = Mythic Vault
             charmsSeen: Number(items.charmsSeen) || 0,
+            // the Auto Clicker charm (a one-time purchase from the hidden room in the Wilds)
+            autoClicker: ((itemsSave.items || {}).autoClicker || 0) > 0 ? 1 : 0,
+            wildsStarted: w.v ? 1 : 0,
+            wildsKills: wc(ws.kills), wildsElites: wc(ws.elites), wildsBosses: wBosses, wildsRivals: wc(ws.rivalsBeaten),
+            wildsZones: truthy((w.unlocked || {}).zones).length,
+            wildsGathered: wc(ws.mined) + wc(ws.chopped) + wc(ws.gathered),
+            wildsCrafted: wc(ws.crafted), wildsBestScore: wc(ws.bestScore), wildsLegendaries: wc(ws.legendaries), wildsBoxes: wc(ws.boxesCrafted),
+            wildsRubies: wc(ws.rubiesEarned), wildsQuests: wc(ws.questsDone),
+            wildsClasses: truthy((w.classes || {}).unlocked).filter(c => c !== 'warrior').length,
+            wildsSkills: truthy((w.skills || {}).learned).length,
+            wildsGodsRaised: wHall.filter(g => wc(wGods[g]) >= 1).length,
+            wildsGodTop: Math.max(0, ...Object.keys(wGods).map(g => wc(wGods[g]))),
+            wildsPvpWins: wc(ws.pvpWins), wildsDeaths: wc(ws.deaths), wildsGemsSent: wc(ws.gemsSent),
+            wildsHours: wc(ws.playSec) / 3600,
+            wildsHall: (w.secrets || {}).hallDoor === true ? 1 : 0,
         }, divine, live || {});
         const ups = snap.upgrades.slice(1);
         snap.upgradeMax = Math.max(0, ...ups);

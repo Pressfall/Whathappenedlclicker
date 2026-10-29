@@ -80,7 +80,8 @@
         // the other player behind a PvP hit (world-online.js)
         if (p.riposteUntil > E.time && !opts.unblockable) {
             const src = opts.from, actor = src && !src.dead && (src.kind === 'monster' || src.kind === 'boss' || src.kind === 'clone' || src.kind === 'rival');
-            if (actor || opts.remote) { riposted(p, actor ? src : null, opts.remote); return 0; }
+            // a boss's shockwave counts too (from: the wave): it's cancelled, there's just nobody in it to cut
+            if (actor || opts.remote || src) { riposted(p, actor ? src : null, opts.remote); return 0; }
         }
         if (st.dodge && !opts.unblockable && rnd() < st.dodge) { p.iframes = 0.25; E.floatText(p.x, p.y - 30, 'DODGE', '#9ad7ff', 14); WHW.sfx('dash'); return 0; }
         if (opts.projectile && buffOn(p, 'reflect')) {

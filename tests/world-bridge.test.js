@@ -61,6 +61,18 @@ test('prune forgets applied entries and moves held-back rewards in when there is
     assert.equal(s.overflow, null);
 });
 
+test('a purchase on top of a full outbox survives reloading the save, and so does the oldest reward', () => {
+    const W = require('../core/world-logic');
+    const s = W.freshState(NOW);
+    for (let i = 0; i < Bridge.MAX_OUTBOX; i++) Bridge.push(s, { gems: 1, src: 't' }, 0, NOW);
+    assert.equal(s.outbox.length, Bridge.MAX_OUTBOX);
+    Bridge.push(s, { buy: 'autoClicker', src: 'hidden' }, 0, NOW);
+    const back = W.migrate(JSON.parse(W.serialize(s, NOW, 0)), NOW);
+    assert.equal(back.outbox.length, Bridge.MAX_OUTBOX + 1);
+    assert.equal(back.outbox[0].seq, 1, 'the oldest reward is still there');
+    assert.equal(back.outbox[back.outbox.length - 1].buy, 'autoClicker');
+});
+
 test('describe reads naturally', () => {
     assert.equal(Bridge.describe({ gems: 3, golden: 1, boxes: [0, 2, 0, 0, 0] }), 'From the Wilds: +3 gems, +1 Golden What Happened and 2 Iron Chests');
     assert.equal(Bridge.describe({ gems: 1, golden: 0, boxes: [0, 0, 0, 0, 0] }), 'From the Wilds: +1 gem');

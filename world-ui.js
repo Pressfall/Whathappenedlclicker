@@ -171,6 +171,54 @@
         setTimeout(() => { el.classList.add('is-out'); setTimeout(() => el.remove(), 420); }, kind === 'gem' || kind === 'gold' ? 4200 : 2800);
     }
     const hintAt = new Map();
+    // ---------------- achievements unlocked here (world.js noticeAchievements) ----------------
+    // One banner at a time, like the game's popups; a big batch (an old save's first visit) shows two and then a summary
+    const achQueue = [];
+    let achBusy = false;
+    function showAchievements(list) {
+        if (!list || !list.length) return;
+        if (list.length > 3) achQueue.push(list[0], list[1], { more: list.slice(2) });
+        else achQueue.push(...list);
+        if (!achBusy) nextAchievement();
+    }
+    function nextAchievement() {
+        const a = achQueue.shift();
+        if (!a) { achBusy = false; return; }
+        achBusy = true;
+        const A = window.WHA, el = document.createElement('div');
+        el.className = 'w-ach' + (a.hidden ? ' is-hidden' : '');
+        el.setAttribute('role', 'status');
+        if (a.more) {
+            el.style.setProperty('--rc', '#ffc83d');
+            el.innerHTML = `<span class="w-ach-badge">🎖️</span><div><small>Achievements unlocked</small><b>+${a.more.length} more</b><span>${esc(a.more.map(x => x.name).join(', '))}</span></div>`;
+        } else {
+            el.style.setProperty('--rc', (A && A.RARITY_COLORS[a.rarity]) || '#ffc83d');
+            el.innerHTML = `<span class="w-ach-badge">${a.badge}</span><div><small>${a.hidden ? '🔓 Hidden achievement unlocked!' : 'Achievement unlocked'}</small><b>${esc(a.name)}</b>
+                <span>${esc(a.desc)}</span><span class="w-ach-title">Title: <i>${esc(a.title)}</i> · ${esc(a.rarity.charAt(0).toUpperCase() + a.rarity.slice(1))}</span></div>`;
+        }
+        $('toasts').appendChild(el);
+        WHW.sfx(a.hidden || a.rarity === 'legendary' || a.rarity === 'mythic' ? 'rune' : 'gem');
+        requestAnimationFrame(() => el.classList.add('in'));
+        setTimeout(() => { el.classList.remove('in'); setTimeout(() => { el.remove(); nextAchievement(); }, 350); }, a.hidden ? 5600 : a.more ? 5000 : 3800);
+    }
+    // The Stats tab: how far along the Wilds achievements are, and the three closest to unlocking
+    function achievementsHtml() {
+        const A = window.WHA;
+        if (!A) return '';
+        try { WHW.save(); } catch (e) {} // the achievements read the save: make it current
+        const snap = A.snapshot(), list = A.ACHIEVEMENTS.filter(a => a.cat === 'The Wilds');
+        showAchievements(A.checkAll(snap)); // anything already earned unlocks now, rather than sitting at 100% below
+        const done = list.filter(a => A.isUnlocked(a)).length;
+        const next = list.filter(a => !a.hidden && !A.isUnlocked(a)).map(a => ({ a, p: A.progress(a, snap) })).filter(x => !x.p.done)
+            .sort((x, y) => y.p.value / y.p.target - x.p.value / x.p.target).slice(0, 3);
+        const num = (a, v) => (a.unit === 'h' ? (Math.round(v * 10) / 10) + 'h' : fmt(Math.floor(v)));
+        return `<div class="w-section"><h3>Achievements <span class="muted">${done} / ${list.length} in the Wilds</span></h3>
+            <div class="w-ach-bar"><i style="width:${(done / list.length * 100).toFixed(1)}%"></i></div>
+            ${next.length ? `<div class="w-ach-next">${next.map(({ a, p }) => `<div style="--rc:${A.RARITY_COLORS[a.rarity]}"><span class="w-ach-badge">${a.badge}</span>
+                <div><b>${esc(a.name)}</b><small>${esc(a.desc)}</small><span class="w-ach-bar"><i style="width:${Math.min(100, p.value / p.target * 100).toFixed(1)}%"></i></span></div>
+                <span class="w-ach-num">${num(a, p.value)} / ${num(a, p.target)}</span></div>`).join('')}</div>` : ''}
+            <p class="w-note"><a href="achievements.html#cat-the-wilds">See every achievement</a>. Each one gives a title to wear in chat and on the leaderboard${list.some(a => a.hidden) ? ', and a few are secrets' : ''}.</p></div>`;
+    }
     function hint(msg) { const t = hintAt.get(msg) || 0; if (performance.now() - t < 4000) return; hintAt.set(msg, performance.now()); toast(msg, 'bad'); }
     function banner(title, sub) {
         const b = $('banner');
@@ -773,6 +821,7 @@
                 <span>Monsters <b>${fmt(st.kills)}</b></span><span>Elites <b>${fmt(st.elites)}</b></span><span>Bosses <b>${fmt(st.bossKills)}</b></span><span>Rivals beaten <b>${fmt(st.rivalsBeaten)}</b></span>
                 <span>Ore mined <b>${fmt(st.mined)}</b></span><span>Trees chopped <b>${fmt(st.chopped)}</b></span><span>Things crafted <b>${fmt(st.crafted)}</b></span><span>Best craft <b>${st.bestScore}</b></span>
                 <span>Legendaries <b>${fmt(st.legendaries)}</b></span><span>Rubies earned <b>${fmt(st.rubiesEarned)}</b></span><span>Knocked out <b>${fmt(st.deaths)}</b></span><span>Gems sent home <b>${fmt(st.gemsSent)}</b></span><span>Players beaten <b>${fmt(st.pvpWins || 0)}</b></span><span>Beaten by players <b>${fmt(st.pvpLosses || 0)}</b></span></div></div>`;
+            html += achievementsHtml();
         }
         body.innerHTML = html;
         wireTabs(body, (t) => { bagTab = t; confirmSalvage = 0; renderBagBody(); });
@@ -1049,5 +1098,5 @@
     WHW.toast = toast;
     WHW.hint = hint;
     WHW.banner = banner;
-    WHW.ui = { modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
+    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
 })();

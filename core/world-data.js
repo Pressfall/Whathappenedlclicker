@@ -517,7 +517,7 @@
         marla_obsidian: { title: 'Glass from Fire', text: 'Obsidian and sulfur from the Ember Wastes. Do not ask what for.', goal: { kind: 'deliver', mats: { obsidian: 5, sulfur: 4 } }, need: { zone: 'ember' }, rubies: 950 },
         marla_star: { title: 'A Fallen Star', text: 'They say stars fall on Frostveil and freeze inside the crystals. Find me one.', goal: { kind: 'deliver', mats: { star_fragment: 1, frost_crystal: 4 } }, need: { zone: 'frost' }, rubies: 2000 },
         // Hilde: crafting
-        hilde_first: { title: 'First Forging', text: 'Make something at the Forge or the Workbench. Anything. Let me see how you work.', goal: { kind: 'craft', n: 1 }, rubies: 80 },
+        hilde_first: { title: 'First Forging', text: 'Make a piece of gear at the Forge or the Workbench. Any piece will do. Let me see how you work.', goal: { kind: 'craft', n: 1 }, rubies: 80 },
         hilde_fine: { title: 'Fine Work', text: 'Now make it properly: a piece of Fine quality or better.', goal: { kind: 'craft', minScore: 55, n: 1 }, rubies: 160 },
         hilde_crate: { title: 'A Crate for the Road', text: 'Craft a lootbox at the Rune Altar. People back home pay well for them.', goal: { kind: 'box', n: 1 }, rubies: 260 },
         hilde_master: { title: 'Masterwork', text: 'A Masterwork piece: ninety or better at the station. No shortcuts.', goal: { kind: 'craft', minScore: 90, n: 1 }, rubies: 650 },

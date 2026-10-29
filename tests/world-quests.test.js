@@ -152,6 +152,23 @@ test('after the story, one daily quest a day: the same all day, paid by how far 
     assert.equal(W.questOffer(s, 'hilde', NOW + DAY).rubies, D.QUESTS[W.questOffer(s, 'hilde', NOW + DAY).id].rubies * 3, 'tier 3 pays three times as much');
 });
 
+test("a daily accepted before midnight and handed in after it counts for its own day, not the next one's", () => {
+    const s = W.freshState(NOW);
+    s.quests.hilde = { step: D.NPCS.hilde.chain.length, active: null, dailyDone: '' };
+    const lateNight = new Date(2026, 9, 28, 23, 50).getTime(), afterMidnight = new Date(2026, 9, 29, 0, 10).getTime();
+    const r = W.acceptQuest(s, 'hilde', lateNight);
+    assert.ok(r.ok);
+    assert.equal(s.quests.hilde.active.day, W.dayKey(lateNight));
+    // it survives a save
+    const back = W.migrate(JSON.parse(W.serialize(s, lateNight, 0)), lateNight);
+    assert.equal(back.quests.hilde.active.day, W.dayKey(lateNight));
+    back.quests.hilde.active.prog = 99;
+    if (D.QUESTS[r.id].goal.kind === 'deliver') for (const id in D.QUESTS[r.id].goal.mats) W.give(back, id, D.QUESTS[r.id].goal.mats[id], true);
+    assert.ok(W.turnInQuest(back, 'hilde', afterMidnight).ok);
+    assert.equal(back.quests.hilde.dailyDone, W.dayKey(lateNight));
+    assert.ok(W.questOffer(back, 'hilde', afterMidnight).daily, "today's daily is still on offer");
+});
+
 test('quests survive a save; damaged quest data is cleaned', () => {
     const s = W.freshState(NOW);
     W.acceptQuest(s, 'brannoc', NOW);
