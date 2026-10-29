@@ -135,7 +135,7 @@ async function main() {
         await a.mouse(pp.x + 90, pp.y);
         await sleep(400);
         const castOn = (cls, id) => `(() => { const W = WHWorld, g = WHW.game, s = g.state, p = g.player; s.classes.unlocked.${cls} = true; W.setClass(s, '${cls}'); g.pstats = W.playerStats(s);
-            s.skills.learned.${id} = true; W.equipAbility(s, '${id}', 0); p.abCd = {}; p.stam.val = 100; return WHW.actors.castAbility(0); })()`;
+            s.skills.learned.${id} = true; W.equipAbility(s, '${id}', 0); p.abCharges = {}; p.stam.val = 100; return WHW.actors.castAbility(0); })()`;
         check('the attacker casts Whirlwind next to them', await a.evalJs(castOn('warrior', 'whirlwind')) === true);
         check('Whirlwind hurts the other player (on their page)', await b.waitFor('WHW.game.player.hp < 300', 5000), await b.evalJs('WHW.game.player.hp'));
         check('they see the Whirlwind being cast', await b.waitFor('window.__casts.includes("whirlwind")', 3000), await b.evalJs('window.__casts'));
@@ -146,6 +146,18 @@ async function main() {
             await b.evalJs('WHW.game.player.stunUntil - WHW.engine.time <= WHWorldOnline.playerStun(WHWorldData.ABILITIES.net_shot.stun)'));
         await a.evalJs('(() => { const W = WHWorld, g = WHW.game; W.setClass(g.state, "warrior"); g.pstats = W.playerStats(g.state); })()');
         await sleep(1300);
+        // a Riposte against a player: their hit does nothing, and they are left with no stamina, none coming back for a while
+        await b.evalJs('(() => { const p = WHW.game.player; p.hp = 300; p.iframes = 0; p.stunUntil = 0; })()');
+        await a.evalJs('(() => { const p = WHW.game.player; p.stam.val = 100; p.exhaustUntil = 0; })()');
+        check('the defender raises a Riposte', await b.evalJs(castOn('rogue', 'riposte')) === true);
+        await b.evalJs('WHW.game.player.riposteUntil = WHW.engine.time + 5'); // a wide window, so the network delay can't miss it
+        await a.evalJs('WHW.online.hitRemote(WHW.online.here()[0], { kind: "melee", dmg: 20, ang: 0, perfect: false })');
+        check('the riposted attacker is disarmed: no stamina, and none coming back', await a.waitFor('WHW.game.player.exhaustUntil > WHW.engine.time', 5000) &&
+            await a.evalJs('WHW.game.player.stam.val < 5'), await a.evalJs('({ ex: WHW.game.player.exhaustUntil - WHW.engine.time, stam: WHW.game.player.stam.val })'));
+        check('the defender takes nothing', await b.evalJs('WHW.game.player.hp') === 300);
+        await b.evalJs('(() => { const W = WHWorld, g = WHW.game; g.player.riposteUntil = 0; W.setClass(g.state, "warrior"); g.pstats = W.playerStats(g.state); })()');
+        await a.evalJs('(() => { const p = WHW.game.player; p.exhaustUntil = 0; p.stam.val = 100; })()');
+        await sleep(600);
         // knocked out while carrying ore: it drops as loot for the winner
         await b.evalJs('(() => { const g = WHW.game; WHW.shieldWanted = () => false; g.player.shield.up = false; g.state.bag = { iron_ore: 10, copper_ore: 6 }; g.player.hp = 1; g.player.iframes = 0; })()');
         await swing(30);

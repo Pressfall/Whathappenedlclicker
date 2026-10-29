@@ -69,14 +69,26 @@
         { id: 'sigil_mines', name: 'Gilded Sigil', color: '#ffcf4a', icon: '⚜️', sell: 0, kind: 'key' },
         { id: 'sigil_ember', name: 'Inferno Sigil', color: '#ff6a2b', icon: '🔥', sell: 0, kind: 'key' },
         { id: 'sigil_frost', name: 'Frozen Sigil', color: '#8fe3ff', icon: '❄️', sell: 0, kind: 'key' },
+        // boss trophies: each boss's own drops. They sell well; the Hall of Gods asks for the common one of each boss.
+        { id: 'heartwood_seed', name: 'Heartwood Seed', color: '#7fd36b', icon: '🌰', sell: 160, kind: 'trophy' },
+        { id: 'verdant_crown', name: 'Verdant Crown', color: '#4fd27a', icon: '👑', sell: 1200, kind: 'trophy' },
+        { id: 'gilded_heart', name: 'Gilded Heart', color: '#ffcf4a', icon: '💛', sell: 320, kind: 'trophy' },
+        { id: 'midas_eye', name: 'Eye of Midas', color: '#ffe14d', icon: '👁️', sell: 2500, kind: 'trophy' },
+        { id: 'inferno_horn', name: 'Inferno Horn', color: '#ff6a2b', icon: '📯', sell: 550, kind: 'trophy' },
+        { id: 'phoenix_feather', name: 'Phoenix Feather', color: '#ff9a3d', icon: '🪶', sell: 4000, kind: 'trophy' },
+        { id: 'frozen_tear', name: 'Frozen Tear', color: '#bfefff', icon: '💧', sell: 900, kind: 'trophy' },
+        { id: 'crown_of_winter', name: 'Crown of Winter', color: '#e8f7ff', icon: '👑', sell: 7000, kind: 'trophy' },
+        // Frozen WH's rarest drop, for the hidden god and the hidden room: can't be sold, never lost on death
+        { id: 'hidden_shard', name: 'Shard of the Hidden', color: '#3dffb4', icon: '🌑', sell: 0, kind: 'key' },
     ];
     const MATERIALS_BY_ID = Object.fromEntries(MATERIALS.map(m => [m.id, m]));
 
     // consumables (kept in state.cons)
     const CONSUMABLES = [
-        { id: 'potion_small', name: 'Small Potion', icon: '🧪', heal: 40, color: '#ff6b8a' },
-        { id: 'potion_big', name: 'Big Potion', icon: '⚗️', heal: 110, color: '#ff3d6e' },
-        { id: 'potion_max', name: 'Max Potion', icon: '💖', heal: 9999, color: '#ff9fe6' },
+        // cd: seconds before any potion can be drunk again (one cooldown for all of them; stronger ones set a longer one)
+        { id: 'potion_small', name: 'Small Potion', icon: '🧪', heal: 40, cd: 6, color: '#ff6b8a' },
+        { id: 'potion_big', name: 'Big Potion', icon: '⚗️', heal: 110, cd: 10, color: '#ff3d6e' },
+        { id: 'potion_max', name: 'Max Potion', icon: '💖', heal: 9999, cd: 20, color: '#ff9fe6' },
         { id: 'arrow', name: 'Arrow', icon: '➶', color: '#e9e2c8' },
     ];
     const CONSUMABLES_BY_ID = Object.fromEntries(CONSUMABLES.map(c => [c.id, c]));
@@ -335,7 +347,7 @@
             ],
             summon: 'slime', axeBonus: 1.25,
             sigil: 'sigil_greenwood', rubiesFirst: 300, rubies: [60, 90], gems: [1, 2], golden: 0.15,
-            drops: [['oak_log', 6, 10, 1], ['thorn', 3, 5, 1], ['copper_ore', 4, 6, 1], ['herb', 3, 5, 1]],
+            drops: [['oak_log', 6, 10, 1], ['thorn', 3, 5, 1], ['copper_ore', 4, 6, 1], ['herb', 3, 5, 1], ['heartwood_seed', 1, 1, 0.35], ['verdant_crown', 1, 1, 0.04]],
         },
         gilded: {
             name: 'Gilded Golem', zone: 'mines', face: 'mainimage/thumbs/goldwh.webp', hp: 2200, dmg: 26, r: 44, speed: 45, armor: 40, color: '#ffcf4a',
@@ -346,7 +358,7 @@
             ],
             exposeAfterSlam: 4, exposeMult: 2,
             sigil: 'sigil_mines', rubiesFirst: 600, rubies: [120, 180], gems: [1, 3], golden: 0.3,
-            drops: [['gold_ore', 4, 6, 1], ['iron_ore', 5, 8, 1], ['golem_core', 1, 2, 1], ['ruby_cluster', 1, 1, 0.5]],
+            drops: [['gold_ore', 4, 6, 1], ['iron_ore', 5, 8, 1], ['golem_core', 1, 2, 1], ['ruby_cluster', 1, 1, 0.5], ['gilded_heart', 1, 1, 0.35], ['midas_eye', 1, 1, 0.04]],
         },
         inferno: {
             name: 'Inferno WH', zone: 'ember', face: 'mainimage/thumbs/FireWH.webp', hp: 5000, dmg: 34, r: 42, speed: 70, armor: 30, color: '#ff6a2b',
@@ -357,7 +369,7 @@
             ],
             burn: true,
             sigil: 'sigil_ember', rubiesFirst: 1000, rubies: [200, 300], gems: [2, 3], golden: 0.15,
-            drops: [['ember_ore', 4, 6, 1], ['obsidian', 3, 5, 1], ['magma_shell', 2, 3, 1], ['imp_horn', 2, 3, 1]],
+            drops: [['ember_ore', 4, 6, 1], ['obsidian', 3, 5, 1], ['magma_shell', 2, 3, 1], ['imp_horn', 2, 3, 1], ['inferno_horn', 1, 1, 0.35], ['phoenix_feather', 1, 1, 0.04]],
         },
         frozen: {
             name: 'Frozen WH', zone: 'frost', face: 'mainimage/thumbs/WHice.webp', hp: 10000, dmg: 44, r: 44, speed: 70, armor: 50, color: '#8fe3ff',
@@ -368,7 +380,7 @@
             ],
             aura: { radius: 140, slow: 0.35 }, summon: 'wolf', emberStrips: true,
             sigil: 'sigil_frost', rubiesFirst: 1500, rubies: [300, 450], gems: [2, 3], golden: 0.15, mythicWeekly: true,
-            drops: [['mithril_ore', 4, 6, 1], ['frost_crystal', 3, 5, 1], ['wolf_pelt', 2, 3, 1], ['star_fragment', 1, 2, 1]],
+            drops: [['mithril_ore', 4, 6, 1], ['frost_crystal', 3, 5, 1], ['wolf_pelt', 2, 3, 1], ['star_fragment', 1, 2, 1], ['frozen_tear', 1, 1, 0.35], ['crown_of_winter', 1, 1, 0.04], ['hidden_shard', 1, 1, 0.1, 'fixed']],
         },
     };
 
@@ -415,6 +427,11 @@
             nodes: { tree_frost: 44, frost_crystal: 26, mithril: 22, rock: 14, herb: 16, silver: 10 },
             spawns: [['wolf', 3], ['wraith', 3], ['yeti', 1]], density: 30, elite: 'frost_giant', elites: 2, boss: 'frozen',
             hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        // inside the Hall of Gods, a building in town (world-gen.js buildHall). interior: entered by its door, no monsters, and
+        // nobody else online in there. dark: how far the player's own light reaches; the braziers light the rest.
+        hall: { id: 'hall', name: 'Hall of Gods', gen: 'hall', w: 26, h: 56, safe: true, interior: true, dark: 170,
+            sub: 'Sacred ground', banner: 'Something old is watching you',
+            palette: { floor: '#16131d', floor2: '#1a1622', path: '#2b1a24', wall: '#0b090f', plaza: '#2b1a24' } },
     };
     const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost'];
     const MONSTER_RESPAWN_SEC = 35;
@@ -429,9 +446,140 @@
         board: { name: 'Notice Board', icon: '📜', desc: 'How the Wilds work', color: '#d8c79a' },
     };
 
+    // ---------------- townsfolk, wanderers and their quests ----------------
+    // Each NPC stands in a zone (zone, default town) at spot: tiles from the town centre in town, from the camp in a wild
+    // zone, and the tile itself in the Hall of Gods. They give their chain of quests in order, then one daily quest a day
+    // from their daily list. rumor: something they let slip; lines: what someone with no quests says, one per talk. Goals (kind): kill (monster, elite, zone: all optional), boss (boss optional), rival,
+    // harvest (tool, zone optional), craft (gear; minScore optional), box (a lootbox at the Rune Altar), deliver (mats,
+    // taken when you hand the quest in), visit (zone), god (raise statues in the Hall of Gods). n: how many.
+    // need: what must be open before it is offered ({ zone }). Daily quests pay rubies x the tier of the furthest zone open.
+    const NPCS = {
+        brannoc: { name: 'Captain Brannoc', role: 'Warden of Wildgate', face: 'mainimage/thumbs/WHboss.webp', color: '#b5483a', spot: [-7, -3],
+            greet: 'Monsters at every gate and only one of me. You look like you can swing a blade.',
+            chain: ['brannoc_slimes', 'brannoc_boars', 'brannoc_elite', 'brannoc_skeletons', 'brannoc_hounds', 'brannoc_wolves'],
+            daily: ['daily_cull', 'daily_elite', 'daily_rival'] },
+        marla: { name: 'Old Marla', role: 'Prospector', face: 'mainimage/thumbs/mobilemanskin.webp', color: '#8d6e4a', spot: [-7, 4],
+            greet: 'Forty years I dug these hills. My back says no more, so you dig and I pay.',
+            chain: ['marla_trees', 'marla_copper', 'marla_mines', 'marla_shiny', 'marla_obsidian', 'marla_star'],
+            daily: ['daily_harvest', 'daily_herbs', 'daily_timber'] },
+        hilde: { name: 'Hilde', role: 'Master Smith', face: 'mainimage/thumbs/platinumwh.webp', color: '#7c8a99', spot: [8, 4],
+            greet: 'Anyone can hit metal. Hitting it right is the trick. Show me what your hands can do.',
+            chain: ['hilde_first', 'hilde_fine', 'hilde_crate', 'hilde_master', 'hilde_ember', 'hilde_legend'],
+            daily: ['daily_iron', 'daily_craft', 'daily_strings'] },
+        vey: { name: 'Sister Vey', role: 'Keeper of the Hall of Gods', face: 'mainimage/thumbs/voidWH.webp', color: '#5b3f8c', spot: [-2, -8],
+            greet: 'The old gods sleep in the Hall behind me. Feed them, and they will remember you.',
+            chain: ['vey_hall', 'vey_offering', 'vey_overgrown', 'vey_gilded', 'vey_inferno', 'vey_frozen'],
+            daily: ['daily_boss', 'daily_purge'],
+            rumor: 'On quiet nights I hear something behind the far wall of the Hall. Not one of our gods. Something older, waiting for the right word.' },
+        // at the camps out in the wilds
+        fenna: { name: 'Fenna', role: 'Forester', zone: 'greenwood', face: 'mainimage/thumbs/whnature.webp', color: '#4f8a3c', spot: [3, -1],
+            greet: 'Quiet out here, until it isn\'t. Mind the sprites: they shoot first.',
+            chain: ['fenna_sprites', 'fenna_herbs', 'fenna_mossback'], daily: ['fenna_daily'],
+            rumor: 'There is a hooded stranger who sits in the dark of the Hall of Gods and talks to the far wall. Some say the wall listens.' },
+        durgan: { name: 'Durgan', role: 'Deep Delver', zone: 'mines', face: 'mainimage/thumbs/silverwh.webp', color: '#8b8278', spot: [3, -1],
+            greet: 'Stonepeak gives and Stonepeak takes. Mostly it takes. Lamp on, head down.',
+            chain: ['durgan_bats', 'durgan_gold', 'durgan_crystal'], daily: ['durgan_daily'],
+            rumor: 'Down here we say the old Prophet\'s faith was never written down, only spoken. Say it in the right place and the stone moves.' },
+        ashlyn: { name: 'Ashlyn', role: 'Firewalker', zone: 'ember', face: 'mainimage/thumbs/FireWH.webp', color: '#c2453a', spot: [3, -1],
+            greet: 'You get used to the heat. You never get used to the imps.',
+            chain: ['ashlyn_imps', 'ashlyn_shells', 'ashlyn_brute'], daily: ['ashlyn_daily'],
+            rumor: 'Every faith ends the same way, doesn\'t it? A prophet\'s name, then the little bit on the end. Funny what sticks in your head out here.' },
+        hrolf: { name: 'Old Hrolf', role: 'Frostveil Scout', zone: 'frost', face: 'mainimage/thumbs/WHice.webp', color: '#7fa3b5', spot: [3, -1],
+            greet: 'Cold enough to freeze your thoughts. Keep moving and keep your sword warm.',
+            chain: ['hrolf_wraiths', 'hrolf_pelts', 'hrolf_giant'], daily: ['hrolf_daily'],
+            rumor: 'When Frozen WH falls, sometimes a black shard falls with it. One time in ten, maybe. It hums when you carry it near the Hall of Gods.' },
+        // inside the Hall of Gods, near the far end: no quests, only riddles
+        pilgrim: { name: 'Hooded Pilgrim', role: 'Keeps watch by the far wall', zone: 'hall', hooded: true, face: 'mainimage/thumbs/whblackandwhite.webp', color: '#2b2433', spot: [16, 21],
+            greet: '...', chain: [], daily: [],
+            lines: [
+                'You hear it too, don\'t you? The far wall. It is not a wall. It is a mouth that has not been answered.',
+                'The gods in this hall are young. Behind the stone sleeps one who was a prophet before he was ever a god.',
+                'His name you already know. You honour him among the divine, in your other life, and you paid gold for it.',
+                'Do not say his name. Say his faith: the word his followers use for what they believe.',
+                'Words are spoken here as anywhere: press Enter and say it aloud. The stone is listening.',
+            ],
+            opened: 'So. You said it, and it heard you. Go in. He has waited a long time.' },
+    };
+    const NPC_ORDER = Object.keys(NPCS);
+    const QUESTS = {
+        // Captain Brannoc: hunting
+        brannoc_slimes: { title: 'Slime Season', text: 'Slimes are eating the herb gardens again. Thin them out in Greenwood.', goal: { kind: 'kill', monster: 'slime', n: 6 }, rubies: 60 },
+        brannoc_boars: { title: 'Boar Hunt', text: 'The boars charge anything that moves. Bring down five before they flatten a farmer.', goal: { kind: 'kill', monster: 'boar', n: 5 }, rubies: 110, cons: { potion_small: 2 } },
+        brannoc_elite: { title: 'Something Bigger', text: 'Scouts saw a hulking beast out there. Elites hit hard and take a beating: bring one down.', goal: { kind: 'kill', elite: true, n: 1 }, rubies: 250 },
+        brannoc_skeletons: { title: 'Bones in the Dark', text: 'The old miners never left Stonepeak. Put eight of them back to rest.', goal: { kind: 'kill', monster: 'skeleton', n: 8 }, need: { zone: 'mines' }, rubies: 450 },
+        brannoc_hounds: { title: 'Hounds of Ash', text: 'Ash Hounds hunt in pairs out in the Ember Wastes. Break up the pack.', goal: { kind: 'kill', monster: 'hound', n: 6 }, need: { zone: 'ember' }, rubies: 850, cons: { potion_big: 2 } },
+        brannoc_wolves: { title: 'Ice and Teeth', text: 'Frostveil wolves came right up to the south gate last night. Take the fight to them.', goal: { kind: 'kill', monster: 'wolf', n: 6 }, need: { zone: 'frost' }, rubies: 1500 },
+        // Old Marla: gathering
+        marla_trees: { title: 'Firewood', text: 'Chop me some trees, would you? Any trees. My stove is cold.', goal: { kind: 'harvest', tool: 'axe', n: 5 }, rubies: 50 },
+        marla_copper: { title: 'Copper and Coal', text: 'Bring me copper ore and coal. I still know a thing or two about smelting.', goal: { kind: 'deliver', mats: { copper_ore: 6, coal: 4 } }, rubies: 130 },
+        marla_mines: { title: 'Deep Work', text: 'Stonepeak is where the real ore is. Break ten veins down there.', goal: { kind: 'harvest', tool: 'pickaxe', zone: 'mines', n: 10 }, need: { zone: 'mines' }, rubies: 320 },
+        marla_shiny: { title: 'Shiny Things', text: 'Silver and gold from deep in the mines. I want to hold some again.', goal: { kind: 'deliver', mats: { silver_ore: 4, gold_ore: 4 } }, need: { zone: 'mines' }, rubies: 550 },
+        marla_obsidian: { title: 'Glass from Fire', text: 'Obsidian and sulfur from the Ember Wastes. Do not ask what for.', goal: { kind: 'deliver', mats: { obsidian: 5, sulfur: 4 } }, need: { zone: 'ember' }, rubies: 950 },
+        marla_star: { title: 'A Fallen Star', text: 'They say stars fall on Frostveil and freeze inside the crystals. Find me one.', goal: { kind: 'deliver', mats: { star_fragment: 1, frost_crystal: 4 } }, need: { zone: 'frost' }, rubies: 2000 },
+        // Hilde: crafting
+        hilde_first: { title: 'First Forging', text: 'Make something at the Forge or the Workbench. Anything. Let me see how you work.', goal: { kind: 'craft', n: 1 }, rubies: 80 },
+        hilde_fine: { title: 'Fine Work', text: 'Now make it properly: a piece of Fine quality or better.', goal: { kind: 'craft', minScore: 55, n: 1 }, rubies: 160 },
+        hilde_crate: { title: 'A Crate for the Road', text: 'Craft a lootbox at the Rune Altar. People back home pay well for them.', goal: { kind: 'box', n: 1 }, rubies: 260 },
+        hilde_master: { title: 'Masterwork', text: 'A Masterwork piece: ninety or better at the station. No shortcuts.', goal: { kind: 'craft', minScore: 90, n: 1 }, rubies: 650 },
+        hilde_ember: { title: 'Ember Steel', text: 'Bring me Ember Bars. I want to try something new on my anvil.', goal: { kind: 'deliver', mats: { ember_bar: 4 } }, need: { zone: 'ember' }, rubies: 900 },
+        hilde_legend: { title: 'Legendary', text: 'Only a handful of smiths ever made a Legendary piece. Be one of them.', goal: { kind: 'craft', minScore: 98, n: 1 }, rubies: 2200 },
+        // Sister Vey: the gods and the bosses
+        vey_hall: { title: 'The Hall of Gods', text: 'Step inside the Hall behind me. Let the gods see your face.', goal: { kind: 'visit', zone: 'hall' }, rubies: 50 },
+        vey_offering: { title: 'A First Offering', text: 'Raise any statue in the Hall by one level. The gods answer offerings, not prayers.', goal: { kind: 'god', n: 1 }, rubies: 200 },
+        vey_overgrown: { title: 'The Overgrown', text: "The thing at the heart of Greenwood was a god's gardener once. Put it to rest.", goal: { kind: 'boss', boss: 'overgrown', n: 1 }, rubies: 400 },
+        vey_gilded: { title: 'The Golden Guardian', text: 'The Gilded Golem guards the deep mine. Its heart beats with stolen gold.', goal: { kind: 'boss', boss: 'gilded', n: 1 }, need: { zone: 'mines' }, rubies: 800 },
+        vey_inferno: { title: 'Trial by Fire', text: 'Inferno WH burns in the Wastes. The gods want that fire brought low.', goal: { kind: 'boss', boss: 'inferno', n: 1 }, need: { zone: 'ember' }, rubies: 1500 },
+        vey_frozen: { title: 'The Frozen Throne', text: 'Last of all, Frozen WH. When it falls, something in the Hall will stir.', goal: { kind: 'boss', boss: 'frozen', n: 1 }, need: { zone: 'frost' }, rubies: 3000 },
+        // daily quests
+        daily_cull: { title: 'Cull the Wilds', text: 'Fifteen monsters, any zone. Keep the roads safe today.', goal: { kind: 'kill', n: 15 }, rubies: 90, daily: true },
+        daily_elite: { title: 'Elite Hunt', text: 'Bring down one elite beast today.', goal: { kind: 'kill', elite: true, n: 1 }, rubies: 150, daily: true },
+        daily_rival: { title: 'Show-off', text: 'One of those rival adventurers is boasting again. Beat them.', goal: { kind: 'rival', n: 1 }, rubies: 130, daily: true },
+        daily_harvest: { title: "A Day's Work", text: 'Twenty things gathered: ore, wood or plants, I am not fussy.', goal: { kind: 'harvest', n: 20 }, rubies: 70, daily: true },
+        daily_herbs: { title: 'Herbalist', text: 'Bring me healing herbs. My knees, you understand.', goal: { kind: 'deliver', mats: { herb: 6 } }, rubies: 70, daily: true },
+        daily_timber: { title: 'Timber!', text: 'Chop eight trees today.', goal: { kind: 'harvest', tool: 'axe', n: 8 }, rubies: 70, daily: true },
+        daily_iron: { title: 'Iron for the Guard', text: 'Five iron bars. The guard needs new swords.', goal: { kind: 'deliver', mats: { iron_bar: 5 } }, need: { zone: 'mines' }, rubies: 120, daily: true },
+        daily_craft: { title: 'Practice', text: 'Craft two pieces of gear today. Practice keeps the hands honest.', goal: { kind: 'craft', n: 2 }, rubies: 110, daily: true },
+        daily_strings: { title: 'Bowstrings', text: 'Four bowstrings for the archers on the wall.', goal: { kind: 'deliver', mats: { string: 4 } }, rubies: 60, daily: true },
+        daily_boss: { title: 'A Trial a Day', text: 'Beat any of the four great bosses today.', goal: { kind: 'boss', n: 1 }, rubies: 250, daily: true },
+        daily_purge: { title: 'Purge', text: 'Twenty-five monsters in any zone. The gods like a tidy world.', goal: { kind: 'kill', n: 25 }, rubies: 110, daily: true },
+        // Fenna, in Greenwood
+        fenna_sprites: { title: 'Thorny Neighbours', text: 'The thorn sprites have been shooting at my traps. Six of them, please.', goal: { kind: 'kill', monster: 'sprite', n: 6 }, rubies: 90 },
+        fenna_herbs: { title: 'Medicine Run', text: 'The camp is out of salve. Herbs and slime gel, and I can make more.', goal: { kind: 'deliver', mats: { herb: 8, slime_gel: 4 } }, rubies: 150, cons: { potion_small: 2 } },
+        fenna_mossback: { title: 'The Old Mossback', text: 'The big mossy one tore up half my snares. Show it who the forest belongs to.', goal: { kind: 'kill', elite: true, zone: 'greenwood', n: 1 }, rubies: 300 },
+        fenna_daily: { title: 'Clear the Paths', text: 'Twelve monsters in Greenwood, so the gatherers can work.', goal: { kind: 'kill', zone: 'greenwood', n: 12 }, rubies: 60, daily: true },
+        // Durgan, in the Stonepeak Mines
+        durgan_bats: { title: 'Bats in the Shaft', text: 'Eight bats. They nest in my lamp oil.', goal: { kind: 'kill', monster: 'bat', n: 8 }, need: { zone: 'mines' }, rubies: 300 },
+        durgan_gold: { title: 'Fool\'s Errand', text: 'Bring me gold ore. I want to be sure it is the real thing.', goal: { kind: 'deliver', mats: { gold_ore: 6 } }, need: { zone: 'mines' }, rubies: 480 },
+        durgan_crystal: { title: 'The Crystal Golem', text: 'Something made of glass and hate walks the deep tunnels. Break it.', goal: { kind: 'kill', elite: true, zone: 'mines', n: 1 }, need: { zone: 'mines' }, rubies: 750 },
+        durgan_daily: { title: 'Pick and Shovel', text: 'Twelve veins or rocks in Stonepeak today.', goal: { kind: 'harvest', tool: 'pickaxe', zone: 'mines', n: 12 }, need: { zone: 'mines' }, rubies: 70, daily: true },
+        // Ashlyn, in the Ember Wastes
+        ashlyn_imps: { title: 'Imp Hunt', text: 'Imps blink right next to you and laugh. Make eight of them stop laughing.', goal: { kind: 'kill', monster: 'imp', n: 8 }, need: { zone: 'ember' }, rubies: 650 },
+        ashlyn_shells: { title: 'Hard Shells', text: 'Magma shells make the best boots out here. Bring four.', goal: { kind: 'deliver', mats: { magma_shell: 4 } }, need: { zone: 'ember' }, rubies: 850 },
+        ashlyn_brute: { title: 'The Ember Brute', text: 'A brute made of burning rock guards the hot springs. I would like a bath.', goal: { kind: 'kill', elite: true, zone: 'ember', n: 1 }, need: { zone: 'ember' }, rubies: 1150 },
+        ashlyn_daily: { title: 'Walk the Fire', text: 'Twelve monsters in the Wastes today.', goal: { kind: 'kill', zone: 'ember', n: 12 }, need: { zone: 'ember' }, rubies: 80, daily: true },
+        // Old Hrolf, in Frostveil
+        hrolf_wraiths: { title: 'Restless Dead', text: 'The frost wraiths drink the warmth out of you. Six of them, and silver helps.', goal: { kind: 'kill', monster: 'wraith', n: 6 }, need: { zone: 'frost' }, rubies: 1000 },
+        hrolf_pelts: { title: 'A Warm Coat', text: 'Six wolf pelts. Do not ask how many coats I have.', goal: { kind: 'deliver', mats: { wolf_pelt: 6 } }, need: { zone: 'frost' }, rubies: 1250 },
+        hrolf_giant: { title: 'The Frost Giant', text: 'The giant walks the ridge every night. One night, it should not walk back.', goal: { kind: 'kill', elite: true, zone: 'frost', n: 1 }, need: { zone: 'frost' }, rubies: 1900 },
+        hrolf_daily: { title: 'Hold the Line', text: 'Fifteen monsters in Frostveil today.', goal: { kind: 'kill', zone: 'frost', n: 15 }, need: { zone: 'frost' }, rubies: 100, daily: true },
+    };
+    for (const id of NPC_ORDER) NPCS[id].zone = NPCS[id].zone || 'town';
+    for (const id in QUESTS) QUESTS[id].id = id;
+
+    // ---------------- the room behind the Hall's far wall ----------------
+    // One-time purchases. rubies and mats are paid in the Wilds; each one's gems and Golden (core/world-bridge.js BUYS) are
+    // taken in the game, which then adds the item.
+    const HIDDEN_SHOP = {
+        autoClicker: { name: 'The Auto Clicker', icon: '🖲️', rubies: 15000,
+            mats: { hidden_shard: 3, verdant_crown: 1, midas_eye: 1, phoenix_feather: 1, crown_of_winter: 1, star_fragment: 5 },
+            desc: 'A charm of the Hidden rarity. Equip it in the game, put it on the What Happened image or an upgrade, and it clicks it 10 times a second for as long as the game is open.' },
+    };
+    for (const id of NPC_ORDER) for (const q of NPCS[id].chain.concat(NPCS[id].daily)) QUESTS[q].npc = id;
+
+
     // ---------------- classes and skill trees ----------------
     // A class has an innate bonus ("bonus", on while you are that class) and a skill tree of three branches, four skills
-    // deep. A skill is an ability (equipped on the Z / X / C loadout, up to three at a time) or a perk (a passive bonus,
+    // deep. A skill is an ability (equipped on the R / Q / C loadout, up to three at a time) or a perk (a passive bonus,
     // on while you are that class). A skill costs rubies and needs the one above it in its branch; some also need the
     // boss named in "boss" beaten. The Warrior is free; the other classes unlock once their challenge ("unlock") is done
     // and the rubies are paid.
@@ -439,7 +587,8 @@
     // abilityDmg, abilityStam, dashCd and dashStam. The others: maxHp, armor, speed (+share), crit (+chance), arrowSave
     // (chance a shot keeps its arrow), stamRegen (+share), lifesteal (share of weapon damage healed), momentum (+ the spear
     // momentum bonus at full speed), backstab (+ backstab mult), regen (HP per second, even mid-fight), pierce (+ enemies a
-    // thrust goes through), thorns (share of a melee hit sent back), dodge (chance to avoid a hit), fireResist.
+    // thrust goes through), thorns (share of a melee hit sent back), dodge (chance to avoid a hit), fireResist,
+    // stunnedDmg (a multiplier: damage to stunned enemies).
     const STARTER_CLASS = 'warrior';
     const CLASSES = {
         warrior: { name: 'Warrior', icon: '⚔️', color: '#ff7b3a', cost: 0, unlock: null,
@@ -460,14 +609,15 @@
                 { name: 'Endurance', skills: ['second_wind', 'vigor', 'stoneskin', 'regeneration'] },
                 { name: 'Sanctuary', skills: ['tough', 'mirror_guard', 'iron_will', 'sanctuary'] },
             ] },
+        // agile, and patient: it makes a small opening (a stun, a parry, a hook) and turns it into one big hit
         rogue: { name: 'Rogue', icon: '🗡️', color: '#c58bff', cost: 300, unlock: { stat: 'backstabs', n: 10, text: 'Land 10 backstabs with a dagger' },
-            desc: 'Quick, slippery and deadly from behind.',
-            passive: '+20% dagger damage, +5% move speed.',
-            bonus: { speed: 0.05, dmg: { dagger: 1.2 } },
+            desc: 'Fast and slippery. It waits for an opening, then makes it count.',
+            passive: '+20% dagger damage, +8% move speed, and your dash recharges 15% faster.',
+            bonus: { speed: 0.08, dashCd: 0.85, dmg: { dagger: 1.2 } },
             branches: [
-                { name: 'Shadow', skills: ['blink', 'light_feet', 'shadowstep', 'phantom'] },
-                { name: 'Venom', skills: ['envenom', 'vicious', 'fan_of_knives', 'assassin'] },
-                { name: 'Tricks', skills: ['quick_hands', 'caltrops', 'cunning', 'smoke_bomb'] },
+                { name: 'Shadow', skills: ['grapple', 'light_feet', 'shadowstep', 'phantom'] },
+                { name: 'Counter', skills: ['riposte', 'vicious', 'quick_cut', 'assassin'] },
+                { name: 'Execution', skills: ['opportunist', 'deadly_throw', 'cunning', 'smoke_bomb'] },
             ] },
         ranger: { name: 'Ranger', icon: '🏹', color: '#9be37d', cost: 300, unlock: { stat: 'arrowHits', n: 30, text: 'Hit 30 arrows on enemies' },
             desc: 'Keeps its distance and never runs dry.',
@@ -500,12 +650,17 @@
     const CLASS_ORDER = Object.keys(CLASSES);
     // Abilities. kind decides what the rest means (world-actors.js castAbility):
     // nova (radius around you), cone (range, arc in front), blink (dist; back: kick, then leap away from the cursor),
-    // charge (dash dist, hitting a band width wide), knives / volley (projectiles), shot (one projectile; pierce, stun),
+    // charge (dash dist, hitting a band width wide), volley (projectiles), shot (one projectile; pierce, stun),
     // chain (lightning that jumps), smoke, heal (share of max health), buff (time plus its effects: dmgMult, speedMult,
-    // reduce (damage taken), noKb, reflect (projectiles), crit, venom (hits poison), momentum), leap (jump up to dist toward
+    // reduce (damage taken), noKb, reflect (projectiles), crit, momentum), leap (jump up to dist toward
     // the cursor, then a nova), line (len x width toward the cursor), field (an area for time s at the cursor or on you,
-    // hitting every tick s after delay; pull, heal, chill, burn, stun), step (appear behind the enemy nearest the cursor).
+    // hitting every tick s after delay; pull, heal, chill, burn, stun), step (appear behind the enemy nearest the cursor),
+    // hook (a hook out to range px: it pulls you to the wall or enemy it catches; an enemy is hurt and stunned), parry (a
+    // guard window s long: the next hit in it is cancelled and its attacker is hurt; stunned if a monster, out of stamina
+    // and unable to recover it for exhaust s if a player).
     // momentum: true scales the hit with how fast you were moving toward the target, like a spear thrust.
+    // charges: how many casts it holds; each comes back cd s after it was used, one at a time (default 1).
+    // stunnedMult: extra damage multiplier against a stunned enemy.
     const ABILITIES = {
         // Warrior
         whirlwind:   { name: 'Whirlwind',   icon: '🌀', kind: 'nova',   cost: 150,  boss: null,        cd: 7,  stam: 25, radius: 82,  dmg: 1.3, kb: 420, color: '#dfe6f2',
@@ -534,16 +689,16 @@
         sanctuary:   { name: 'Sanctuary',   icon: '🔆', kind: 'field',  cost: 1600, boss: 'inferno',   cd: 30, stam: 20, at: 'self', r: 110, tick: 0.5, time: 6, dmg: 0.25, heal: 0.025, color: '#ffe9a3',
             desc: 'Bless the ground around you for 6 seconds: you heal while you stand in it, and enemies in it are hurt by the light.' },
         // Rogue
-        blink:       { name: 'Blink',       icon: '✨', kind: 'blink',  cost: 200,  boss: null,        cd: 5,  stam: 12, dist: 170, iframes: 0.3, color: '#b9a3ff',
-            desc: 'Slip through the air toward your cursor. You cannot be hurt for an instant.' },
+        grapple:     { name: 'Grappling Hook', icon: '🪝', kind: 'hook', cost: 200,  boss: null,        cd: 7,  charges: 2, stam: 10, range: 340, dmg: 1.2, stun: 0.9, color: '#c9b38f',
+            desc: 'Fire a hook toward your cursor. It pulls you to the wall it bites or to the enemy it catches, which is hurt and stunned for a moment. Holds 2 charges.' },
         shadowstep:  { name: 'Shadowstep',  icon: '👤', kind: 'step',   cost: 700,  boss: 'gilded',    cd: 9,  stam: 20, range: 220, dmg: 2.4, iframes: 0.3, color: '#9b7dff',
             desc: 'Vanish and reappear behind the enemy nearest your cursor with a heavy stab.' },
-        envenom:     { name: 'Envenom',     icon: '🐍', kind: 'buff',   cost: 250,  boss: null,        cd: 20, stam: 10, time: 8, venom: true, color: '#7dff6b',
-            desc: 'For 8 seconds your weapon hits poison enemies, hurting them over time.' },
-        fan_of_knives: { name: 'Fan of Knives', icon: '🔪', kind: 'knives', cost: 600, boss: 'overgrown', cd: 8, stam: 20, count: 12, speed: 620, life: 0.45, dmg: 0.8, color: '#d9dde6',
-            desc: 'Throw a ring of 12 knives in every direction.' },
-        caltrops:    { name: 'Caltrops',    icon: '✳️', kind: 'field',  cost: 500,  boss: 'overgrown', cd: 14, stam: 15, at: 'cursor', range: 260, r: 80, tick: 0.5, time: 5, dmg: 0.2, chill: true, color: '#c0c6d0',
-            desc: 'Scatter spikes near your cursor for 5 seconds: enemies on them are slowed and cut.' },
+        riposte:     { name: 'Riposte',     icon: '🤺', kind: 'parry',  cost: 250,  boss: null,        cd: 8,  stam: 10, window: 0.45, range: 1100, dmg: 1.8, stun: 2.0, exhaust: 3, color: '#ffe7a3',
+            desc: 'Raise your guard for a split second. A hit that lands in it does nothing, and its attacker is disarmed and cut: a monster is stunned, a player loses all their stamina and can\'t recover it for 3 seconds.' },
+        quick_cut:   { name: 'Quick Cut',   icon: '⚡', kind: 'charge', cost: 600,  boss: 'overgrown', cd: 6,  charges: 3, stam: 12, dist: 110, width: 20, dmg: 1.1, kb: 200, iframes: 0.15, color: '#d9dde6',
+            desc: 'A short dash that cuts everything you pass through. Holds 3 charges.' },
+        deadly_throw: { name: 'Deadly Throw', icon: '🔪', kind: 'shot', cost: 500, boss: 'overgrown', cd: 10, stam: 18, speed: 1100, life: 0.5, dmg: 3.2, pierce: 0, kb: 220, look: 'knife', stunnedMult: 2, color: '#e8e0ff',
+            desc: 'Hurl a weighted dagger: one heavy hit, twice as heavy on a stunned enemy. Uses no daggers.' },
         smoke_bomb:  { name: 'Smoke Bomb',  icon: '💨', kind: 'smoke',  cost: 1200, boss: 'inferno',   cd: 18, stam: 20, radius: 125, stun: 2.2, iframes: 0.6, color: '#8a8f9c',
             desc: 'Vanish in smoke: enemies around you are dazed and lose track of you.' },
         // Ranger
@@ -607,7 +762,7 @@
         phantom:      { name: 'Phantom',      icon: '👻', cost: 1400, boss: 'inferno', bonus: { dodge: 0.12 }, desc: '12% chance to dodge a hit completely.' },
         vicious:      { name: 'Vicious',      icon: '😈', cost: 400,  boss: null,     bonus: { backstab: 0.5 }, desc: 'Backstabs deal x2 damage instead of x1.5.' },
         assassin:     { name: 'Assassin',     icon: '🥷', cost: 1300, boss: 'gilded', bonus: { crit: 0.08 }, desc: '+8% critical chance.' },
-        quick_hands:  { name: 'Quick Hands',  icon: '✋', cost: 200,  boss: null,     bonus: { dmg: { dagger: 1.1 }, stamRegen: 0.1 }, desc: '+10% dagger damage and +10% stamina regen.' },
+        opportunist:  { name: 'Opportunist',  icon: '👀', cost: 200,  boss: null,     bonus: { stunnedDmg: 1.4, stamRegen: 0.1 }, desc: 'Every hit on a stunned enemy deals 40% more damage. +10% stamina regen.' },
         cunning:      { name: 'Cunning',      icon: '🃏', cost: 900,  boss: 'gilded', bonus: { abilityStam: 0.7, abilityCd: 0.9 }, desc: 'Abilities cost 30% less stamina and recharge 10% faster.' },
         // Ranger
         eagle_eye:    { name: 'Eagle Eye',    icon: '🦅', cost: 200,  boss: null,     bonus: { dmg: { bow: 1.1 } }, desc: '+10% bow damage.' },
@@ -636,7 +791,7 @@
         const sk = ABILITIES[id] || PERKS[id];
         Object.assign(sk, { id, cls: c, branch: b, row, req: row ? br.skills[row - 1] : null, type: ABILITIES[id] ? 'ability' : 'perk' });
     }));
-    const ABILITY_KEYS = ['Z', 'X', 'C'];
+    const ABILITY_KEYS = ['R', 'Q', 'C'];
     const ABILITY_ORDER = Object.keys(ABILITIES);
     const PERK_ORDER = Object.keys(PERKS);
 
@@ -670,6 +825,6 @@
         QUALITY, AFFIXES, TIERS, GEAR, GEAR_BY_ID, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
-        ELITE_RESPAWN_SEC, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, TRADER_STOCK, RULES,
+        ELITE_RESPAWN_SEC, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
     };
 }));

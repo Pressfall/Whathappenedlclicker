@@ -145,12 +145,14 @@
             case 'knives': case 'volley': case 'shot': r = a.speed * a.life; break;
             case 'chain': r = a.range + a.jump * a.jumps; break;
             case 'step': r = a.range + 40; break;
+            case 'hook': case 'parry': r = a.range; break;
             case 'field': r = (a.at === 'self' ? 0 : a.range) + a.r; break;
         }
         return r + (a.time || a.life || 0) * PVP.moveAllow + PVP.hitR + PVP.lag;
     }
     // How many times one cast can hit the same player (n), all within span seconds of the first
     function abilityBurst(a) {
+        if (a.charges > 1) return { n: a.charges, span: a.cd * PVP.abilityCdMin }; // every charge at once
         if (a.kind === 'field') return { n: Math.floor((a.time - (a.delay || 0)) / a.tick + 1e-6) + 1, span: a.time + 1 };
         if (a.kind === 'knives' || a.kind === 'volley') return { n: a.count, span: a.life + 1 };
         return { n: 1, span: 1 };

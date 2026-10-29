@@ -36,7 +36,7 @@ test('pending lists entries above the ack, oldest first, with totals', () => {
     const store = memStore({ [WORLD_KEY]: JSON.stringify(w), [ACK_KEY]: '1' });
     const p = Bridge.pending(store);
     assert.deepEqual(p.entries.map(e => e.seq), [2, 3]);
-    assert.deepEqual(p.totals, { gems: 3, golden: 1, boxes: [1, 2, 0, 0, 0] });
+    assert.deepEqual(p.totals, { gems: 3, golden: 1, boxes: [1, 2, 0, 0, 0], buys: [] });
     assert.equal(p.lastSeq, 3);
     assert.equal(Bridge.pending(store, 3).entries.length, 0, 'minAck hides what this page already applied');
 });
@@ -143,10 +143,149 @@ test('gems from the Wilds survive a prestige', () => {
     g.close(); g2.close();
 });
 
-test('reset removes the world save and the ack together', () => {
+test('reset removes the world save, the ack and the rubies inbox together', () => {
     const g = gameWithRewards([{ gems: 1 }]);
+    g.storage.setItem(Bridge.INBOX_KEY, JSON.stringify({ seq: 1, entries: [{ seq: 1, rubies: 5 }] }));
     g.eval('resetGame()');
     assert.equal(g.storage.getItem(WORLD_KEY), null);
     assert.equal(g.storage.getItem(ACK_KEY), null);
+    assert.equal(g.storage.getItem(Bridge.INBOX_KEY), null);
+    g.close();
+});
+
+// ---------- the other way: rubies from the game to the Wilds ----------
+
+const { INBOX_KEY } = Bridge;
+const inboxOf = (store) => JSON.parse(store.getItem(INBOX_KEY) || 'null');
+const fullInbox = () => JSON.stringify({ seq: Bridge.MAX_INBOX, entries: Array.from({ length: Bridge.MAX_INBOX }, (_, i) => ({ seq: i + 1, rubies: 1 })) });
+
+test('sendRubies numbers entries above the world\'s ack, never merges them, and forgets collected ones', () => {
+    const store = memStore({ [WORLD_KEY]: JSON.stringify({ v: 1, inAck: 0 }) });
+    assert.equal(Bridge.sendRubies(store, 100, 'golden', NOW).seq, 1);
+    assert.equal(Bridge.sendRubies(store, 50.9, 'code', NOW).seq, 2);
+    assert.deepEqual(Bridge.inbox(store, 0), { entries: [{ seq: 1, rubies: 100, src: 'golden', at: NOW }, { seq: 2, rubies: 50, src: 'code', at: NOW }], rubies: 150, lastSeq: 2 });
+    // the world collected the first one and saved its ack
+    store.setItem(WORLD_KEY, JSON.stringify({ v: 1, inAck: 1 }));
+    assert.equal(Bridge.rubiesWaiting(store), 50);
+    Bridge.sendRubies(store, 10, 'code', NOW);
+    assert.deepEqual(inboxOf(store).entries.map(e => e.seq), [2, 3], 'collected entries are forgotten when the game writes next');
+    assert.deepEqual(Bridge.inbox(store, 2), { entries: [{ seq: 3, rubies: 10, src: 'code', at: NOW }], rubies: 10, lastSeq: 3 });
+    assert.equal(Bridge.sendRubies(store, 0, 'code', NOW), null);
+    assert.equal(Bridge.sendRubies(store, -5, 'code', NOW), null);
+    // the inbox was cleared (e.g. by hand) but the world remembers 7: never reuse a number
+    store.removeItem(INBOX_KEY);
+    store.setItem(WORLD_KEY, JSON.stringify({ v: 1, inAck: 7 }));
+    assert.equal(Bridge.sendRubies(store, 1, 'code', NOW).seq, 8);
+});
+
+test('a big amount is split over several entries; a full inbox refuses everything; junk is ignored', () => {
+    const store = memStore();
+    Bridge.sendRubies(store, Bridge.MAX_RUBIES * 2 + 5, 'golden', NOW);
+    assert.deepEqual(inboxOf(store).entries.map(e => e.rubies), [Bridge.MAX_RUBIES, Bridge.MAX_RUBIES, 5]);
+    assert.equal(Bridge.inbox(store, 0).rubies, Bridge.MAX_RUBIES * 2 + 5, 'nothing is cut off');
+    const full = memStore({ [INBOX_KEY]: fullInbox() });
+    const before = full.getItem(INBOX_KEY);
+    assert.equal(Bridge.sendRubies(full, 10, 'code', NOW), null);
+    assert.equal(full.getItem(INBOX_KEY), before, 'nothing was written');
+    const junk = memStore({ [INBOX_KEY]: JSON.stringify({ seq: 'x', entries: [{ seq: 0, rubies: 5 }, { seq: 2, rubies: -1 }, 'nope', { seq: 3, rubies: 1e12, src: 'code' }] }) });
+    assert.deepEqual(Bridge.inbox(junk, 0).entries, [{ seq: 3, rubies: Bridge.MAX_RUBIES, src: 'code', at: 0 }]);
+    assert.deepEqual(Bridge.inbox(memStore({ [INBOX_KEY]: '{not json' }), 0).entries, []);
+});
+
+test('trading Golden in the Divine menu takes and saves the Golden, then queues the rubies for the Wilds', async () => {
+    const g = gameWithRewards([]);
+    g.eval('goldenWhat = 5; divineUnlocked = true; saveGame();');
+    assert.equal(await g.eval('tradeGoldenForRubies(2)'), true);
+    assert.equal(g.eval('goldenWhat'), 3);
+    assert.equal(g.savedState().goldenWhat, 3, 'saved before the rubies were queued');
+    assert.deepEqual(Bridge.inbox(g.storage, 0).entries.map(e => [e.rubies, e.src]), [[2 * Bridge.GOLDEN_RUBIES, 'golden']]);
+    assert.equal(await g.eval('tradeGoldenForRubies(4)'), false, 'more than you have');
+    assert.equal(await g.eval('tradeGoldenForRubies(0)'), false);
+    assert.equal(g.eval('goldenWhat'), 3);
+    // the box in the menu: it trades what it says, and the note tells what is waiting
+    g.eval('document.getElementById("goldenTradeInput").value = "1"');
+    assert.equal(await g.eval('tradeGoldenForRubies()'), true);
+    g.eval('renderGoldenTrade()');
+    assert.match(g.eval('document.getElementById("goldenTradeNote").textContent'), new RegExp((3 * Bridge.GOLDEN_RUBIES).toLocaleString() + ' rubies are waiting'));
+    g.close();
+    const no = loadGame({ now: NOW, confirm: false });
+    no.eval('goldenWhat = 5;');
+    assert.equal(await no.eval('tradeGoldenForRubies(1)'), false, 'cancelled');
+    assert.equal(no.eval('goldenWhat'), 5);
+    assert.equal(no.storage.getItem(INBOX_KEY), null);
+    no.close();
+});
+
+test('at most 4 Golden a week can be traded; the count starts again on Monday', async () => {
+    assert.equal(Bridge.GOLDEN_TRADE_WEEKLY, 4);
+    const g = gameWithRewards([]);
+    const t = g.eval('Date.now()');
+    g.eval('goldenWhat = 20; divineUnlocked = true; saveGame();');
+    assert.equal(await g.eval('tradeGoldenForRubies(3)'), true);
+    assert.equal(await g.eval('tradeGoldenForRubies(2)'), false, 'only 1 left this week');
+    assert.equal(g.eval('goldenWhat'), 17);
+    g.eval('renderGoldenTrade()');
+    assert.match(g.eval('document.getElementById("goldenTradeNote").textContent'), /1 of 4 left to trade this week/);
+    assert.equal(await g.eval('tradeGoldenForRubies(1)'), true);
+    assert.equal(await g.eval('tradeGoldenForRubies(1)'), false, 'used up');
+    assert.equal(g.eval('goldenWhat'), 16);
+    assert.deepEqual(Bridge.inbox(g.storage, 0).entries.map(e => e.rubies), [3 * Bridge.GOLDEN_RUBIES, Bridge.GOLDEN_RUBIES]);
+    g.eval('renderGoldenTrade()');
+    assert.equal(g.eval('document.getElementById("goldenTradeBtn").disabled'), true);
+    assert.match(g.eval('document.getElementById("goldenTradeNote").textContent'), /More can be traded on Monday/);
+    assert.equal(Bridge.goldenTradeLeft(g.storage, t), 0);
+    assert.equal(Bridge.goldenTradeLeft(g.storage, Bridge.nextWeekAt(t) - 1), 0, 'still this week until Monday');
+    assert.equal(Bridge.goldenTradeLeft(g.storage, Bridge.nextWeekAt(t)), 4, 'a new week');
+    assert.ok(JSON.parse(g.storage.getItem(Bridge.GOLDEN_TRADES_KEY)).week === Bridge.weekKey(t));
+    g.close();
+    // junk in the key counts as nothing traded; a count from another week too
+    assert.equal(Bridge.goldenTradeLeft(memStore({ [Bridge.GOLDEN_TRADES_KEY]: '{oops' }), t), 4);
+    assert.equal(Bridge.goldenTradeLeft(memStore({ [Bridge.GOLDEN_TRADES_KEY]: JSON.stringify({ week: '2001-W01', n: 4 }) }), t), 4);
+    assert.equal(Bridge.goldenTradeLeft(memStore({ [Bridge.GOLDEN_TRADES_KEY]: JSON.stringify({ week: Bridge.weekKey(t), n: 99 }) }), t), 0);
+    // weeks start on Monday, local time
+    assert.equal(Bridge.weekKey(new Date(2026, 9, 25, 23).getTime()), Bridge.weekKey(new Date(2026, 9, 19, 0, 1).getTime()), 'Sunday is the end of the week that began on Monday');
+    assert.notEqual(Bridge.weekKey(new Date(2026, 9, 26, 0, 1).getTime()), Bridge.weekKey(new Date(2026, 9, 25, 23).getTime()));
+    assert.equal(new Date(Bridge.nextWeekAt(new Date(2026, 9, 29, 15).getTime())).getDay(), 1);
+});
+
+test('if the rubies cannot be queued, the Golden comes back', async () => {
+    const g = gameWithRewards([], { storage: { [INBOX_KEY]: fullInbox() } });
+    g.eval('goldenWhat = 4; saveGame();');
+    assert.equal(await g.eval('tradeGoldenForRubies(2)'), false);
+    assert.equal(g.eval('goldenWhat'), 4);
+    assert.equal(g.savedState().goldenWhat, 4);
+    assert.equal(Bridge.goldenTradeLeft(g.storage, g.eval('Date.now()')), 4, 'and it does not count toward the week');
+    g.close();
+});
+
+// codes come from Firestore: a stand-in that knows one rubies code and one gems code
+function withCodes(g) {
+    g.eval(`window.db = {}; window.doc = (db, col, id) => id;
+        window.getDoc = async (id) => { const codes = { WILDRUBIES: { type: 'rubies', amount: 5000 }, GEMS: { type: 'diamonds', amount: 3 } }; return { exists: () => !!codes[id], data: () => codes[id] }; };`);
+    return async (code) => {
+        g.eval(`document.getElementById('secretCodeInput').value = ${JSON.stringify(code)}`);
+        await g.eval('redeemSecretCode()');
+        return g.eval("document.getElementById('secretCodeStatus').innerText");
+    };
+}
+
+test('a rubies code sends its rubies to the Wilds, once', async () => {
+    const g = gameWithRewards([]);
+    const redeem = withCodes(g);
+    assert.match(await redeem('wildrubies'), /5,000 rubies/);
+    assert.deepEqual(Bridge.inbox(g.storage, 0).entries.map(e => [e.rubies, e.src]), [[5000, 'code']]);
+    assert.match(await redeem('WILDRUBIES'), /already redeemed/);
+    assert.equal(Bridge.inbox(g.storage, 0).rubies, 5000);
+    assert.match(await redeem('GEMS'), /3 gems/, 'the other code types still work');
+    g.close();
+});
+
+test('a rubies code that cannot be stored can be tried again', async () => {
+    const g = gameWithRewards([], { storage: { [INBOX_KEY]: fullInbox() } });
+    const redeem = withCodes(g);
+    assert.match(await redeem('WILDRUBIES'), /Couldn't store/);
+    assert.equal(g.eval('getRedeemedCodes().includes("WILDRUBIES")'), false);
+    g.storage.setItem(WORLD_KEY, JSON.stringify({ v: 1, inAck: Bridge.MAX_INBOX })); // the Wilds collected what was waiting
+    assert.match(await redeem('WILDRUBIES'), /5,000 rubies/);
     g.close();
 });

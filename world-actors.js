@@ -20,13 +20,13 @@
     // ---------------- creation ----------------
     function base(kind, team, x, y, r) {
         return { id: 'a' + (nextId++), kind, team, x, y, r, vx: 0, vy: 0, kbx: 0, kby: 0, facing: Math.PI / 2, flash: 0, dead: false,
-            status: { burnUntil: 0, burnDps: 0, chillUntil: 0, stunUntil: 0, poisonUntil: 0, poisonDps: 0 }, cds: [], atk: null, mass: r / 14 };
+            status: { burnUntil: 0, burnDps: 0, chillUntil: 0, stunUntil: 0 }, cds: [], atk: null, mass: r / 14 };
     }
     A.makePlayer = function (x, y) {
         const p = base('player', 'player', x, y, D.COMBAT.player.r || D.COMBAT.player.radius);
         Object.assign(p, { hp: 100, maxHp: 100, weapon: null, weaponUid: null, stam: { val: D.COMBAT.stamina.max, idle: 0, winded: false },
             dashT: 0, dashCd: 0, dashX: 0, dashY: 0, iframes: 0, lastHurt: -99, combo: {}, trail: [], power: 0, powerHit: false, perfectFlash: 0,
-            aimHold: 0, slow: 0, lavaT: 0, mass: 1, abCd: {}, buffs: {} });
+            aimHold: 0, slow: 0, lavaT: 0, mass: 1, abCharges: {}, buffs: {}, riposteUntil: 0, exhaustUntil: 0, pull: null, hookFx: null });
         // the shield turns toward the mouse like a weapon; up while the block button is held
         p.shield = Object.assign(C.newWeapon('shield', Math.PI / 2), { up: false, raisedAt: -9, brokenUntil: 0 });
         return p;
@@ -76,6 +76,12 @@
         const g = game(), p = g.player;
         if (p.dead || p.iframes > 0 || g.inTown) return 0;
         const st = g.pstats;
+        // Riposte: a hit from someone, inside the guard window, does nothing, and whoever threw it is disarmed. opts.remote:
+        // the other player behind a PvP hit (world-online.js)
+        if (p.riposteUntil > E.time && !opts.unblockable) {
+            const src = opts.from, actor = src && !src.dead && (src.kind === 'monster' || src.kind === 'boss' || src.kind === 'clone' || src.kind === 'rival');
+            if (actor || opts.remote) { riposted(p, actor ? src : null, opts.remote); return 0; }
+        }
         if (st.dodge && !opts.unblockable && rnd() < st.dodge) { p.iframes = 0.25; E.floatText(p.x, p.y - 30, 'DODGE', '#9ad7ff', 14); WHW.sfx('dash'); return 0; }
         if (opts.projectile && buffOn(p, 'reflect')) {
             const pr = opts.projectile;
@@ -158,6 +164,12 @@
     A.damage = function (t, dmg, info = {}) {
         if (t.dead) return;
         if (t.kind === 'rival' && t.ai.iframes > 0) { E.floatText(t.x, t.y - 20, 'DODGE', '#9ad7ff', 12); return; }
+        // an opening: the player's hits on a stunned enemy (Opportunist; Deadly Throw's stunnedMult)
+        const pl = game().player;
+        if (info.from && info.from === pl && isStunned(t)) {
+            const m = (game().pstats.stunnedDmg || 1) * (info.stunnedMult || 1);
+            if (m > 1) { dmg *= m; info = Object.assign({}, info, { text: info.text || 'OPENING' }); }
+        }
         t.hp -= dmg;
         t.flash = 0.12;
         t.lastHit = E.time;
@@ -171,7 +183,6 @@
         // the Frozen WH's frost armor melts under fire
         if (info.burn && t.kind === 'boss' && t.def.emberStrips) t.armorBrokenUntil = E.time + 4;
         if (info.chill) t.status.chillUntil = E.time + 2;
-        if (info.poison) { t.status.poisonUntil = E.time + 4; t.status.poisonDps = Math.max(t.status.poisonDps || 0, dmg * 0.25); }
         if (WHW.settings.dmgNumbers) {
             const col = info.perfect ? '#ffc83d' : info.crit ? '#ff9a3d' : '#ffffff';
             E.floatText(t.x + (rnd() - 0.5) * 10, t.y - t.r - 6, Math.round(dmg) + (info.perfect ? '!' : ''), col, info.perfect ? 18 : 14);
@@ -186,13 +197,14 @@
         if (t.hp <= 0) A.kill(t, info.from);
     };
 
+    function isStunned(t) { return (t.status && t.status.stunUntil > E.time) || (t.kind === 'rival' && t.ai.staggerUntil > E.time); }
     A.kill = function (t, by) {
         const g = game();
         t.dead = true;
         E.burst(t.x, t.y, t.def && t.def.color ? t.def.color : '#fff', 18, 180, { life: 0.7, size: 4 });
         const at = now();
         if (t.kind === 'monster') {
-            const loot = W.monsterLoot(g.state, t.type, Math.random, at, { ack: g.ack });
+            const loot = W.monsterLoot(g.state, t.type, Math.random, at, { ack: g.ack, zone: g.zoneId });
             WHW.showLoot(t.x, t.y, loot);
             if (!t.summoned && t.spawn !== undefined) {
                 const sec = t.elite ? D.ELITE_RESPAWN_SEC : D.MONSTER_RESPAWN_SEC;
@@ -208,7 +220,7 @@
             WHW.save();
         } else if (t.kind === 'boss') {
             const r = W.bossLoot(g.state, t.type, Math.random, at, g.ack);
-            g.bossDeadUntil = E.time + 90;
+            g.bossDeadUntil[g.zoneId] = E.time + 90;
             g.actors.filter(a => a.kind === 'clone' || a.summoned).forEach(a => { a.dead = true; });
             g.hazards.length = 0;
             WHW.onBossKilled && WHW.onBossKilled(t, r);
@@ -223,7 +235,7 @@
     A.tryDash = function (p, mv) {
         const S = D.COMBAT.stamina, DA = D.COMBAT.dash, ps = game().pstats;
         const cost = S.dash * ps.dashStam;
-        if (p.dashCd > 0 || p.dashT > 0 || p.stam.val < cost) return;
+        if (p.pull || p.dashCd > 0 || p.dashT > 0 || p.stam.val < cost) return;
         let dx = mv.x, dy = mv.y;
         if (!dx && !dy) { const aim = E.aimPoint(p.x, p.y); if (aim) { const a = angTo(p, aim); dx = Math.cos(a); dy = Math.sin(a); } else { dx = 0; dy = 1; } }
         const l = Math.hypot(dx, dy) || 1;
@@ -234,10 +246,29 @@
         WHW.sfx('dash');
     };
     // ---------------- abilities ----------------
-    // Z, X and C cast the abilities on the active class's loadout. They hurt monsters, bosses and rivals, and other players
+    // R, Q and C cast the abilities on the active class's loadout. They hurt monsters, bosses and rivals, and other players
     // outside town: a hit on a player is sent to them (world-online.js), and their page applies it.
-    A.abilityCd = function (p, id) { return Math.max(0, (p.abCd[id] || 0) - E.time); };
-    // buffs running now (Berserk, Stoneskin, Envenom...) and what they add up to
+    // Every ability holds a.charges casts (one by default). A used charge comes back a.cd seconds later, one at a time.
+    // p.abCharges[id]: { n: charges ready, next: when the next one comes back }
+    function charges(p, id) {
+        const a = D.ABILITIES[id], max = a.charges || 1;
+        const c = p.abCharges[id] || (p.abCharges[id] = { n: max, next: 0 });
+        while (c.n < max && E.time >= c.next) { c.n++; if (c.n < max) c.next += a.cd * game().pstats.abilityCd; }
+        return c;
+    }
+    function spendCharge(p, id) {
+        const a = D.ABILITIES[id], c = charges(p, id);
+        if (c.n === (a.charges || 1)) c.next = E.time + a.cd * game().pstats.abilityCd; // a full one starts recharging now
+        c.n--;
+    }
+    // seconds until the ability can be cast (0 while a charge is ready), and how many charges are ready
+    A.abilityCd = function (p, id) { const c = charges(p, id); return c.n > 0 ? 0 : Math.max(0, c.next - E.time); };
+    A.abilityCharges = (p, id) => charges(p, id).n;
+    // every charge used up, all coming back from now (equipping one outside town)
+    A.startCooldown = function (p, id) { const c = charges(p, id); c.n = 0; c.next = E.time + D.ABILITIES[id].cd * game().pstats.abilityCd; };
+    // lit on the hotbar: a running buff, the Riposte guard, a hook pulling you
+    A.abilityActive = (p, id) => A.buffOn(p, id) || (D.ABILITIES[id].kind === 'parry' && p.riposteUntil > E.time) || (D.ABILITIES[id].kind === 'hook' && !!p.pull);
+    // buffs running now (Berserk, Stoneskin, Hunter's Mark...) and what they add up to
     function activeBuffs(p) { const out = []; for (const id in p.buffs) if (p.buffs[id] > E.time) out.push(D.ABILITIES[id]); return out; }
     function buffMult(p, key) { let m = 1; for (const a of activeBuffs(p)) if (a[key]) m *= a[key]; return m; }
     function buffSum(p, key) { let n = 0; for (const a of activeBuffs(p)) if (typeof a[key] === 'number') n += a[key]; return n; }
@@ -260,6 +291,7 @@
     function stun(t, sec) {
         if (!t.status || t.kind === 'dummy' || t.dead) return;
         t.status.stunUntil = Math.max(t.status.stunUntil, E.time + (t.kind === 'boss' ? sec * 0.4 : sec));
+        if (t.kind === 'rival') t.ai.staggerUntil = Math.max(t.ai.staggerUntil, E.time + sec); // rivals stagger instead
         t.atk = null;
     }
     // slide the player along a line, stopping at walls; returns the points passed through
@@ -314,18 +346,62 @@
         else if (a.kind === 'cone') { for (let i = 0; i < 18; i++) { const aa = ang + (i / 17 - 0.5) * a.arc; E.burst(x + Math.cos(aa) * a.range * 0.7, y + Math.sin(aa) * a.range * 0.7, a.color, 2, 90, { angle: aa, spread: 0.3, life: 0.4 }); } }
         else if (a.kind === 'leap') { ringFx(x, y, a.radius, a.color); E.burst(x, y + 6, '#cbb89a', 18, 160, { life: 0.5 }); }
         else if (a.kind === 'line') { for (let d = 10; d <= a.len; d += 12) E.burst(x + Math.cos(ang) * d, y + Math.sin(ang) * d, a.color, 2, 70, { angle: ang, spread: 0.6, life: 0.4 }); }
-        else if (a.kind === 'knives') { for (let i = 0; i < a.count; i++) fxShot(ang + i / a.count * TAU, 'knife'); }
+        else if (a.kind === 'hook') boltFx({ x, y }, { x: tx, y: ty }, a.color);
         else if (a.kind === 'volley') { for (let i = 0; i < a.count; i++) fxShot(ang + (i / (a.count - 1) - 0.5) * a.spread, 'arrow'); }
-        else if (a.kind === 'shot') fxShot(ang, a.look === 'spear' ? 'javelin' : a.stun ? 'net' : 'arrow', { big: !!a.big });
+        else if (a.kind === 'shot') fxShot(ang, a.look === 'spear' ? 'javelin' : a.look === 'knife' ? 'knife' : a.stun ? 'net' : 'arrow', { big: !!a.big });
         else if (a.kind === 'chain') boltFx({ x, y }, { x: tx, y: ty }, a.color);
-        else if (a.kind === 'field') g.fields.push({ id, a, x: tx, y: ty, t: 0, next: a.delay || 0, base: 0, fx: true,
-            spikes: id === 'caltrops' ? Array.from({ length: 14 }, () => { const aa = rnd() * TAU, rr = Math.sqrt(rnd()) * a.r * 0.9; return { x: Math.cos(aa) * rr, y: Math.sin(aa) * rr, a: rnd() * TAU }; }) : null });
-        else E.burst(x, y, a.color, 14, 100, { life: 0.5 }); // blinks, charges, steps, heals and buffs: a flash where they are
+        else if (a.kind === 'field') g.fields.push({ id, a, x: tx, y: ty, t: 0, next: a.delay || 0, base: 0, fx: true });
+        else E.burst(x, y, a.color, 14, 100, { life: 0.5 }); // blinks, charges, steps, parries, heals and buffs: a flash where they are
         if (a.kind === 'buff' || a.kind === 'heal') E.floatText(x, y - 30, a.name.toUpperCase(), a.color, 13, 0.9);
+    };
+    // what an ability's dmg multiplies: the weapon in hand, damage buffs and ability perks
+    function abilityBase(p) {
+        const wst = W.gearStats(weaponItem());
+        return (wst ? wst.dmg : 8) * dmgBuff(p) * game().pstats.abilityDmg;
+    }
+    // Where a hook fired from p along ang stops: the first enemy, wall or solid node within range. { kind, x, y, t? }
+    function hookCast(p, ang, range) {
+        const cx = Math.cos(ang), cy = Math.sin(ang), targets = abilityTargets(), nodes = solidsNear(p.x, p.y, range + 40);
+        for (let d = p.r + 4; d <= range; d += 6) {
+            const x = p.x + cx * d, y = p.y + cy * d;
+            const t = targets.find(e => Math.hypot(e.x - x, e.y - y) <= e.r + 4);
+            if (t) return { kind: 'enemy', x: t.x, y: t.y, t };
+            const tile = E.tileAt(x, y);
+            if (tile === G.T.WALL || tile === G.T.BUILDING || nodes.some(n => Math.hypot(n.x - x, n.y - y) <= n.r)) return { kind: 'wall', x, y };
+        }
+        return { kind: 'miss', x: p.x + cx * range, y: p.y + cy * range };
+    }
+    // Being pulled along a hook's line (see castAbility 'hook'); stops on arrival or against something solid
+    function pullStep(p, dt) {
+        const pl = p.pull, dx = pl.x - p.x, dy = pl.y - p.y, d = Math.hypot(dx, dy), step = pl.speed * dt, bx = p.x, by = p.y;
+        if (d <= step) E.move(p, dx, dy, solidsNear(p.x, p.y, 80));
+        else E.move(p, dx / d * step, dy / d * step, solidsNear(p.x, p.y, 80));
+        p.vx = p.vy = 0; p.kbx = p.kby = 0;
+        if (d <= step || E.time > pl.until || Math.hypot(p.x - bx, p.y - by) < Math.min(step, d) * 0.3) p.pull = null;
+        if (E.perf !== 'low') E.burst(p.x, p.y + 8, 'rgba(255,255,255,0.5)', 1, 30, { life: 0.25 });
+    }
+    // A Riposte that caught a hit: the attacker (t, or another player) is cut and disarmed
+    function riposted(p, t, remote) {
+        const a = D.ABILITIES.riposte, base = abilityBase(p);
+        p.riposteUntil = 0;
+        p.iframes = Math.max(p.iframes, 0.35);
+        if (remote) WHW.online.hitRemote(remote, { kind: 'ab', w: a.id, dmg: base * a.dmg, ang: angTo(p, remote) });
+        else if (t) abilityHit(p, t, a, base, angTo(p, t), { text: 'DISARMED' });
+        E.burst(p.x, p.y - 6, '#ffe14d', 22, 220, { life: 0.45 });
+        E.floatText(p.x, p.y - 34, 'RIPOSTE!', '#ffc83d', 18, 1);
+        E.addHitStop(0.08); E.addShake(5);
+        WHW.sfx('parry');
+    }
+    // A player whose attack another player riposted: out of stamina, and none comes back for sec seconds
+    A.exhaustPlayer = function (sec) {
+        const p = game().player;
+        p.stam.val = 0; p.stam.idle = 0;
+        p.exhaustUntil = Math.max(p.exhaustUntil || 0, E.time + sec);
+        E.floatText(p.x, p.y - 30, 'DISARMED', '#ff9a3d', 14);
     };
     A.castAbility = function (key) {
         const g = game(), p = g.player, s = g.state;
-        if (!p || p.dead || p.stunUntil > E.time) return false;
+        if (!p || p.dead || p.stunUntil > E.time || p.pull) return false;
         const id = W.abilityKit(s)[key], a = D.ABILITIES[id];
         if (!a) { WHW.hint('Nothing on ' + D.ABILITY_KEYS[key] + ': learn abilities and equip them in the Classes menu (K).'); return false; }
         if (A.abilityCd(p, id) > 0) return false;
@@ -341,12 +417,11 @@
             prey = abilityTargets().filter(t => dist(p, t) <= a.range + t.r && !E.wallBetween(p.x, p.y, t.x, t.y)).sort((u, v) => dist(u, at) - dist(v, at))[0];
             if (!prey) { WHW.hint('No enemy close enough to ' + a.name + ' to.'); return false; }
         }
-        const wst = W.gearStats(weaponItem());
         // momentum abilities hit harder the faster you are moving toward where you aim, like a spear thrust
         const mom = a.momentum === true ? C.momentumMult(p.vx * Math.cos(ang) + p.vy * Math.sin(ang), ps.momentum + buffSum(p, 'momentum')) : 1;
         const momText = mom >= 1.25 ? 'CHARGE x' + mom.toFixed(1) : '';
-        const base = (wst ? wst.dmg : 8) * dmgBuff(p) * ps.abilityDmg * mom;
-        p.abCd[id] = E.time + a.cd * ps.abilityCd;
+        const base = abilityBase(p) * mom;
+        spendCharge(p, id);
         p.stam.val -= stam; if (stam) p.stam.idle = 0;
         // what other players are told (world-online.js): which ability, and where it was aimed (an area changes it to its centre)
         p.cast = { seq: (p.cast ? p.cast.seq : 0) + 1, id, x: aim ? aim.x : p.x + Math.cos(ang) * 100, y: aim ? aim.y : p.y + Math.sin(ang) * 100 };
@@ -409,15 +484,32 @@
             for (let d = 10; d <= len; d += 12) E.burst(p.x + cx * d + (rnd() - 0.5) * a.width, p.y + cy * d + (rnd() - 0.5) * a.width, a.color, 2, 70, { angle: ang, spread: 0.6, life: 0.4 });
             E.addShake(5); E.addHitStop(0.04);
             WHW.sfx('boss');
-        } else if (a.kind === 'knives') {
-            for (let i = 0; i < a.count; i++) abilityShot(p, a, ang + i / a.count * Math.PI * 2, base, { kind: 'knife', kb: 140 });
-            WHW.sfx('bow');
+        } else if (a.kind === 'hook') {
+            // the hook catches the first enemy, wall or solid thing along the aim, then pulls you to it
+            const hit = hookCast(p, ang, a.range);
+            p.cast.x = hit.x; p.cast.y = hit.y;
+            if (hit.t) abilityHit(p, hit.t, a, base, ang, { text: 'HOOKED' });
+            if (hit.kind !== 'miss') {
+                const dx = hit.x - p.x, dy = hit.y - p.y, len = Math.hypot(dx, dy) || 1;
+                const go = Math.max(0, len - (hit.t ? hit.t.r + p.r + 4 : p.r + 2)), time = go / 1100;
+                p.pull = { x: p.x + dx / len * go, y: p.y + dy / len * go, speed: 1100, until: E.time + time + 0.2 };
+                p.dashT = 0;
+                p.iframes = Math.max(p.iframes, time + 0.1);
+            }
+            p.hookFx = { x: hit.x, y: hit.y, until: E.time + (hit.kind === 'miss' ? 0.18 : 0.45) };
+            E.burst(hit.x, hit.y, a.color, hit.kind === 'miss' ? 3 : 10, 120, { life: 0.3 });
+            WHW.sfx(hit.kind === 'miss' ? 'dash' : 'clash');
+        } else if (a.kind === 'parry') {
+            // a short guard: a hit landing in it is cancelled and riposted (hurtPlayer)
+            p.riposteUntil = E.time + a.window;
+            E.burst(p.x, p.y, a.color, 10, 80, { life: 0.3 });
+            WHW.sfx('block');
         } else if (a.kind === 'volley') {
             for (let i = 0; i < a.count; i++) abilityShot(p, a, ang + (i / (a.count - 1) - 0.5) * a.spread, base);
             WHW.sfx('bow');
         } else if (a.kind === 'shot') {
-            abilityShot(p, a, ang, base, { kind: a.look === 'spear' ? 'javelin' : a.stun ? 'net' : 'arrow', r: a.big ? 6 : 5, pierce: a.pierce || 0, kb: a.kb || 260,
-                big: !!a.big, stun: a.stun || 0, text: momText || undefined });
+            abilityShot(p, a, ang, base, { kind: a.look === 'spear' ? 'javelin' : a.look === 'knife' ? 'knife' : a.stun ? 'net' : 'arrow', r: a.big ? 6 : 5, pierce: a.pierce || 0, kb: a.kb || 260,
+                big: !!a.big, stun: a.stun || 0, stunnedMult: a.stunnedMult, text: momText || undefined });
             E.addShake(3);
             WHW.sfx('bow');
         } else if (a.kind === 'chain') {
@@ -454,8 +546,7 @@
                 const d = aim ? Math.min(a.range, Math.hypot(aim.x - p.x, aim.y - p.y)) : a.range / 2;
                 fx = p.x + Math.cos(ang) * d; fy = p.y + Math.sin(ang) * d;
             }
-            const spikes = id === 'caltrops' ? Array.from({ length: 14 }, () => { const aa = rnd() * TAU, rr = Math.sqrt(rnd()) * a.r * 0.9; return { x: Math.cos(aa) * rr, y: Math.sin(aa) * rr, a: rnd() * TAU }; }) : null;
-            g.fields.push({ id, a, x: fx, y: fy, t: 0, next: a.delay || 0, base, spikes });
+            g.fields.push({ id, a, x: fx, y: fy, t: 0, next: a.delay || 0, base });
             p.cast.x = fx; p.cast.y = fy;
             WHW.sfx(a.delay ? 'dash' : 'perfect');
         } else if (a.kind === 'smoke') {
@@ -482,7 +573,7 @@
         if (WHW.ui && WHW.ui.renderAbilities) WHW.ui.renderAbilities();
         return true;
     };
-    // Ability areas on the ground (Sanctuary, Caltrops, Rain of Arrows, Singularity, Meteor, Blizzard): after the
+    // Ability areas on the ground (Sanctuary, Rain of Arrows, Singularity, Meteor, Blizzard): after the
     // delay they hit every tick seconds until their time runs out
     A.updateFields = function (dt) {
         const g = game(), p = g.player;
@@ -542,10 +633,6 @@
                     for (let i = 0; i < 3; i++) for (let j = 0; j <= 20; j++) { const u = j / 20, aa = E.time * -4 + i * TAU / 3 + u * 3, rr = a.r * (1 - u); const x = f.x + Math.cos(aa) * rr, y = f.y + Math.sin(aa) * rr; if (j) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
                     ctx.stroke();
                 }
-                if (f.spikes) {
-                    ctx.globalAlpha = fade; ctx.strokeStyle = '#d9dde6'; ctx.lineWidth = 2;
-                    for (const k of f.spikes) for (let i = 0; i < 3; i++) { const aa = k.a + i * TAU / 3; ctx.beginPath(); ctx.moveTo(f.x + k.x, f.y + k.y); ctx.lineTo(f.x + k.x + Math.cos(aa) * 5, f.y + k.y + Math.sin(aa) * 5); ctx.stroke(); }
-                }
             }
             ctx.restore();
         }
@@ -571,16 +658,19 @@
         if (E.time < p.status.chillUntil) speed *= 0.7;
         if (p.slow) speed *= 1 - p.slow;
         speed *= buffMult(p, 'speedMult');
-        if (p.dashT > 0) {
-            p.dashT -= dt;
-            p.vx = p.dashX * D.COMBAT.player.speed * D.COMBAT.dash.speedMult;
-            p.vy = p.dashY * D.COMBAT.player.speed * D.COMBAT.dash.speedMult;
-        } else {
-            const accel = tile === T.ICE ? 2.2 : 16;
-            const f = Math.min(1, accel * dt);
-            p.vx += (mv.x * speed - p.vx) * f; p.vy += (mv.y * speed - p.vy) * f;
+        if (p.pull) pullStep(p, dt);
+        else {
+            if (p.dashT > 0) {
+                p.dashT -= dt;
+                p.vx = p.dashX * D.COMBAT.player.speed * D.COMBAT.dash.speedMult;
+                p.vy = p.dashY * D.COMBAT.player.speed * D.COMBAT.dash.speedMult;
+            } else {
+                const accel = tile === T.ICE ? 2.2 : 16;
+                const f = Math.min(1, accel * dt);
+                p.vx += (mv.x * speed - p.vx) * f; p.vy += (mv.y * speed - p.vy) * f;
+            }
+            E.move(p, (p.vx + p.kbx) * dt, (p.vy + p.kby) * dt, solidsNear(p.x, p.y, 80));
         }
-        E.move(p, (p.vx + p.kbx) * dt, (p.vy + p.kby) * dt, solidsNear(p.x, p.y, 80));
         const kd = Math.exp(-9 * dt); p.kbx *= kd; p.kby *= kd;
         p.dashCd = Math.max(0, p.dashCd - dt);
         p.iframes = Math.max(0, p.iframes - dt);
@@ -653,7 +743,7 @@
                 trailPush(p, p.x + Math.cos(w.theta) * P.len, p.y + Math.sin(w.theta) * P.len, p.powerPerfect ? 'perfect' : p.powerHit ? 'hit' : 'slow');
             }
         }
-        C.staminaStep(p.stam, drain, dt, g.pstats.stamRegen * (p.shield.up ? D.COMBAT.shield.regenMult : 1));
+        C.staminaStep(p.stam, drain, dt, g.pstats.stamRegen * (p.shield.up ? D.COMBAT.shield.regenMult : 1) * (p.exhaustUntil > E.time ? 0 : 1));
     };
     // Called by world.js when the button goes down / up
     A.press = function (p) {
@@ -682,7 +772,7 @@
         const a = w.theta + shot.angleOff;
         g.projectiles.push({ kind: 'arrow', team: 'player', x: p.x + Math.cos(a) * 16, y: p.y + Math.sin(a) * 16, vx: Math.cos(a) * shot.speed, vy: Math.sin(a) * shot.speed,
             r: 4, life: P.life, dmg: st.dmg * shot.dmgMult * dmgBuff(p) * (g.pstats.dmgBy.bow || 1), steady: shot.steady, w: weaponItem().base, kb: P.kb, chill: st.chill, burn: st.burn,
-            crit: st.crit + g.pstats.crit + buffSum(p, 'crit'), lifesteal: (st.lifesteal || 0) + g.pstats.lifesteal, poison: buffOn(p, 'venom'), hit: new Set() });
+            crit: st.crit + g.pstats.crit + buffSum(p, 'crit'), lifesteal: (st.lifesteal || 0) + g.pstats.lifesteal, hit: new Set() });
         if (shot.steady) { E.floatText(p.x, p.y - 30, 'STEADY', '#ffc83d', 12); }
         WHW.sfx('bow');
     };
@@ -724,7 +814,7 @@
         const dmg = C.mitigate(hd.dmg * mult, armor);
         if (combo >= 2 && !text) text = 'COMBO x' + (combo + 1);
         if (charge) text = charge;
-        A.damage(t, dmg, { from: p, kbAngle: angle + dir * Math.PI / 2 * 0.7, kb: P.kb * st.kbMult, s, perfect: hd.perfect, crit, burn: st.burn, chill: st.chill, poison: buffOn(p, 'venom'), text });
+        A.damage(t, dmg, { from: p, kbAngle: angle + dir * Math.PI / 2 * 0.7, kb: P.kb * st.kbMult, s, perfect: hd.perfect, crit, burn: st.burn, chill: st.chill, text });
         const steal = (st.lifesteal || 0) + g.pstats.lifesteal;
         if (steal) p.hp = Math.min(p.maxHp, p.hp + dmg * steal);
         E.burst(cx, cy, hd.perfect ? '#ffc83d' : '#ffffff', hd.perfect ? 12 : 7, 160, { angle: angle + dir * Math.PI / 2, spread: 1.4, life: 0.35 });
@@ -838,7 +928,7 @@
         const g = game();
         const it = weaponItem();
         const st = it ? W.gearStats(it) : null;
-        const loot = W.nodeLoot(g.state, n.type, Math.random, now(), { bonus, ack: g.ack, toolYield: st ? st.yield : 0, inTown: g.inTown });
+        const loot = W.nodeLoot(g.state, n.type, Math.random, now(), { bonus, ack: g.ack, toolYield: st ? st.yield : 0, inTown: g.inTown, zone: g.zoneId });
         WHW.showLoot(n.x, n.y, loot);
         n.work = 0;
         n.readyAt = now() + n.def.respawn * 1000;
@@ -1031,12 +1121,6 @@
             if (t.hp <= 0 && t.kind !== 'dummy') A.kill(t, game().player);
             if (t.kind === 'dummy') t.hp = t.maxHp;
         } else t.status.burnDps = 0;
-        if (E.time < t.status.poisonUntil && t.status.poisonDps) {
-            t.hp -= t.status.poisonDps * dt;
-            if (E.perf !== 'low' && rnd() < dt * 6) E.burst(t.x, t.y - t.r * 0.4, '#7dff6b', 1, 30, { life: 0.5, grav: -50 });
-            if (t.hp <= 0 && t.kind !== 'dummy') A.kill(t, game().player);
-            if (t.kind === 'dummy') t.hp = t.maxHp;
-        } else t.status.poisonDps = 0;
     }
 
     // ---------------- bosses ----------------
@@ -1290,7 +1374,7 @@
                     const crit = rnd() < (pr.crit || 0);
                     if (crit) mult *= 1.5;
                     const dmg = C.mitigate(pr.dmg * mult, a.armorBrokenUntil > E.time ? 0 : a.armor);
-                    A.damage(a, dmg, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.5, perfect: pr.steady, crit, burn: pr.burn, chill: pr.chill, poison: pr.poison, text });
+                    A.damage(a, dmg, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.5, perfect: pr.steady, crit, burn: pr.burn, chill: pr.chill, stunnedMult: pr.stunnedMult, text });
                     if (pr.stun) stun(a, pr.stun);
                     if (pr.lifesteal) p.hp = Math.min(p.maxHp, p.hp + dmg * pr.lifesteal);
                     if (pr.kind === 'arrow' && !pr.ability && !pr.reflected && a.kind !== 'dummy') g.state.stats.arrowHits++;
@@ -1345,13 +1429,35 @@
         if (fill) { ctx.fillStyle = fill; ctx.fill(); }
         if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = lw; ctx.stroke(); }
     }
-    function faceImg(ctx, src, x, y, r, alpha = 1) {
+    // Faces (players, townsfolk, bosses, statues) are cut into a circle once for each size on screen and kept, instead
+    // of clipping and shrinking the whole picture every frame. stone: the statues' grey, carved look.
+    const faceCache = new Map();
+    function faceSprite(src, r, stone) {
         const im = E.img(src);
-        ctx.save();
-        ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.clip();
-        if (im) { ctx.globalAlpha = alpha; const s = Math.max(r * 2 / im.naturalWidth, r * 2 / im.naturalHeight); ctx.drawImage(im, x - im.naturalWidth * s / 2, y - im.naturalHeight * s / 2, im.naturalWidth * s, im.naturalHeight * s); }
-        else { ctx.fillStyle = '#e8d7b0'; ctx.fillRect(x - r, y - r, r * 2, r * 2); }
-        ctx.restore();
+        if (!im) return null;
+        const px = Math.max(4, Math.ceil(r * 2 * E.dpr * E.zoom));
+        const key = src + '|' + px + (stone ? '|stone' : '');
+        let cv = faceCache.get(key);
+        if (!cv) {
+            if (faceCache.size > 120) faceCache.clear(); // sizes change with the window and the graphics settings
+            cv = document.createElement('canvas');
+            cv.width = cv.height = px;
+            const c = cv.getContext('2d');
+            c.beginPath(); c.arc(px / 2, px / 2, px / 2, 0, TAU); c.clip();
+            if (stone) c.filter = 'grayscale(1) brightness(0.72) contrast(1.15)';
+            const s = Math.max(px / im.naturalWidth, px / im.naturalHeight);
+            c.drawImage(im, (px - im.naturalWidth * s) / 2, (px - im.naturalHeight * s) / 2, im.naturalWidth * s, im.naturalHeight * s);
+            faceCache.set(key, cv);
+        }
+        return cv;
+    }
+    function faceImg(ctx, src, x, y, r, alpha = 1, stone = false) {
+        const sp = faceSprite(src, r, stone);
+        if (!sp) { circle(ctx, x, y, r, stone ? '#8a8790' : '#e8d7b0'); return; }
+        const a = ctx.globalAlpha;
+        ctx.globalAlpha = a * alpha;
+        ctx.drawImage(sp, x - r, y - r, r * 2, r * 2);
+        ctx.globalAlpha = a;
     }
     function hpBar(ctx, a, w = 34, y = -8) {
         if (a.hp >= a.maxHp || a.kind === 'boss' || a.kind === 'dummy') return;
@@ -1450,6 +1556,15 @@
             else circle(ctx, p.x, p.y, p.r + 6 + Math.sin(E.time * 14) * 1.5, null, a.color, 2);
         }
         if (p.protectedUntil > E.time && !g.inTown) circle(ctx, p.x, p.y, p.r + 7, 'rgba(120,200,255,0.12)', 'rgba(150,215,255,0.6)', 1.5);
+        if (p.riposteUntil > E.time) { ctx.setLineDash([4, 4]); circle(ctx, p.x, p.y, p.r + 9, 'rgba(255,231,163,0.12)', '#ffe7a3', 2.5); ctx.setLineDash([]); }
+        if (p.hookFx && (p.hookFx.until > E.time || p.pull)) {
+            const h = p.hookFx;
+            ctx.strokeStyle = '#8a6a44'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(h.x, h.y); ctx.stroke();
+            ctx.strokeStyle = '#d9dde6'; ctx.lineWidth = 2.5;
+            const ha = Math.atan2(h.y - p.y, h.x - p.x);
+            ctx.beginPath(); ctx.arc(h.x - Math.cos(ha) * 4, h.y - Math.sin(ha) * 4, 5, ha - 1.2, ha + 1.2); ctx.stroke();
+        }
         if (p.stunUntil > E.time) { ctx.fillStyle = '#ffe14d'; for (let i = 0; i < 3; i++) { const a = E.time * 5 + i * TAU / 3; ctx.fillRect(p.x + Math.cos(a) * p.r * 0.8 - 2, p.y - p.r - 8 + Math.sin(a) * 3, 4, 4); } }
         ctx.globalAlpha = 1;
         if (b) {
@@ -1502,10 +1617,7 @@
         const sb = D.GEAR_BY_ID[info.sh];
         if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false);
         ctx.globalAlpha = 1;
-        ctx.font = '700 11px Inter, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillStyle = hostile ? '#ffb3bb' : '#e6f0ff'; ctx.strokeStyle = 'rgba(0,0,0,0.75)'; ctx.lineWidth = 3;
-        const name = info.n || 'Adventurer';
-        ctx.strokeText(name, rp.x, rp.y - rp.r - 16); ctx.fillText(name, rp.x, rp.y - rp.r - 16);
+        E.label(ctx, info.n || 'Adventurer', rp.x, rp.y - rp.r - 16, { font: '700 11px Inter, sans-serif', fill: hostile ? '#ffb3bb' : '#e6f0ff', stroke: 'rgba(0,0,0,0.75)' });
         const w = 40, x = rp.x - w / 2, y = rp.y - rp.r - 12;
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 1, y - 1, w + 2, 5);
         ctx.fillStyle = hostile ? '#ff5b6b' : '#5fd068'; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, rp.hp / rp.maxHp)), 3);
@@ -1535,6 +1647,83 @@
         ctx.font = '700 10px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a3';
         ctx.fillText((locked ? '🔒 ' : '') + bag.by + "'s loot", bag.x, bag.y - 22 + bob);
     };
+    // ---------------- townsfolk and the Hall of Gods ----------------
+    const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')'; };
+    // A quest giver. mark: 'new' (a quest to take), 'ready' (one to hand in), 'busy' (one under way) or null
+    A.drawNpc = function (ctx, n, def, mark) {
+        const x = n.x, y = n.y, r = 14, bob = Math.sin(E.time * 2 + x) * 1.2;
+        shadow(ctx, x, y, r);
+        circle(ctx, x, y + 3, r + 3, def.color, 'rgba(0,0,0,0.55)', 1.5);
+        faceImg(ctx, def.face, x, y - 4 + bob, r - 2);
+        circle(ctx, x, y - 4 + bob, r - 2, null, 'rgba(0,0,0,0.45)', 1.5);
+        if (def.hooded) {
+            // a deep hood: only the lower half of the face shows
+            ctx.fillStyle = '#17121e';
+            ctx.beginPath(); ctx.arc(x, y - 4 + bob, r + 1, Math.PI * 1.02, Math.PI * 1.98); ctx.lineTo(x + r - 2, y - 6 + bob); ctx.quadraticCurveTo(x, y - 12 + bob, x - r + 2, y - 6 + bob); ctx.closePath(); ctx.fill();
+        }
+        E.label(ctx, def.name, x, y - r - 12, { font: '700 11px Inter, sans-serif', fill: '#ffe7a3', stroke: 'rgba(0,0,0,0.75)' });
+        if (mark) E.label(ctx, mark === 'new' ? '!' : '?', x, y - r - 28 + Math.sin(E.time * 4) * 2.5, { font: '900 20px Inter, sans-serif', fill: mark === 'busy' ? '#b4bccd' : '#ffc83d', stroke: 'rgba(0,0,0,0.75)' });
+    };
+    // A god's statue on its pedestal: grey stone carved with the god's face, glowing in its colour the higher it is raised
+    A.drawStatue = function (ctx, st, god, level) {
+        const x = st.x, y = st.y;
+        if (level > 0) {
+            const R = 44 + level * 3, a = 0.05 + 0.035 * level + Math.sin(E.time * 2 + x) * 0.02;
+            const grad = ctx.createRadialGradient(x, y - 36, 4, x, y - 36, R);
+            grad.addColorStop(0, rgba(god.color, a)); grad.addColorStop(1, rgba(god.color, 0));
+            ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x, y - 36, R, 0, TAU); ctx.fill();
+        }
+        shadow(ctx, x, y + 6, 20);
+        ctx.fillStyle = '#3a3546'; ctx.fillRect(x - 22, y - 10, 44, 6);
+        ctx.fillStyle = '#2a2633'; ctx.fillRect(x - 20, y - 4, 40, 18);
+        if (level > 0) E.label(ctx, level, x, y + 9, { font: '800 10px Inter, sans-serif', fill: god.color });
+        // robe and folded arms
+        ctx.fillStyle = '#57525f';
+        ctx.beginPath(); ctx.moveTo(x - 15, y - 10); ctx.lineTo(x - 9, y - 46); ctx.lineTo(x + 9, y - 46); ctx.lineTo(x + 15, y - 10); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(0,0,0,0.22)'; for (const dx of [-6, 0, 6]) ctx.fillRect(x + dx - 1, y - 40, 2, 28);
+        ctx.fillStyle = '#625d6b'; ctx.fillRect(x - 12, y - 36, 24, 7);
+        // the face, in stone
+        faceImg(ctx, god.face, x, y - 56, 11, 1, true);
+        circle(ctx, x, y - 56, 11, null, '#3a3546', 2);
+        if (level > 0) { ctx.fillStyle = god.color; ctx.globalAlpha = 0.6 + Math.sin(E.time * 3) * 0.3; ctx.fillRect(x - 5, y - 58, 3, 2); ctx.fillRect(x + 2, y - 58, 3, 2); ctx.globalAlpha = 1; }
+    };
+    A.drawPillar = function (ctx, p) {
+        const x = p.x, y = p.y;
+        shadow(ctx, x, y + 6, 14);
+        ctx.fillStyle = '#2f2b38'; ctx.fillRect(x - 12, y - 6, 24, 16);
+        ctx.fillStyle = '#3c3747'; ctx.fillRect(x - 9, y - 74, 18, 70);
+        ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(x - 9, y - 74, 5, 70);
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(x + 4, y - 74, 5, 70);
+        ctx.fillStyle = '#2f2b38'; ctx.fillRect(x - 13, y - 82, 26, 10);
+    };
+    A.drawBrazier = function (ctx, b) {
+        const x = b.x, y = b.y;
+        shadow(ctx, x, y + 4, 12);
+        ctx.fillStyle = '#1d1a22'; ctx.fillRect(x - 3, y - 14, 6, 20);
+        ctx.fillStyle = '#2d2834'; ctx.beginPath(); ctx.moveTo(x - 14, y - 22); ctx.lineTo(x + 14, y - 22); ctx.lineTo(x + 8, y - 12); ctx.lineTo(x - 8, y - 12); ctx.closePath(); ctx.fill();
+        const cols = b.cold ? ['rgba(90,50,220,0.85)', 'rgba(61,200,255,0.85)', 'rgba(210,255,240,0.9)'] : ['rgba(255,80,30,0.85)', 'rgba(255,165,60,0.85)', 'rgba(255,240,170,0.9)'];
+        for (let i = 0; i < 3; i++) {
+            const f = Math.sin(E.time * (9 + i * 3) + x + i) * 0.5 + 0.5;
+            ctx.fillStyle = cols[i];
+            ctx.beginPath(); ctx.ellipse(x + (i - 1) * 2, y - 27 - f * 4 - i * 2, 8 - i * 2.5, 11 - i * 3 + f * 3, 0, 0, TAU); ctx.fill();
+        }
+    };
+
+    // The hidden room's altar: a black stone table with what it offers floating over it (nothing, once it is taken)
+    A.drawAltar = function (ctx, al, offer, taken) {
+        const x = al.x, y = al.y;
+        shadow(ctx, x, y + 6, 18);
+        ctx.fillStyle = '#231e2b'; ctx.fillRect(x - 21, y - 14, 42, 6);
+        ctx.fillStyle = '#15121b'; ctx.fillRect(x - 18, y - 8, 36, 20);
+        ctx.strokeStyle = 'rgba(61,255,180,0.45)'; ctx.lineWidth = 1; ctx.strokeRect(x - 17.5, y - 7.5, 35, 19);
+        if (taken || !offer) return;
+        const f = Math.sin(E.time * 2.2) * 3, gy = y - 34 + f;
+        const grad = ctx.createRadialGradient(x, gy, 2, x, gy, 30);
+        grad.addColorStop(0, 'rgba(61,255,180,0.45)'); grad.addColorStop(1, 'rgba(61,255,180,0)');
+        ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(x, gy, 30, 0, TAU); ctx.fill();
+        E.label(ctx, offer.icon, x, gy + 8, { font: '24px serif', fill: '#fff' });
+    };
+
     A.drawRival = function (ctx, r) {
         shadow(ctx, r.x, r.y, r.r);
         if (r.ai.iframes > 0) ctx.globalAlpha = 0.5;
@@ -1543,9 +1732,7 @@
         if (r.flash > 0) circle(ctx, r.x, r.y, r.r + 2, 'rgba(255,255,255,0.5)');
         ctx.globalAlpha = 1;
         A.drawWeapon(ctx, r.x, r.y, r.weapon, r.cls, r.tier, { rival: true });
-        ctx.font = '700 11px Inter, sans-serif'; ctx.textAlign = 'center';
-        ctx.fillStyle = r.color; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
-        ctx.strokeText(r.name, r.x, r.y - r.r - 16); ctx.fillText(r.name, r.x, r.y - r.r - 16);
+        E.label(ctx, r.name, r.x, r.y - r.r - 16, { font: '700 11px Inter, sans-serif', fill: r.color, stroke: 'rgba(0,0,0,0.7)' });
         const w = 40, x = r.x - w / 2, y = r.y - r.r - 12;
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 1, y - 1, w + 2, 5);
         ctx.fillStyle = '#ff9a3d'; ctx.fillRect(x, y, w * Math.max(0, r.hp / r.maxHp), 3);
@@ -1633,10 +1820,9 @@
         }
         if (m.status.burnUntil > E.time) circle(ctx, x, y, r + 2, null, 'rgba(255,140,40,0.6)', 2);
         if (m.status.chillUntil > E.time) circle(ctx, x, y, r + 2, 'rgba(160,220,255,0.25)');
-        if (m.status.poisonUntil > E.time) circle(ctx, x, y, r + 4, null, 'rgba(125,255,107,0.65)', 2);
         if (m.status.stunUntil > E.time) { ctx.fillStyle = '#ffe14d'; for (let i = 0; i < 3; i++) { const a = E.time * 5 + i * TAU / 3; ctx.fillRect(x + Math.cos(a) * r * 0.8 - 2, y - r - 6 + Math.sin(a) * 3, 4, 4); } }
         hpBar(ctx, m);
-        if (m.elite) { ctx.font = '700 11px Inter, sans-serif'; ctx.textAlign = 'center'; ctx.fillStyle = '#ffe7a3'; ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3; ctx.strokeText(d.name, x, y - r - 18); ctx.fillText(d.name, x, y - r - 18); }
+        if (m.elite) E.label(ctx, d.name, x, y - r - 18, { font: '700 11px Inter, sans-serif', fill: '#ffe7a3', stroke: 'rgba(0,0,0,0.7)' });
         if (m.kind === 'dummy' && m.dmgLog.length) {
             const recent = m.dmgLog.filter(e => E.time - e.at < 3);
             m.dmgLog = recent;
@@ -1756,9 +1942,49 @@
         }
     };
     // Nodes: trees, rocks and ores, bushes. The glowing crack shows where a hit counts double.
+    // Every node of a type looks the same (scattered crystals come in four variations), so each look is drawn once into
+    // a small picture at the current sharpness and stamped: there are a lot of trees and rocks on screen at once
+    const nodeCache = new Map();
+    function nodeSprite(ctx, n, alive) {
+        if (n.variant === undefined) n.variant = (((Math.floor(n.x) * 73856093) ^ (Math.floor(n.y) * 19349663)) >>> 0) % 4;
+        const t = ctx.getTransform(), scale = Math.hypot(t.a, t.b);
+        const key = n.type + '|' + (alive ? n.variant : 'gone') + '|' + scale.toFixed(2);
+        let sp = nodeCache.get(key);
+        if (!sp) {
+            if (nodeCache.size > 160) nodeCache.clear();
+            const r = n.r, left = r * 1.6 + 10, top = r * 1.4 + 52, bottom = r * 1.3 + 12;
+            const cv = document.createElement('canvas');
+            cv.width = Math.ceil(left * 2 * scale); cv.height = Math.ceil((top + bottom) * scale);
+            const c = cv.getContext('2d');
+            c.setTransform(scale, 0, 0, scale, left * scale, top * scale);
+            drawNodeBody(c, n, 0, 0, alive, n.variant);
+            sp = { cv, left, top, w: left * 2, h: top + bottom };
+            nodeCache.set(key, sp);
+        }
+        return sp;
+    }
     A.drawNode = function (ctx, n, showCrack) {
-        const d = n.def, x = n.x + (n.shake > 0 ? (Math.random() - 0.5) * 3 : 0), y = n.y, r = n.r;
-        if (!A.nodeAlive(n)) {
+        const d = n.def, x = n.x + (n.shake > 0 ? (Math.random() - 0.5) * 3 : 0), y = n.y, r = n.r, alive = A.nodeAlive(n);
+        const sp = nodeSprite(ctx, n, alive);
+        ctx.drawImage(sp.cv, x - sp.left, y - sp.top, sp.w, sp.h);
+        if (!alive) return;
+        if (n.type === 'sulfur' && E.perf !== 'low' && Math.random() < 0.02) E.burst(x, y - r, 'rgba(230,217,74,0.6)', 1, 20, { life: 1, grav: -30 });
+        if (showCrack && d.tool !== 'hand') {
+            const a = n.crack;
+            ctx.strokeStyle = `rgba(255,225,77,${0.65 + Math.sin(E.time * 8) * 0.25})`; ctx.lineWidth = 3;
+            const cy = d.tool === 'axe' ? y : y - 2;
+            ctx.beginPath(); ctx.arc(x, cy, r + 2, a - 0.32, a + 0.32); ctx.stroke();
+        }
+        if (n.work > 0) {
+            const w = 28;
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2 - 1, y + r + 4, w + 2, 5);
+            ctx.fillStyle = '#ffe14d'; ctx.fillRect(x - w / 2, y + r + 5, w * Math.min(1, n.work / d.work), 3);
+        }
+    };
+    // A node's look at (x, y): a stump or hollow once harvested. v: which variation of scattered crystals.
+    function drawNodeBody(ctx, n, x, y, alive, v) {
+        const d = n.def, r = n.r;
+        if (!alive) {
             if (d.tool === 'axe') { circle(ctx, x, y + 4, 7, d.trunk || '#6b4423'); }
             else if (d.tool === 'pickaxe') { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 6, r * 0.8, r * 0.35, 0, 0, TAU); ctx.fill(); }
             return;
@@ -1786,13 +2012,12 @@
                 ctx.fillStyle = d.color;
                 const crystals = n.type === 'ruby_vein' || n.type === 'frost_crystal' || n.type === 'ember';
                 for (let i = 0; i < 4; i++) {
-                    const ox = Math.cos(i * 1.7 + n.x) * r * 0.5, oy = Math.sin(i * 2.3 + n.y) * r * 0.3 - 2;
+                    const ox = Math.cos(i * 1.7 + v * 1.9) * r * 0.5, oy = Math.sin(i * 2.3 + v * 2.7) * r * 0.3 - 2;
                     if (crystals) { ctx.beginPath(); ctx.moveTo(x + ox - 3, y + oy + 3); ctx.lineTo(x + ox, y + oy - 7); ctx.lineTo(x + ox + 3, y + oy + 3); ctx.fill(); }
                     else ctx.fillRect(x + ox - 2.5, y + oy - 2.5, 5, 5);
                 }
                 if (n.type === 'ruby_vein' || n.type === 'ember' || n.type === 'frost_crystal') circle(ctx, x, y - 2, r + 4, n.type === 'frost_crystal' ? 'rgba(140,230,255,0.12)' : 'rgba(255,60,80,0.12)');
             }
-            if (n.type === 'sulfur' && E.perf !== 'low' && Math.random() < 0.02) E.burst(x, y - r, 'rgba(230,217,74,0.6)', 1, 20, { life: 1, grav: -30 });
         } else {
             // bushes and herbs
             if (n.type === 'herb') {
@@ -1804,18 +2029,7 @@
                 ctx.strokeStyle = '#e8e1a8'; ctx.lineWidth = 1; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(x - 4 + i * 4, y - 2); ctx.lineTo(x - 5 + i * 4, y - r - 4); ctx.stroke(); }
             }
         }
-        if (showCrack && d.tool !== 'hand') {
-            const a = n.crack;
-            ctx.strokeStyle = `rgba(255,225,77,${0.65 + Math.sin(E.time * 8) * 0.25})`; ctx.lineWidth = 3;
-            const cy = d.tool === 'axe' ? y : y - 2;
-            ctx.beginPath(); ctx.arc(x, cy, r + 2, a - 0.32, a + 0.32); ctx.stroke();
-        }
-        if (n.work > 0) {
-            const w = 28;
-            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - w / 2 - 1, y + r + 4, w + 2, 5);
-            ctx.fillStyle = '#ffe14d'; ctx.fillRect(x - w / 2, y + r + 5, w * Math.min(1, n.work / d.work), 3);
-        }
-    };
+    }
     A.drawGrave = function (ctx, gr) {
         const bob = Math.sin(E.time * 3) * 2;
         shadow(ctx, gr.x, gr.y, 10);

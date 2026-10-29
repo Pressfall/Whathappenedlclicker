@@ -137,9 +137,10 @@
         // ---------- prestige ----------
         // Upgrade levels needed per Golden. Divine Collector and Void followers shrink it before rounding down, so a
         // 25% bonus is worth something even when you'd only earn one Golden.
-        function levelsPerGolden(baseLevels, collectorBonus, followerGoldenPercent) {
+        function levelsPerGolden(baseLevels, collectorBonus, followerGoldenPercent, godGoldenPercent) {
             let mult = 1 + (Number(collectorBonus) || 0);
             mult *= 1 + (Number(followerGoldenPercent) || 0) / 100;
+            mult *= 1 + (Number(godGoldenPercent) || 0) / 100;
             return baseLevels / mult;
         }
         // Golden for prestiging now. The tiny epsilon keeps e.g. 1200 levels x 1.25 from floating down to 0.9999.
@@ -171,6 +172,7 @@
             cps = cps * (1 + (p.clanPerkPercent || 0) / 100);
             cps = cps * (1 + (p.followerCpsPercent || 0) / 100) * (1 + (p.followerOfflinePercent || 0) / 100);
             cps = cps * (1 + (p.itemCpsPercent || 0) / 100) * (1 + (p.itemOfflinePercent || 0) / 100);
+            if (p.godCpsPercent || p.godOfflinePercent) cps = cps * (1 + (p.godCpsPercent || 0) / 100) * (1 + (p.godOfflinePercent || 0) / 100);
             return cps;
         }
 

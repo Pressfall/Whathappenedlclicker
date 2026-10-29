@@ -5,7 +5,7 @@
  */
 (function () {
     'use strict';
-    const D = window.WHWorldData, W = window.WHWorld, Bridge = window.WHWorldBridge;
+    const D = window.WHWorldData, W = window.WHWorld, Bridge = window.WHWorldBridge, Gods = window.WHWorldGods;
     const WHW = window.WHW;
     const E = WHW.engine;
     const $ = (id) => document.getElementById(id);
@@ -27,6 +27,7 @@
         m.hidden = false;
         modalClose = opts.onClose || null;
         modalRender = opts.render || null;
+        hideTip();
         E.paused = true;
         E.keys.clear();
         if (E.mouse.down) { E.mouse.down = false; if (WHW.onRelease) WHW.onRelease(); }
@@ -36,6 +37,7 @@
     function closeModal() {
         const fn = modalClose;
         modalClose = null; modalRender = null;
+        hideTip();
         $('wModal').hidden = true;
         E.paused = false;
         if (fn) fn();
@@ -60,8 +62,9 @@
         if (k === 'i' || ev.key === 'Tab') { ev.preventDefault(); openBag(); return true; }
         if (k === 'm') { openMap(); return true; }
         if (k === 'k') { openSkills(); return true; }
-        if (k === 'z' || k === 'x' || k === 'c') { WHW.actions.castAbility('zxc'.indexOf(k)); return true; }
-        if (k === 'q') { WHW.actions.usePotion(); return true; }
+        const ab = D.ABILITY_KEYS.findIndex(key => key.toLowerCase() === k);
+        if (ab >= 0) { WHW.actions.castAbility(ab); return true; }
+        if (k === 'z') { WHW.actions.usePotion(); return true; }
         if (k >= '1' && k <= '5') { WHW.actions.selectSlot(Number(k) - 1); return true; }
         if (ev.key === 'Escape') { openSettings(); return true; }
         if (ev.key === 'Enter') { ev.preventDefault(); openChat(); return true; }
@@ -127,9 +130,14 @@
     }
     function chatLogChanged() { if (isOpen() && modalRender === renderOnline) renderOnline(); }
     function openChat() {
-        const on = WHW.online;
-        if (!on || on.status !== 'online') { toast(on && on.status === 'off' ? 'Chat needs online play (turn it on with the 🌐 button).' : 'Not connected yet.'); return; }
-        $('chatBar').hidden = false;
+        const on = WHW.online, bar = $('chatBar');
+        // inside a building nobody online can hear you, but you can still say things out loud
+        const local = !!D.ZONES[game().zoneId].interior;
+        if (!local && (!on || on.status !== 'online')) { toast(on && on.status === 'off' ? 'Chat needs online play (turn it on with the 🌐 button).' : 'Not connected yet.'); return; }
+        bar.dataset.local = local ? '1' : '';
+        $('emotes').hidden = local;
+        $('chatInput').placeholder = local ? 'Say something out loud (Enter to say it, Esc to close)' : 'Say something (Enter to send, Esc to close)';
+        bar.hidden = false;
         $('chatInput').value = '';
         $('chatInput').focus();
     }
@@ -142,7 +150,7 @@
         bar.addEventListener('submit', (ev) => {
             ev.preventDefault();
             const v = $('chatInput').value;
-            if (v.trim()) WHW.online.say(v, false);
+            if (v.trim()) { if (bar.dataset.local) WHW.actions.speak(v); else WHW.online.say(v, false); }
             closeChat();
         });
         $('chatInput').addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeChat(); } });
@@ -174,13 +182,17 @@
 
     // ---------------- HUD ----------------
     let lastRubies = -1, hotbarKey = '';
+    // Parts of the HUD change every frame: write to the page only when what it shows really changed (each write costs a
+    // restyle of the page on top of drawing the game)
+    function setText(el, v) { v = String(v); if (el._v !== v) { el._v = v; el.textContent = v; } }
+    function setStyle(el, prop, v) { const k = '_s' + prop; if (el[k] !== v) { el[k] = v; el.style[prop] = v; } }
     function renderHud() {
         const g = game();
         if (!g || !g.player) return;
         const p = g.player, s = g.state;
-        $('hpFill').style.width = (100 * Math.max(0, p.hp) / p.maxHp).toFixed(1) + '%';
-        $('hpText').textContent = `${Math.ceil(Math.max(0, p.hp))} / ${p.maxHp}`;
-        $('stFill').style.width = (100 * p.stam.val / D.COMBAT.stamina.max).toFixed(1) + '%';
+        setStyle($('hpFill'), 'width', (100 * Math.max(0, p.hp) / p.maxHp).toFixed(1) + '%');
+        setText($('hpText'), `${Math.ceil(Math.max(0, p.hp))} / ${p.maxHp}`);
+        setStyle($('stFill'), 'width', (100 * p.stam.val / D.COMBAT.stamina.max).toFixed(1) + '%');
         $('stBar').classList.toggle('is-winded', p.stam.winded);
         if (s.rubies !== lastRubies) {
             const el = $('rubyCount');
@@ -192,6 +204,7 @@
         if (sl) { sl.classList.toggle('is-sel', p.shield.up); sl.classList.toggle('is-broken', p.shield.brokenUntil > E.time); }
         const key = s.equip.offhand + '|' + s.hotbar.join(',') + '|' + s.sel + '|' + s.cons.potion_small + s.cons.potion_big + s.cons.potion_max + '|' + s.cons.arrow + '|' + s.gear.length + '|' + s.classes.active + W.abilityKit(s).join(',');
         if (key !== hotbarKey) { hotbarKey = key; renderHotbar(); }
+        renderQuests();
         // boss bar
         const boss = g.actors.find(a => a.kind === 'boss' && !a.dead && a.active);
         const bb = $('bossBar');
@@ -218,11 +231,11 @@
         const potions = (s.cons.potion_small || 0) + (s.cons.potion_big || 0) + (s.cons.potion_max || 0);
         const shield = W.findGear(s, s.equip.offhand);
         if (shield) html += `<span class="w-slot w-slot--cons w-slot--shield" id="shieldSlot" title="${esc(W.gearName(shield))}: hold right-click or F to block" aria-label="Shield: hold right-click or F to block"><span class="k">RMB</span>🛡️<i class="q" style="background:${W.qualityOf(shield.score).color}"></i></span>`;
-        html += `<button class="w-slot w-slot--cons" data-potion="1" title="Drink a potion (Q)" aria-label="Drink a potion, ${potions} left"><span class="k">Q</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span></button>`;
+        html += `<button class="w-slot w-slot--cons" data-potion="1" title="Drink a potion (Z). Small, Big and Max potions need 6, 10 and 20 seconds before the next." aria-label="Drink a potion, ${potions} left"><span class="k">Z</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span><span class="cd" hidden></span></button>`;
         const cls = W.classOf(s);
         W.abilityKit(s).forEach((id, i) => {
             const a = D.ABILITIES[id], k = D.ABILITY_KEYS[i];
-            html += a ? `<button class="w-slot w-slot--cons w-abil" data-abil="${i}" title="${esc(a.name)} (${k}): ${esc(a.desc)}" aria-label="${esc(a.name)}, key ${k}"><span class="k">${k}</span>${a.icon}<span class="cd" hidden></span></button>`
+            html += a ? `<button class="w-slot w-slot--cons w-abil" data-abil="${i}" title="${esc(a.name)} (${k}): ${esc(a.desc)}" aria-label="${esc(a.name)}, key ${k}"><span class="k">${k}</span>${a.icon}<span class="cd" hidden></span>${a.charges > 1 ? '<span class="ch"></span>' : ''}</button>`
                 : `<button class="w-slot w-slot--cons w-abil is-empty" data-abil="${i}" title="Nothing on ${k}: learn and equip abilities in the Classes menu (K)" aria-label="Key ${k}: no ability. Open the Classes menu"><span class="k">${k}</span>+</button>`;
         });
         el.innerHTML = html;
@@ -240,18 +253,27 @@
         document.querySelectorAll('.w-abil:not(.is-empty)').forEach((b) => {
             const id = kit[Number(b.dataset.abil)];
             const cd = id ? WHW.actors.abilityCd(p, id) : 0;
-            const c = b.querySelector('.cd');
-            c.hidden = cd <= 0;
-            if (cd > 0) c.textContent = cd >= 10 ? Math.ceil(cd) : cd.toFixed(1);
-            b.classList.toggle('is-on', !!id && WHW.actors.buffOn(p, id));
+            const c = b.querySelector('.cd'), ch = b.querySelector('.ch');
+            if (c.hidden !== cd <= 0) c.hidden = cd <= 0;
+            if (cd > 0) setText(c, cd >= 10 ? Math.ceil(cd) : cd.toFixed(1));
+            if (ch && id) setText(ch, WHW.actors.abilityCharges(p, id)); // charges ready
+            b.classList.toggle('is-on', !!id && WHW.actors.abilityActive(p, id));
         });
         for (let i = 0; i < D.ABILITY_KEYS.length; i++) {
             const t = $('tAb' + i);
             if (!t) continue;
             const id = kit[i], a = D.ABILITIES[id];
-            t.hidden = !a;
-            if (a) { t.textContent = a.icon; t.classList.toggle('is-cd', WHW.actors.abilityCd(p, id) > 0); }
+            if (t.hidden !== !a) t.hidden = !a;
+            if (a) { setText(t, a.icon); t.classList.toggle('is-cd', WHW.actors.abilityCd(p, id) > 0); }
         }
+        // the potion cooldown, the same way
+        const pw = Math.max(0, (g.potionCd || 0) - E.time), pb = document.querySelector('[data-potion]'), pc = pb && pb.querySelector('.cd');
+        if (pc) {
+            if (pc.hidden !== pw <= 0) pc.hidden = pw <= 0;
+            if (pw > 0) setText(pc, pw >= 10 ? Math.ceil(pw) : pw.toFixed(1));
+        }
+        const tp = $('tPotion');
+        if (tp) tp.classList.toggle('is-cd', pw > 0);
     }
     // ---------------- classes and skill trees ----------------
     let classTab = null;
@@ -268,7 +290,7 @@
         const labels = {};
         for (const k of D.CLASS_ORDER) labels[k] = (s.classes.unlocked[k] ? D.CLASSES[k].icon : '🔒') + ' ' + D.CLASSES[k].name;
         let html = tabs(D.CLASS_ORDER, id, null, labels);
-        html += `<p class="w-note">Every class has its own skill tree. Learn skills with rubies from the top of a branch down. <b>Abilities</b> (square icons) go on <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd>: up to three equipped at a time. <b>Perks</b> (round icons) are passive bonuses that work while you are that class. Change class in town. Abilities use your weapon's damage, and outside town they hit other players too (at PvP strength, with shorter stuns).</p>`;
+        html += `<p class="w-note">Every class has its own skill tree. Learn skills with rubies from the top of a branch down. <b>Abilities</b> (square icons) go on <kbd>R</kbd> <kbd>Q</kbd> <kbd>C</kbd>: up to three equipped at a time. <b>Perks</b> (round icons) are passive bonuses that work while you are that class. Change class in town. Abilities use your weapon's damage, and outside town they hit other players too (at PvP strength, with shorter stuns).</p>`;
         let action;
         if (active) action = '<span class="w-class-on">Your class</span>';
         else if (unlocked) action = g.inTown ? `<button class="btn btn-sm btn-primary" data-become="${id}">Become a ${esc(c.name)}</button>` : '<span class="muted">Change class in town</span>';
@@ -315,34 +337,167 @@
         else if (st.reason === 'boss') act = `<span class="lock">🔒 Beat ${esc(D.BOSSES[sk.boss].name)}</span>` + cost;
         else act = `<button class="btn btn-sm btn-primary" data-learn="${sid}" ${st.ok ? '' : 'disabled'}>Learn · ${fmt(sk.cost)} rubies</button>`;
         const state = known ? 'is-known' : (st.ok || st.reason === 'rubies') ? 'is-open' : 'is-locked';
-        const kind = isAb ? `Ability · ${sk.cd}s cooldown${sk.stam ? ' · ' + sk.stam + ' stamina' : ''}` : 'Perk · always on';
+        const kind = isAb ? `Ability · ${sk.cd}s cooldown${sk.charges > 1 ? ' · ' + sk.charges + ' charges' : ''}${sk.stam ? ' · ' + sk.stam + ' stamina' : ''}` : 'Perk · always on';
         return `<div class="w-node ${state}${sk.req && s.skills.learned[sk.req] ? ' is-linked' : ''}${isAb ? ' is-ability' : ''}">
             <div class="w-node-top"><span class="w-node-ico" style="border-color:${isAb ? sk.color : 'var(--border-strong)'}">${sk.icon}</span><div><div class="w-card-name">${esc(sk.name)}</div><div class="w-node-kind">${kind}</div></div></div>
             <div class="w-card-sub">${esc(sk.desc)}</div><div class="w-card-actions">${act}</div></div>`;
     }
+    // ---------------- quests ----------------
+    function plural(n, word) { return n === 1 ? word : /f$/.test(word) ? word.slice(0, -1) + 'ves' : word + 's'; }
+    // "Defeat 6 Slimes", "Bring 6 Copper Ore and 4 Coal"...
+    function goalText(goal) {
+        const n = goal.n || 1, zone = goal.zone && goal.kind !== 'visit' ? ' in ' + D.ZONES[goal.zone].name : '';
+        switch (goal.kind) {
+            case 'kill': return 'Defeat ' + n + ' ' + plural(n, goal.monster ? D.MONSTERS[goal.monster].name : goal.elite ? 'elite' : 'monster') + zone;
+            case 'boss': return goal.boss ? 'Beat ' + D.BOSSES[goal.boss].name : 'Beat any of the four great bosses';
+            case 'rival': return 'Beat ' + n + ' ' + plural(n, 'rival adventurer');
+            case 'harvest': return (goal.tool === 'axe' ? 'Chop ' + n + ' ' + plural(n, 'tree') : goal.tool === 'pickaxe' ? 'Mine ' + n + (n === 1 ? ' rock or ore vein' : ' rocks or ore veins') : 'Gather ' + n + ' times (ore, wood or plants)') + zone;
+            case 'craft': return 'Craft ' + n + ' ' + plural(n, 'piece') + ' of gear' + (goal.minScore ? ' of ' + W.qualityOf(goal.minScore).name + ' quality or better' : '');
+            case 'box': return 'Craft a lootbox at the Rune Altar';
+            case 'deliver': return 'Bring ' + Object.entries(goal.mats).map(([id, k]) => k + ' ' + matName(id)).join(' and ');
+            case 'visit': return 'Step inside the ' + D.ZONES[goal.zone].name;
+            case 'god': return 'Raise any statue in the Hall of Gods';
+        }
+        return '';
+    }
+    // the accepted quests, under the zone name
+    let questKey = '';
+    function renderQuests() {
+        const el = $('questTracker');
+        if (!el) return;
+        const list = W.activeQuests(game().state);
+        const key = list.map(a => a.id + ':' + a.progress.have + ':' + a.progress.done).join('|');
+        if (key === questKey) return;
+        questKey = key;
+        el.hidden = !list.length;
+        el.innerHTML = list.map(a => `<div class="${a.progress.done ? 'is-done' : ''}"><b>${esc(a.quest.title)}</b><span>${a.progress.done ? '✓ back to ' + esc(D.NPCS[a.npc].name) : a.progress.have + ' / ' + a.progress.need}</span></div>`).join('');
+    }
+    let npcOpen = null;
+    const npcLine = {}; // which of a wanderer's lines was said last (this visit only)
+    function openNpc(id) {
+        npcOpen = id;
+        modal(D.NPCS[id].name, '', { render: renderNpc });
+        renderNpc();
+    }
+    function renderNpc() {
+        const body = $('wModalBody'), s = game().state, id = npcOpen, npc = D.NPCS[id];
+        const o = W.questOffer(s, id, Date.now()), rec = s.quests[id] || { step: 0 };
+        let html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(npc.greet)}"</p></div></div>`;
+        if (npc.rumor) html += `<p class="w-npc-rumor"><b>They mention:</b> "${esc(npc.rumor)}"</p>`;
+        if (npc.lines) {
+            const line = s.secrets.hallDoor && npc.opened ? npc.opened : npc.lines[(npcLine[id] = ((npcLine[id] === undefined ? -1 : npcLine[id]) + 1) % npc.lines.length)];
+            html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(line)}"</p></div></div>`;
+            if (!s.secrets.hallDoor) html += '<p class="w-note">They fall silent again. Talk to them once more and they may say something else.</p>';
+        } else if (o.doneToday) html += '<p class="w-note">"That is all I have for you today. Come back tomorrow."</p>';
+        else {
+            const q = o.quest;
+            const kicker = q.daily ? 'Daily quest' : 'Story ' + (Math.min(rec.step, npc.chain.length) + 1) + ' of ' + npc.chain.length;
+            const potions = q.cons ? Object.entries(q.cons).map(([c, n]) => ' + ' + n + ' ' + D.CONSUMABLES_BY_ID[c].name + (n > 1 ? 's' : '')).join('') : '';
+            let prog = '', act;
+            if (o.active) {
+                const p = o.progress;
+                prog = `<div class="w-quest-prog" role="progressbar" aria-valuemin="0" aria-valuemax="${p.need}" aria-valuenow="${p.have}"><i style="width:${(100 * p.have / p.need).toFixed(0)}%"></i><span>${p.have} / ${p.need}</span></div>`;
+                if (q.goal.kind === 'deliver') prog += needHtml(s, q.goal.mats, 0);
+                act = `<button class="btn btn-primary" data-qturnin ${p.done ? '' : 'disabled'}>${p.done ? 'Hand in' : 'Not done yet'}</button><button class="btn btn-ghost btn-sm" data-qquit>Give up</button>`;
+            } else if (o.locked) act = `<span class="lock">🔒 Come back once you can reach ${esc(D.ZONES[o.locked.zone].name)}.</span>`;
+            else act = '<button class="btn btn-primary" data-qaccept>Accept</button>';
+            html += `<div class="w-quest"><div class="w-quest-kicker">${kicker}</div><div class="w-quest-title">${esc(q.title)}</div><p class="w-quest-text">"${esc(q.text)}"</p>
+                <div class="w-quest-goal"><b>Goal:</b> ${esc(goalText(q.goal))}</div>${prog}
+                <div class="w-quest-reward"><b>Reward:</b> ♦ ${fmt(o.rubies)} rubies${esc(potions)}${q.daily ? ' <span class="muted">(more once you reach further zones)</span>' : ''}</div>
+                <div class="w-card-actions">${act}</div></div>`;
+        }
+        body.innerHTML = html;
+        on(body, '[data-qaccept]', () => WHW.actions.acceptQuest(id));
+        on(body, '[data-qturnin]', () => WHW.actions.turnInQuest(id));
+        on(body, '[data-qquit]', () => WHW.actions.abandonQuest(id));
+    }
+
+    // ---------------- the Hall of Gods: its far wall, and the hidden room's altar ----------------
+    function openCarving() {
+        modal('The far wall', `<div class="w-carving"><p>Carved deep into the stone, in letters worn almost smooth:</p>
+            <blockquote>HERE THE PROPHET'S FAITH IS SPOKEN,<br>AND THE STONE REMEMBERS.</blockquote>
+            <p class="muted">Below it, someone has scratched a little eye.</p></div>`);
+    }
+    let altarOpen = null, altarConfirm = 0;
+    function openAltar(id) {
+        altarOpen = id; altarConfirm = 0;
+        const it = D.HIDDEN_SHOP[id];
+        modal(it.icon + ' ' + it.name, '', { render: renderAltar });
+        renderAltar();
+    }
+    function renderAltar() {
+        const body = $('wModalBody'), s = game().state, id = altarOpen, it = D.HIDDEN_SHOP[id];
+        const bal = Bridge.mainBalance(localStorage), st = W.hiddenShopState(s, id, bal), c = st.cost;
+        let html = `<p class="w-note">${esc(it.desc)}</p>`;
+        if (s.secrets[id]) html += '<p class="w-note"><b>It is yours.</b> If it is not in your game yet, open the game: the gems and Golden are taken there, and then it is in Items (🎒), ready to equip as a charm.</p>';
+        else {
+            const row = (label, have, need) => `<div class="${have < need ? 'is-short' : ''}"><span>${label}</span><b>${fmt(need)} <small class="muted">(you have ${fmt(have)})</small></b></div>`;
+            html += `<h3 class="w-god-h">The price</h3>${needHtml(s, c.mats, c.rubies)}
+                <div class="w-god-rows w-altar-rows">${row('💎 Gems, from your game', bal.gems, c.gems)}${row('✨ Golden What Happened, from your game', Math.floor(bal.golden), c.golden)}</div>
+                <p class="muted">Bought once, ever. The rubies and the treasures are taken here; the gems and Golden are taken in your game.</p>
+                <div class="w-card-actions"><button class="btn btn-gold" data-hbuy ${st.ok ? '' : 'disabled'}>${altarConfirm ? 'Click again to buy it' : 'Buy ' + esc(it.name)}</button></div>`;
+        }
+        body.innerHTML = html;
+        on(body, '[data-hbuy]', () => {
+            if (!altarConfirm) { altarConfirm = 1; renderAltar(); return; }
+            altarConfirm = 0;
+            WHW.actions.buyHidden(id);
+        });
+    }
+
+    // ---------------- the Hall of Gods: a statue ----------------
+    let statueOpen = null;
+    function openStatue(id) {
+        statueOpen = id;
+        const god = Gods.GODS[id];
+        modal(god.icon + ' ' + god.name, '', { render: renderStatue });
+        renderStatue();
+    }
+    function renderStatue() {
+        const body = $('wModalBody'), s = game().state, id = statueOpen, god = Gods.GODS[id];
+        const lv = s.gods[id] || 0, st = W.godState(s, id), cost = Gods.costFor(id, lv + 1);
+        // the next level's blessing, counting the hidden god's boost (raising the hidden god itself raises that boost)
+        const next = Object.assign({}, s.gods, { [id]: lv + 1 });
+        let html = `<div class="w-god" style="--god:${god.color}"><img class="w-god-face" src="${god.face}" alt="">
+            <div><div class="w-card-name">${esc(god.name)}, ${esc(god.title)}</div><p class="w-god-lore">${esc(god.lore)}</p>
+            <div class="w-god-level">Level <b>${lv}</b></div></div></div>`;
+        html += `<div class="w-god-rows"><div><span>Blessing now</span><b>${lv ? esc(Gods.describe(id, lv, s.gods)) : 'None yet'}</b></div>
+            <div><span>At level ${lv + 1}</span><b>${esc(Gods.describe(id, lv + 1, next))}</b></div></div>`;
+        if (cost) html += `<h3 class="w-god-h">Offering for level ${lv + 1}</h3>${needHtml(s, cost.mats, cost.rubies)}
+                <div class="w-card-actions"><button class="btn btn-gold" data-raise ${st.ok ? '' : 'disabled'}>Make the offering</button></div>`;
+        html += '<p class="w-note">There is no top level: every offering raises the blessing, and asks for more than the last. Blessings work back in the clicker straight away, on top of your Divine upgrades, followers and charms.</p>';
+        body.innerHTML = html;
+        on(body, '[data-raise]', () => WHW.actions.upgradeGod(id));
+    }
+
     // swing meter, every frame
     function renderPower(p) {
         const f = $('powerFill');
         if (!f || !p) return;
         const b = W.baseOf(W.findGear(game().state, p.weaponUid));
         const meter = $('powerMeter');
-        if (!b) { meter.hidden = true; return; }
-        meter.hidden = false;
+        if (!b) { if (!meter.hidden) meter.hidden = true; return; }
+        if (meter.hidden) meter.hidden = false;
         const P = D.WEAPON_CLASSES[b.cls];
         let minMark, fullMark;
         if (b.cls === 'bow') { minMark = P.minDraw; fullMark = 0.95; }
         else { minMark = P.vMin / P.vFull; fullMark = (P.vMin + (P.vFull - P.vMin) * D.COMBAT.perfect.at) / P.vFull; }
-        meter.querySelector('.w-power-min').style.left = (minMark * 100) + '%';
-        meter.querySelector('.w-power-full').style.left = (Math.min(1, fullMark) * 100) + '%';
+        if (meter._cls !== b.cls) {
+            meter._cls = b.cls;
+            meter.querySelector('.w-power-min').style.left = (minMark * 100) + '%';
+            meter.querySelector('.w-power-full').style.left = (Math.min(1, fullMark) * 100) + '%';
+        }
         p.powerShown = Math.max(p.power, (p.powerShown || 0) * 0.9);
-        f.style.width = Math.min(100, p.powerShown * 100).toFixed(1) + '%';
-        f.className = p.powerPerfect ? 'is-perfect' : p.powerHit ? 'is-hit' : '';
+        setStyle(f, 'width', Math.min(100, p.powerShown * 100).toFixed(1) + '%');
+        const cls = p.powerPerfect ? 'is-perfect' : p.powerHit ? 'is-hit' : '';
+        if (f.className !== cls) f.className = cls;
     }
+    let promptHtml = null;
     function setPrompt(html) {
         const el = $('prompt');
-        if (!html) { el.hidden = true; return; }
-        if (el.innerHTML !== html) el.innerHTML = html;
-        el.hidden = false;
+        if (!html) { if (!el.hidden) el.hidden = true; return; }
+        if (promptHtml !== html) { promptHtml = html; el.innerHTML = html; }
+        if (el.hidden) el.hidden = false;
     }
     function setZone(name, sub) { $('zoneName').innerHTML = esc(name) + (sub ? `<small>${esc(sub)}</small>` : ''); }
 
@@ -352,11 +507,80 @@
     function needHtml(s, inputs, fee, times = 1) {
         const parts = Object.entries(inputs).map(([id, n]) => {
             const have = W.count(s, id), need = n * times;
-            return `<span class="${have < need ? 'is-short' : ''}" title="You have ${have}"><i class="w-dot" style="display:inline-block;width:8px;height:8px;margin-right:4px;background:${matColor(id)}"></i>${need} ${esc(matName(id))} <small class="muted">(${have})</small></span>`;
+            return `<span class="${have < need ? 'is-short' : ''}" data-mat="${id}" tabindex="0"><i class="w-dot" style="display:inline-block;width:8px;height:8px;margin-right:4px;background:${matColor(id)}"></i>${need} ${esc(matName(id))} <small class="muted">(${have})</small></span>`;
         });
         if (fee) parts.push(`<span class="is-fee ${s.rubies < fee ? 'is-short' : ''}">♦ ${fmt(fee)} rubies</span>`);
         return `<div class="w-need">${parts.join('')}</div>`;
     }
+    // ---------------- material tooltips: where to get it ----------------
+    // Any element with data-mat="<material id>" shows one on hover, keyboard focus or a tap.
+    const SOURCE_ICON = { axe: '🪓', pickaxe: '⛏️', hand: '🌿', monster: '⚔️', elite: '⭐', boss: '👑', trader: '💰' };
+    // the first tool good enough for a node ("Copper Pickaxe")
+    function toolFor(tool, tier) {
+        const g = D.GEAR.filter(x => x.cls === tool && x.tool >= tier).sort((a, b) => a.tier - b.tier)[0];
+        return g ? g.name : '';
+    }
+    function sourceLines(id) {
+        const s = game().state, groups = [];
+        for (const src of W.materialSources(id)) {
+            const same = src.zone && groups.find(x => x.kind === src.kind && x.name === src.name && x.chance === src.chance && x.zones);
+            if (same) { same.zones.push(src.zone); continue; }
+            groups.push(Object.assign({}, src, { zones: src.zone ? [src.zone] : null }));
+        }
+        const where = (zones) => (zones ? zones.map(z => (s.unlocked.zones[z] ? '' : '🔒 ') + D.ZONES[z].name).join(', ') : '');
+        const pct = (c) => (c >= 1 ? '' : ' · ' + (c >= 0.1 ? Math.round(c * 100) : Math.round(c * 1000) / 10) + '% chance');
+        return groups.slice(0, 7).map((src) => {
+            if (src.kind === 'node') {
+                const verb = src.tool === 'axe' ? 'Chop' : src.tool === 'pickaxe' ? 'Mine' : 'Pick';
+                const need = src.tool !== 'hand' && src.tier > 1 ? toolFor(src.tool, src.tier) : '';
+                return [SOURCE_ICON[src.tool] || '🌿', verb + ' ' + src.name + (need ? ' (' + need + ' or better)' : ''), where(src.zones)];
+            }
+            if (src.kind === 'monster') return [SOURCE_ICON.monster, 'Defeat a ' + src.name + pct(src.chance), where(src.zones)];
+            if (src.kind === 'elite') return [SOURCE_ICON.elite, src.name + ', an elite' + pct(src.chance), where(src.zones)];
+            if (src.kind === 'boss') return [SOURCE_ICON.boss, src.name + (src.first ? ', the first time you beat it' : pct(src.chance)), where(src.zones) + ' boss'];
+            if (src.kind === 'craft') return [D.STATIONS[src.station].icon, src.name + ': ' + Object.entries(src.inputs).map(([k, n]) => n + ' ' + matName(k)).join(' + ') + (src.n > 1 ? ' makes ' + src.n : ''), 'in town'];
+            return [SOURCE_ICON.trader, 'Buy ' + src.n + ' for ♦ ' + fmt(src.price), 'the Trader, in town'];
+        });
+    }
+    function matTipHtml(id) {
+        const s = game().state, m = D.MATERIALS_BY_ID[id] || D.CONSUMABLES_BY_ID[id];
+        if (!m) return '';
+        const kind = { raw: 'Gathered', part: 'Part', bar: 'Bar', plank: 'Plank', key: 'Key', trophy: 'Boss trophy' }[m.kind] || 'Supply';
+        const have = W.count(s, id), carried = (s.bag && s.bag[id]) || 0;
+        const lines = sourceLines(id);
+        return `<div class="w-tip-head"><span class="w-mat-ico" style="--c:${m.color || '#888'}">${m.icon || ''}</span><div><b>${esc(m.name)}</b><small>${kind}</small></div></div>
+            <div class="w-tip-have">You have <b>${fmt(have)}</b>${carried ? ` (${fmt(carried)} carried)` : ''}</div>
+            <div class="w-tip-h">Where to get it</div>
+            ${lines.length ? `<ul>${lines.map(([ico, what, at]) => `<li><span>${ico}</span><span>${esc(what)}${at ? `<small>${esc(at)}</small>` : ''}</span></li>`).join('')}</ul>` : '<p class="muted">Nowhere yet.</p>'}
+            ${m.sell ? `<div class="w-tip-foot">The Trader pays ♦ ${fmt(m.sell)} each</div>` : ''}`;
+    }
+    let tipEl = null, tipFor = null;
+    function showTip(el) {
+        const html = matTipHtml(el.dataset.mat);
+        if (!html) return;
+        if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'w-tip'; tipEl.id = 'wTip'; tipEl.setAttribute('role', 'tooltip'); document.body.appendChild(tipEl); }
+        if (tipFor && tipFor !== el) tipFor.removeAttribute('aria-describedby');
+        tipFor = el;
+        el.setAttribute('aria-describedby', 'wTip');
+        tipEl.innerHTML = html;
+        tipEl.hidden = false;
+        const r = el.getBoundingClientRect(), tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
+        let y = r.top - th - 8;
+        if (y < 8) y = Math.min(window.innerHeight - th - 8, r.bottom + 8);
+        tipEl.style.left = Math.max(8, Math.min(window.innerWidth - tw - 8, r.left + r.width / 2 - tw / 2)) + 'px';
+        tipEl.style.top = Math.max(8, y) + 'px';
+    }
+    function hideTip() {
+        if (tipEl) tipEl.hidden = true;
+        if (tipFor) tipFor.removeAttribute('aria-describedby');
+        tipFor = null;
+    }
+    const matEl = (ev) => (ev.target && ev.target.closest ? ev.target.closest('[data-mat]') : null);
+    document.addEventListener('mouseover', (ev) => { const el = matEl(ev); if (el) { if (el !== tipFor) showTip(el); } else if (tipFor) hideTip(); });
+    document.addEventListener('focusin', (ev) => { const el = matEl(ev); if (el) showTip(el); else if (tipFor) hideTip(); });
+    // a tap shows it (there is no hover on touch screens); any other press hides it
+    document.addEventListener('pointerdown', (ev) => { const el = matEl(ev); if (el && ev.pointerType !== 'mouse' && el !== tipFor) showTip(el); else hideTip(); }, true);
+    document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hideTip(); }, true);
     function statLine(base, it) {
         const st = it ? W.gearStats(it) : null;
         const out = [];
@@ -385,7 +609,140 @@
     function maxZoneTier(s) { return Math.max(1, ...D.ZONE_ORDER.filter(z => s.unlocked.zones[z]).map(z => D.ZONES[z].tier)); }
 
     // ---------------- bag ----------------
-    let bagTab = 'gear', confirmSalvage = 0;
+    // Gear: what you wear and hold up top, the rest in the backpack below (filtered and sorted). Materials: grouped or
+    // sorted tiles; hovering one (or any material in a recipe) says where it comes from (matTip).
+    let bagTab = 'gear', confirmSalvage = 0, gearSort = 'best', gearFilter = 'all', matSort = 'kind';
+    const SLOT_NAMES = { helmet: 'Helmet', chest: 'Chest', boots: 'Boots', ring: 'Ring', offhand: 'Shield' };
+    const GEAR_FILTERS = { all: 'All', weapon: 'Weapons', tool: 'Tools', armor: 'Armor', offhand: 'Shields', ring: 'Rings' };
+    const GEAR_SORTS = { best: 'Best first', quality: 'Quality', newest: 'Newest', type: 'Type', name: 'Name' };
+    const TYPE_ORDER = ['sword', 'dagger', 'spear', 'bow', 'axe', 'pickaxe', 'helmet', 'chest', 'boots', 'offhand', 'ring'];
+    const MAT_SORTS = { kind: 'Kind', amount: 'Amount', name: 'Name', value: 'Sell value' };
+    const MAT_KINDS = { raw: 'Gathered', bar: 'Bars', plank: 'Planks', part: 'Monster parts and crafted parts', trophy: 'Boss trophies (the Trader pays well)', key: 'Keys' };
+    const gearGroup = (b) => (b.slot === 'weapon' ? (b.cls === 'axe' || b.cls === 'pickaxe' ? 'tool' : 'weapon') : b.slot === 'helmet' || b.slot === 'chest' || b.slot === 'boots' ? 'armor' : b.slot);
+    const typeKey = (b) => (b.slot === 'weapon' ? b.cls : b.slot);
+    function sortGear(list, by) {
+        const out = list.slice();
+        if (by === 'name') return out.sort((a, b) => W.gearName(a).localeCompare(W.gearName(b)));
+        const key = {
+            best: (it) => -(W.baseOf(it).tier * 1000 + it.score),
+            quality: (it) => -(it.score * 100 + W.baseOf(it).tier),
+            newest: (it) => -it.uid,
+            type: (it) => TYPE_ORDER.indexOf(typeKey(W.baseOf(it))) * 100000 - W.baseOf(it).tier * 1000 - it.score,
+        }[by] || ((it) => 0);
+        return out.sort((a, b) => key(a) - key(b));
+    }
+    // How a backpack piece compares with what you have on: armor and shields against the one worn in that slot, weapons
+    // and tools against the best of the same kind on the hotbar
+    function compareHtml(s, it) {
+        const b = W.baseOf(it), st = W.gearStats(it);
+        const chip = (d, what, digits = 0) => {
+            const v = Number(d.toFixed(digits));
+            if (!v) return `<span class="w-cmp is-same">= same ${what}</span>`;
+            return `<span class="w-cmp ${v > 0 ? 'is-up' : 'is-down'}">${v > 0 ? '▲ +' : '▼ '}${v} ${what}</span>`;
+        };
+        if (b.slot === 'weapon') {
+            const same = s.hotbar.map(u => W.findGear(s, u)).filter(x => x && W.baseOf(x).cls === b.cls);
+            if (!same.length) return `<span class="w-cmp is-new">No ${esc(b.cls)} on your hotbar</span>`;
+            return chip(st.dmg - Math.max(...same.map(x => W.gearStats(x).dmg)), 'damage', 1);
+        }
+        if (b.slot === 'ring') return '';
+        const worn = W.findGear(s, s.equip[b.slot]);
+        if (!worn) return `<span class="w-cmp is-new">Nothing worn there</span>`;
+        const ws = W.gearStats(worn);
+        if (b.slot === 'offhand') return chip((st.block - ws.block) * 100, '% block');
+        return chip(st.armor - ws.armor, 'armor') + (Math.round(st.hp - ws.hp) ? chip(st.hp - ws.hp, 'HP') : '');
+    }
+    function slotRow(s, slot) {
+        const it = W.findGear(s, s.equip[slot]), b = W.baseOf(it), q = it ? W.qualityOf(it.score) : null;
+        return `<div class="w-slotrow${it ? '' : ' is-empty'}" style="--q:${q ? q.color : 'var(--border-strong)'}">
+            <div class="w-slotrow-ico">${it ? ICONS[b.cls] : `<span class="ghost">${ICONS[slot]}</span>`}</div>
+            <div class="w-slotrow-main"><small>${SLOT_NAMES[slot]}</small>${it ? `<b style="color:${q.color}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
+            ${it ? `<button class="btn btn-sm btn-ghost" data-equip="${it.uid}">Take off</button>`
+                : `<button class="btn btn-sm btn-ghost" data-show="${slot === 'offhand' || slot === 'ring' ? slot : 'armor'}">Find one</button>`}
+        </div>`;
+    }
+    function hotbarRow(s, i) {
+        const it = W.findGear(s, s.hotbar[i]), b = W.baseOf(it), q = it ? W.qualityOf(it.score) : null;
+        return `<div class="w-slotrow${it ? '' : ' is-empty'}${s.sel === i ? ' is-sel' : ''}" style="--q:${q ? q.color : 'var(--border-strong)'}">
+            <div class="w-slotrow-ico"><span class="k">${i + 1}</span>${it ? ICONS[b.cls] : ''}</div>
+            <div class="w-slotrow-main"><small>Slot ${i + 1}${s.sel === i ? ' · in hand' : ''}</small>${it ? `<b style="color:${q.color}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
+            ${it ? `<button class="btn btn-sm btn-ghost" data-equip="${it.uid}">Off hotbar</button>` : ''}
+        </div>`;
+    }
+    function gearTabHtml(g, s) {
+        const ps = g.pstats;
+        let html = `<div class="w-equip">
+            <section class="w-panel"><h3>Armor <span>${ICONS.chest}</span></h3>${W.SLOTS.map(sl => slotRow(s, sl)).join('')}
+                <div class="w-totals"><span>Armor <b>${ps.armor}</b> (${Math.round(100 - 100 * 100 / (100 + ps.armor))}% less damage)</span><span>Max HP <b>${ps.maxHp}</b></span><span>Speed <b>${Math.round(ps.speed * 100)}%</b></span></div></section>
+            <section class="w-panel"><h3>Hotbar <span class="muted">keys 1–${D.RULES.hotbarSlots}</span></h3>${s.hotbar.map((_, i) => hotbarRow(s, i)).join('')}</section>
+        </div>`;
+        const pack = s.gear.filter(it => !W.isEquipped(s, it.uid));
+        const counts = {};
+        for (const it of pack) { const k = gearGroup(W.baseOf(it)); counts[k] = (counts[k] || 0) + 1; }
+        counts.all = pack.length;
+        const shown = sortGear(pack.filter(it => gearFilter === 'all' || gearGroup(W.baseOf(it)) === gearFilter), gearSort);
+        html += `<div class="w-bag-head"><h3>Backpack <span class="muted">${s.gear.length} / ${D.RULES.maxGear} pieces</span></h3>
+            <div class="w-bag-tools"><div class="w-chips" role="group" aria-label="Show">${Object.entries(GEAR_FILTERS).map(([k, label]) =>
+                `<button class="w-chip${gearFilter === k ? ' is-on' : ''}" data-filter="${k}" aria-pressed="${gearFilter === k}">${label}<small>${counts[k] || 0}</small></button>`).join('')}</div>
+            <label class="w-sort">Sort <select id="gearSort">${Object.entries(GEAR_SORTS).map(([k, label]) => `<option value="${k}" ${gearSort === k ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div></div>`;
+        if (!shown.length) html += `<p class="w-empty">${pack.length ? 'Nothing of that kind in your backpack.' : 'Your backpack is empty: everything you own is on you. Craft gear at the Forge and Workbench.'}</p>`;
+        html += `<div class="w-grid">${shown.map(it => {
+            const b = W.baseOf(it), q = W.qualityOf(it.score), weapon = b.slot === 'weapon';
+            return `<div class="w-card w-item" style="--q:${q.color}">
+                <div class="w-card-top"><div class="w-card-ico">${ICONS[b.cls]}</div>
+                <div><div class="w-card-name" style="color:${q.color}">${esc(W.gearName(it))}</div><div class="w-card-sub"><span class="w-qual">${esc(q.name)}</span> · tier ${b.tier} · score ${it.score}</div></div></div>
+                ${statLine(b, it)}
+                <div class="w-cmps">${compareHtml(s, it)}</div>
+                <div class="w-card-actions">
+                    <button class="btn btn-sm btn-primary" data-equip="${it.uid}">${weapon ? 'To hotbar' : 'Wear'}</button>
+                    <button class="btn btn-sm btn-danger" data-salvage="${it.uid}">${confirmSalvage === it.uid ? 'Sure? Salvage' : 'Salvage'}</button>
+                </div></div>`;
+        }).join('')}</div>`;
+        return html;
+    }
+    function matTile(s, m, n, extra) {
+        const carried = s.bag[m.id] || 0;
+        const sub = carried ? `<small class="bag">${fmt(carried)} carried</small>` : m.sell ? `<small>♦ ${fmt(m.sell)} each</small>` : extra ? `<small>${extra}</small>` : '';
+        return `<div class="w-mat" data-mat="${m.id}" tabindex="0" style="--c:${m.color || '#888'}"><span class="w-mat-ico">${m.icon || ''}</span>
+            <span class="w-mat-name">${esc(m.name)}${sub}</span><b>${fmt(n)}</b></div>`;
+    }
+    function matsTabHtml(s) {
+        const ids = new Set(Object.keys(Object.assign({}, s.mats, s.bag)));
+        const owned = D.MATERIALS.filter(m => ids.has(m.id) && W.count(s, m.id) > 0);
+        let html = `<div class="w-bag-tools"><p class="w-note" style="margin:0">Hover over a material to see where it comes from. <b style="color:#ffd27a">Carried</b> ones were picked up since you were last in town: part of them drops if you are knocked out.</p>
+            <label class="w-sort">Sort <select id="matSort">${Object.entries(MAT_SORTS).map(([k, label]) => `<option value="${k}" ${matSort === k ? 'selected' : ''}>${label}</option>`).join('')}</select></label></div>`;
+        if (!owned.length) html += '<p class="w-empty">Nothing yet. Chop trees, mine rocks and defeat monsters.</p>';
+        else if (matSort === 'kind') {
+            for (const kind of Object.keys(MAT_KINDS)) {
+                const list = owned.filter(m => m.kind === kind);
+                if (list.length) html += `<div class="w-mat-group"><h4>${MAT_KINDS[kind]}</h4><div class="w-mats">${list.map(m => matTile(s, m, W.count(s, m.id))).join('')}</div></div>`;
+            }
+        } else {
+            const key = { amount: (m) => -W.count(s, m.id), name: null, value: (m) => -(m.sell || 0) * W.count(s, m.id) }[matSort];
+            const list = key ? owned.slice().sort((a, b) => key(a) - key(b) || a.name.localeCompare(b.name)) : owned.slice().sort((a, b) => a.name.localeCompare(b.name));
+            html += `<div class="w-mats">${list.map(m => matTile(s, m, W.count(s, m.id), matSort === 'value' && m.sell ? '♦ ' + fmt(m.sell * W.count(s, m.id)) + ' in all' : '')).join('')}</div>`;
+        }
+        html += `<div class="w-mat-group"><h4>Supplies</h4><div class="w-mats">${D.CONSUMABLES.map(c => matTile(s, c, s.cons[c.id] || 0, c.heal ? (c.heal >= 999 ? 'heals fully' : 'heals ' + c.heal) : '')).join('')}</div></div>`;
+        return html;
+    }
+    // Skins: any main-image skin unlocked in the game, worn here (and seen by other players online)
+    function skinsTabHtml(s) {
+        const Skins = window.WHSkins, ms = WHW.mainSave(), worn = WHW.wornSkin();
+        const gameSkin = String(ms.equippedShopImage || Skins.DEFAULT);
+        const following = !s.skin || !Skins.owns(ms, s.skin);
+        const nameOf = (path) => (Skins.byPath(path) || { title: 'What Happened' }).title;
+        const card = (key, path, title, sub, on, locked) => `<button type="button" class="w-skin${on ? ' is-on' : ''}${locked ? ' is-locked' : ''}" data-skin="${key}" ${locked ? 'disabled' : ''} aria-pressed="${on}">
+            <img src="${Skins.thumb(path)}" alt="" loading="lazy"><b>${esc(title)}</b><small>${sub}</small></button>`;
+        const owned = Skins.SKINS.filter(k => Skins.owns(ms, k.path)), locked = Skins.SKINS.filter(k => !Skins.owns(ms, k.path));
+        let html = `<p class="w-note">Wear any skin you have unlocked in the game. Other players see it too. Unlock more in the game's shop.</p><div class="w-skins">`;
+        html += card('game', gameSkin, 'Same as the game', 'Now: ' + esc(nameOf(gameSkin)), following, false);
+        html += card(Skins.DEFAULT, Skins.DEFAULT, 'What Happened', !following && worn === Skins.DEFAULT ? 'Wearing' : 'The original', !following && s.skin === Skins.DEFAULT, false);
+        for (const k of owned) html += card(k.path, k.path, k.title, !following && worn === k.path ? 'Wearing' : 'Unlocked', !following && worn === k.path, false);
+        html += '</div>';
+        if (locked.length) html += `<div class="w-mat-group" style="margin-top:14px"><h4>Not unlocked yet (${locked.length})</h4><div class="w-skins">${locked.map(k =>
+            card(k.path, k.path, k.title, k.cost === null ? esc(k.unlockText || 'Unlocked in the game') : '💎 ' + k.cost + ' gems in the shop', false, true)).join('')}</div></div>`;
+        return html;
+    }
     function openBag(tab) {
         if (tab) bagTab = tab;
         const body = modal('Bag', '', { wide: true, render: renderBagBody });
@@ -394,33 +751,12 @@
     function renderBagBody() {
         const body = $('wModalBody');
         const g = game(), s = g.state;
-        let html = tabs(['gear', 'materials', 'stats'], bagTab, null, { gear: `Gear (${s.gear.length}/${D.RULES.maxGear})`, materials: 'Materials', stats: 'Stats & rewards' });
-        if (bagTab === 'gear') {
-            const eq = W.SLOTS.map(slot => { const it = W.findGear(s, s.equip[slot]); return `<span>${ICONS[slot]} <b>${it ? esc(W.gearName(it)) : '—'}</b></span>`; }).join('');
-            html += `<div class="w-section"><h3>Wearing</h3><div class="w-card-stats" style="font-size:13px">${eq}</div></div>`;
-            const order = (it) => (W.isEquipped(s, it.uid) ? 0 : 1) * 1000 - W.baseOf(it).tier * 10 - it.score / 100;
-            const list = s.gear.slice().sort((a, b) => order(a) - order(b));
-            html += `<div class="w-grid">${list.map(it => {
-                const b = W.baseOf(it), q = W.qualityOf(it.score), on = W.isEquipped(s, it.uid);
-                const weapon = b.slot === 'weapon';
-                const slotNo = s.hotbar.indexOf(it.uid);
-                return `<div class="w-card${on ? ' is-equipped' : ''}">
-                    ${on ? `<span class="tag">${weapon ? 'Slot ' + (slotNo + 1) : 'Worn'}</span>` : ''}
-                    <div class="w-card-top"><div class="w-card-ico" style="border-color:${q.color}">${ICONS[b.cls]}</div>
-                    <div><div class="w-card-name" style="color:${q.color}">${esc(W.gearName(it))}</div><div class="w-card-sub">${esc(q.name)} · score ${it.score} · tier ${b.tier}</div></div></div>
-                    ${statLine(b, it)}
-                    <div class="w-card-actions">
-                        <button class="btn btn-sm ${on ? 'btn-ghost' : 'btn-primary'}" data-equip="${it.uid}">${on ? (weapon ? 'Off hotbar' : 'Take off') : (weapon ? 'To hotbar' : 'Wear')}</button>
-                        <button class="btn btn-sm btn-danger" data-salvage="${it.uid}">${confirmSalvage === it.uid ? 'Sure? Salvage' : 'Salvage'}</button>
-                    </div></div>`;
-            }).join('')}</div>`;
-        } else if (bagTab === 'materials') {
-            const ids = Object.keys(Object.assign({}, s.mats, s.bag));
-            const known = D.MATERIALS.filter(m => ids.includes(m.id));
-            html += `<p class="w-note">Materials marked <b style="color:#ffd27a">carried</b> were picked up since your last visit to town. Part of them drops if you are knocked out; they are safe once you walk back into town.</p>`;
-            html += known.length ? `<div class="w-mats">${known.map(m => `<div class="w-mat"><i class="w-dot" style="background:${m.color}"></i>${esc(m.name)}${s.bag[m.id] ? ` <span class="bag">${s.bag[m.id]} carried</span>` : ''}<b>${fmt(W.count(s, m.id))}</b></div>`).join('')}</div>` : '<p class="muted">Nothing yet. Chop trees, mine rocks and defeat monsters.</p>';
-            html += `<div class="w-section" style="margin-top:14px"><h3>Supplies</h3><div class="w-mats">${D.CONSUMABLES.map(c => `<div class="w-mat">${c.icon} ${esc(c.name)}<b>${fmt(s.cons[c.id] || 0)}</b></div>`).join('')}</div></div>`;
-        } else {
+        hideTip();
+        let html = tabs(['gear', 'materials', 'skins', 'stats'], bagTab, null, { gear: `Gear (${s.gear.length}/${D.RULES.maxGear})`, materials: 'Materials', skins: 'Skins', stats: 'Stats & rewards' });
+        if (bagTab === 'gear') html += gearTabHtml(g, s);
+        else if (bagTab === 'materials') html += matsTabHtml(s);
+        else if (bagTab === 'skins') html += skinsTabHtml(s);
+        else {
             const ps = g.pstats, now = Date.now();
             W.refreshCaps(s, now);
             const pend = Bridge.pending(localStorage, 0);
@@ -448,6 +784,13 @@
             WHW.actions.salvage(uid);
             renderBagBody();
         });
+        on(body, '[data-filter]', (d) => { gearFilter = d.filter; renderBagBody(); });
+        on(body, '[data-skin]', (d) => { WHW.actions.setSkin(d.skin === 'game' ? null : d.skin); renderBagBody(); });
+        on(body, '[data-show]', (d) => { gearFilter = d.show; renderBagBody(); const head = $('wModalBody').querySelector('.w-bag-head'); if (head) head.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
+        const gs = body.querySelector('#gearSort');
+        if (gs) gs.addEventListener('change', () => { gearSort = gs.value; renderBagBody(); });
+        const ms = body.querySelector('#matSort');
+        if (ms) ms.addEventListener('change', () => { matSort = ms.value; renderBagBody(); });
     }
 
     // ---------------- stations ----------------
@@ -574,8 +917,9 @@
         let html = tabs(['sell', 'buy', 'exchange'], traderTab, null, { sell: 'Sell', buy: 'Buy', exchange: 'Exchange' });
         if (traderTab === 'sell') {
             const ids = D.MATERIALS.filter(m => m.sell && W.count(s, m.id) > 0);
+            const label = (m) => (m.kind === 'trophy' ? '🏆 ' : '') + esc(m.name);
             html += `<p class="w-note">The Trader pays rubies for materials. Keep what you need for crafting!</p>`;
-            html += ids.length ? `<div class="w-grid">${ids.map(m => `<div class="w-card"><div class="w-card-top"><i class="w-dot" style="width:18px;height:18px;background:${m.color}"></i><div><div class="w-card-name">${esc(m.name)}</div><div class="w-card-sub">You have ${fmt(W.count(s, m.id))} · ♦ ${m.sell} each</div></div></div>
+            html += ids.length ? `<div class="w-grid">${ids.map(m => `<div class="w-card"><div class="w-card-top" data-mat="${m.id}" tabindex="0"><span class="w-mat-ico" style="--c:${m.color}">${m.icon || ''}</span><div><div class="w-card-name">${label(m)}</div><div class="w-card-sub">You have ${fmt(W.count(s, m.id))} · ♦ ${m.sell} each</div></div></div>
                 <div class="w-card-actions"><button class="btn btn-sm btn-ghost" data-sell="${m.id}" data-n="1">Sell 1</button><button class="btn btn-sm btn-ghost" data-sell="${m.id}" data-n="10">Sell 10</button><button class="btn btn-sm btn-gold" data-sell="${m.id}" data-n="${W.count(s, m.id)}">Sell all (♦ ${fmt(m.sell * W.count(s, m.id))})</button></div></div>`).join('')}</div>` : '<p class="muted">You have nothing to sell.</p>';
         } else if (traderTab === 'buy') {
             html += `<div class="w-grid">${D.TRADER_STOCK.map(it => {
@@ -590,7 +934,8 @@
                 <div><div class="w-card-name">${esc(label)}</div><div class="w-card-sub">♦ ${fmt(cost)} · once a week</div></div></div>
                 <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-ex="${kind}" ${!used && capOk && s.rubies >= cost ? '' : 'disabled'}>${used ? 'Done this week' : !capOk ? "Today's limit reached" : 'Exchange'}</button></div></div>`;
             html += `<p class="w-note">Rubies can buy a little of the main game's treasures. Whatever you get here arrives in your game the next time you open it.<br>
-                Today: gems <b>${s.caps.gems}/${D.CAPS.gemsPerDay}</b>, Golden What Happened <b>${s.caps.golden}/${D.CAPS.goldenPerDay}</b> from the Wilds.</p>`;
+                Today: gems <b>${s.caps.gems}/${D.CAPS.gemsPerDay}</b>, Golden What Happened <b>${s.caps.golden}/${D.CAPS.goldenPerDay}</b> from the Wilds.<br>
+                The other way round: trade Golden What Happened for rubies in the game's <b>Divine</b> menu (1 Golden = ♦ ${fmt(Bridge.GOLDEN_RUBIES)}). They arrive here straight away.</p>`;
             html += `<div class="w-grid">${row('gems', ex.gems.gems + ' gems', ex.gems.cost, !!s.caps.exGems, W.gemsLeftToday(s, now) >= ex.gems.gems)}${row('golden', ex.golden.golden + ' Golden What Happened', ex.golden.cost, !!s.caps.exGolden, W.goldenLeftToday(s, now) >= ex.golden.golden)}</div>`;
         }
         body.innerHTML = html;
@@ -638,10 +983,12 @@
     function openHelp() {
         modal('📜 How the Wilds work', `<div class="w-help">
             <h3>Moving and fighting</h3>
-            <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move, <kbd>Space</kbd> or <kbd>Shift</kbd> to dash (you can't be hit during a dash), <kbd>1</kbd>–<kbd>5</kbd> or the mouse wheel to switch what you hold, <kbd>Q</kbd> for a potion, <kbd>E</kbd> to use things, <kbd>I</kbd> for your bag, <kbd>M</kbd> for the map.</p>
+            <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move, <kbd>Space</kbd> or <kbd>Shift</kbd> to dash (you can't be hit during a dash), <kbd>1</kbd>–<kbd>5</kbd> or the mouse wheel to switch what you hold, <kbd>Z</kbd> for a potion (then a short wait before the next: longer after stronger ones), <kbd>E</kbd> to use things, <kbd>I</kbd> for your bag, <kbd>M</kbd> for the map.</p>
             <p><b>Your weapon follows the mouse.</b> To hit hard you have to <b>swing</b>: move the mouse quickly across the target, like the real thing. A slow drag just bumps it. The swing meter under your hotbar shows how fast your blade is moving: past the first mark it hurts, past the second it's a <b style="color:#ffc83d">Perfect</b> hit. Slashing back and forth builds a combo; the tip of the blade hits harder than the hilt. Heavy weapons like axes turn slower but hit harder.</p>
             <ul><li><b>Shields</b>: hold <kbd>right-click</kbd> (or <kbd>F</kbd>) to raise your shield toward the mouse. Hits from in front are mostly blocked but cost stamina; if you run out, your guard breaks. Raise it <i>just</i> as a hit lands to <b style="color:#ffc83d">parry</b>: no damage, the attacker is stunned and projectiles fly back. You can't attack with your weapon while blocking. Falling rocks and meteors can't be blocked.</li>
-            <li><b>Classes</b> (<kbd>K</kbd>): you start as a Warrior. Unlock the Guardian, Rogue, Ranger, Lancer and Mystic by completing their challenges, and change class in town. Each class has a bonus and its own skill tree of abilities and perks, learned with rubies from the top of each branch down (some after beating a boss). Equip up to three abilities on <kbd>Z</kbd> <kbd>X</kbd> <kbd>C</kbd>; an ability you equip outside town starts on its cooldown. Abilities hurt monsters, bosses and rivals, and other players outside town (at PvP strength; stuns on players are shorter).</li>
+            <li><b>Quests</b>: four townsfolk stand around the plaza. Talk to them (<kbd>E</kbd>) for quests that pay rubies: a story for each, then a new daily quest every day. A <b style="color:#ffc83d">!</b> over someone's head means a new quest, a <b style="color:#ffc83d">?</b> means one is ready to hand in.</li>
+            <li><b>The Hall of Gods</b>: the dark temple north of the plaza. Its six statues take offerings of rubies and materials (boss trophies too, at some levels), and each level blesses your clicker game: more CPS, click power, crits, offline earnings, gems or Golden. Bosses also drop trophies the Trader pays well for.</li>
+            <li><b>Classes</b> (<kbd>K</kbd>): you start as a Warrior. Unlock the Guardian, Rogue, Ranger, Lancer and Mystic by completing their challenges, and change class in town. Each class has a bonus and its own skill tree of abilities and perks, learned with rubies from the top of each branch down (some after beating a boss). Equip up to three abilities on <kbd>R</kbd> <kbd>Q</kbd> <kbd>C</kbd>; an ability you equip outside town starts on its cooldown. Abilities hurt monsters, bosses and rivals, and other players outside town (at PvP strength; stuns on players are shorter).</li>
             <li><b>Spears</b>: flick the mouse outward from your character to thrust, then pull back. A thrust hits harder the faster you are moving toward the target: dash into it for up to +90%. The Lancer class builds on this.</li>
             <li><b>Bows</b>: press anywhere, pull the mouse <i>away</i> from where you want to shoot, and let go. Hold a full draw briefly for a steady shot. They need arrows.</li>
             <li><b>Daggers</b> are quick and hit much harder from behind.</li></ul>
@@ -650,7 +997,7 @@
             <h3>Crafting</h3>
             <p>Smelt ore into bars at the Forge, cut planks and leather at the Workbench, then craft gear. Every piece of gear is made with a <b>minigame</b>: the better you play, the better its quality, from Crude to <b style="color:#ffc83d">Legendary</b> (up to 1.75× the stats, plus bonus traits). Use <b>Practice</b> to learn the minigames for free.</p>
             <h3>Rubies and your game</h3>
-            <p>Rubies are the money of the Wilds: earn them from monsters, ruby veins, bosses and the Trader, and spend them on crafting fees and supplies. You can also send treasures home: <b>lootboxes</b> crafted at the Rune Altar, plus <b>gems</b> and <b>Golden What Happened</b> from bosses, elites, ruby veins and the Trader's weekly exchange. They arrive the next time you open the game.</p>
+            <p>Rubies are the money of the Wilds: earn them from monsters, ruby veins, bosses and the Trader, and spend them on crafting fees and supplies. You can also send treasures home: <b>lootboxes</b> crafted at the Rune Altar, plus <b>gems</b> and <b>Golden What Happened</b> from bosses, elites, ruby veins and the Trader's weekly exchange. They arrive the next time you open the game. Rubies can come the other way too: trade Golden What Happened in the game's Divine menu, or redeem a rubies code in its Settings.</p>
             <h3>Online</h3>
             <p>Other players in the same zone appear live (🌐 at the top shows how many). Press <kbd>Enter</kbd> to chat or send an emote. <b>Outside town, players can fight each other</b> with the same swings, shields and parries; you're protected for a few seconds after arriving. A player knocked out by another drops part of what they carry: the winner gets first pick, then anyone can grab it. Bosses are shared: everyone in the arena fights the same one, and everyone who did enough damage gets the reward. Monsters are your own. You can play offline from the 🌐 menu.</p>
             <h3>Danger</h3>
@@ -659,17 +1006,32 @@
     }
     function openSettings() {
         const S = WHW.settings;
+        const opts = (list, cur) => list.map(([v, label]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`).join('');
+        const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
         const body = modal('Settings', `
             <label class="w-setting"><span>Assisted swings<small>Click to swing automatically (70% damage). For trackpads and touch screens.</small></span><input type="checkbox" id="setAssist" ${S.assist ? 'checked' : ''}></label>
             <label class="w-setting"><span>Damage numbers</span><input type="checkbox" id="setNums" ${S.dmgNumbers ? 'checked' : ''}></label>
             <label class="w-setting"><span>Screen shake and hit pause</span><input type="checkbox" id="setShake" ${S.shake ? 'checked' : ''}></label>
             <label class="w-setting"><span>Sound volume<small>Also follows the game's sound settings.</small></span><input type="range" id="setVol" min="0" max="1" step="0.05" value="${S.volume}"></label>
+            <h3 class="w-setting-h">Performance</h3>
+            <label class="w-setting"><span>Graphics<small>Lower draws fewer particles, less ground detail and lighting, and a less sharp picture.</small></span>
+                <select id="setGfx">${opts([['auto', 'Auto (game setting: ' + cap(WHW.gamePerformance()) + ')'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], S.graphics)}</select></label>
+            <label class="w-setting"><span>Resolution<small>How sharp the picture is. Lower is much faster, especially on big or high-resolution screens.</small></span>
+                <select id="setRes">${opts([['auto', 'Auto'], ['full', 'Full'], ['0.75', '75%'], ['0.5', '50%']], S.resolution)}</select></label>
+            <label class="w-setting"><span>Frame rate limit<small>Higher is smoother on fast screens but works your device harder.</small></span>
+                <select id="setFps">${opts([['30', '30 fps'], ['60', '60 fps'], ['0', 'Screen rate']], String(S.fpsCap))}</select></label>
+            <label class="w-setting"><span>Show frame rate</span><input type="checkbox" id="setShowFps" ${S.showFps ? 'checked' : ''}></label>
             <div class="w-row" style="margin-top:14px"><a class="btn btn-ghost" href="index.html">Back to the clicker</a><button class="btn btn-ghost" id="setHelp">How to play</button></div>`);
         const save = () => { WHW.saveSettings(); };
         body.querySelector('#setAssist').addEventListener('change', (e) => { S.assist = e.target.checked; save(); });
         body.querySelector('#setNums').addEventListener('change', (e) => { S.dmgNumbers = e.target.checked; save(); });
         body.querySelector('#setShake').addEventListener('change', (e) => { S.shake = e.target.checked; save(); });
         body.querySelector('#setVol').addEventListener('input', (e) => { S.volume = Number(e.target.value); save(); });
+        const gfx = (key, val) => { S[key] = val; save(); WHW.applyGraphics(); };
+        body.querySelector('#setGfx').addEventListener('change', (e) => gfx('graphics', e.target.value));
+        body.querySelector('#setRes').addEventListener('change', (e) => gfx('resolution', e.target.value));
+        body.querySelector('#setFps').addEventListener('change', (e) => gfx('fpsCap', Number(e.target.value)));
+        body.querySelector('#setShowFps').addEventListener('change', (e) => { S.showFps = e.target.checked; save(); });
         body.querySelector('#setHelp').addEventListener('click', openHelp);
     }
     function openDeath(drop, killer, onRespawn) {
@@ -687,5 +1049,5 @@
     WHW.toast = toast;
     WHW.hint = hint;
     WHW.banner = banner;
-    WHW.ui = { modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openStation, openTrader, openPortal, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
+    WHW.ui = { modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
 })();

@@ -206,5 +206,6 @@ test('database.rules.json is valid and covers every place the game writes', () =
     assert.match(zone.h.$victim['.read'], /auth\.uid === \$victim/, 'only the target reads its hits');
     assert.match(zone.h.$victim.$hid['.write'], /newData\.child\('from'\)\.val\(\) === auth\.uid/, 'hits are signed by their sender');
     assert.equal(O.ROOT, 'wilds/v1/zones');
-    for (const z of Object.keys(D.ZONES)) assert.ok(new RegExp(zone['.validate'].match(/\/(.*)\//)[1]).test(z), 'zone ' + z + ' allowed');
+    // every zone players meet in (inside a building, like the Hall of Gods, nobody is online)
+    for (const z of Object.keys(D.ZONES).filter(id => !D.ZONES[id].interior)) assert.ok(new RegExp(zone['.validate'].match(/\/(.*)\//)[1]).test(z), 'zone ' + z + ' allowed');
 });

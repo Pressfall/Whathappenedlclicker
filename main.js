@@ -1825,7 +1825,8 @@ function divineCostFor(kind, level) { return calc.divineCostFor(kind, level); }
 // ---------- Divine effects ----------
 // Each takes a level (the current one when omitted) and includes the Brileyism boost, which scales the bonus part of
 // every other Divine upgrade: +300% CPS becomes +315%, x11 click power becomes x11.5, 5% crit chance per level 5.25%, ...
-function getBrileyismBoost() { return 1 + DIVINE_BRILEYISM_PER_LEVEL * Math.max(0, numericLevel(divineBrileyismLevel)); }
+// The hidden god of the Wilds' Hall of Gods adds its own share (getGodBonuses().divine, a percentage).
+function getBrileyismBoost() { return 1 + DIVINE_BRILEYISM_PER_LEVEL * Math.max(0, numericLevel(divineBrileyismLevel)) + (getGodBonuses().divine || 0) / 100; }
 function lvlOr(level, current) { return Math.max(0, level === undefined ? numericLevel(current) : Number(level) || 0); }
 // Divine Argonian: +300% CPS at level 1, doubling each level
 function divineArgonPercentAt(level) { const L = lvlOr(level, divineArgonLevel); return L > 0 ? DIVINE_ARGON_BASE_PERCENT * Math.pow(2, L - 1) * getBrileyismBoost() : 0; }
@@ -1909,6 +1910,8 @@ function showDivineMenu() {
     if (!divineUnlocked && goldenWhat < 1) return; // locked
     divineMode = true;
     updateDisplays();
+    try { renderGoldenTrade(); } catch (e) {}
+    try { renderGodBlessings(); } catch (e) {}
 }
 
 function showNormalMenu() {
@@ -1976,6 +1979,37 @@ function getFollowerBonuses() {
 const NO_ITEM_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, boxRate: 0, offline: 0, cpsMult: 1, clickMult: 1 };
 function getItemBonuses() {
     try { return (window.WHI && window.WHI.bonuses()) || NO_ITEM_BONUS; } catch (e) { return NO_ITEM_BONUS; }
+}
+// ---------- The Hall of Gods (The Wilds): statues raised there bless this game (core/world-gods.js) ----------
+// Their levels live in the Wilds save, which this page only reads: re-read at most every 3s, and whenever it changes.
+const NO_GOD_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, offline: 0, gems: 0, golden: 0, divine: 0, gods: 0 };
+let _godCache = { at: 0, levels: {}, bonus: NO_GOD_BONUS };
+function readGods() {
+    const now = Date.now();
+    if (now - _godCache.at > 3000) {
+        let levels = {}, bonus = NO_GOD_BONUS;
+        try {
+            const G = window.WHWorldGods;
+            if (G) { levels = G.levelsFrom(JSON.parse(localStorage.getItem('whathappened_world') || 'null')); bonus = G.bonuses(levels); }
+        } catch (e) { levels = {}; bonus = NO_GOD_BONUS; }
+        _godCache = { at: now, levels, bonus };
+    }
+    return _godCache;
+}
+function getGodBonuses() { return readGods().bonus; }
+// The Divine menu's Hall of Gods row: one line per statue raised
+function renderGodBlessings() {
+    const el = document.getElementById('godBlessings'), G = window.WHWorldGods;
+    if (!el || !G) return;
+    const lv = readGods().levels;
+    const raised = G.GOD_ORDER.filter(id => lv[id]);
+    el.textContent = '';
+    if (!raised.length) { el.textContent = 'Raise the god statues in the Hall of Gods (The Wilds, north of town) to bless this game.'; return; }
+    for (const id of raised) {
+        const line = document.createElement('div');
+        line.textContent = G.GODS[id].icon + ' ' + G.GODS[id].name + ' (level ' + lv[id] + '): ' + G.describe(id, lv[id], lv);
+        el.appendChild(line);
+    }
 }
 // Equipped followers + their totals under the stats card; only rebuilt when the team changes.
 let _followerStripKey = null;
@@ -2055,7 +2089,11 @@ try {
 // rewards sent from the Wilds (world.html) open in another tab
 try {
     window.addEventListener('storage', (ev) => {
-        if (window.WHWorldBridge && ev.key === window.WHWorldBridge.WORLD_KEY && ev.newValue) { try { applyWorldRewards(); } catch (e) {} }
+        if (window.WHWorldBridge && ev.key === window.WHWorldBridge.WORLD_KEY && ev.newValue) {
+            try { applyWorldRewards(); } catch (e) {}
+            _godCache.at = 0; // a statue may have been raised
+            try { renderGodBlessings(); } catch (e) {}
+        }
     });
 } catch (e) {}
 
@@ -2242,6 +2280,18 @@ function updateDisplays() {
         } else {
             cps = cps * iCps;
             clickPower = clickPower * iClick;
+        }
+    } catch (e) {}
+    // The Hall of Gods: statue blessings from The Wilds
+    try {
+        const gb = getGodBonuses();
+        const gCps = 1 + (gb.cps || 0) / 100, gClick = 1 + (gb.click || 0) / 100;
+        if (hasDecimal) {
+            cps = cps.times(D(gCps));
+            clickPower = clickPower.times(D(gClick));
+        } else {
+            cps = cps * gCps;
+            clickPower = clickPower * gClick;
         }
     } catch (e) {}
     try { renderFollowerStrip(); } catch (e) {}
@@ -2633,9 +2683,9 @@ function updateDisplays() {
             const cEl = document.getElementById('statsCritChance');
             const mEl = document.getElementById('statsCritMultiplier');
             try {
-                const fb = getFollowerBonuses(), ib = getItemBonuses();
-                const chance = Math.min(1, getDivineCritChance() + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100);
-                const critMult = chance > 0 ? getDivineCritMult() * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) : 0;
+                const fb = getFollowerBonuses(), ib = getItemBonuses(), gb = getGodBonuses();
+                const chance = Math.min(1, getDivineCritChance() + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100 + (gb.critChance || 0) / 100);
+                const critMult = chance > 0 ? getDivineCritMult() * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) * (1 + (gb.critDmg || 0) / 100) : 0;
                 if (cEl) cEl.innerText = `${(chance * 100).toFixed(2)}%`;
                 if (mEl) mEl.innerText = `x${formatNumber(critMult)}`;
             } catch (e) {
@@ -2718,7 +2768,10 @@ setInterval(_flushClickCounters, 2000);
 try { window.addEventListener('beforeunload', _flushClickCounters); } catch (e) {}
 try { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') _flushClickCounters(); }); } catch (e) {}
 
-function increment() {
+// opts.auto: a click from the Auto Clicker charm. It earns like any click (crits too), but finds no gems, counts toward no
+// click stats, achievements or clan events, and skips the heavier effects.
+function increment(opts) {
+    const auto = !!(opts && opts.auto);
     let critOccurred = false;
     // compute base click reward (clickPower already includes Somalian and clickMultiplier effects)
     let reward;
@@ -2739,6 +2792,7 @@ function increment() {
         // Followers and items (charms, Loaded Dice): extra crit chance (percentage points)
         chance += (getFollowerBonuses().critChance || 0) / 100;
         chance += (getItemBonuses().critChance || 0) / 100;
+        chance += (getGodBonuses().critChance || 0) / 100; // the Hall of Gods (Fortuna)
         chance = Math.min(1, chance);
         if (chance > 0 && Math.random() < chance) {
                 // compute crit multiplier: base 10x, each Divine Spirit level doubles it (level 1 = x20)
@@ -2746,12 +2800,13 @@ function increment() {
                 // Followers and charms: crit damage bonus
                 critMult *= 1 + (getFollowerBonuses().critDmg || 0) / 100;
                 critMult *= 1 + (getItemBonuses().critDmg || 0) / 100;
+                critMult *= 1 + (getGodBonuses().critDmg || 0) / 100;
                 if (hasDecimal) reward = (isDecimalInstance(reward) ? reward : D(reward)).times(D(critMult));
                 else reward *= critMult;
                 // optional visual feedback: spawn extra falling image with crit effects (skipped on Low performance)
-                if (window._perfCritFalling !== false) { try { spawnFallingImage(true); } catch (e) {} }
+                if (!auto && window._perfCritFalling !== false) { try { spawnFallingImage(true); } catch (e) {} }
                 // show a temporary critical indicator (skipped on Low performance)
-                if (window._perfCritIndicator !== false) try {
+                if (!auto && window._perfCritIndicator !== false) try {
                     const indicator = document.createElement('div');
                     indicator.className = 'crit-indicator';
                     indicator.innerText = 'CRIT!';
@@ -2767,9 +2822,9 @@ function increment() {
                     document.body.appendChild(indicator);
                     setTimeout(() => { try { indicator.remove(); } catch (e) {} }, 900);
                 } catch (e) {}
-                // always track crit for achievements and consecutive counter
-                try {
-                    critOccurred = true;
+                critOccurred = true;
+                // always track crit for achievements and consecutive counter (yours, not the Auto Clicker's)
+                if (!auto) try {
                     unlockAchievement('gotCrit');
                     try {
                         const lastWas = localStorage.getItem('last_was_crit') === '1';
@@ -2784,7 +2839,7 @@ function increment() {
     } catch (e) {}
     try { spawnClickFloat(reward, critOccurred); } catch (e) {}
     // reset consecutive crit counter if this click was not a crit
-    try {
+    if (!auto) try {
         if (!critOccurred) {
             try { localStorage.setItem('last_was_crit','0'); } catch (e) {}
             try { localStorage.setItem('consecutive_crits','0'); } catch (e) {}
@@ -2796,8 +2851,8 @@ function increment() {
         count = (typeof count === 'number' ? count : Number(count)) + Number(reward);
     }
     // rare gem drop: 1 in 2500 chance per click (Glitch followers and gem charms raise it); the gem flies into the top-bar counter
-    try {
-        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100) * (1 + (getItemBonuses().gems || 0) / 100)) addGems(1);
+    if (!auto) try {
+        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100) * (1 + (getItemBonuses().gems || 0) / 100) * (1 + (getGodBonuses().gems || 0) / 100)) addGems(1);
     } catch (e) {}
     try {
         const str = formatNumber(count);
@@ -2812,7 +2867,7 @@ function increment() {
     // spawn a falling image effect (throttled; disabled on Low performance)
     try {
         const throttle = (typeof window._perfFallingThrottleMs === 'number') ? window._perfFallingThrottleMs : 80;
-        if (throttle > 0 && (!window._lastFallingSpawn || now - window._lastFallingSpawn > throttle)) {
+        if (!auto && throttle > 0 && (!window._lastFallingSpawn || now - window._lastFallingSpawn > throttle)) {
             window._lastFallingSpawn = now;
             spawnFallingImage(false);
         }
@@ -2834,6 +2889,7 @@ function increment() {
         }
     } catch (e) {}
 
+    if (auto) return; // the counters below are for your own clicks
     // Achievement & click counters: update in-memory only (flushed to localStorage periodically)
     try {
         _ensureClickCountersLoaded();
@@ -2855,6 +2911,75 @@ function increment() {
         }
     } catch (e) {}
 }
+
+// ========== The Auto Clicker (a Hidden charm from the room behind the Hall of Gods, in The Wilds) ==========
+// While it is equipped it clicks one thing 10 times a second: the What Happened image or an upgrade, whichever you put it on
+// with the bar under the image. Only while this page is open and showing: it is no part of CPS, so offline earnings never
+// include it.
+const AUTO_CLICK_KEY = 'whathappened_autoclicker'; // this device's choice of target (not synced)
+const AUTO_TARGETS = '.main-image-btn, #leftBar button[id^="upgrade"], #divineLeftBar button[id^="divine"]:not(.menu-tab)';
+let _autoTarget = null, _autoPlacing = false, _autoShown = null;
+try { const v = JSON.parse(localStorage.getItem(AUTO_CLICK_KEY) || 'null'); if (v && typeof v.target === 'string' && v.target.length < 40) _autoTarget = v.target; } catch (e) {}
+function autoClickRate() { try { return (window.WHI && window.WHI.autoClicks()) || 0; } catch (e) { return 0; } }
+function autoTargetEl(t) { return !t ? null : t === 'image' ? document.querySelector('.main-image-btn') : document.getElementById(t); }
+function autoTargetName(t) {
+    if (t === 'image') return 'the What Happened image';
+    const el = autoTargetEl(t), label = el && el.querySelector('.upgrade-label, .divine-name');
+    const name = ((label || el || {}).textContent || '').trim().split('\n')[0];
+    return name ? name.slice(0, 40) : 'an upgrade';
+}
+function setAutoTarget(t) {
+    _autoTarget = t || null;
+    try { if (t) localStorage.setItem(AUTO_CLICK_KEY, JSON.stringify({ target: t })); else localStorage.removeItem(AUTO_CLICK_KEY); } catch (e) {}
+    renderAutoClicker();
+}
+function toggleAutoPlacing() {
+    _autoPlacing = !_autoPlacing;
+    document.body.classList.toggle('ac-placing', _autoPlacing);
+    renderAutoClicker();
+}
+// While placing, the next click on the image or an upgrade chooses it (and isn't a click); anywhere else cancels
+try {
+    document.addEventListener('click', (e) => {
+        if (!_autoPlacing || !e.isTrusted || (e.target.closest && e.target.closest('#autoClicker'))) return;
+        e.preventDefault(); e.stopPropagation();
+        const t = e.target.closest && e.target.closest(AUTO_TARGETS);
+        toggleAutoPlacing();
+        if (t) setAutoTarget(t.classList.contains('main-image-btn') ? 'image' : t.id);
+    }, true);
+    document.addEventListener('keydown', (e) => { if (_autoPlacing && e.key === 'Escape') toggleAutoPlacing(); });
+} catch (e) {}
+// One auto click; runs 10 times a second
+function autoClickTick() {
+    renderAutoClicker();
+    if (!autoClickRate() || !_autoTarget || _autoPlacing || document.hidden || suppressAutosave || !window._saveLoaded) return false;
+    if (_autoTarget === 'image') { increment({ auto: true }); return true; }
+    const el = autoTargetEl(_autoTarget);
+    if (!el || el.disabled) return false;
+    el.click();
+    return true;
+}
+// The bar under the image (while the charm is equipped), and the little clicker sitting on whatever it clicks
+function renderAutoClicker() {
+    const bar = document.getElementById('autoClicker'), badge = document.getElementById('autoClickerBadge');
+    if (!bar) return;
+    const on = autoClickRate() > 0;
+    const key = on + '|' + _autoTarget + '|' + _autoPlacing;
+    if (key !== _autoShown) {
+        _autoShown = key;
+        bar.hidden = !on;
+        const state = document.getElementById('autoClickerState'), place = document.getElementById('autoClickerPlace'), stop = document.getElementById('autoClickerStop');
+        if (state) state.textContent = _autoPlacing ? 'Click the image or an upgrade to put it there (Esc to cancel)' : _autoTarget ? 'Clicking ' + autoTargetName(_autoTarget) + ', 10 times a second' : 'Not placed yet';
+        if (place) place.textContent = _autoPlacing ? 'Cancel' : _autoTarget ? 'Move' : 'Place';
+        if (stop) stop.hidden = !_autoTarget || _autoPlacing;
+    }
+    if (badge) {
+        const el = on && !_autoPlacing && autoTargetEl(_autoTarget), r = el && el.getBoundingClientRect();
+        badge.hidden = !(r && r.width);
+        if (r && r.width) { badge.style.left = (r.right - 16) + 'px'; badge.style.top = (r.top - 8) + 'px'; }
+    }
+}
+setInterval(autoClickTick, 100);
 
 // Add the clicks counted since the last flush to this member's `mainClicks` (used by clan-v-clan events)
 async function flushClanClicks() {
@@ -4843,9 +4968,10 @@ function getTotalUpgradeLevels() {
 // Upgrade levels needed per Golden after Divine Collector and Void followers (their bonuses apply before rounding down,
 // so a 25% bonus is worth something even when you'd only earn one Golden)
 function getLevelsPerGolden() {
-    let followerGolden = 0;
+    let followerGolden = 0, godGolden = 0;
     try { followerGolden = getFollowerBonuses().golden || 0; } catch (e) {}
-    return calc.levelsPerGolden(LEVELS_PER_GOLDEN, getDivineCollectorBonus(), followerGolden);
+    try { godGolden = getGodBonuses().golden || 0; } catch (e) {} // the Hall of Gods (Nyx)
+    return calc.levelsPerGolden(LEVELS_PER_GOLDEN, getDivineCollectorBonus(), followerGolden, godGolden);
 }
 // Compute how many golden awards the player would receive if they prestiged now
 function getPotentialPrestigeAwards() {
@@ -6239,8 +6365,9 @@ function initApp() {
         }
     } catch (e) {}
     // removed console-invokable debug helper
-    // rewards earned in the Wilds since the last visit
+    // rewards earned in the Wilds since the last visit, and paying for what was bought there
     try { applyWorldRewards(); } catch (e) {}
+    try { settleWorldPurchases(true); } catch (e) {}
     
     } catch (e) {
         console.error('initApp failed', e);
@@ -6558,6 +6685,45 @@ function addGolden(n) {
     try { saveGame(); } catch (e) {}
     try { updateDisplays(); } catch (e) {}
 }
+// Things bought in the Wilds and partly paid here (core/world-bridge.js BUYS: the Auto Clicker). They wait in WORLD_OWED_KEY
+// (written only by this page) until their gems and Golden can be paid; then those are taken and saved, and the item arrives.
+// One you already own is never paid for twice.
+const WORLD_OWED_KEY = 'whathappened_world_owed';
+function readWorldOwed() {
+    const B = window.WHWorldBridge;
+    try { const a = JSON.parse(localStorage.getItem(WORLD_OWED_KEY) || '[]'); return Array.isArray(a) && B ? a.filter(id => typeof id === 'string' && Object.prototype.hasOwnProperty.call(B.BUYS, id)) : []; } catch (e) { return []; }
+}
+function writeWorldOwed(list) {
+    try { if (list.length) localStorage.setItem(WORLD_OWED_KEY, JSON.stringify(Array.from(new Set(list)))); else localStorage.removeItem(WORLD_OWED_KEY); return true; } catch (e) { return false; }
+}
+// tell: say so when something is still waiting for gems or Golden
+function settleWorldPurchases(tell) {
+    const B = window.WHWorldBridge;
+    if (!B || !window.WHI || suppressAutosave || !window._saveLoaded) return false;
+    const owed = readWorldOwed();
+    if (!owed.length) return false;
+    const left = [];
+    for (const id of owed) {
+        const buy = B.BUYS[id];
+        if (window.WHI.hasItem(buy.item)) continue;
+        if (getGems() < buy.gems || !goldenCanAfford(buy.golden)) { left.push(id); continue; }
+        const before = { diamonds, goldenWhat };
+        diamonds = getGems() - buy.gems;
+        goldenWhat = (Number(goldenWhat) || 0) - buy.golden;
+        if (!saveGame()) { diamonds = before.diamonds; goldenWhat = before.goldenWhat; left.push(id); continue; }
+        window.WHI.grantSpecial(buy.item);
+        notify(buy.name + ' has arrived from the Wilds! ' + formatNumber(buy.gems) + ' gems and ' + formatNumber(buy.golden) + ' Golden What Happened paid. Equip it in Items (🎒).', 9000);
+    }
+    writeWorldOwed(left);
+    if (left.length && tell) {
+        const b = B.BUYS[left[0]];
+        notify(b.name + ' from the Wilds is waiting for you: it arrives as soon as you have ' + formatNumber(b.gems) + ' gems and ' + formatNumber(b.golden) + ' Golden What Happened.', 9000);
+    }
+    try { updateDisplays(); } catch (e) {}
+    return true;
+}
+try { setInterval(() => { try { settleWorldPurchases(false); } catch (e) {} }, 5000); } catch (e) {}
+
 // Rewards from the Wilds (world.html, core/world-bridge.js). That page only writes its own save and this one only
 // writes the ack (the last reward applied), so neither overwrites the other. Gems and Golden are saved before the ack
 // moves; if the save fails nothing changes and the rewards wait for the next try.
@@ -6575,7 +6741,9 @@ function applyWorldRewards() {
             if (!plan.entries.length) return false;
             const t = plan.totals;
             const hasBoxes = t.boxes.some(n => n > 0);
-            if (hasBoxes && !(window.WHI && typeof window.WHI.grantBoxes === 'function')) return false;
+            if ((hasBoxes || t.buys.length) && !(window.WHI && typeof window.WHI.grantBoxes === 'function')) return false;
+            // purchases are remembered first, so they are never lost; remembering one twice changes nothing
+            if (t.buys.length && !writeWorldOwed(readWorldOwed().concat(t.buys))) return false;
             diamonds = getGems() + t.gems;
             if (t.golden) {
                 goldenWhat = (Number(goldenWhat) || 0) + t.golden;
@@ -6589,6 +6757,7 @@ function applyWorldRewards() {
             _worldAckApplied = plan.lastSeq;
             if (hasBoxes) { try { window.WHI.grantBoxes(t.boxes, { quiet: true }); } catch (e) {} }
             B.writeAck(localStorage, plan.lastSeq);
+            if (t.buys.length) settleWorldPurchases(true);
             const msg = B.describe(t);
             if (msg) notify(msg, 6000);
             try { updateDisplays(); } catch (e) {}
@@ -6605,6 +6774,74 @@ function applyWorldRewards() {
         return true;
     }
     return run();
+}
+
+// Rubies for the Wilds (core/world-bridge.js inbox: this page writes it, the Wilds collects). Resolves to true once queued.
+// Two game tabs take turns, so neither overwrites the other's entry.
+function queueWorldRubies(amount, src) {
+    const B = window.WHWorldBridge;
+    if (!B) return Promise.resolve(false);
+    const run = () => !!B.sendRubies(localStorage, amount, src, Date.now());
+    if (navigator.locks && typeof navigator.locks.request === 'function') return navigator.locks.request('whathappened_world_inbox', run).catch(() => false);
+    return Promise.resolve(run());
+}
+// Divine menu: trade Golden What Happened for rubies in the Wilds. The Golden is taken and saved first; if the rubies
+// can't be queued it is given back. n: how many (default: the number in the box).
+async function tradeGoldenForRubies(n) {
+    const B = window.WHWorldBridge;
+    if (!B || !window._saveLoaded || suppressAutosave) return false;
+    if (n === undefined) { const inp = document.getElementById('goldenTradeInput'); n = inp ? inp.value : 0; }
+    const amt = Math.floor(Number(n) || 0);
+    if (amt < 1) { notify('Enter how many Golden What Happeneds to trade.'); return false; }
+    if (!goldenCanAfford(amt)) { notify('Not enough Golden What Happeneds: you have ' + formatNumber(Math.floor(Number(goldenWhat) || 0)) + '.'); return false; }
+    const left = B.goldenTradeLeft(localStorage, Date.now());
+    if (amt > left) { notify(left > 0 ? 'You can trade ' + left + ' more Golden What Happened this week (' + B.GOLDEN_TRADE_WEEKLY + ' a week).' : goldenTradeResetText()); renderGoldenTrade(); return false; }
+    const rubies = amt * B.GOLDEN_RUBIES;
+    const golden = amt === 1 ? '1 Golden What Happened' : formatNumber(amt) + ' Golden What Happeneds';
+    if (!confirm('Trade ' + golden + ' for ' + rubies.toLocaleString() + ' rubies in The Wilds?\n\nGolden you keep also raises your CPS, so this lowers it. A trade can\'t be undone.')) return false;
+    if (!goldenCanAfford(amt)) return false; // spent somewhere else while the question was open
+    const now = Date.now();
+    if (amt > B.goldenTradeLeft(localStorage, now)) return false; // traded in another tab while the question was open
+    if (!B.noteGoldenTrade(localStorage, amt, now)) { notify("Couldn't save the game, so nothing was traded."); return false; }
+    const before = goldenWhat;
+    goldenWhat = (Number(goldenWhat) || 0) - amt;
+    if (!saveGame()) { goldenWhat = before; B.unnoteGoldenTrade(localStorage, amt, now); notify("Couldn't save the game, so nothing was traded."); return false; }
+    if (!(await queueWorldRubies(rubies, 'golden'))) {
+        B.unnoteGoldenTrade(localStorage, amt, now);
+        goldenWhat = (Number(goldenWhat) || 0) + amt;
+        try { saveGame(); } catch (e) {}
+        notify("Couldn't send the rubies, so your Golden is back. Open The Wilds once to collect what's waiting, then try again.");
+        try { updateDisplays(); } catch (e) {}
+        return false;
+    }
+    try { playSfx('audio/purchase.wav'); } catch (e) {}
+    notify('Traded ' + golden + ' for ' + rubies.toLocaleString() + ' rubies. They are waiting for you in The Wilds.', 5000);
+    try { updateDisplays(); } catch (e) {}
+    renderGoldenTrade();
+    return true;
+}
+// "The weekly limit is used up: it resets on Monday (in 3 days)."
+function goldenTradeResetText() {
+    const B = window.WHWorldBridge, now = Date.now();
+    const days = Math.max(1, Math.ceil((B.nextWeekAt(now) - now) / 86400000));
+    return 'You have traded ' + B.GOLDEN_TRADE_WEEKLY + ' Golden What Happeneds this week, the most there is. More can be traded on Monday (in ' + (days === 1 ? '1 day' : days + ' days') + ').';
+}
+// The trade row: what the number in the box is worth, how many more can be traded this week, and what is still waiting
+// in the Wilds
+function renderGoldenTrade() {
+    const B = window.WHWorldBridge, note = document.getElementById('goldenTradeNote'), inp = document.getElementById('goldenTradeInput');
+    if (!B || !note) return;
+    const rate = document.getElementById('goldenTradeRate');
+    if (rate) rate.textContent = B.GOLDEN_RUBIES.toLocaleString();
+    const amt = Math.max(0, Math.floor(Number(inp && inp.value) || 0));
+    const waiting = B.rubiesWaiting(localStorage);
+    const left = B.goldenTradeLeft(localStorage, Date.now());
+    const btn = document.getElementById('goldenTradeBtn');
+    if (btn) btn.disabled = left <= 0;
+    if (inp) inp.max = String(Math.max(1, left));
+    note.textContent = (left <= 0 ? goldenTradeResetText() : (amt ? amt.toLocaleString() + ' Golden = ' + (amt * B.GOLDEN_RUBIES).toLocaleString() + ' rubies. ' : '') +
+        left + ' of ' + B.GOLDEN_TRADE_WEEKLY + ' left to trade this week.') +
+        (waiting ? ' ' + waiting.toLocaleString() + ' rubies are waiting for you in The Wilds.' : '');
 }
 
 // Shop menu toggle (tab: which tab to open on, default the skins)
@@ -6969,10 +7206,11 @@ function equipBgImage(path) {
 }
 
 // Secret codes live in Firestore, one document per code: collection "codes", document id = the code in UPPER CASE.
-// Fields: type ('count' | 'golden' | 'diamonds'), amount (number, or a string like '1e100' for count), message (optional),
+// Fields: type ('count' | 'golden' | 'diamonds' | 'rubies' | 'clanPoints' | 'clanXp'), amount (number, or a string like '1e100' for count), message (optional),
+// ('clanPoints' goes to the player's Clan Points, 'clanXp' to the XP of the clan they are in; that one needs a clan)
 // enabled (optional, false turns the code off), expiresAt (optional timestamp). Add, change or delete them in the Firebase
 // console; no redeploy needed. Players can only read a code they already know (see firestore-codes.rules).
-const CODE_TYPES = ['count', 'golden', 'diamonds'];
+const CODE_TYPES = ['count', 'golden', 'diamonds', 'rubies', 'clanPoints', 'clanXp'];
 const CODE_LOOKUP_MS = 8000;
 const REDEEMED_KEY = 'whathappened_redeemed_codes';
 
@@ -6997,6 +7235,21 @@ function showSecretCodeStatus(msg, ok) {
     if (!ok) {
         setTimeout(() => { if (el && el.innerText === msg) el.innerText = ''; }, 4000);
     }
+}
+
+// Clan XP from a code goes straight onto the clan document, like the clan page's own event payouts (clan.html awardClanEventXp).
+// Resolves to true once it is added, false when the clan couldn't be reached.
+async function addClanXpFromCode(clanId, amount) {
+    try {
+        if (!(window.db && typeof window.runTransaction === 'function' && typeof window.doc === 'function')) return false;
+        const ref = window.doc(window.db, 'clans', clanId);
+        await window.runTransaction(window.db, async (tx) => {
+            const snap = await tx.get(ref);
+            if (!snap.exists()) throw new Error('no clan');
+            tx.update(ref, { clanXp: (Number((snap.data() || {}).clanXp) || 0) + amount });
+        });
+        return true;
+    } catch (e) { console.warn('Clan XP code failed', e); return false; }
 }
 
 // Resolves to the code's reward object, null when it doesn't exist, or throws when the database can't be reached
@@ -7047,6 +7300,9 @@ async function redeemSecretCode() {
     if (btn) btn.disabled = false;
     if (!reward) return showSecretCodeStatus('Invalid code.', false);
     if (reward.expired) return showSecretCodeStatus('This code has expired.', false);
+    // clan XP needs a clan to receive it; the code stays unused until the player has one
+    const playerClanId = localStorage.getItem('player_clanId') || '';
+    if (reward.type === 'clanXp' && !playerClanId) return showSecretCodeStatus('This code gives Clan XP, so you need to join a clan first.', false);
     // a second tab may have redeemed it while we were waiting
     const redeemed = getRedeemedCodes();
     if (redeemed.includes(code)) return showSecretCodeStatus('Code already redeemed.', false);
@@ -7084,6 +7340,32 @@ async function redeemSecretCode() {
             try { saveGame(); } catch (e) {}
             try { updateDisplays(); } catch (e) {}
             showSecretCodeStatus(reward.message || ('You received ' + amt + ' golden!'), true);
+            inp.value = '';
+        } else if (reward.type === 'rubies') {
+            // rubies belong to the Wilds' own save, so they go through its inbox (core/world-bridge.js)
+            const amt = Math.floor(Number(reward.amount) || 0);
+            if (!(await queueWorldRubies(amt, 'code'))) {
+                saveRedeemedCodes(getRedeemedCodes().filter(c => c !== code)); // nothing was given: the code can be tried again
+                return showSecretCodeStatus("Couldn't store the rubies. Open The Wilds once to collect what's waiting, then try again.", false);
+            }
+            showSecretCodeStatus(reward.message || ('You received ' + amt.toLocaleString() + ' rubies! They are waiting for you in The Wilds.'), true);
+            inp.value = '';
+            try { renderGoldenTrade(); } catch (e) {}
+        } else if (reward.type === 'clanPoints') {
+            // Clan Points live in the main save (the clan shop spends them)
+            const amt = Math.floor(Number(reward.amount) || 0);
+            clanPoints = (Number(clanPoints) || 0) + amt;
+            try { saveGame(); } catch (e) {}
+            try { updateDisplays(); } catch (e) {}
+            showSecretCodeStatus(reward.message || ('You received ' + amt.toLocaleString() + ' Clan Points!'), true);
+            inp.value = '';
+        } else if (reward.type === 'clanXp') {
+            const amt = Math.floor(Number(reward.amount) || 0);
+            if (!(await addClanXpFromCode(playerClanId, amt))) {
+                saveRedeemedCodes(getRedeemedCodes().filter(c => c !== code)); // nothing was given: the code can be tried again
+                return showSecretCodeStatus("Couldn't add the Clan XP to your clan. Check your connection and try again.", false);
+            }
+            showSecretCodeStatus(reward.message || ('Your clan received ' + amt.toLocaleString() + ' Clan XP!'), true);
             inp.value = '';
         } else if (reward.type === 'diamonds') {
             // add gems (integer); they fly from the Redeem button into the counter
@@ -7843,15 +8125,18 @@ function loadGame() {
                         try { const fb = getFollowerBonuses(); totalCps = totalCps.times(D((1 + fb.cps / 100) * (1 + fb.offline / 100))); } catch (e) {}
                         // Items: equipped charms' CPS and offline bonuses (consumable boosts don't run while you're away)
                         try { const ib = getItemBonuses(); totalCps = totalCps.times(D((1 + ib.cps / 100) * (1 + ib.offline / 100))); } catch (e) {}
+                        // the Hall of Gods: CPS and offline blessings
+                        try { const gb = getGodBonuses(); totalCps = totalCps.times(D((1 + gb.cps / 100) * (1 + gb.offline / 100))); } catch (e) {}
                         const gainedD = totalCps.times(D(seconds));
                         if (gainedD && (typeof gainedD.gt === 'function' ? gainedD.gt(0) : Number(gainedD) > 0)) {
                             addToCount(gainedD);
                             try { showWelcomeBackModal(gainedD, seconds); } catch (e) {}
                         }
                     } else {
-                        let fb = {}, ib = {};
+                        let fb = {}, ib = {}, gb = {};
                         try { fb = getFollowerBonuses() || {}; } catch (e) {}
                         try { ib = getItemBonuses() || {}; } catch (e) {}
+                        try { gb = getGodBonuses() || {}; } catch (e) {}
                         const totalCps = calc.offlineCps({
                             pirateEffective, otherEffective: parts.otherEffective, jonathanEffective: parts.jonathanEffective, crEffective: parts.crEffective,
                             phonkBaseCps,
@@ -7866,6 +8151,7 @@ function loadGame() {
                             // Followers and Items: CPS bonus plus the offline earnings bonus (consumable boosts don't run while you're away)
                             followerCpsPercent: fb.cps, followerOfflinePercent: fb.offline,
                             itemCpsPercent: ib.cps, itemOfflinePercent: ib.offline,
+                            godCpsPercent: gb.cps, godOfflinePercent: gb.offline,
                         });
                         const gained = totalCps * seconds;
                         if (gained > 0) {
@@ -7894,7 +8180,8 @@ function resetGame() {
     try { localStorage.removeItem('whathappened_guide'); } catch (e) {} // a fresh start gets the first-run guide again
     try { if (window.WHF) localStorage.removeItem(window.WHF.STORAGE_KEY); } catch (e) {}
     try { if (window.WHI) localStorage.removeItem(window.WHI.STORAGE_KEY); } catch (e) {}
-    try { if (window.WHWorldBridge) { localStorage.removeItem(window.WHWorldBridge.WORLD_KEY); localStorage.removeItem(window.WHWorldBridge.ACK_KEY); } } catch (e) {}
+    try { if (window.WHWorldBridge) { localStorage.removeItem(window.WHWorldBridge.WORLD_KEY); localStorage.removeItem(window.WHWorldBridge.ACK_KEY); localStorage.removeItem(window.WHWorldBridge.INBOX_KEY); } } catch (e) {}
+    try { localStorage.removeItem(WORLD_OWED_KEY); localStorage.removeItem(AUTO_CLICK_KEY); localStorage.removeItem('whathappened_golden_trades'); } catch (e) {}
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }

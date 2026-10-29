@@ -474,6 +474,21 @@
                 </div>
             </button>
         </li>
+        <!-- data-upgrade-processed: the upgrade layout script below leaves these rows as they are -->
+        <li class="divine-exchange divine-gods" data-upgrade-processed="1">
+            <div class="divine-exchange-title">🏛️ Hall of Gods</div>
+            <div id="godBlessings" class="divine-exchange-text">Raise the god statues in the Hall of Gods (The Wilds, north of town) to bless this game.</div>
+        </li>
+        <li class="divine-exchange" data-upgrade-processed="1">
+            <div class="divine-exchange-title">Trade Golden for rubies</div>
+            <p class="divine-exchange-text">1 Golden = <b id="goldenTradeRate">250</b> rubies to spend in The Wilds, up to 4 Golden a week. Golden you keep also raises your CPS.</p>
+            <div class="divine-exchange-row">
+                <label class="divine-exchange-label" for="goldenTradeInput">Golden</label>
+                <input id="goldenTradeInput" type="number" min="1" step="1" value="1" inputmode="numeric" oninput="renderGoldenTrade()">
+                <button id="goldenTradeBtn" type="button" class="btn btn-gold btn-sm" onclick="tradeGoldenForRubies()">Trade</button>
+            </div>
+            <p id="goldenTradeNote" class="divine-exchange-note" aria-live="polite"></p>
+        </li>
     </ul>
 
     <!-- ========== Main game area: title, equipped title, click image, counters ========== -->
@@ -498,6 +513,14 @@
             <button class="main-image-btn" onclick="increment()" aria-label="Click What Happened">
                 <img src="mainimage/whathappened.jpeg" alt="What Happened" class="main-image">
             </button>
+            <!-- the Auto Clicker charm (main.js): shown while it is equipped -->
+            <div id="autoClicker" class="auto-clicker" hidden>
+                <span class="auto-clicker-name">🖲️ Auto Clicker</span>
+                <span id="autoClickerState" class="auto-clicker-state" aria-live="polite"></span>
+                <button id="autoClickerPlace" type="button" class="btn btn-sm btn-primary" onclick="toggleAutoPlacing()">Place</button>
+                <button id="autoClickerStop" type="button" class="btn btn-sm btn-ghost" onclick="setAutoTarget(null)" hidden>Stop</button>
+            </div>
+            <div id="autoClickerBadge" class="auto-clicker-badge" hidden aria-hidden="true">🖲️</div>
             <!-- Counters card centered below the main image -->
             <div class="info-card glass-panel" role="region" aria-label="Main counters">
                 <div class="stat-hero">
@@ -1632,6 +1655,7 @@
         <script src="core/consent.js"></script>
         <script src="core/clan-buffs.js"></script>
         <script src="core/world-bridge.js"></script>
+        <script src="core/world-gods.js"></script>
         <script src="followers-data.js"></script>
         <script src="achievements-data.js"></script>
         <script src="main.js"></script>

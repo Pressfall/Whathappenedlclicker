@@ -34,7 +34,9 @@ own browsers. This page lists what each one trusts, what was changed, and what i
 The adventure's save (`whathappened_world`) and the rewards it sends to the main game (gems, Golden What Happened, lootboxes,
 through `core/world-bridge.js`) are trusted exactly like the main save, so a player editing their own storage only affects themselves.
 The bridge clamps every reward entry (`LIMITS`), and the world caps what it sends per day and week (`CAPS` in `core/world-data.js`)
-so normal play keeps gems scarce, whatever happens online.
+so normal play keeps gems scarce, whatever happens online. Rubies going the other way (Golden traded in the Divine menu, `rubies`
+codes) sit in `whathappened_world_inbox`, written only by the main game and also local, so the same applies; the Golden is taken
+and saved before the rubies are queued. At most 4 Golden can be traded a week; the count is kept in `whathappened_golden_trades` (written only by the game, synced like the save, client-trusted like everything else here). Things bought in the Wilds that also cost gems and Golden (the Auto Clicker, `BUYS` in the bridge) travel as an outbox entry naming only what was bought; the game charges its own prices and keeps what it still has to charge in `whathappened_world_owed` (written only by the game), and never charges for an item already owned.
 
 **Online play** (Realtime Database, `database.rules.json`) is shared, so it has the same limits as the clan features, but it was
 designed around them:

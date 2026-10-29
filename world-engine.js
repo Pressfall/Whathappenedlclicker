@@ -10,13 +10,20 @@
     const TILE = D.TILE;
     const DT = 1 / 120;
     const CHUNK = 16; // tiles per cached ground chunk
+    // At most this many steps per frame: a slow frame then slows the game down for a moment instead of making the next
+    // frame do even more catching up (which on a slow device snowballed into seconds-long stalls)
+    const MAX_STEPS = 10;
+    // Resolution 'auto' keeps the canvas under this many pixels (a big high-DPI screen at full sharpness is 4x the work)
+    const AUTO_MAX_PIXELS = 4.2e6;
 
     function readSetting(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; } }
     const reducedMotion = (() => { try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } })();
 
     const E = WHW.engine = {
         DT, TILE, canvas: null, ctx: null, w: 0, h: 0, dpr: 1, zoom: 1,
-        perf: readSetting('whathappened_performance', 'high'), reducedMotion,
+        // graphics: perf (detail: high / medium / low), resolution ('auto', 'full' or a scale like '0.75'), fpsCap (0 = the
+        // screen's rate); set with applyGraphics. fps: frames drawn in the last second.
+        perf: readSetting('whathappened_performance', 'high'), resolution: 'auto', fpsCap: 60, fps: 0, reducedMotion,
         cam: { x: 0, y: 0 }, shake: 0, shakeX: 0, shakeY: 0,
         mouse: { sx: 0, sy: 0, x: 0, y: 0, down: false, rmb: false, pressed: false, released: false, moved: false, type: 'mouse' },
         keys: new Set(), pressedKeys: new Set(),
@@ -32,8 +39,11 @@
     function resize() {
         const c = E.canvas;
         const maxDpr = E.perf === 'low' ? 1 : E.perf === 'medium' ? 1.5 : 2;
-        E.dpr = Math.min(maxDpr, window.devicePixelRatio || 1);
         E.w = window.innerWidth; E.h = window.innerHeight;
+        let dpr = Math.min(maxDpr, window.devicePixelRatio || 1);
+        if (E.resolution === 'auto') dpr = Math.min(dpr, Math.sqrt(AUTO_MAX_PIXELS / Math.max(1, E.w * E.h)));
+        else if (E.resolution !== 'full') dpr *= Number(E.resolution) || 1;
+        E.dpr = Math.max(0.35, dpr);
         E.zoom = E.w < 700 ? 0.85 : E.w < 1100 ? 1.1 : 1.25;
         c.width = Math.round(E.w * E.dpr); c.height = Math.round(E.h * E.dpr);
         c.style.width = E.w + 'px'; c.style.height = E.h + 'px';
@@ -220,11 +230,12 @@
         }
         return false;
     }
-    // Static things (nodes) by grid cell, for fast "what's near me"
+    // Static things (nodes) by grid cell, for fast "what's near me" (asked many times a step, so the keys are numbers)
+    const cellKey = (gx, gy) => gy * 4096 + gx;
     function buildNodeGrid(nodes) {
         const g = new Map();
         for (const n of nodes) {
-            const k = Math.floor(n.x / 128) + ',' + Math.floor(n.y / 128);
+            const k = cellKey(Math.max(0, Math.floor(n.x / 128)), Math.max(0, Math.floor(n.y / 128)));
             if (!g.has(k)) g.set(k, []);
             g.get(k).push(n);
         }
@@ -233,12 +244,20 @@
     function nodesNear(x, y, r) {
         const out = [];
         if (!E.nodeGrid) return out;
-        const x0 = Math.floor((x - r) / 128), x1 = Math.floor((x + r) / 128), y0 = Math.floor((y - r) / 128), y1 = Math.floor((y + r) / 128);
-        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const l = E.nodeGrid.get(gx + ',' + gy); if (l) for (const n of l) out.push(n); }
+        const x0 = Math.max(0, Math.floor((x - r) / 128)), x1 = Math.floor((x + r) / 128), y0 = Math.max(0, Math.floor((y - r) / 128)), y1 = Math.floor((y + r) / 128);
+        for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) { const l = E.nodeGrid.get(cellKey(gx, gy)); if (l) for (const n of l) out.push(n); }
         return out;
     }
 
     // ---------------- ground chunks ----------------
+    // Change the graphics settings (any of perf, resolution, fpsCap) and redraw what depends on them
+    function applyGraphics(opts) {
+        const perf = ['high', 'medium', 'low'].includes(opts.perf) ? opts.perf : E.perf;
+        if (perf !== E.perf) { E.perf = perf; E.chunks = new Map(); } // the ground's detail depends on it
+        if (opts.resolution !== undefined) E.resolution = opts.resolution;
+        if (opts.fpsCap !== undefined) E.fpsCap = Number(opts.fpsCap) || 0;
+        if (E.canvas) resize();
+    }
     function shade(hex, f) {
         const n = parseInt(hex.slice(1), 16);
         const c = (v) => Math.max(0, Math.min(255, Math.round(v * f)));
@@ -255,7 +274,7 @@
         const T = G.T;
         const colorOf = (t) => ({
             [T.FLOOR]: P.floor, [T.FLOOR2]: P.floor2, [T.PATH]: P.path, [T.WALL]: P.wall, [T.WATER]: P.water || P.wall,
-            [T.LAVA]: P.hazard || '#ff5a1f', [T.ICE]: P.ice || '#a9dcf5', [T.PLAZA]: P.plaza || P.path, [T.BUILDING]: '#2a2420', [T.ARENA]: shade(P.floor, 0.82),
+            [T.LAVA]: P.hazard || '#ff5a1f', [T.ICE]: P.ice || '#a9dcf5', [T.PLAZA]: P.plaza || P.path, [T.BUILDING]: zone.gen === 'hall' ? P.floor : '#2a2420', [T.ARENA]: shade(P.floor, 0.82),
         })[t];
         const detail = E.perf !== 'low';
         for (let y = 0; y < CHUNK; y++) for (let x = 0; x < CHUNK; x++) {
@@ -280,6 +299,7 @@
                     g.fillStyle = shade(P.wall, 1.25 + r1 * 0.2);
                     g.fillRect(X, Y, TILE, TILE - (below !== T.WALL ? 10 : 0));
                     if (zone.gen === 'tundra') { g.fillStyle = 'rgba(255,255,255,0.75)'; g.fillRect(X, Y, TILE, 7 + r2 * 5); }
+                    if (zone.gen === 'hall') { g.fillStyle = 'rgba(255,255,255,0.035)'; g.fillRect(X, Y + 10, TILE, 1); g.fillRect(X + ((ty % 2) ? 8 : 22), Y, 1, 10); g.fillRect(X + ((ty % 2) ? 22 : 8), Y + 11, 1, 11); }
                     if (detail) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(X + r1 * 20, Y + r2 * 16, 6, 4); }
                 }
                 if (below !== T.WALL && below !== T.BUILDING) { g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(X, Y + TILE - 6, TILE, 6); }
@@ -294,6 +314,16 @@
                 if (detail) { g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X + r1 * 24, Y + 4); g.lineTo(X + 4 + r2 * 24, Y + 26); g.stroke(); }
             } else if (t === T.ARENA) {
                 if ((tx + ty) % 2 === 0) { g.fillStyle = 'rgba(255,255,255,0.03)'; g.fillRect(X, Y, TILE, TILE); }
+            } else if (zone.gen === 'hall') {
+                // the Hall of Gods: cracked flagstones, and a dark runner with a worn gold edge along the pathway
+                if (t === T.PATH) {
+                    g.fillStyle = 'rgba(201,162,58,0.28)';
+                    if (G.get(m, tx - 1, ty) !== T.PATH) g.fillRect(X, Y, 2, TILE);
+                    if (G.get(m, tx + 1, ty) !== T.PATH) g.fillRect(X + TILE - 2, Y, 2, TILE);
+                } else {
+                    g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 1; g.strokeRect(X + 0.5, Y + 0.5, TILE - 1, TILE - 1);
+                    if (detail && r1 < 0.18) { g.strokeStyle = 'rgba(255,255,255,0.05)'; g.beginPath(); g.moveTo(X + r2 * 24, Y + 4); g.lineTo(X + 8 + r1 * 40, Y + 18); g.lineTo(X + 4 + r2 * 20, Y + 30); g.stroke(); }
+                }
             } else if (detail) {
                 // speckles: grass tufts, pebbles, ash or snow
                 g.fillStyle = t === T.PATH || t === T.PLAZA ? 'rgba(0,0,0,0.12)' : zone.gen === 'tundra' ? 'rgba(120,150,170,0.25)' : 'rgba(255,255,255,0.07)';
@@ -341,19 +371,60 @@
             const v = speed * (0.4 + Math.random() * 0.8);
             E.particles.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: opts.life || 0.5, max: opts.life || 0.5, color, size: opts.size || 3, grav: opts.grav || 0 });
         }
-        if (E.particles.length > 600) E.particles.splice(0, E.particles.length - 600);
+        const max = E.perf === 'low' ? 200 : E.perf === 'medium' ? 400 : 600;
+        if (E.particles.length > max) E.particles.splice(0, E.particles.length - max);
     }
+    // Text is slow to draw on a canvas (outlined text most of all), and the same names and signs are drawn every frame:
+    // each label is drawn once into a small picture at the current sharpness, then stamped.
+    // o: { font, fill, stroke (outline colour, optional), lw (outline width, 3), align ('center', 'left' or 'right') }.
+    // Drawn with the baseline at y, like fillText.
+    const labelCache = new Map();
+    let measureCtx = null;
+    function label(ctx, text, x, y, o) {
+        text = String(text);
+        const m = ctx.getTransform(), scale = Math.hypot(m.a, m.b);
+        const lw = o.stroke ? (o.lw || 3) : 0, align = o.align || 'center';
+        const key = text + '\u0001' + o.font + '\u0001' + o.fill + '\u0001' + (o.stroke || '') + lw + align + '\u0001' + scale.toFixed(2);
+        let sp = labelCache.get(key);
+        if (!sp) {
+            if (labelCache.size > 400) labelCache.clear();
+            if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
+            measureCtx.font = o.font;
+            const size = Number((o.font.match(/(\d+(?:\.\d+)?)px/) || [0, 14])[1]);
+            const pad = lw + 2, asc = Math.ceil(size * 1.15);
+            const w = Math.ceil(measureCtx.measureText(text).width) + pad * 2, h = Math.ceil(size * 1.55) + pad * 2;
+            const cv = document.createElement('canvas');
+            cv.width = Math.max(1, Math.ceil(w * scale)); cv.height = Math.max(1, Math.ceil(h * scale));
+            const c = cv.getContext('2d');
+            c.scale(scale, scale);
+            c.font = o.font; c.textAlign = 'left';
+            if (lw) { c.lineWidth = lw; c.strokeStyle = o.stroke; c.strokeText(text, pad, pad + asc); }
+            c.fillStyle = o.fill; c.fillText(text, pad, pad + asc);
+            sp = { cv, w, h, ax: align === 'left' ? pad : align === 'right' ? w - pad : w / 2, ay: pad + asc };
+            labelCache.set(key, sp);
+        }
+        ctx.drawImage(sp.cv, x - sp.ax, y - sp.ay, sp.w, sp.h);
+    }
+    // labels drawn before the page's font arrived would keep the fallback font
+    try { document.fonts.addEventListener('loadingdone', () => labelCache.clear()); } catch (e) {}
     function floatText(x, y, text, color = '#fff', size = 14, life = 0.9) {
         E.texts.push({ x, y, text: String(text), color, size, life, max: life, vy: -38 });
         if (E.texts.length > 80) E.texts.shift();
     }
     function addShake(n) { if (!E.reducedMotion && WHW.settings && WHW.settings.shake) E.shake = Math.min(14, E.shake + n); }
     function addHitStop(s) { if (!E.reducedMotion && WHW.settings && WHW.settings.shake) E.hitStop = Math.max(E.hitStop, s); }
+    // Once a frame, for the game time that frame stepped through (the slowing is per 1/120 s step, as before)
     function stepEffects(dt) {
-        for (const p of E.particles) { p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt; p.vx *= 0.96; p.vy *= 0.96; p.life -= dt; }
-        E.particles = E.particles.filter(p => p.life > 0);
-        for (const t of E.texts) { t.y += t.vy * dt; t.vy *= 0.97; t.life -= dt; }
-        E.texts = E.texts.filter(t => t.life > 0);
+        const pf = Math.pow(0.96, dt / DT), tf = Math.pow(0.97, dt / DT);
+        let n = 0;
+        for (const p of E.particles) {
+            p.x += p.vx * dt; p.y += p.vy * dt; p.vy += p.grav * dt; p.vx *= pf; p.vy *= pf; p.life -= dt;
+            if (p.life > 0) E.particles[n++] = p;
+        }
+        E.particles.length = n;
+        n = 0;
+        for (const t of E.texts) { t.y += t.vy * dt; t.vy *= tf; t.life -= dt; if (t.life > 0) E.texts[n++] = t; }
+        E.texts.length = n;
     }
     function drawEffects(ctx) {
         for (const p of E.particles) {
@@ -362,14 +433,9 @@
             ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
         }
         ctx.globalAlpha = 1;
-        ctx.textAlign = 'center';
         for (const t of E.texts) {
             ctx.globalAlpha = Math.min(1, t.life / t.max * 2);
-            ctx.font = `800 ${t.size}px Inter, system-ui, sans-serif`;
-            ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-            ctx.strokeText(t.text, t.x, t.y);
-            ctx.fillStyle = t.color;
-            ctx.fillText(t.text, t.x, t.y);
+            label(ctx, t.text, t.x, t.y, { font: `800 ${t.size}px Inter, system-ui, sans-serif`, fill: t.color, stroke: 'rgba(0,0,0,0.7)' });
         }
         ctx.globalAlpha = 1;
     }
@@ -394,22 +460,32 @@
         E.cam.x = p.x - viewW() / 2; E.cam.y = p.y - viewH() / 2;
         updateCamera(1);
     }
+    let fpsCount = 0, fpsAt = 0;
     function frame(ts) {
-        const dt = Math.min(0.25, Math.max(0, (ts - last) / 1000));
+        requestAnimationFrame(frame);
+        // the frame-rate limit (a little early is fine: a 144 Hz screen limited to 60 draws every other refresh)
+        const since = ts - last;
+        if (E.fpsCap && since < 1000 / E.fpsCap - 3) return;
+        // behind a menu the game is paused: a few frames a second is plenty for the picture under it
+        if (E.paused && since < 100) return;
+        const dt = Math.min(0.25, Math.max(0, since / 1000));
         last = ts;
         if (!E.paused && !document.hidden && WHW.step) {
-            acc += dt;
+            acc = Math.min(acc + dt, MAX_STEPS * DT);
+            let stepped = 0;
             while (acc >= DT) {
                 if (E.hitStop > 0) E.hitStop -= DT;
-                else { E.mouse.world = null; WHW.step(DT); E.time += DT; stepEffects(DT); }
+                else { E.mouse.world = null; WHW.step(DT); E.time += DT; stepped += DT; }
                 updateCamera(DT);
                 acc -= DT;
             }
+            if (stepped) stepEffects(stepped);
             E.mouse.pressed = false; E.mouse.released = false; E.pressedKeys.clear();
         } else acc = 0;
         render();
         E.frames++;
-        requestAnimationFrame(frame);
+        fpsCount++;
+        if (ts - fpsAt >= 1000) { E.fps = Math.round(fpsCount * 1000 / (ts - fpsAt)); fpsCount = 0; fpsAt = ts; }
     }
     function render() {
         const ctx = E.ctx;
@@ -433,12 +509,12 @@
         resize();
         bindInput();
         if (window.matchMedia && window.matchMedia('(pointer: coarse)').matches) setTouch(true);
-        requestAnimationFrame((ts) => { last = ts; frame(ts); });
+        requestAnimationFrame((ts) => { last = ts - 1000 / 60; fpsAt = ts; frame(ts); });
     }
 
     Object.assign(E, {
         start, resize, img, screenToWorld, worldToScreen, viewW, viewH, aimPoint, moveInput, consumeKey,
         setMap, tileAt, collideTiles, collideCircles, move, wallBetween, buildNodeGrid, nodesNear, minimapBase, shadeHex,
-        burst, floatText, addShake, addHitStop, snapCamera, readSetting,
+        burst, floatText, label, addShake, addHitStop, snapCamera, readSetting, applyGraphics,
     });
 })();

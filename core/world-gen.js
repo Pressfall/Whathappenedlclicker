@@ -138,7 +138,7 @@
             { id: 'workbench', x: cx - 17, y: cy + 5, w: 7, h: 5 },
             { id: 'altar', x: cx + 11, y: cy + 5, w: 7, h: 5 },
             { id: 'trader', x: cx + 4, y: cy - 12, w: 6, h: 4 },
-            { id: 'board', x: cx - 5, y: cy - 9, w: 3, h: 2 },
+            { id: 'board', x: cx + 10, y: cy - 5, w: 3, h: 2 },
         ];
         const stations = [];
         for (const b of B) {
@@ -147,6 +147,14 @@
             set(m, doorX, doorY, T.PATH);
             stations.push({ id: b.id, x: b.x * TILE, y: b.y * TILE, w: b.w * TILE, h: b.h * TILE, door: { x: px(doorX), y: px(doorY) } });
         }
+        // the Hall of Gods: a building you walk into (the 'hall' zone), with a path from its door down to the plaza
+        const H = { x: cx - 9, y: 2, w: 8, h: 6 };
+        for (let y = H.y; y < H.y + H.h; y++) for (let x = H.x; x < H.x + H.w; x++) set(m, x, y, T.BUILDING);
+        const hdx = H.x + Math.floor(H.w / 2), hdy = H.y + H.h;
+        for (let y = hdy; y < cy - 5; y++) { set(m, hdx - 1, y, T.PATH); set(m, hdx, y, T.PATH); }
+        m.hall = { x: H.x * TILE, y: H.y * TILE, w: H.w * TILE, h: H.h * TILE, door: { x: hdx * TILE, y: px(hdy) } };
+        // where the quest givers stand
+        m.npcs = npcsIn(def.id, cx, cy);
         const portals = [
             { to: 'greenwood', x: px(1), y: (cy + 1) * TILE, side: 'w' },
             { to: 'mines', x: (cx + 1) * TILE, y: px(1), side: 'n' },
@@ -165,6 +173,77 @@
         m.entry = { x: (cx + 1) * TILE, y: (cy + 1) * TILE + 8 };
         m.camp = null; m.boss = null; m.rival = null; m.exit = null;
         m.dummy = { x: (cx - 12) * TILE, y: (cy - 2) * TILE };
+        return m;
+    }
+
+    // The NPCs who stand in a zone, placed from (ox, oy): the town centre, a camp, or 0,0 for spots that are the tile itself
+    function npcsIn(zoneId, ox, oy) {
+        return D.NPC_ORDER.filter(id => D.NPCS[id].zone === zoneId).map(id => ({ id, x: px(ox + D.NPCS[id].spot[0]), y: px(oy + D.NPCS[id].spot[1]) }));
+    }
+
+    // ---------------- inside the Hall of Gods ----------------
+    // A long dark hall, entered from the bottom: a pathway runs up the middle to the far wall, the statues stand in pairs
+    // along it (slot 0 and 1 nearest the door, then 2 and 3, then 4 and 5) with pillars between the pairs and a brazier
+    // beside each statue. The far end is left empty on purpose. Behind its wall is the hidden room (m.secret): solid rock
+    // until openSecret() carves secret.room and its doorway (secret.door, tiles) and stands up what is inside. secret.at is
+    // where the far wall meets the floor, in the middle (px).
+    function buildHall(def) {
+        const m = { id: def.id, w: def.w, h: def.h, tiles: grid(def.w, def.h, T.WALL) };
+        const left = 4, right = def.w - 5;       // floor columns
+        const far = 11, near = def.h - 6;        // floor rows; the far wall is row far - 1, the door is in row near + 1
+        const mid = Math.floor(def.w / 2);       // the pathway is the 4 columns mid - 2 .. mid + 1
+        for (let y = far; y <= near; y++) for (let x = left; x <= right; x++) set(m, x, y, T.FLOOR);
+        for (let y = far; y <= near + 1; y++) for (let x = mid - 2; x <= mid + 1; x++) set(m, x, y, y > near && (x < mid - 1 || x > mid) ? T.WALL : T.PATH);
+        const statueRows = [near - 11, near - 19, near - 27];
+        const statues = [], braziers = [], pillars = [];
+        statueRows.forEach((y, i) => {
+            for (const [sx, bx] of [[left + 1, mid - 5], [right - 1, mid + 4]]) {
+                set(m, sx, y, T.BUILDING); set(m, bx, y, T.BUILDING);
+                statues.push({ slot: statues.length, x: px(sx), y: px(y), side: sx < mid ? 'left' : 'right' });
+                braziers.push({ x: px(bx), y: px(y) });
+            }
+        });
+        for (const y of [near - 7, near - 15, near - 23, near - 31]) for (const x of [mid - 4, mid + 3]) { set(m, x, y, T.BUILDING); pillars.push({ x: px(x), y: px(y) }); }
+        const runes = [];
+        for (let y = near - 3; y > far + 3; y -= 4) runes.push({ x: mid * TILE, y: px(y) });
+        m.statues = statues;
+        m.braziers = braziers;
+        m.pillars = pillars;
+        m.runes = runes;
+        // light in the dark: the braziers, a faint glow at each statue, and the grey daylight at the door
+        m.lights = braziers.map(b => ({ x: b.x, y: b.y, r: 170, flicker: true }))
+            .concat(statues.map(st => ({ x: st.x, y: st.y - 20, r: 90 })))
+            .concat([{ x: mid * TILE, y: px(near + 1), r: 150 }]);
+        m.secret = { room: { x: mid - 7, y: 1, w: 14, h: far - 3 }, door: { x: mid - 1, y: far - 2, w: 2, h: 2 }, at: { x: mid * TILE, y: far * TILE } };
+        // inside: the hidden god at the back, the altar of the one-time purchases on the right, two braziers of cold fire
+        const ry = m.secret.room.y;
+        m.secret.statue = { god: 'briley', x: mid * TILE, y: px(ry + 2), tiles: [[mid - 1, ry + 2], [mid, ry + 2]] };
+        m.secret.altar = { id: 'autoClicker', x: px(mid + 4), y: px(ry + 5), tiles: [[mid + 4, ry + 5]] };
+        m.secret.braziers = [{ x: px(mid - 5), y: px(ry + 1), cold: true }, { x: px(mid + 4), y: px(ry + 1), cold: true }];
+        m.secret.lights = m.secret.braziers.map(b => ({ x: b.x, y: b.y, r: 150, flicker: true, cold: true }))
+            .concat([{ x: m.secret.statue.x, y: m.secret.statue.y - 20, r: 120 }, { x: m.secret.altar.x, y: m.secret.altar.y, r: 100 }]);
+        m.entry = { x: mid * TILE, y: px(near - 2) };
+        m.exit = { x: mid * TILE, y: px(near + 1), to: 'town' };
+        m.nodes = []; m.spawns = []; m.elites = []; m.stations = []; m.portals = []; m.deco = []; m.altars = [];
+        m.npcs = npcsIn(def.id, 0, 0);
+        m.camp = null; m.boss = null; m.rival = null;
+        return m;
+    }
+    // Open the Hall's hidden room: the doorway and the room become floor, and its statue, altar and braziers stand up.
+    // Calling it again does nothing.
+    function openSecret(m) {
+        const sec = m.secret;
+        if (!sec || sec.open) return m;
+        sec.open = true;
+        const r = sec.room, d = sec.door;
+        for (let y = r.y; y < r.y + r.h; y++) for (let x = r.x; x < r.x + r.w; x++) set(m, x, y, T.FLOOR);
+        for (let y = d.y; y < d.y + d.h; y++) for (let x = d.x; x < d.x + d.w; x++) set(m, x, y, T.PATH);
+        for (const [x, y] of sec.statue.tiles.concat(sec.altar.tiles)) set(m, x, y, T.BUILDING);
+        for (const b of sec.braziers) set(m, Math.floor(b.x / TILE), Math.floor(b.y / TILE), T.BUILDING);
+        m.statues.push(sec.statue);
+        m.braziers.push(...sec.braziers);
+        m.lights.push(...sec.lights);
+        m.altars.push(sec.altar);
         return m;
     }
 
@@ -263,13 +342,14 @@
         m.boss = { x: px(boss.x), y: px(boss.y), r: 9 * TILE };
         m.keyTiles = { entry, camp, boss, side1, side2 };
         m.stations = []; m.portals = []; m.deco = [];
+        m.npcs = npcsIn(def.id, camp.x, camp.y);
         return m;
     }
 
     function generateZone(zoneId) {
         const def = D.ZONES[zoneId];
         if (!def) throw new Error('unknown zone ' + zoneId);
-        return def.gen === 'town' ? buildTown(def) : buildWild(def);
+        return def.gen === 'town' ? buildTown(def) : def.gen === 'hall' ? buildHall(def) : buildWild(def);
     }
     // A fingerprint of a map (for the determinism test)
     function mapHash(m) {
@@ -280,5 +360,5 @@
     }
     function tileAt(m, wx, wy) { return get(m, Math.floor(wx / TILE), Math.floor(wy / TILE)); }
 
-    return { T, SOLID, isSolid, hashStr, mulberry32, valueNoise, generateZone, flood, mapHash, tileAt, get };
+    return { T, SOLID, isSolid, hashStr, mulberry32, valueNoise, generateZone, openSecret, flood, mapHash, tileAt, get };
 }));

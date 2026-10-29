@@ -43,6 +43,8 @@
         { id: 'epic', name: 'Epic', color: '#b07dff' },
         { id: 'legendary', name: 'Legendary', color: '#ffc83d' },
         { id: 'mythic', name: 'Mythic', color: '#ff5bd0' },
+        // not found in any lootbox: only in the room behind the Hall of Gods' far wall (The Wilds)
+        { id: 'hidden', name: 'Hidden', color: '#3dffb4' },
     ];
 
     // weights: chance of each rarity per item rolled. guarantee: the last item is at least this rarity if nothing
@@ -93,10 +95,14 @@
         { id: 'dragonEye', kind: 'charm', rarity: 4, icon: '🐉', name: 'Dragon Eye', bonus: { critChance: 3, critDmg: 150 }, flavor: 'It sees the weak points in the button itself.' },
         { id: 'infinityClicker', kind: 'charm', rarity: 5, icon: '♾️', name: 'Infinity Clicker', bonus: { cps: 400, click: 400 }, flavor: 'One click. Infinite What Happeneds. Roughly.' },
         { id: 'philosopherStone', kind: 'charm', rarity: 5, icon: '🔮', name: 'Philosopher\'s Stone', bonus: { gems: 150, boxRate: 100 }, flavor: 'Turns clicks into gems and luck into lootboxes.' },
+        // unique: one copy, ever (grantSpecial). auto: clicks per second on whatever main.js puts it on, while it is equipped.
+        { id: 'autoClicker', kind: 'charm', rarity: 6, icon: '🖲️', name: 'Auto Clicker', bonus: {}, auto: 10, unique: true, flavor: 'It was waiting behind a wall that only opens for the right word. It never gets tired.' },
     ];
     const ITEMS_BY_ID = {};
     ITEMS.forEach(it => { ITEMS_BY_ID[it.id] = it; });
     const CHARMS = ITEMS.filter(it => it.kind === 'charm');
+    // the charms the collection counts (one-of-a-kind ones aren't found in lootboxes, so they don't count)
+    const COLLECTIBLE = CHARMS.filter(it => !it.unique);
     const USABLES = ITEMS.filter(it => it.kind === 'use');
     const BONUS_LABELS = { cps: 'CPS', click: 'click power', critChance: 'crit chance', critDmg: 'crit damage', gems: 'gem find rate', boxRate: 'lootbox rate', offline: 'offline earnings' };
 
@@ -183,7 +189,7 @@
         ver++;
         const now = Date.now();
         s.boosts = s.boosts.filter(b => b.until > now);
-        s.stats.charmsSeen = CHARMS.filter(c => s.seen[c.id]).length;
+        s.stats.charmsSeen = COLLECTIBLE.filter(c => s.seen[c.id]).length;
         if (saveBlocked()) return;
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch (e) {}
     }
@@ -242,6 +248,7 @@
     // ---------------- text ----------------
     function bonusText(bonus, k) { return Object.keys(bonus).map(t => `+${pct(bonus[t] * k)}% ${BONUS_LABELS[t]}`).join(', '); }
     function effectText(it, starCount) {
+        if (it.auto) return `Clicks whatever you put it on ${it.auto} times a second, while the game is open`;
         if (it.kind === 'charm') return bonusText(it.bonus, starMult(starCount || 1));
         const e = it.effect;
         switch (e.type) {
@@ -590,7 +597,7 @@
             let w = box.weights;
             if (box.guarantee != null && i === box.rolls - 1 && !out.some(it => it.rarity >= box.guarantee)) w = w.map((x, r) => (r >= box.guarantee ? x : 0));
             const r = pickWeighted(w);
-            const pool = ITEMS.filter(it => it.rarity === r);
+            const pool = ITEMS.filter(it => it.rarity === r && !it.unique);
             out.push(pool[Math.floor(Math.random() * pool.length)]);
         }
         const gems = (box.gems && Math.random() < box.gems.chance) ? randInt(box.gems.min, box.gems.max) : 0;
@@ -791,6 +798,23 @@
         afterChange();
         if (!(opts && opts.quiet)) sfx('spawn');
         return n;
+    }
+    // A one-of-a-kind item bought elsewhere (main.js settleWorldPurchases: the Auto Clicker). False if it is already owned.
+    function grantSpecial(id) {
+        const s = st(), it = ITEMS_BY_ID[id];
+        if (!it || !it.unique || (s.items[id] || 0) > 0) return false;
+        s.items[id] = 1;
+        s.seen[id] = true;
+        save();
+        afterChange();
+        sfx('rare');
+        return true;
+    }
+    function hasItem(id) { return (st().items[id] || 0) > 0; }
+    // Clicks per second of the equipped auto clicker (0 when none is equipped)
+    function autoClicks() {
+        const s = st();
+        return s.equipped.reduce((n, id) => { const it = id && ITEMS_BY_ID[id]; return it && it.auto && s.items[id] > 0 ? Math.max(n, it.auto) : n; }, 0);
     }
     function buyLure() {
         pay(LURE.cost, { title: 'Lootbox Lure', desc: `Lootboxes show up ${LURE.mult}× as often for ${dur(LURE.ms / 1000)}.`, art: '🧲' }).then(ok => {
@@ -1067,11 +1091,11 @@
         }
         const tot = charmTotals();
         const parts = Object.keys(BONUS_LABELS).filter(k => tot[k]).map(k => `+${pct(tot[k])}% ${BONUS_LABELS[k]}`);
-        const used = s.equipped.filter(Boolean).length, found = CHARMS.filter(c => s.seen[c.id]).length;
+        const used = s.equipped.filter(Boolean).length, found = COLLECTIBLE.filter(c => s.seen[c.id]).length;
         let h = `<h5 class="items-section-h">Equipped <span>${used} / ${s.slots}</span></h5>
             <div class="charm-slots">${slots}</div>
             <p class="charm-summary">${parts.length ? 'From charms: <b>' + parts.join(' · ') + '</b>' : 'Equip charms for bonuses that last as long as they are equipped.'}</p>
-            <h5 class="items-section-h">Collection <span>${found} / ${CHARMS.length}</span></h5>
+            <h5 class="items-section-h">Collection <span>${found} / ${COLLECTIBLE.length}</span></h5>
             <p class="items-hint">Every copy of a charm adds a star (up to ${MAX_STARS}), and each star adds half its base bonus. Copies past ${MAX_STARS} stars turn into What Happeneds or gems. You can also sell extra copies (you always keep one). ${sellHint()}</p>
             <div class="item-grid">`;
         // only the charms you have right now
@@ -1081,9 +1105,9 @@
             const n = s.items[it.id] || 0, sc = stars(it.id), eq = s.equipped.indexOf(it.id) !== -1, r = RARITIES[it.rarity];
             h += `<div class="item-card${eq ? ' is-equipped' : ''}" style="--rc:${r.color}">
                 <div class="item-card-head">${artHtml(it)}<div><div class="item-name">${esc(it.name)}</div><div class="item-rarity">${r.name}</div></div></div>
-                ${starsHtml(sc)}
+                ${it.unique ? '' : starsHtml(sc)}
                 <div class="item-effect">${esc(effectText(it, sc))}</div>
-                <div class="item-next">${sc < MAX_STARS ? `Next star: ${esc(effectText(it, sc + 1))}` : `Max stars. Copies turn into ${dupText(it)}.`}</div>
+                <div class="item-next">${it.unique ? 'One of a kind. Equip it, then put it on the What Happened image or an upgrade with the Auto Clicker bar under the image.' : sc < MAX_STARS ? `Next star: ${esc(effectText(it, sc + 1))}` : `Max stars. Copies turn into ${dupText(it)}.`}</div>
                 <p class="item-flavor">${esc(it.flavor)}</p>
                 <div class="item-foot"><span class="item-copies">×${n}</span>
                     <span class="item-btns">${sellButtons(it)}<button type="button" class="btn btn-sm ${eq ? 'btn-ghost' : 'btn-primary'}" data-act="equip" data-id="${it.id}">${eq ? 'Unequip' : 'Equip'}</button></span></div>
@@ -1284,7 +1308,7 @@
     }
     function summary() {
         const s = st();
-        return { boxes: totalBoxes(), opened: s.stats.opened, collected: s.stats.collected, charms: CHARMS.filter(c => s.seen[c.id]).length, charmsTotal: CHARMS.length };
+        return { boxes: totalBoxes(), opened: s.stats.opened, collected: s.stats.collected, charms: COLLECTIBLE.filter(c => s.seen[c.id]).length, charmsTotal: COLLECTIBLE.length };
     }
 
     function init() {
@@ -1311,6 +1335,6 @@
     window.WHI = {
         STORAGE_KEY, RARITIES, BOXES, ITEMS, ITEMS_BY_ID,
         sellItems, sellValue, sellableCount, bonuses, renderHud, gemBurst, shakeChip, confirmSpend, renderTreasury,
-        openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary, grantBoxes,
+        openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary, grantBoxes, grantSpecial, hasItem, autoClicks, toggleEquip,
     };
 })();

@@ -393,7 +393,7 @@ test('hasProgress ignores a fresh install and notices real progress', () => {
 });
 
 test('isSyncKey: progress, achievements and claimed rewards sync; settings and chat do not', () => {
-    for (const k of ['whathappened_save', 'whathappened_followers', 'ach_x', 'whathappened_pp_claimed_2024', 'player_clanId', 'whathappened_world', 'whathappened_world_ack']) assert.equal(Progress.isSyncKey(k), true, k);
+    for (const k of ['whathappened_save', 'whathappened_followers', 'ach_x', 'whathappened_pp_claimed_2024', 'player_clanId', 'whathappened_world', 'whathappened_world_ack', 'whathappened_world_inbox']) assert.equal(Progress.isSyncKey(k), true, k);
     for (const k of ['whathappened_bulk', 'whathappened_performance', 'whathappened_cloud_meta', 'whathappened_cloud_backup', 'whathappened_world_settings', 'whathappened_world_damaged', 'chat_seen', '', 'ach_' + 'x'.repeat(130)]) assert.equal(Progress.isSyncKey(k), false, k);
     assert.equal(Progress.isSyncKey(null), false);
 });

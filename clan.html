@@ -1666,14 +1666,8 @@
           }catch(e){ console.warn('admin CVC pairings failed', e); }
         }
         await runEventEndClear(ending);
-        const nm = String(ending.name||'').toLowerCase();
-        const isPp = nm.includes('prestige party');
-        const isBf = nm.includes('bossfight');
-        const isCvc = (nm.includes('clan') && nm.includes('click')) || String(ending.type||'').toLowerCase().includes('clan_v_clan');
-        await setDoc(LAST_ENDED_EVENT_DOC, { name: ending.name, start: ending.start, end: ending.end, type: isCvc ? 'clan_v_clan' : (isPp ? 'prestige_party' : 'bossfight') });
-        if(isPp) try{ await processEndedPrestigePartyRewards(ending); }catch(e){}
-        else if(isBf) try{ await processEndedBossfightRewards(ending); }catch(e){}
-        else if(isCvc) try{ await processEndedClanVClanRewards(ending); }catch(e){}
+        const kind = eventKindOf(ending);
+        if(kind){ await setDoc(LAST_ENDED_EVENT_DOC, endedEventRecord(ending, kind)); await processEndedRewards(ending); }
       }
       const opts = upcoming.map((it,i)=> `${i}: ${it.isDowntime ? 'DOWNTIME' : (it.name||'Event')} — ${new Date(eventToMs(it.start)).toLocaleString()} to ${new Date(eventToMs(it.end)).toLocaleString()}`).join('\n');
       const sel = prompt('Enter the index of the event to start now:\n' + opts, '0');
@@ -1793,7 +1787,7 @@
       if(firstEndMs <= now){
         const endedEv = upcoming[0];
         await runEventEndClear(endedEv);
-        try{ const nm = endedEv && String(endedEv.name||'').toLowerCase(); const isPp = nm.includes('prestige party'); const isBf = nm.includes('bossfight') && !nm.includes('endless'); const isEb = nm.includes('endless') && nm.includes('boss'); const isCon = nm.includes('construction'); const isCvc = (nm.includes('clan') && nm.includes('click')) || (endedEv && String(endedEv.type||'').toLowerCase().includes('clan_v_clan')); const isRace = nm.includes('race') || (endedEv && String(endedEv.type||'').toLowerCase().includes('clan_race')); if(endedEv && (isPp || isBf || isEb || isCon || isCvc || isRace)) await setDoc(LAST_ENDED_EVENT_DOC, { name: endedEv.name, start: endedEv.start, end: endedEv.end, type: isCvc ? 'clan_v_clan' : (isRace ? 'clan_race' : (isPp ? 'prestige_party' : (isEb ? 'endless_boss' : (isCon ? 'construction' : 'bossfight')))) }); }catch(e){}
+        try{ const kind = eventKindOf(endedEv); if(kind) await setDoc(LAST_ENDED_EVENT_DOC, endedEventRecord(endedEv, kind)); }catch(e){}
         let idx = upcoming.findIndex(it => eventToMs(it.end) > now);
         if(idx === -1){ await generateSchedule(now,8); return; }
         if(idx > 0){
@@ -1823,33 +1817,104 @@
     }catch(e){ return '0s'; }
   }
 
+  // ---- Paying out a finished event ----
+  // Every event ends the same way: gems and Clan Points go into this player's save, Clan XP goes to the clan once (not once per
+  // member). Claims are remembered per browser: 'whathappened_<kind>_claimed_<start>' once the player has been paid, and the same
+  // key + '_xp' once the clan's XP is in. The player is only marked paid after the save was really written, and the XP part
+  // retries on the next visit if the clan document couldn't be updated.
+  const EVENT_KIND_TYPE = { pp: 'prestige_party', bf: 'bossfight', eb: 'endless_boss', con: 'construction', cvc: 'clan_v_clan', race: 'clan_race' };
+  function eventKindOf(ev){
+    if(!ev || ev.isDowntime) return null;
+    const n = String(ev.name || '').toLowerCase(), t = String(ev.type || '').toLowerCase();
+    if(n.includes('prestige party') || t === 'prestige_party') return 'pp';
+    if(n.includes('endless') && n.includes('boss') || t === 'endless_boss') return 'eb';
+    if(n.includes('bossfight') || t === 'bossfight') return 'bf';
+    if(n.includes('construction') || t === 'construction') return 'con';
+    if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) return 'cvc';
+    if(n.includes('race') || t.includes('clan_race')) return 'race';
+    return null;
+  }
+  // what last_ended_event stores for an event that is over now (an event ended early by an admin ends now, not at its old end time,
+  // otherwise nobody is paid until that old end time arrives)
+  function endedEventRecord(ev, kind){
+    const end = Math.min(eventToMs(ev.end) || Date.now(), Date.now());
+    return { name: ev.name, start: ev.start, end, type: EVENT_KIND_TYPE[kind] || 'bossfight' };
+  }
+  const eventClaimKey = (kind, eventStart) => 'whathappened_' + kind + '_claimed_' + eventStart;
+  function eventFullyClaimed(kind, eventStart){
+    const key = eventClaimKey(kind, eventStart);
+    return !!(localStorage.getItem(key) && localStorage.getItem(key + '_xp'));
+  }
+  // adds Clan XP to the clan document once per event (eventXpAwarded keeps the record); true when it is in
+  async function awardClanEventXp(clanId, xpKey, xp){
+    try{
+      const clanRef = doc(db,'clans',clanId);
+      await runTransaction(db, async (tx)=>{
+        const snap = await tx.get(clanRef);
+        const d = snap && snap.exists() ? snap.data() : {};
+        const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {};
+        if(awarded[xpKey]) return;
+        tx.set(clanRef, { clanXp: (Number(d.clanXp) || 0) + xp, eventXpAwarded: Object.assign({}, awarded, { [xpKey]: true }) }, { merge: true });
+      });
+      return true;
+    }catch(e){ console.warn('Clan XP for the event could not be added', e); return false; }
+  }
+  const _eventGrantsInFlight = new Set();
+  // r: { gems, clanXp, clanPoints }. Resolves to { gems, clanXp, clanPoints, xpOk } when something was paid or the XP was
+  // retried, or null when there was nothing to do (already claimed, in progress, or the save couldn't be written).
+  async function grantEventRewards(kind, eventStart, clanId, r){
+    const claimKey = eventClaimKey(kind, eventStart);
+    if(_eventGrantsInFlight.has(claimKey) || eventFullyClaimed(kind, eventStart)) return null;
+    _eventGrantsInFlight.add(claimKey);
+    try{
+      const clanXp = Number(r.clanXp) || 0, clanPoints = Number(r.clanPoints) || 0;
+      let gems = 0;
+      const paid = !!localStorage.getItem(claimKey);
+      if(!paid){
+        gems = await withClanEventBonus(clanId, Number(r.gems) || 0);
+        const s = readSaveObj();
+        if(!s){ console.warn('Event rewards waiting: no saved game found yet'); return null; }
+        s.diamonds = (Number(s.diamonds) || 0) + gems;
+        s.clanPoints = (Number(s.clanPoints) || 0) + clanPoints;
+        try{ writeSaveObj(s); }catch(e){ console.warn('Event rewards waiting: the save could not be written', e); return null; }
+        try{ localStorage.setItem(claimKey, '1'); }catch(e){}
+      }
+      let xpOk = true;
+      if(clanXp > 0) xpOk = await awardClanEventXp(clanId, kind + '_' + eventStart, clanXp);
+      if(xpOk){ try{ localStorage.setItem(claimKey + '_xp', '1'); }catch(e){} }
+      if(paid) return xpOk ? { gems: 0, clanXp, clanPoints: 0, xpOk, xpOnly: true } : null;
+      return { gems, clanXp, clanPoints, xpOk };
+    } finally { _eventGrantsInFlight.delete(claimKey); }
+  }
+  function eventRewardText(res){
+    let t = res.gems + ' Gems, ' + res.clanXp + ' Clan XP, ' + res.clanPoints + ' Clan Points.';
+    if(!res.xpOk) t += ' (The Clan XP could not be added to your clan just now; it will be tried again next time you open Events.)';
+    return t;
+  }
+  const hasNoRewards = r => !(r.gems || r.clanXp || r.clanPoints);
+
   async function processEndedPrestigePartyRewards(eventItem){
     try{
       const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
-      const claimedKey = 'whathappened_pp_claimed_' + eventStart;
-      if(localStorage.getItem(claimedKey)) return;
+      if(eventFullyClaimed('pp', eventStart)) return;
       const progSnap = await getDoc(PRESTIGE_PARTY_PROGRESS_DOC);
       const prog = progSnap && progSnap.exists() ? progSnap.data() : {};
       const byEvent = prog.events || {};
       const totalPrestiges = eventClanTotal(byEvent, eventStartKey, eventStart, clanId);
       const membersMap = eventClanMembers(byEvent, eventStartKey, eventStart, clanId);
-      let totalGems = 0, totalClanXp = 0, totalCP = 0;
-      for(const r of PRESTIGE_PARTY_REWARDS){ if(totalPrestiges >= r.prestiges){ totalGems += r.gems; totalClanXp += r.clanXp; totalCP += r.clanPoints; } }
+      const r = { gems: 0, clanXp: 0, clanPoints: 0 };
+      for(const t of PRESTIGE_PARTY_REWARDS){ if(totalPrestiges >= t.prestiges){ r.gems += t.gems; r.clanXp += t.clanXp; r.clanPoints += t.clanPoints; } }
       const username = localStorage.getItem('player_username') || '';
       const top3 = Object.entries(membersMap).sort((a,b)=> (b[1]||0) - (a[1]||0)).slice(0, 3);
       const top3Bonus = { 1: { gems: 15, cp: 10 }, 2: { gems: 8, cp: 5 }, 3: { gems: 3, cp: 2 } };
       let bonusGems = 0, bonusCP = 0;
       for(let i = 0; i < top3.length; i++){ if(top3[i][0] === username){ const b = top3Bonus[i+1]; if(b){ bonusGems += b.gems; bonusCP += b.cp; } break; } }
-      totalGems += bonusGems; totalCP += bonusCP;
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
-      const bonusedGems = await withClanEventBonus(clanId, totalGems);
-      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'pp_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['pp_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['pp_' + eventStartKey]: true }) }); } }catch(e2){} } }
-      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      let msg = 'The clan event has ended!\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP (added to your clan), ' + totalCP + ' Clan Points.';
+      r.gems += bonusGems; r.clanPoints += bonusCP;
+      if(hasNoRewards(r)) return;
+      const res = await grantEventRewards('pp', eventStart, clanId, r); if(!res || res.xpOnly) return;
+      let msg = 'The clan event has ended!\n\nRewards: ' + eventRewardText(res);
       if(bonusGems || bonusCP) msg += '\n(Top contributor bonus: +' + bonusGems + ' Gems, +' + bonusCP + ' Clan Points)';
       alert(msg);
     }catch(e){ console.warn('processEndedPrestigePartyRewards failed', e); }
@@ -1860,38 +1925,33 @@
       const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
-      const claimedKey = 'whathappened_bf_claimed_' + eventStart;
-      if(localStorage.getItem(claimedKey)) return;
+      if(eventFullyClaimed('bf', eventStart)) return;
       const bossSnap = await getDoc(BOSSFIGHT_PROGRESS_DOC);
       const bossData = bossSnap && bossSnap.exists() ? bossSnap.data() : {};
       const byEvent = bossData.events || {};
       const clanDamage = eventClanTotal(byEvent, eventStartKey, eventStart, clanId);
       const membersMap = eventClanMembers(byEvent, eventStartKey, eventStart, clanId);
-      let totalGems = 0, totalClanXp = 0, totalCP = 0;
+      let r = { gems: 0, clanXp: 0, clanPoints: 0 };
       const metaSnap = await getDoc(BOSSFIGHT_META_DOC);
       const metaData = metaSnap && metaSnap.exists() ? metaSnap.data() : {};
       const eventMeta = (metaData.events || {})[eventStartKey];
       if(eventMeta && Array.isArray(eventMeta.phaseHps) && eventMeta.phaseHps.length >= 4){
         const phase = bossfightPhaseReached(clanDamage, eventMeta.phaseHps);
-        const r = BOSSFIGHT_PHASE_REWARDS[phase - 1];
-        if(r){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; }
+        const pr = BOSSFIGHT_PHASE_REWARDS[phase - 1];
+        if(pr) r = { gems: pr.gems, clanXp: pr.clanXp, clanPoints: pr.clanPoints };
       }
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0){
-        for(let i = BOSSFIGHT_REWARDS.length - 1; i >= 0; i--){ const r = BOSSFIGHT_REWARDS[i]; if(clanDamage >= r.minDamage){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
+      if(hasNoRewards(r)){
+        for(let i = BOSSFIGHT_REWARDS.length - 1; i >= 0; i--){ const br = BOSSFIGHT_REWARDS[i]; if(clanDamage >= br.minDamage){ r = { gems: br.gems, clanXp: br.clanXp, clanPoints: br.clanPoints }; break; } }
       }
       const username = localStorage.getItem('player_username') || '';
       const top3 = Object.entries(membersMap).sort((a,b)=> (b[1]||0) - (a[1]||0)).slice(0, 3);
       const top3Bonus = { 1: { gems: 20, cp: 15 }, 2: { gems: 10, cp: 8 }, 3: { gems: 5, cp: 3 } };
       let bonusGems = 0, bonusCP = 0;
       for(let i = 0; i < top3.length; i++){ if(top3[i][0] === username){ const b = top3Bonus[i+1]; if(b){ bonusGems += b.gems; bonusCP += b.cp; } break; } }
-      totalGems += bonusGems; totalCP += bonusCP;
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
-      const bonusedGems = await withClanEventBonus(clanId, totalGems);
-      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'bf_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['bf_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['bf_' + eventStartKey]: true }) }); } }catch(e2){} } }
-      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      let msg = 'The clan event has ended!\n\nBossfight rewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points. (Your clan dealt ' + clanDamage.toLocaleString() + ' damage.)';
+      r.gems += bonusGems; r.clanPoints += bonusCP;
+      if(hasNoRewards(r)) return;
+      const res = await grantEventRewards('bf', eventStart, clanId, r); if(!res || res.xpOnly) return;
+      let msg = 'The clan event has ended!\n\nBossfight rewards: ' + eventRewardText(res) + ' (Your clan dealt ' + clanDamage.toLocaleString() + ' damage.)';
       if(bonusGems || bonusCP) msg += '\n(Top contributor bonus: +' + bonusGems + ' Gems, +' + bonusCP + ' Clan Points)';
       alert(msg);
     }catch(e){ console.warn('processEndedBossfightRewards failed', e); }
@@ -1915,8 +1975,7 @@
       const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
-      const claimedKey = 'whathappened_eb_claimed_' + eventStart;
-      if(localStorage.getItem(claimedKey)) return;
+      if(eventFullyClaimed('eb', eventStart)) return;
       const snap = await getDoc(ENDLESS_BOSS_PROGRESS_DOC);
       const data = snap && snap.exists() ? snap.data() : {};
       const byEvent = data.events || {};
@@ -1926,15 +1985,11 @@
       const eventMeta = (metaData.events || {})[eventStartKey];
       const baseHp = (eventMeta && eventMeta.baseHp) ? eventMeta.baseHp : ENDLESS_BOSS_BASE_HP;
       const { defeated } = endlessBossesDefeated(totalDamage, baseHp);
-      let totalGems = 0, totalClanXp = 0, totalCP = 0;
-      for(let i = ENDLESS_BOSS_REWARDS.length - 1; i >= 0; i--){ const r = ENDLESS_BOSS_REWARDS[i]; if(defeated >= r.bosses){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
-      const bonusedGems = await withClanEventBonus(clanId, totalGems);
-      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'eb_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const s = await getDoc(clanRef); const d = s && s.exists() ? s.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['eb_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['eb_' + eventStartKey]: true }) }); } }catch(e2){} } }
-      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      alert('Endless Boss event ended!\n\nYour clan defeated ' + defeated + ' boss(es).\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      let r = { gems: 0, clanXp: 0, clanPoints: 0 };
+      for(let i = ENDLESS_BOSS_REWARDS.length - 1; i >= 0; i--){ const t = ENDLESS_BOSS_REWARDS[i]; if(defeated >= t.bosses){ r = t; break; } }
+      if(hasNoRewards(r)) return;
+      const res = await grantEventRewards('eb', eventStart, clanId, r); if(!res || res.xpOnly) return;
+      alert('Endless Boss event ended!\n\nYour clan defeated ' + defeated + ' boss(es).\n\nRewards: ' + eventRewardText(res));
     }catch(e){ console.warn('processEndedEndlessBossRewards failed', e); }
   }
 
@@ -1942,8 +1997,7 @@
     try{
       const eventStart = eventToMs(eventItem.start);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
-      const claimedKey = 'whathappened_cvc_claimed_' + eventStart;
-      if(localStorage.getItem(claimedKey)) return;
+      if(eventFullyClaimed('cvc', eventStart)) return;
       const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
       const pairData = pairSnap && pairSnap.exists() ? pairSnap.data() : {};
       const last = pairData.last || {};
@@ -1953,7 +2007,6 @@
       const pairs = last.pairs || [];
       const unmatched = last.unmatched || [];
       const myClanId = String(clanId);
-      const inUnmatched = unmatched.some(u => u && String(u.id) === myClanId);
       let isWinner = false;
       let isLoser = false;
       for(const p of pairs){
@@ -1968,17 +2021,10 @@
         break;
       }
       const r = isWinner ? CLAN_V_CLAN_WINNER_REWARDS : (isLoser ? CLAN_V_CLAN_LOSER_REWARDS : CLAN_V_CLAN_UNMATCHED_REWARDS);
-      const totalGems = r.gems || 0;
-      const totalClanXp = r.clanXp || 0;
-      const totalCP = r.clanPoints || 0;
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
-      const bonusedGems = await withClanEventBonus(clanId, totalGems);
-      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'cvc_' + eventStart; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['cvc_' + eventStart]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['cvc_' + eventStart]: true }) }); } }catch(e2){} } }
-      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
+      if(hasNoRewards(r)) return;
+      const res = await grantEventRewards('cvc', eventStart, clanId, r); if(!res || res.xpOnly) return;
       const resultText = isWinner ? 'Your clan won!' : (isLoser ? 'Your clan was defeated.' : 'Your clan participated (no matchup).');
-      alert('Clan v Clan event ended!\n\n' + resultText + '\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      alert('Clan v Clan event ended!\n\n' + resultText + '\n\nRewards: ' + eventRewardText(res));
     }catch(e){ console.warn('processEndedClanVClanRewards failed', e); }
   }
 
@@ -1986,8 +2032,7 @@
     try{
       const eventStart = eventToMs(eventItem.start);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
-      const claimedKey = 'whathappened_race_claimed_' + eventStart;
-      if(localStorage.getItem(claimedKey)) return;
+      if(eventFullyClaimed('race', eventStart)) return;
       const pairSnap = await getDoc(EVENT_PAIRINGS_DOC);
       const pairData = pairSnap && pairSnap.exists() ? pairSnap.data() : {};
       const last = pairData.last || {};
@@ -2016,17 +2061,10 @@
       const rewardsByPlace = CLAN_RACE_PLACE_REWARDS.filter(r => r.place > 0).sort((a,b) => a.place - b.place);
       const participation = CLAN_RACE_PLACE_REWARDS.find(r => r.place === 0) || { gems: 5, clanXp: 30, clanPoints: 5 };
       const r = (place >= 1 && place <= rewardsByPlace.length) ? rewardsByPlace[place - 1] : participation;
-      const totalGems = r.gems || 0;
-      const totalClanXp = r.clanXp || 0;
-      const totalCP = r.clanPoints || 0;
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
-      const bonusedGems = await withClanEventBonus(clanId, totalGems);
-      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'race_' + eventStart; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap = await getDoc(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['race_' + eventStart]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['race_' + eventStart]: true }) }); } }catch(e2){} } }
-      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
+      if(hasNoRewards(r)) return;
+      const res = await grantEventRewards('race', eventStart, clanId, r); if(!res || res.xpOnly) return;
       const placeStr = place === 1 ? '1st' : place === 2 ? '2nd' : place === 3 ? '3rd' : place ? place + 'th' : 'participation';
-      alert('Clan Race event ended!\n\nYour clan placed ' + placeStr + ' in your group.\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      alert('Clan Race event ended!\n\nYour clan placed ' + placeStr + ' in your group.\n\nRewards: ' + eventRewardText(res));
     }catch(e){ console.warn('processEndedClanRaceRewards failed', e); }
   }
 
@@ -2035,23 +2073,25 @@
       const eventStart = eventToMs(eventItem.start);
       const eventStartKey = String(eventStart);
       const clanId = localStorage.getItem('player_clanId'); if(!clanId) return;
-      const claimedKey = 'whathappened_con_claimed_' + eventStart;
-      if(localStorage.getItem(claimedKey)) return;
+      if(eventFullyClaimed('con', eventStart)) return;
       const snap = await getDoc(CONSTRUCTION_PROGRESS_DOC);
       const data = snap && snap.exists() ? snap.data() : {};
       const byEvent = data.events || {};
       const clanData = (byEvent[eventStartKey] || byEvent[eventStart] || {})[clanId];
       const totalPoints = (clanData && typeof clanData.total === 'number') ? clanData.total : (typeof clanData === 'number' ? clanData : 0);
-      let totalGems = 0, totalClanXp = 0, totalCP = 0;
-      for(let i = CONSTRUCTION_REWARDS.length - 1; i >= 0; i--){ const r = CONSTRUCTION_REWARDS[i]; if(totalPoints >= r.points){ totalGems = r.gems; totalClanXp = r.clanXp; totalCP = r.clanPoints; break; } }
-      if(totalGems === 0 && totalClanXp === 0 && totalCP === 0) return;
-      const bonusedGems = await withClanEventBonus(clanId, totalGems);
-      const raw = localStorage.getItem('whathappened_save') || localStorage.getItem('whathappened_save_v1');
-      if(raw){ try{ const s = JSON.parse(raw); s.diamonds = (Number(s.diamonds)||0) + bonusedGems; s.clanPoints = (Number(s.clanPoints)||0) + totalCP; localStorage.setItem('whathappened_save', JSON.stringify(s)); try{ localStorage.setItem('whathappened_save_v1', JSON.stringify(s)); }catch(e){} }catch(e){} }
-      if(totalClanXp > 0){ try{ const clanRef = doc(db,'clans',clanId); const xpKey = 'con_' + eventStartKey; await runTransaction(db, async (tx)=>{ const snap = await tx.get(clanRef); const d = snap && snap.exists() ? snap.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(awarded[xpKey]) return; const cur = Number(d.clanXp)||0; const nextAwarded = Object.assign({}, awarded, { [xpKey]: true }); tx.set(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: nextAwarded }, { merge: true }); }); }catch(e){ try{ const clanRef = doc(db,'clans',clanId); const snap2 = await getDoc(clanRef); const d = snap2 && snap2.exists() ? snap2.data() : {}; const awarded = d.eventXpAwarded && typeof d.eventXpAwarded === 'object' ? d.eventXpAwarded : {}; if(!awarded['con_' + eventStartKey]){ const cur = (Number(d.clanXp)||0); await updateDoc(clanRef, { clanXp: cur + totalClanXp, eventXpAwarded: Object.assign({}, awarded, { ['con_' + eventStartKey]: true }) }); } }catch(e2){} } }
-      try{ localStorage.setItem(claimedKey, '1'); }catch(e){}
-      alert('Construction event ended!\n\nYour clan scored ' + totalPoints + ' points.\n\nRewards: ' + bonusedGems + ' Gems, ' + totalClanXp + ' Clan XP, ' + totalCP + ' Clan Points.');
+      let r = { gems: 0, clanXp: 0, clanPoints: 0 };
+      for(let i = CONSTRUCTION_REWARDS.length - 1; i >= 0; i--){ const t = CONSTRUCTION_REWARDS[i]; if(totalPoints >= t.points){ r = t; break; } }
+      if(hasNoRewards(r)) return;
+      const res = await grantEventRewards('con', eventStart, clanId, r); if(!res || res.xpOnly) return;
+      alert('Construction event ended!\n\nYour clan scored ' + totalPoints + ' points.\n\nRewards: ' + eventRewardText(res));
     }catch(e){ console.warn('processEndedConstructionRewards failed', e); }
+  }
+
+  // pays whichever event ended (the Events tab, an admin skipping an event and the schedule roll-over all come through here)
+  async function processEndedRewards(ev){
+    const kind = eventKindOf(ev); if(!kind) return;
+    const run = { pp: processEndedPrestigePartyRewards, bf: processEndedBossfightRewards, eb: processEndedEndlessBossRewards, con: processEndedConstructionRewards, cvc: processEndedClanVClanRewards, race: processEndedClanRaceRewards }[kind];
+    try{ await run(ev); }catch(e){ console.warn('processEndedRewards failed', kind, e); }
   }
 
   // live listeners opened by the previous render; each re-render opens fresh ones, so close these first
@@ -2071,23 +2111,14 @@
       try{ const inClan = !!(localStorage.getItem('player_clanId')); if(!inClan){ area.innerHTML = '<div class="card"><div style="font-size:20px;font-weight:800;text-align:center;padding:24px">CLAN EVENTS UNLOCKED WHEN YOU JOIN A CLAN</div></div>'; return; } }catch(e){}
       const upcoming = (state && Array.isArray(state.upcoming)) ? state.upcoming : [];
       const now = Date.now();
-      // Always check last_ended_event so any account (including those who didn't trigger the end) can claim rewards when they load
+      // Pay out events that have ended: the one the schedule just rolled past and the last one recorded in last_ended_event, so any
+      // account (including those who didn't trigger the end) can claim when they load. Claims are remembered, so repeats do nothing.
       try{
         const endedSnap = await getDoc(LAST_ENDED_EVENT_DOC);
         const lastEnded = endedSnap && endedSnap.exists() ? endedSnap.data() : null;
-        if(lastEnded && typeof lastEnded === 'object' && eventToMs(lastEnded.end) <= now){
-          const n = String(lastEnded.name||'').toLowerCase();
-          const t = String(lastEnded.type||'').toLowerCase();
-          try{ if(n.includes('prestige party')) await processEndedPrestigePartyRewards(lastEnded); }catch(e){ console.warn('processEndedPrestigePartyRewards', e); }
-          try{ if(n.includes('bossfight') && !n.includes('endless')) await processEndedBossfightRewards(lastEnded); }catch(e){ console.warn('processEndedBossfightRewards', e); }
-          try{ if(n.includes('endless') && n.includes('boss')) await processEndedEndlessBossRewards(lastEnded); }catch(e){ console.warn('processEndedEndlessBossRewards', e); }
-          try{ if(n.includes('construction')) await processEndedConstructionRewards(lastEnded); }catch(e){ console.warn('processEndedConstructionRewards', e); }
-          try{ if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(lastEnded); }catch(e){ console.warn('processEndedClanVClanRewards', e); }
-          try{ if(n.includes('race') || t.includes('clan_race')) await processEndedClanRaceRewards(lastEnded); }catch(e){ console.warn('processEndedClanRaceRewards', e); }
-        }
+        if(lastEnded && typeof lastEnded === 'object' && eventToMs(lastEnded.end) <= now) await processEndedRewards(lastEnded);
       }catch(e){ console.warn('last_ended_event check failed', e); }
-      if(upcoming.length > 0 && eventToMs(upcoming[0].end) <= now){ const endedName = String(upcoming[0].name||'').toLowerCase(); const ended = upcoming[0]; if(endedName.includes('prestige party')){ try{ await processEndedPrestigePartyRewards(ended); }catch(e){} } else if(endedName.includes('bossfight') && !endedName.includes('endless')){ try{ await processEndedBossfightRewards(ended); }catch(e){} } else if(endedName.includes('endless') && endedName.includes('boss')){ try{ await processEndedEndlessBossRewards(ended); }catch(e){} } else if(endedName.includes('construction')){ try{ await processEndedConstructionRewards(ended); }catch(e){} } else if((endedName.includes('clan') && endedName.includes('click')) || (ended && String(ended.type||'').toLowerCase().includes('clan_v_clan'))){ try{ await processEndedClanVClanRewards(ended); }catch(e){} } else if(endedName.includes('race') || (ended && String(ended.type||'').toLowerCase().includes('clan_race'))){ try{ await processEndedClanRaceRewards(ended); }catch(e){} } }
-      else { try{ const endedSnap2 = await getDoc(LAST_ENDED_EVENT_DOC); const ended = endedSnap2 && endedSnap2.exists() ? endedSnap2.data() : null; if(ended && eventToMs(ended.end) <= now){ const n = String(ended.name||'').toLowerCase(); const t = String(ended.type||'').toLowerCase(); if(n.includes('prestige party')) await processEndedPrestigePartyRewards(ended); else if(n.includes('bossfight') && !n.includes('endless')) await processEndedBossfightRewards(ended); else if(n.includes('endless') && n.includes('boss')) await processEndedEndlessBossRewards(ended); else if(n.includes('construction')) await processEndedConstructionRewards(ended); else if((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) await processEndedClanVClanRewards(ended); else if(n.includes('race') || t.includes('clan_race')) await processEndedClanRaceRewards(ended); } }catch(e){} }
+      if(upcoming.length > 0 && eventToMs(upcoming[0].end) <= now) await processEndedRewards(upcoming[0]);
       const current = upcoming.find(it => eventToMs(it.start) <= now && eventToMs(it.end) > now) || null;
       // next event (first upcoming with start > now)
       const next = upcoming.find(it => (it.start || 0) > now) || null;
@@ -2918,8 +2949,6 @@
       if(upcoming.length <= 1){ await generateSchedule(Date.now(), 8); return; }
       const ending = upcoming[0];
       const nm = ending && String(ending.name||'').toLowerCase();
-      const isPp = nm.includes('prestige party');
-      const isBf = nm.includes('bossfight') && !nm.includes('endless');
       const isCvc = (nm.includes('clan') && nm.includes('click')) || (ending && String(ending.type||'').toLowerCase().includes('clan_v_clan'));
       const isRace = (nm.includes('race')) || (ending && String(ending.type||'').toLowerCase().includes('clan_race'));
       if(ending && isCvc){
@@ -2961,11 +2990,9 @@
         }catch(e){ console.warn('skipToNextEvent ensure race pairings failed', e); }
       }
       if(ending && (isCvc || isRace)){ try{ await runEventEndClear(ending); }catch(e){ console.warn('skipToNextEvent runEventEndClear failed', e); } }
-      const isEb = ending && (nm.includes('endless') && nm.includes('boss'));
-      const isCon = ending && nm.includes('construction');
       if(ending && !ending.isDowntime){
-        const endType = isCvc ? 'clan_v_clan' : (isRace ? 'clan_race' : (isPp ? 'prestige_party' : (isEb ? 'endless_boss' : (isCon ? 'construction' : 'bossfight'))));
-        await setDoc(LAST_ENDED_EVENT_DOC, { name: ending.name, start: ending.start, end: ending.end, type: endType });
+        const kind = eventKindOf(ending);
+        if(kind) await setDoc(LAST_ENDED_EVENT_DOC, endedEventRecord(ending, kind));
       }
       const next = upcoming[1];
       let now = Date.now();
@@ -2986,12 +3013,7 @@
       }
       await setDoc(EVENT_STATE_DOC, { upcoming: newItems, updatedAt: serverTimestamp() }, { merge: true });
       if(ending && !ending.isDowntime){
-        if(isPp) try{ await processEndedPrestigePartyRewards(ending); }catch(e){}
-        else if(isBf) try{ await processEndedBossfightRewards(ending); }catch(e){}
-        else if(isEb) try{ await processEndedEndlessBossRewards(ending); }catch(e){}
-        else if(isCon) try{ await processEndedConstructionRewards(ending); }catch(e){}
-        else if(isCvc) try{ await processEndedClanVClanRewards(ending); }catch(e){}
-        else if(isRace) try{ await processEndedClanRaceRewards(ending); }catch(e){}
+        await processEndedRewards(ending);
       }
     }catch(e){ console.warn('skipToNextEvent failed', e); }
   };

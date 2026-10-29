@@ -117,6 +117,8 @@
     function join(zone, force) {
         const db = ON.db;
         if (!db) return;
+        // inside a building (the Hall of Gods) you are out of sight: leave the zone you were in, join none
+        if (D.ZONES[zone] && D.ZONES[zone].interior) { leave(); ON.wantZone = zone; return; }
         if (ON.zone === zone && !force) return;
         leave();
         ON.zone = zone;
@@ -307,7 +309,7 @@
         g.lastPvp = { uid: raw.from, name: r.info ? r.info.n : 'Someone', at: E.time };
         p.protectedUntil = 0;
         A.hurtPlayer(v.dmg, {
-            from: { x: last.x, y: last.y }, kb: 160,
+            from: { x: last.x, y: last.y }, kb: 160, remote: r, // a Riposte up just then sends it back at them
             onParry: () => ON.db.push(Z('h/' + raw.from), { from: ON.uid, k: 'parry', t: ON.db.serverNow() }),
         });
     }
@@ -323,12 +325,14 @@
         if (v.dmg > 0) {
             landed = A.hurtPlayer(v.dmg, {
                 from, kb: Math.min(350, (a.pull || a.kb || 0) * 0.5), burn: a.burn, chill: a.chill, fire: !!a.burn,
-                // areas fall from above and lightning arcs round a shield
-                unblockable: a.kind === 'field' || a.kind === 'chain',
+                // areas fall from above, lightning arcs round a shield, and a riposte can't be blocked or riposted back
+                unblockable: a.kind === 'field' || a.kind === 'chain' || a.kind === 'parry', remote: r,
                 onParry: () => ON.db.push(Z('h/' + raw.from), { from: ON.uid, k: 'parry', t: ON.db.serverNow() }),
             });
         }
-        if (landed > 0 && a.stun) A.stunPlayer(O.playerStun(a.stun));
+        // a riposte disarms a player by exhausting them; other stuns are shorter on players than on monsters
+        if (landed > 0 && a.exhaust) A.exhaustPlayer(a.exhaust);
+        else if (landed > 0 && a.stun) A.stunPlayer(O.playerStun(a.stun));
         if (v.rate.n === 1) E.floatText(p.x, p.y - 46, a.icon + ' ' + a.name, '#ffd0d5', 12, 0.9);
     }
     // Was I just knocked out by another player?
@@ -454,7 +458,7 @@
             if (sb.gen && sb.gen !== ON.rewardedGen) {
                 ON.rewardedGen = sb.gen;
                 if (b && b.active) finishBoss(b, sb);
-                else if (b) { b.dead = true; g.bossDeadUntil = E.time + Math.max(5, (BOSS_RESPAWN * 1000 - (now - sb.killedAt)) / 1000); }
+                else if (b) { b.dead = true; g.bossDeadUntil[g.zoneId] = E.time + Math.max(5, (BOSS_RESPAWN * 1000 - (now - sb.killedAt)) / 1000); }
             }
             return;
         }
@@ -472,7 +476,7 @@
         if (O.earnedReward(sb, ON.uid)) { b.hp = 0; A.kill(b, g.player); }
         else {
             b.dead = true;
-            g.bossDeadUntil = E.time + BOSS_RESPAWN;
+            g.bossDeadUntil[g.zoneId] = E.time + BOSS_RESPAWN;
             WHW.toast(`${b.def.name} was defeated by other players. Deal more damage to share the reward next time.`);
         }
     }
