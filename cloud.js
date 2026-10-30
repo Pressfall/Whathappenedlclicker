@@ -26,7 +26,8 @@ const FIREBASE_CONFIG = {
     appId: '1:602999414155:web:541f51b97db8358be4638e',
     measurementId: 'G-C2FWNR7288',
 };
-const app = getApps().length ? getApp() : initializeApp(FIREBASE_CONFIG);
+// the default app (the Wilds page also has its own app, 'wilds', for playing online: that one is not the account)
+const app = getApps().some(a => a.name === '[DEFAULT]') ? getApp() : initializeApp(FIREBASE_CONFIG);
 export const auth = getAuth(app);
 const db = getFirestore(app);
 try { auth.useDeviceLanguage(); } catch (e) {}
@@ -214,6 +215,8 @@ export function statsHtml(s) {
         ['Prestiges', (Number(s.prestiges) || 0).toLocaleString()], ['Gems', (Number(s.gems) || 0).toLocaleString()],
         ['Achievements', (Number(s.achievements) || 0).toLocaleString()], ['Play time', fmtDuration(s.playSeconds)],
     ];
+    // the Wilds, when this save has been there (older account saves don't have these numbers)
+    if (Number(s.wildsSeconds) > 0 || Number(s.wildsRubies) > 0) rows.push(['Wilds rubies earned', (Number(s.wildsRubies) || 0).toLocaleString()], ['Time in the Wilds', fmtDuration(s.wildsSeconds)]);
     return '<dl class="cs-stats">' + rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('') + '</dl>';
 }
 let chooser = null;
@@ -273,7 +276,10 @@ export function chooseProgress(localSummary, cloud) {
 // ---------------- game page: keep the account up to date while playing ----------------
 // Drives the ☁️ button (#cloudBtn): saves to the account every few minutes while the game is visible and whenever
 // the player leaves the tab, and loads newer progress from the account when the game opens.
-export function startGameSync() {
+// Used by the clicker (index.html) and the Wilds (world.html). The page provides window.saveGame (write its progress to
+// storage now), window._saveLoaded (its save has loaded) and window.freezeSavesForReload (stop saving: progress is about
+// to be replaced). opts.compact: the button shows only its icon, the words go in its tooltip.
+export function startGameSync(opts = {}) {
     const btn = document.getElementById('cloudBtn');
     let user = null, busy = false, lastUpload = 0, state = 'signed-out', conflictCloud = null, lastSyncedAt = 0;
     const setState = (s, detail) => {
@@ -283,7 +289,10 @@ export function startGameSync() {
             'signed-out': '☁️ Save to account', checking: '☁️ Checking…', saving: '☁️ Saving…',
             synced: '☁️ Saved', conflict: '⚠️ Choose a save', error: '⚠️ Not saved',
         }[s];
-        btn.textContent = label;
+        if (opts.compact) { btn.textContent = label.split(' ')[0]; btn.setAttribute('aria-label', label.replace(/^\S+\s*/, '')); }
+        else btn.textContent = label;
+        btn.classList.toggle('is-busy', s === 'checking' || s === 'saving');
+        btn.classList.toggle('is-off', s === 'signed-out');
         btn.classList.toggle('is-warn', s === 'conflict' || s === 'error');
         btn.title = s === 'signed-out' ? 'Sign in to save your progress and play on any device'
             : s === 'synced' ? `Saved to ${user && user.email ? user.email : 'your account'} · ${fmtAgo(lastSyncedAt)}`
@@ -345,9 +354,10 @@ export function startGameSync() {
     } catch (e) {}
     setState('signed-out');
     watchAuth(u => {
-        user = u;
+        // an anonymous sign-in is not an account: there is nothing of the player's to save it to
+        user = u && !u.isAnonymous ? u : null;
         conflictCloud = null;
-        if (!u) { setState('signed-out'); return; }
+        if (!user) { setState('signed-out'); return; }
         const start = () => (window._saveLoaded ? reconcileNow() : setTimeout(start, 300));
         start();
     });

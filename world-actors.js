@@ -26,7 +26,8 @@
         const p = base('player', 'player', x, y, D.COMBAT.player.r || D.COMBAT.player.radius);
         Object.assign(p, { hp: 100, maxHp: 100, weapon: null, weaponUid: null, stam: { val: D.COMBAT.stamina.max, idle: 0, winded: false },
             dashT: 0, dashCd: 0, dashX: 0, dashY: 0, iframes: 0, lastHurt: -99, combo: {}, trail: [], power: 0, powerHit: false, perfectFlash: 0,
-            aimHold: 0, slow: 0, lavaT: 0, mass: 1, abCharges: {}, buffs: {}, riposteUntil: 0, exhaustUntil: 0, pull: null, hookFx: null });
+            aimHold: 0, slow: 0, lavaT: 0, mass: 1, abCharges: {}, buffs: {}, riposteUntil: 0, exhaustUntil: 0, pull: null, hookFx: null,
+            ignite: null, igDrain: 0, mana: { val: D.COMBAT.mana.max, idle: 0 }, manaFlash: 0, stillT: 0, beam: null, overSlow: null });
         // the shield turns toward the mouse like a weapon; up while the block button is held
         p.shield = Object.assign(C.newWeapon('shield', Math.PI / 2), { up: false, raisedAt: -9, brokenUntil: 0 });
         return p;
@@ -263,12 +264,14 @@
         c.n--;
     }
     // seconds until the ability can be cast (0 while a charge is ready), and how many charges are ready
-    A.abilityCd = function (p, id) { const c = charges(p, id); return c.n > 0 ? 0 : Math.max(0, c.next - E.time); };
+    // (none while Burning Stick burns: its cooldown starts over when the fire goes out)
+    A.abilityCd = function (p, id) { if ((p.ignite && p.ignite.id === id) || (p.beam && p.beam.id === id)) return 0; const c = charges(p, id); return c.n > 0 ? 0 : Math.max(0, c.next - E.time); };
     A.abilityCharges = (p, id) => charges(p, id).n;
     // every charge used up, all coming back from now (equipping one outside town)
     A.startCooldown = function (p, id) { const c = charges(p, id); c.n = 0; c.next = E.time + D.ABILITIES[id].cd * game().pstats.abilityCd; };
     // lit on the hotbar: a running buff, the Riposte guard, a hook pulling you
-    A.abilityActive = (p, id) => A.buffOn(p, id) || (D.ABILITIES[id].kind === 'parry' && p.riposteUntil > E.time) || (D.ABILITIES[id].kind === 'hook' && !!p.pull);
+    A.abilityActive = (p, id) => A.buffOn(p, id) || (D.ABILITIES[id].kind === 'parry' && p.riposteUntil > E.time) || (D.ABILITIES[id].kind === 'hook' && !!p.pull)
+        || (!!p.ignite && p.ignite.id === id) || (!!p.beam && p.beam.id === id);
     // buffs running now (Berserk, Stoneskin, Hunter's Mark...) and what they add up to
     function activeBuffs(p) { const out = []; for (const id in p.buffs) if (p.buffs[id] > E.time) out.push(D.ABILITIES[id]); return out; }
     function buffMult(p, key) { let m = 1; for (const a of activeBuffs(p)) if (a[key]) m *= a[key]; return m; }
@@ -278,10 +281,20 @@
     function dmgBuff(p) { return buffMult(p, 'dmgMult'); }
     A.buffOn = (p, id) => (p.buffs[id] || 0) > E.time;
     function abilityTargets() { return game().actors.filter(t => !t.dead && C.canDamage('player', t.team)).concat(pvpTargets()); }
+    // Singularity: fire, frost and lightning hurt anything inside a rift more. The biggest amp t stands in (1 for none)
+    function elemAmp(t) {
+        let m = 1;
+        for (const f of game().fields) {
+            if (f.fx || !f.a.amp || f.t < (f.a.delay || 0) || f.t >= f.a.time) continue;
+            if (Math.hypot(t.x - f.x, t.y - f.y) <= f.a.r + (t.r || 0) && f.a.amp > m) m = f.a.amp;
+        }
+        return m;
+    }
     function abilityHit(p, t, a, base, angle, opts = {}) {
         let dmg = base * (opts.dmg !== undefined ? opts.dmg : a.dmg);
         let text = opts.text;
         if (a.execute && t.hp <= t.maxHp * a.execute) { dmg *= 2; text = 'EXECUTE'; }
+        if (a.elem) { const amp = elemAmp(t); if (amp > 1) { dmg *= amp; text = text || 'AMPLIFIED'; } }
         // another player: their page checks it and takes it with their own shield and armor
         if (t.kind === 'remote') { WHW.online.hitRemote(t, { kind: 'ab', w: a.id, dmg, ang: angle, perfect: false }); return; }
         if (t.def && t.def.resist) dmg *= 1 - t.def.resist * 0.5; // abilities cut through resistance better than weapons do
@@ -346,7 +359,7 @@
         if (a.kind === 'nova' || a.kind === 'smoke') { ringFx(x, y, a.radius, a.color); E.burst(x, y, a.color, 20, a.radius * 2, { life: 0.5, size: a.kind === 'smoke' ? 7 : 4 }); }
         else if (a.kind === 'cone') { for (let i = 0; i < 18; i++) { const aa = ang + (i / 17 - 0.5) * a.arc; E.burst(x + Math.cos(aa) * a.range * 0.7, y + Math.sin(aa) * a.range * 0.7, a.color, 2, 90, { angle: aa, spread: 0.3, life: 0.4 }); } }
         else if (a.kind === 'leap') { ringFx(x, y, a.radius, a.color); E.burst(x, y + 6, '#cbb89a', 18, 160, { life: 0.5 }); }
-        else if (a.kind === 'line') { for (let d = 10; d <= a.len; d += 12) E.burst(x + Math.cos(ang) * d, y + Math.sin(ang) * d, a.color, 2, 70, { angle: ang, spread: 0.6, life: 0.4 }); }
+        else if (a.kind === 'line' || a.kind === 'beam') { for (let d = 10; d <= a.len; d += 12) E.burst(x + Math.cos(ang) * d, y + Math.sin(ang) * d, a.color, 2, 70, { angle: ang, spread: 0.6, life: 0.4 }); }
         else if (a.kind === 'hook') boltFx({ x, y }, { x: tx, y: ty }, a.color);
         else if (a.kind === 'volley') { for (let i = 0; i < a.count; i++) fxShot(ang + (i / (a.count - 1) - 0.5) * a.spread, 'arrow'); }
         else if (a.kind === 'shot') fxShot(ang, a.look === 'spear' ? 'javelin' : a.look === 'knife' ? 'knife' : a.stun ? 'net' : 'arrow', { big: !!a.big });
@@ -405,10 +418,16 @@
         if (!p || p.dead || p.stunUntil > E.time || p.pull) return false;
         const id = W.abilityKit(s)[key], a = D.ABILITIES[id];
         if (!a) { WHW.hint('Nothing on ' + D.ABILITY_KEYS[key] + ': learn abilities and equip them in the Classes menu (K).'); return false; }
+        // Ice Beam holds you: nothing else while it lasts, and its own key stops it once the first moment has passed
+        if (p.beam) {
+            if (p.beam.id === id && E.time - p.beam.at >= a.minTime) { endBeam(p); return true; }
+            return false;
+        }
         if (A.abilityCd(p, id) > 0) return false;
         const ps = g.pstats;
-        const stam = a.stam * ps.abilityStam;
-        if (p.stam.val < stam) { WHW.hint('Not enough stamina for ' + a.name + '.'); return false; }
+        // what it costs: mana for a class with mana (the Mystic), stamina for the rest
+        const stam = a.stam * ps.abilityStam, pool = ps.usesMana ? p.mana : p.stam;
+        if (pool.val < stam) { WHW.hint('Not enough ' + (ps.usesMana ? 'mana' : 'stamina') + ' for ' + a.name + '.'); return false; }
         const aim = E.aimPoint(p.x, p.y);
         const ang = aim && Math.hypot(aim.x - p.x, aim.y - p.y) > 8 ? angTo(p, aim) : p.facing;
         // Shadowstep needs someone to step behind; with nobody in reach nothing is spent
@@ -418,12 +437,21 @@
             prey = abilityTargets().filter(t => dist(p, t) <= a.range + t.r && !E.wallBetween(p.x, p.y, t.x, t.y)).sort((u, v) => dist(u, at) - dist(v, at))[0];
             if (!prey) { WHW.hint('No enemy close enough to ' + a.name + ' to.'); return false; }
         }
+        // Burning Stick sets the weapon in hand on fire: it needs one that can hit, and only one fire at a time
+        if (a.kind === 'ignite') {
+            if (p.ignite) return false;
+            const wb = W.baseOf(weaponItem());
+            if (!wb || wb.cls === 'bow') { WHW.hint('Hold a staff or another melee weapon to set it on fire.'); return false; }
+        }
         // momentum abilities hit harder the faster you are moving toward where you aim, like a spear thrust
         const mom = a.momentum === true ? C.momentumMult(p.vx * Math.cos(ang) + p.vy * Math.sin(ang), ps.momentum + buffSum(p, 'momentum')) : 1;
         const momText = mom >= 1.25 ? 'CHARGE x' + mom.toFixed(1) : '';
-        const base = abilityBase(p) * mom;
+        // desperate abilities (Chain Lightning) hit harder the lower your health
+        const desp = a.desperate ? C.desperation(a.desperate, p.hp, p.maxHp) : 1;
+        const base = abilityBase(p) * mom * desp;
+        if (desp >= 1.5) E.floatText(p.x, p.y - 44, 'DESPERATE x' + desp.toFixed(1), '#ff9a3d', 13, 0.9);
         spendCharge(p, id);
-        p.stam.val -= stam; if (stam) p.stam.idle = 0;
+        pool.val -= stam; if (stam) pool.idle = 0;
         // what other players are told (world-online.js): which ability, and where it was aimed (an area changes it to its centre)
         p.cast = { seq: (p.cast ? p.cast.seq : 0) + 1, id, x: aim ? aim.x : p.x + Math.cos(ang) * 100, y: aim ? aim.y : p.y + Math.sin(ang) * 100 };
         const near = (r) => abilityTargets().filter(t => Math.hypot(t.x - p.x, t.y - p.y) <= r + t.r && !E.wallBetween(p.x, p.y, t.x, t.y));
@@ -565,6 +593,21 @@
             E.floatText(p.x, p.y - 30, '+' + Math.round(p.hp - before), '#7dff9a', 16);
             E.burst(p.x, p.y, a.color, 18, 90, { life: 0.8, grav: -70 });
             WHW.sfx('drink');
+        } else if (a.kind === 'beam') {
+            // you stand and pour it out (beamTick) until you stop it, the mana runs out or it reaches its longest
+            p.beam = { id, at: E.time, ang, next: 0, len: a.len };
+            p.shield.up = false; p.dashT = 0; p.vx = p.vy = 0;
+            if (p.weapon) { p.weapon.charge = 0; p.weapon.over = 0; }
+            E.burst(p.x, p.y, a.color, 16, 100, { life: 0.4 });
+            WHW.sfx('perfect');
+        } else if (a.kind === 'ignite') {
+            // burns until the weapon hits someone (igniteTick, igniteStrike); the cooldown starts again when it goes out
+            p.ignite = { id, at: E.time, emptyAt: null };
+            if (p.weapon) p.weapon.charge = 0;
+            E.floatText(p.x, p.y - 30, a.name.toUpperCase(), a.color, 15, 1);
+            E.burst(p.x, p.y, a.color, 22, 140, { life: 0.5, grav: -80 });
+            E.addShake(2);
+            WHW.sfx('boss');
         } else if (a.kind === 'buff') {
             p.buffs[id] = E.time + a.time;
             E.floatText(p.x, p.y - 30, a.name.toUpperCase(), a.color, 15, 1);
@@ -574,6 +617,97 @@
         if (WHW.ui && WHW.ui.renderAbilities) WHW.ui.renderAbilities();
         return true;
     };
+    // Burning Stick, each step: the fire eats mana faster and faster, then health once the mana is gone (and keeps the
+    // mana at 0). Returns the mana it eats per second. Town puts it out; so does being knocked out.
+    function igniteTick(p, dt) {
+        const ig = p.ignite;
+        if (!ig) return 0;
+        const g = game(), a = D.ABILITIES[ig.id];
+        if (g.inTown || p.dead) { extinguish(p); return 0; }
+        const t = E.time - ig.at;
+        if (ig.emptyAt === null && p.mana.val <= 0.5) { ig.emptyAt = t; E.floatText(p.x, p.y - 30, 'BURNING YOU!', '#ff6b3a', 14, 1); }
+        const d = C.igniteDrain(a, t, ig.emptyAt);
+        if (E.perf !== 'low' && rnd() < dt * (14 + t * 4)) {
+            const tip = weaponTip(p);
+            E.burst(tip.x, tip.y, rnd() < 0.5 ? '#ffb347' : a.color, 1, 30, { life: 0.45, grav: -90, size: 3 });
+        }
+        if (ig.emptyAt === null) return d.mana * g.pstats.abilityStam;
+        p.mana.val = 0; p.mana.idle = 0;
+        p.hp -= d.hp * (1 - g.pstats.fireResist) * dt;
+        p.lastHurt = E.time;
+        if (p.hp <= 0 && !p.dead) {
+            p.hp = 0; p.dead = true; p.ignite = null;
+            E.floatText(p.x, p.y - 30, 'BURNED OUT', '#ff6b3a', 16, 1.2);
+            WHW.onPlayerDeath();
+        }
+        return 0;
+    }
+    // Ice Beam, each step: it turns slowly toward the cursor, hits everything along it every tick, and eats mana.
+    // Returns the mana it eats per second.
+    function beamTick(p, dt) {
+        const bm = p.beam;
+        if (!bm) return 0;
+        const g = game(), a = D.ABILITIES[bm.id], t = E.time - bm.at;
+        if (g.inTown || p.dead || p.stunUntil > E.time || t >= a.maxTime || (p.mana.val <= 0 && t > 0.1)) { endBeam(p); return 0; }
+        const aim = E.aimPoint(p.x, p.y);
+        if (aim && Math.hypot(aim.x - p.x, aim.y - p.y) > 8) {
+            const err = C.wrap(angTo(p, aim) - bm.ang);
+            bm.ang = C.wrap(bm.ang + Math.max(-a.turn * dt, Math.min(a.turn * dt, err)));
+        }
+        p.facing = bm.ang;
+        // it stops at the first wall
+        const cx = Math.cos(bm.ang), cy = Math.sin(bm.ang);
+        let len = 0;
+        while (len < a.len) { const tt = E.tileAt(p.x + cx * (len + 8), p.y + cy * (len + 8)); if (tt === G.T.WALL || tt === G.T.BUILDING) break; len += 8; }
+        bm.len = len;
+        bm.next -= dt;
+        if (bm.next <= 0) {
+            bm.next += a.tick;
+            const base = abilityBase(p);
+            for (const e of abilityTargets()) {
+                const dx = e.x - p.x, dy = e.y - p.y, along = dx * cx + dy * cy, off = Math.abs(dx * cy - dy * cx);
+                if (along >= -e.r && along <= len + e.r && off <= a.width + e.r) abilityHit(p, e, a, base, bm.ang, { kb: 30 });
+            }
+        }
+        if (E.perf !== 'low' && rnd() < dt * 40) { const d = rnd() * len; E.burst(p.x + cx * d, p.y + cy * d, rnd() < 0.5 ? '#ffffff' : a.color, 1, 40, { life: 0.4, size: 3 }); }
+        return a.drain * g.pstats.abilityStam;
+    }
+    function endBeam(p) {
+        const bm = p.beam;
+        if (!bm) return;
+        p.beam = null;
+        A.startCooldown(p, bm.id);
+        if (WHW.ui && WHW.ui.renderAbilities) WHW.ui.renderAbilities();
+    }
+    // where the end of the weapon in hand is now (world px)
+    function weaponTip(p) {
+        const w = p.weapon;
+        if (!w) return { x: p.x, y: p.y };
+        const P = D.WEAPON_CLASSES[w.cls] || {}, len = C.hasReach(w.cls) ? w.r : (P.len || 30);
+        return { x: p.x + Math.cos(w.theta) * len, y: p.y + Math.sin(w.theta) * len };
+    }
+    function extinguish(p) {
+        const ig = p.ignite;
+        if (!ig) return;
+        p.ignite = null;
+        A.startCooldown(p, ig.id);
+        if (WHW.ui && WHW.ui.renderAbilities) WHW.ui.renderAbilities();
+    }
+    // Burning Stick: the first weapon blow that lands while it burns puts the fire out with a huge hit on t
+    function igniteStrike(p, t, angle) {
+        const ig = p.ignite;
+        if (!ig || t.dead) return;
+        const a = D.ABILITIES[ig.id], b = C.igniteBlow(a, E.time - ig.at);
+        extinguish(p);
+        abilityHit(p, t, Object.assign({}, a, { stun: b.stun }), abilityBase(p), angle, { dmg: b.dmg, kb: b.kb, text: 'BURNING STICK x' + b.dmg.toFixed(1) });
+        const big = b.sec / a.maxSec;
+        E.burst(t.x, t.y, a.color, 20 + Math.round(30 * big), 160 + 200 * big, { life: 0.6, size: 4 });
+        E.burst(t.x, t.y, '#ffe14d', 10 + Math.round(10 * big), 120 + 120 * big, { life: 0.4 });
+        ringFx(t.x, t.y, t.r + 20 + 40 * big, a.color);
+        E.addHitStop(0.06 + 0.08 * big); E.addShake(5 + 8 * big);
+        WHW.sfx('boss');
+    }
+
     // Ability areas on the ground (Sanctuary, Rain of Arrows, Singularity, Meteor, Blizzard): after the
     // delay they hit every tick seconds until their time runs out
     A.updateFields = function (dt) {
@@ -586,6 +720,10 @@
                 f.next += a.tick;
                 if (first && a.delay) { E.burst(f.x, f.y, a.color, 40, a.r * 2.4, { life: 0.6, size: 5 }); ringFx(f.x, f.y, a.r, a.color); E.addShake(f.fx ? 3 : 8); WHW.sfx('boss'); }
                 if (f.fx) continue;
+                // Meteor doesn't care who is under it: you take part of the blow, and burn (a dash can still get you out)
+                if (first && a.selfHit && !p.dead && !g.inTown && Math.hypot(p.x - f.x, p.y - f.y) <= a.r + p.r) {
+                    if (A.hurtPlayer(f.base * a.dmg * a.selfHit, { from: { x: f.x, y: f.y }, kb: 300, burn: !!a.burn, fire: !!a.burn, unblockable: true }) > 0) E.floatText(p.x, p.y - 44, 'CAUGHT IN IT!', '#ff7b3a', 14, 1);
+                }
                 for (const t of abilityTargets()) {
                     const d = Math.hypot(t.x - f.x, t.y - f.y);
                     if (d > a.r + t.r || E.wallBetween(f.x, f.y, t.x, t.y)) continue;
@@ -599,6 +737,17 @@
                     if (p.hp - before >= 1) E.floatText(p.x, p.y - 28, '+' + Math.round(p.hp - before), '#7dff9a', 12, 0.6);
                 }
             }
+            // after it lands the ground burns: whoever stands in it (enemies, and you) catches fire
+            if (a.groundBurn && !f.fx && f.t >= (a.delay || 0) && f.t < a.time) {
+                const dps = f.base * a.groundBurn;
+                for (const t of g.actors) {
+                    if (t.dead || !t.status || !C.canDamage('player', t.team) || Math.hypot(t.x - f.x, t.y - f.y) > a.r + t.r) continue;
+                    t.status.burnUntil = Math.max(t.status.burnUntil, E.time + 1); t.status.burnDps = Math.max(t.status.burnDps, dps);
+                }
+                if (!p.dead && !g.inTown && Math.hypot(p.x - f.x, p.y - f.y) <= a.r + p.r) {
+                    p.status.burnUntil = Math.max(p.status.burnUntil, E.time + 1.5); p.status.burnDps = Math.max(p.status.burnDps, dps * 0.5);
+                }
+            }
             if (E.perf !== 'low' && f.t >= (a.delay || 0)) fieldFx(f, dt);
             if (f.t >= a.time) f.gone = true;
         }
@@ -610,6 +759,7 @@
         if (f.id === 'rain_of_arrows') { for (let i = 0; i < 3; i++) { const q = at(); E.burst(q.x, q.y - 26, a.color, 1, 260, { angle: Math.PI / 2, spread: 0.05, life: 0.1, size: 2 }); } }
         else if (f.id === 'blizzard') { if (rnd() < dt * 40) { const q = at(); E.burst(q.x, q.y, '#ffffff', 1, 40, { angle: 0.6, spread: 0.4, life: 0.6, size: 3 }); } }
         else if (f.id === 'singularity') { if (rnd() < dt * 30) { const aa = rnd() * TAU; E.burst(f.x + Math.cos(aa) * a.r, f.y + Math.sin(aa) * a.r, a.color, 1, a.r * 1.6, { angle: aa + Math.PI, spread: 0.1, life: 0.5, size: 3 }); } }
+        else if (f.id === 'meteor') { if (rnd() < dt * 25) { const q = at(); E.burst(q.x, q.y, rnd() < 0.5 ? '#ffb347' : a.color, 1, 30, { life: 0.6, grav: -70, size: 3 }); } }
         else if (f.id === 'sanctuary') { if (rnd() < dt * 18) { const q = at(); E.burst(q.x, q.y, a.color, 1, 20, { life: 0.9, grav: -60, size: 3 }); } }
     }
     A.drawFields = function (ctx) {
@@ -623,6 +773,17 @@
                 ctx.beginPath(); ctx.arc(f.x, f.y, a.r * k, 0, TAU); ctx.fill();
                 ctx.globalAlpha = 0.85; ctx.strokeStyle = a.color; ctx.lineWidth = 2; ctx.setLineDash([8, 6]);
                 ctx.beginPath(); ctx.arc(f.x, f.y, a.r, 0, TAU); ctx.stroke();
+                if (a.selfHit) {
+                    // where it lands, plainly (it hurts you too), and the rock on its way down
+                    ctx.setLineDash([]); ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ff4d2b'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.arc(f.x, f.y, a.r, 0, TAU); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(f.x - 12, f.y); ctx.lineTo(f.x + 12, f.y); ctx.moveTo(f.x, f.y - 12); ctx.lineTo(f.x, f.y + 12); ctx.stroke();
+                    const mx = f.x + (1 - k) * 90, my = f.y - (1 - k) * 280, mr = 9 + 9 * k;
+                    ctx.globalAlpha = 0.45; ctx.fillStyle = '#ffb347';
+                    ctx.beginPath(); ctx.moveTo(mx + 70 * (1 - k) + 40, my - 120 * (1 - k) - 60); ctx.lineTo(mx - mr, my); ctx.lineTo(mx + mr, my); ctx.closePath(); ctx.fill();
+                    ctx.globalAlpha = 1; ctx.fillStyle = '#5a3a2a'; ctx.beginPath(); ctx.arc(mx, my, mr, 0, TAU); ctx.fill();
+                    ctx.strokeStyle = '#ff7b3a'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(mx, my, mr, 0, TAU); ctx.stroke();
+                }
             } else {
                 const fade = Math.max(0, Math.min(1, (a.time - f.t) / 0.35));
                 ctx.globalAlpha = (0.14 + Math.sin(E.time * 6) * 0.04) * fade; ctx.fillStyle = a.color;
@@ -642,14 +803,14 @@
     A.updatePlayer = function (p, dt) {
         const g = game(), st = g.pstats, T = G.T;
         const stunned = p.stunUntil > E.time;
-        const mv = stunned ? { x: 0, y: 0 } : E.moveInput();
+        const mv = stunned || p.beam ? { x: 0, y: 0 } : E.moveInput(); // Ice Beam roots you
         const tile = E.tileAt(p.x, p.y);
-        if ((E.consumeKey(' ') || E.consumeKey('Shift')) && !stunned) A.tryDash(p, mv);
+        if ((E.consumeKey(' ') || E.consumeKey('Shift')) && !stunned && !p.beam) A.tryDash(p, mv);
         let speed = D.COMBAT.player.speed * st.speed;
         const w = p.weapon;
         if (w && w.cls === 'bow' && w.drawing) speed *= D.WEAPON_CLASSES.bow.moveMult;
         const sh = p.shield;
-        const want = !stunned && !!(WHW.shieldWanted && WHW.shieldWanted()) && !!shieldItem() && E.time >= sh.brokenUntil;
+        const want = !stunned && !p.beam && !!(WHW.shieldWanted && WHW.shieldWanted()) && !!shieldItem() && E.time >= sh.brokenUntil;
         if (want && !sh.up) {
             sh.up = true; sh.raisedAt = E.time;
             if (w && w.drawing) { w.drawing = false; w.draw = 0; w.fullFor = 0; } // can't hold a bow string and a shield
@@ -658,6 +819,7 @@
         if (sh.up) speed *= D.COMBAT.shield.moveMult;
         if (E.time < p.status.chillUntil) speed *= 0.7;
         if (p.slow) speed *= 1 - p.slow;
+        if (p.overSlow && p.overSlow.until > E.time) speed *= 1 - p.overSlow.amt; // an overcharged frost staff
         speed *= buffMult(p, 'speedMult');
         if (p.pull) pullStep(p, dt);
         else {
@@ -692,6 +854,14 @@
         // regen: fast in town, slow once out of a fight for a while
         if (g.inTown) p.hp = Math.min(p.maxHp, p.hp + D.COMBAT.player.regenTown * dt);
         else p.hp = Math.min(p.maxHp, p.hp + ((E.time - p.lastHurt > 6 ? 1.5 : 0) + st.regen) * dt);
+        p.igDrain = igniteTick(p, dt);
+        if (p.dead) return;
+        // mana (the Mystic's): Burning Stick eats it; otherwise it comes back, much faster standing still
+        const beamDrain = beamTick(p, dt);
+        if (p.dead) return;
+        p.stillT = !p.beam && !mv.x && !mv.y && Math.hypot(p.vx, p.vy) < D.COMBAT.mana.stillSpeed ? p.stillT + dt : 0;
+        if (st.usesMana) C.manaStep(p.mana, p.igDrain + beamDrain, dt, st.manaRegen, p.stillT);
+        p.manaFlash = Math.max(0, p.manaFlash - dt);
         A.updatePlayerWeapon(p, dt);
     };
 
@@ -701,6 +871,8 @@
     }
     A.updatePlayerWeapon = function (p, dt) {
         const g = game();
+        // pouring out Ice Beam: no weapon at all
+        if (p.beam) { p.power = 0; p.powerMode = null; C.staminaStep(p.stam, 0, dt, g.pstats.stamRegen); return; }
         const it = weaponItem();
         const b = W.baseOf(it);
         if (!b) { p.weapon = null; return; }
@@ -727,7 +899,10 @@
             C.track(w, target, dt, P, mods);
             p.facing = w.theta;
             const tipV = Math.abs(w.omega) * P.len;
-            if (b.cls === 'spear') {
+            if (b.cls === 'staff') {
+                C.spearStep(w, aim ? Math.hypot(aim.x - p.x, aim.y - p.y) : 40, dt, P);
+                drain = staffStep(p, w, P, st, b, dt, C.radialSpeed(w, dt));
+            } else if (b.cls === 'spear') {
                 const ad = aim ? Math.hypot(aim.x - p.x, aim.y - p.y) : 40;
                 C.spearStep(w, ad, dt, P);
                 const vr = C.radialSpeed(w, dt);
@@ -744,6 +919,11 @@
                 trailPush(p, p.x + Math.cos(w.theta) * P.len, p.y + Math.sin(w.theta) * P.len, p.powerPerfect ? 'perfect' : p.powerHit ? 'hit' : 'slow');
             }
         }
+        // Burning Stick: show how long the fire has burned (how big the blow will be) on the swing meter
+        if (p.ignite) {
+            const a = D.ABILITIES[p.ignite.id], k = Math.min(1, (E.time - p.ignite.at) / a.maxSec);
+            p.power = k; p.powerHit = true; p.powerPerfect = k >= 1; p.powerMode = 'fire';
+        } else if (p.powerMode === 'fire') p.powerMode = null;
         C.staminaStep(p.stam, drain, dt, g.pstats.stamRegen * (p.shield.up ? D.COMBAT.shield.regenMult : 1) * (p.exhaustUntil > E.time ? 0 : 1));
     };
     // Called by world.js when the button goes down / up
@@ -784,6 +964,7 @@
         const g = game();
         const { s, cls, angle, dir, st, assist, swingId, cx, cy } = info;
         const P = D.WEAPON_CLASSES[cls];
+        if (p.ignite) igniteStrike(p, t, angle + dir * Math.PI / 2 * 0.7);
         const combo = C.comboHit(p.combo, dir, E.time, swingId);
         // a spear thrust gains damage from the speed you are moving toward the target (dash into it for the most)
         const mom = cls === 'spear' ? C.momentumMult(p.vx * Math.cos(angle) + p.vy * Math.sin(angle), g.pstats.momentum + buffSum(p, 'momentum')) : 1;
@@ -795,7 +976,7 @@
             let m = 1;
             if (P.backstab && C.fromBehind(angle, t.facing)) m *= P.backstab;
             if (rnd() < critChance) m *= 1.5;
-            WHW.online.hitRemote(t, { kind: cls === 'spear' ? 'thrust' : 'melee', dmg: hd.dmg * m, ang: angle + dir * Math.PI / 2 * 0.7, perfect: hd.perfect, x: cx, y: cy });
+            WHW.online.hitRemote(t, { kind: C.hasReach(cls) ? 'thrust' : 'melee', dmg: hd.dmg * m, ang: angle + dir * Math.PI / 2 * 0.7, perfect: hd.perfect, x: cx, y: cy });
             E.burst(cx, cy, hd.perfect ? '#ffc83d' : '#ffffff', hd.perfect ? 12 : 7, 160, { angle: angle + dir * Math.PI / 2, spread: 1.4, life: 0.35 });
             E.addHitStop(D.COMBAT.hitStop * (0.5 + s));
             WHW.sfx(hd.perfect ? 'perfect' : 'hit');
@@ -874,7 +1055,7 @@
             for (const t of targets) {
                 if (pierced >= pierce) break;
                 if ((w.hitCd.get(t.id) || 0) > E.time) continue;
-                const h = C.thrustHit(p.x, p.y, w.theta, w.rPrev, w.r, t.x, t.y, t.r);
+                const h = C.thrustHit(p.x, p.y, w.theta, w.rPrev, w.r, t.x, t.y, t.r, P.tipLen, P.hitWidth);
                 if (!h) continue;
                 const cp = contactPoint(p.x, p.y, w.theta, h.along);
                 if (E.wallBetween(p.x, p.y, cp.x, cp.y)) continue;
@@ -889,18 +1070,199 @@
         if (w.r < P.reachMin + (P.reachMax - P.reachMin) * 0.5) w.pierced = 0;
         // a fast sideways sweep bashes with the shaft
         const tipV = Math.abs(w.omega) * w.r;
-        if (tipV >= P.bashV) {
+        if (tipV >= P.bashV) for (const t of targets) bashHit(p, w, P, st, t);
+    }
+    // A blow with the shaft of a spear or staff swept sideways; true if it landed
+    function bashHit(p, w, P, st, t) {
+        if ((w.hitCd.get(t.id) || 0) > E.time) return false;
+        const h = C.sweepHit(p.x, p.y, w.prevTheta, w.theta, P.r0, w.r, t.x, t.y, t.r + (P.hitWidth || 0));
+        if (!h || E.wallBetween(p.x, p.y, t.x, t.y)) return false;
+        w.hitCd.set(t.id, E.time + P.bashCd);
+        const dir = Math.sign(w.omega) || 1, ang = h.phi + dir * Math.PI / 2;
+        if (p.ignite) igniteStrike(p, t, ang);
+        if (t.kind === 'remote') { WHW.online.hitRemote(t, { kind: 'bash', dmg: st.dmg * P.bashDmg, ang, perfect: false }); WHW.sfx('hit'); return true; }
+        const dmg = C.mitigate(st.dmg * P.bashDmg * dmgBuff(p) * (game().pstats.dmgBy[w.cls] || 1), t.armor);
+        A.damage(t, dmg, { from: p, kbAngle: ang, kb: P.bashKb * st.kbMult, s: 1, text: 'BASH' });
+        WHW.sfx('hit');
+        return true;
+    }
+
+    // ---------------- staffs ----------------
+    // A staff moves like a spear. Its own blows are weak; what it is for is magic: in the hands of a class its magic names
+    // (D.STAFF_MAGIC users), a thrust or a swing that touches nobody casts that magic's spell, as strong as the charge built
+    // by holding the staff drawn back. The staff's magic for the player now, or null (wrong class, or Burning Stick lit).
+    function staffMagic(b) {
+        const sm = b && D.STAFF_MAGIC[b.magic];
+        return sm && sm.users.includes(W.classId(game().state)) && !game().player.ignite ? sm : null;
+    }
+    // A plain staff blow (no Burning Stick behind it) gives a class with mana some back
+    function staffMana(p) {
+        if (!game().pstats.usesMana) return;
+        p.mana.val = Math.min(D.COMBAT.mana.max, p.mana.val + D.COMBAT.mana.hitGain);
+        p.manaFlash = 0.3;
+    }
+    // One step of a staff in hand: charge, thrusts, swings, and the spells of the ones that missed. Returns stamina drain/s.
+    // Sweeping the staff round from the charge position pushes the tip out too, so a sweep wins over a thrust: a thrust only
+    // starts while the staff turns slowly, becomes a swing if it starts sweeping, and its spell waits a moment (w.pending)
+    // in case it does. After a swing the tip still moving out is no thrust (w.lock, until it stops).
+    function staffStep(p, w, P, st, b, dt, vr) {
+        const g = game(), sm = staffMagic(b);
+        const free = !p.shield.up && !(p.staggerUntil > E.time) && !(p.stunUntil > E.time);
+        if (sm) {
+            // past a full charge it overcharges: a little more damage, and past the safe part it turns on you (overTick)
+            const back = w.r <= P.reachMin + (P.reachMax - P.reachMin) * P.chargeBelow;
+            if (back && w.charge >= 1) w.over = (w.over || 0) + dt;
+            C.staffCharge(w, dt, P);
+            if (w.charge >= 1 && w.over > 0) overTick(p, w, sm);
+        } else { w.charge = 0; w.over = 0; }
+        const targets = g.actors.concat(pvpTargets()).filter(t => !t.dead && C.canDamage('player', t.team) && Math.abs(t.x - p.x) < 140 && Math.abs(t.y - p.y) < 140);
+        const om = Math.abs(w.omega), dir = Math.sign(w.omega);
+        let drain = 0;
+        if (w.lock && !w.swing && vr < P.vMin * 0.5) w.lock = false;
+        if (w.thrust && !w.thrust.hit && om >= P.swingW) { w.thrust = null; w.armed = false; }
+        if (w.pending && (om >= P.swingW || Math.abs(C.wrap(w.theta - w.pending.ang)) > P.thrustDrift)) w.pending = null;
+        // a thrust: the tip flicked outward. It ends once the tip stops, reaches full length or lands
+        if (!w.thrust && !w.swing && !w.lock && w.armed && vr >= P.vMin && om < P.swingW * P.thrustTurn && free) w.thrust = { hit: 0 };
+        if (w.thrust) {
+            drain = P.stam;
+            const th = w.thrust, pierce = P.pierce + g.pstats.pierce;
             for (const t of targets) {
+                if (th.hit >= pierce || !free) break;
                 if ((w.hitCd.get(t.id) || 0) > E.time) continue;
-                const h = C.sweepHit(p.x, p.y, w.prevTheta, w.theta, P.r0, w.r, t.x, t.y, t.r);
+                const h = C.thrustHit(p.x, p.y, w.theta, w.rPrev, w.r, t.x, t.y, t.r, P.tipLen, P.hitWidth);
                 if (!h) continue;
-                w.hitCd.set(t.id, E.time + P.bashCd);
-                const dir = Math.sign(w.omega) || 1;
-                if (t.kind === 'remote') { WHW.online.hitRemote(t, { kind: 'bash', dmg: st.dmg * P.bashDmg, ang: h.phi + dir * Math.PI / 2, perfect: false }); WHW.sfx('hit'); continue; }
-                const dmg = C.mitigate(st.dmg * P.bashDmg, t.armor);
-                A.damage(t, dmg, { from: p, kbAngle: h.phi + dir * Math.PI / 2, kb: P.bashKb, s: 1, text: 'BASH' });
-                WHW.sfx('hit');
+                const cp = contactPoint(p.x, p.y, w.theta, h.along);
+                if (E.wallBetween(p.x, p.y, cp.x, cp.y)) continue;
+                w.hitCd.set(t.id, E.time + P.cd);
+                const lit = !!p.ignite;
+                strike(p, t, { s: C.swingPower(Math.max(vr, P.vMin), P.vMin, P.vFull), cls: 'staff', angle: w.theta, dir: 0, st, assist: false,
+                    swingId: w.swingId + 1000 * (w.thrusts || 0), cx: cp.x, cy: cp.y, baseDmg: st.dmg * P.melee });
+                th.hit++;
+                if (!lit) staffMana(p);
             }
+            if (th.hit >= pierce || vr < P.vMin * 0.5 || w.r >= P.reachMax - 0.5) {
+                w.armed = false; w.thrusts = (w.thrusts || 0) + 1; w.thrust = null;
+                if (!th.hit && sm && free) w.pending = { at: E.time, ang: w.theta };
+                else if (!th.hit && !sm && !p.ignite && D.STAFF_MAGIC[b.magic]) WHW.hint('Only a ' + D.STAFF_MAGIC[b.magic].users.map(c => D.CLASSES[c].name).join(' or ') + ' can cast spells with a staff.');
+            }
+        }
+        // the missed thrust's spell, once it is clear the staff isn't sweeping
+        if (w.pending && E.time - w.pending.at >= P.thrustHold) { const pd = w.pending; w.pending = null; if (sm && free) castSpell(p, w, sm, 'thrust', pd.ang, 0); }
+        // a swing: the staff swept round fast. It ends when it slows down or turns back
+        if (!w.thrust && !w.swing && om >= P.swingW && free) { w.swing = { dir, swept: 0, hit: false }; w.lock = true; w.pending = null; }
+        if (w.swing) {
+            const sw = w.swing;
+            drain = P.stam;
+            if (dir === sw.dir && om >= P.swingW * 0.6) {
+                sw.swept += Math.abs(C.wrap(w.theta - w.prevTheta));
+                if (free && !sw.hit) for (const t of targets) { const lit = !!p.ignite; if (bashHit(p, w, P, st, t)) { sw.hit = true; if (!lit) staffMana(p); } }
+            } else {
+                w.swing = null;
+                if (!sw.hit && sm && free && sw.swept >= P.swingArc) castSpell(p, w, sm, 'swing', w.prevTheta - sw.dir * sw.swept / 2, sw.swept);
+            }
+        }
+        // the swing meter shows the charge to a caster, and how fast the tip moves to anyone else
+        if (sm) { p.power = w.charge; p.powerHit = w.charge > 0; p.powerPerfect = w.charge >= 1; p.powerMode = 'charge'; }
+        else { p.power = Math.max(0, vr) / P.vFull; p.powerHit = vr >= P.vMin; p.powerPerfect = vr >= P.vFull * 0.97; p.powerMode = null; }
+        trailPush(p, p.x + Math.cos(w.theta) * w.r, p.y + Math.sin(w.theta) * w.r, w.thrust || w.swing ? (sm && w.charge >= 1 ? 'perfect' : 'hit') : 'slow');
+        return drain;
+    }
+    // An overcharged staff turns on its holder, by its magic (STAFF_MAGIC over): fire burns you, harder the longer;
+    // frost slows you (and keeps slowing you a while after the spell); lightning goes off by itself at the top
+    function overTick(p, w, sm) {
+        const ov = sm.over, O = D.STAFF_OVER, pen = C.overPenalty(ov, w.over);
+        if (!pen.past) return;
+        if (!w.overSaid) { w.overSaid = true; E.floatText(p.x, p.y - 44, 'OVERCHARGED', '#ff6b6b', 13, 0.9); }
+        if (pen.burnDps) { p.status.burnUntil = Math.max(p.status.burnUntil, E.time + ov.linger); p.status.burnDps = Math.max(p.status.burnDps, pen.burnDps); }
+        if (pen.slow) p.overSlow = { amt: pen.slow, until: E.time + ov.linger };
+        if (ov.kind === 'shock' && w.over >= O.max) {
+            w.charge = 0; w.over = 0; w.overSaid = false;
+            E.floatText(p.x, p.y - 44, 'OVERLOAD!', '#ffe66b', 15, 1);
+            boltFx({ x: p.x, y: p.y - 40 }, p, sm.color);
+            A.stunPlayer(pen.stun);
+            WHW.sfx('hurt');
+        } else if (E.perf !== 'low' && rnd() < 0.3) { const tip = weaponTip(p); E.burst(tip.x, tip.y, sm.color, 1, 60, { life: 0.3, size: 3 }); }
+    }
+    // Cast a staff's spell (which: 'thrust' or 'swing') toward ang; arc: how far the swing swept. Spends the charge.
+    function castSpell(p, w, sm, which, ang, arc) {
+        const g = game(), sp = sm[which], P = D.WEAPON_CLASSES.staff;
+        if (E.time - w.shotAt < P.shotCd) return;
+        const tip = weaponTip(p), ps = g.pstats, pool = ps.usesMana ? p.mana : p.stam, cost = C.spellCost(sp.mana, w.charge) * ps.abilityStam; // a weak spell costs less
+        if (pool.val < cost) { // fizzles
+            E.burst(tip.x, tip.y, '#8a8f9c', 5, 50, { life: 0.4, grav: -40 });
+            if (ps.usesMana) WHW.hint('Out of mana. It comes back faster standing still, and each staff blow that lands gives some.');
+            return;
+        }
+        pool.val -= cost; pool.idle = 0;
+        const it = weaponItem(), b = W.baseOf(it), st = W.gearStats(it), charge = w.charge || 0, full = charge >= 1;
+        const over = full ? (w.over || 0) : 0, pen = C.overPenalty(sm.over, over), overMult = C.overBonus(over);
+        w.charge = 0; w.shotAt = E.time; w.over = 0; w.overSaid = false;
+        const dmg = st.dmg * sp.dmg * C.chargeMult(charge, sm.charge) * overMult * dmgBuff(p) * (g.pstats.dmgBy.staff || 1);
+        // an overcharged lightning staff jolts you as it lets go
+        if (pen.stun) { E.floatText(p.x, p.y - 58, 'ZAPPED', '#ffe66b', 13, 0.9); A.stunPlayer(pen.stun); }
+        // other players see it fly (world-online.js): an odd shot number is a bolt, an even one a wave
+        p.shotSeq = (p.shotSeq || 0) + 1;
+        if ((p.shotSeq % 2 === 1) !== (sp.kind === 'bolt')) p.shotSeq++;
+        const pr = { team: 'player', life: sp.life, dmg, kb: sp.kb, burn: !!sp.burn, frost: !!sp.frost, chain: sp.chain || null, look: sp.look, color: sm.color,
+            spell: true, magic: b.magic, tier: b.tier, w: it.base, steady: full, pierce: sp.pierce || 0,
+            crit: st.crit + g.pstats.crit + buffSum(p, 'crit'), lifesteal: (st.lifesteal || 0) + g.pstats.lifesteal, hit: new Set(), charge };
+        if (sp.kind === 'bolt') {
+            const v = sp.speed * (0.85 + 0.25 * charge);
+            g.projectiles.push(Object.assign(pr, { kind: 'bolt', x: tip.x, y: tip.y, vx: Math.cos(ang) * v, vy: Math.sin(ang) * v, r: sp.r * (0.7 + 0.6 * charge) }));
+        } else {
+            g.projectiles.push(Object.assign(pr, { kind: 'wave', ox: p.x, oy: p.y, dir: ang, arc: Math.max(sp.arcMin, Math.min(sp.arcMax, arc)), rad: P.reachMin, speed: sp.speed,
+                band: sp.band * (0.8 + 0.4 * charge), x: p.x + Math.cos(ang) * P.reachMin, y: p.y + Math.sin(ang) * P.reachMin, vx: 0, vy: 0, r: 0, pierce: 999 }));
+        }
+        if (full) E.floatText(p.x, p.y - 30, sp.name.toUpperCase() + (over > 0.05 ? ' x' + overMult.toFixed(2) : '') + '!', over > D.STAFF_OVER.safe ? '#ff9a6b' : '#ffc83d', 13, 0.8);
+        E.burst(tip.x, tip.y, sm.color, 6 + Math.round(8 * charge), 90, { life: 0.35 });
+        E.addShake(1 + 2 * charge);
+        WHW.sfx(full ? 'perfect' : 'bow');
+    }
+
+    // A staff spell landing on t (a monster, boss, rival or another player): damage, burn and frost stacks
+    function spellHit(p, pr, t, dmg, ang) {
+        const amp = elemAmp(t); // spells are all fire, frost or lightning
+        dmg *= amp;
+        if (t.kind === 'remote') {
+            // their page checks it and applies the burn and frost from its own copy of the staff's magic
+            WHW.online.hitRemote(t, { kind: 'spell', w: pr.w, dmg: dmg * (rnd() < (pr.crit || 0) ? 1.5 : 1), ang, perfect: pr.steady });
+            WHW.sfx('hit');
+            return;
+        }
+        let mult = 1, text = amp > 1 ? 'AMPLIFIED' : '';
+        if (t.def && t.def.shell && !C.fromBehind(ang, t.facing)) { mult *= t.def.shell; text = 'SHELL'; }
+        if (t.kind === 'boss' && t.exposedUntil > E.time) { mult *= t.def.exposeMult || 2; text = 'CORE HIT'; }
+        if (t.def && t.def.resist && !t.def.resistBy.includes(pr.tier)) mult *= 1 - t.def.resist;
+        const crit = rnd() < (pr.crit || 0);
+        if (crit) mult *= 1.5;
+        const d = C.mitigate(dmg * mult, t.armorBrokenUntil > E.time ? 0 : t.armor);
+        A.damage(t, d, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.6, perfect: pr.steady, crit, burn: pr.burn, text });
+        const sm = D.STAFF_MAGIC[pr.magic];
+        if (pr.frost && sm && sm.frost && !t.dead) frostOn(t, sm.frost);
+        if (pr.lifesteal) p.hp = Math.min(p.maxHp, p.hp + d * pr.lifesteal);
+        WHW.sfx('hit');
+    }
+    // one more frost stack on t (a combatant, or the player); every few, it is slowed
+    function frostOn(t, F) {
+        const r = C.frostStack(t, F, E.time);
+        if (r.slowed) { E.floatText(t.x, t.y - t.r - 38, 'SLOWED', '#8fe3ff', 13, 1); E.burst(t.x, t.y, '#cfefff', 12, 80, { life: 0.5 }); }
+        else E.floatText(t.x, t.y - t.r - 38, '❄'.repeat(r.n), '#bfefff', 11, 0.6);
+    }
+    A.frostPlayer = (F) => frostOn(game().player, F);
+    // a chaining bolt jumps on from the first one it hit to the nearest ones it hasn't, weaker each jump
+    function chainFrom(p, pr, first) {
+        const ch = pr.chain;
+        let cur = first, dmg = pr.dmg;
+        for (let n = 0; n < ch.jumps; n++) {
+            const c0 = cur;
+            const next = abilityTargets().filter(t => !pr.hit.has(t.id) && Math.hypot(t.x - c0.x, t.y - c0.y) <= ch.range + t.r && !E.wallBetween(c0.x, c0.y, t.x, t.y))
+                .sort((u, v) => Math.hypot(u.x - c0.x, u.y - c0.y) - Math.hypot(v.x - c0.x, v.y - c0.y))[0];
+            if (!next) break;
+            dmg *= ch.falloff;
+            pr.hit.add(next.id);
+            boltFx(c0, next, pr.color);
+            spellHit(p, pr, next, dmg, angTo(c0, next));
+            cur = next;
         }
     }
 
@@ -942,8 +1304,8 @@
     function clashCheck(p, r) {
         if (!p.weapon || !r.weapon || p.weapon.cls === 'bow' || r.weapon.cls === 'bow') return;
         const P1 = D.WEAPON_CLASSES[p.weapon.cls], P2 = D.WEAPON_CLASSES[r.weapon.cls];
-        const s1 = C.bladeSegment(p.x, p.y, p.weapon.theta, P1.r0, p.weapon.cls === 'spear' ? p.weapon.r : P1.len);
-        const s2 = C.bladeSegment(r.x, r.y, r.weapon.theta, P2.r0, r.weapon.cls === 'spear' ? r.weapon.r : P2.len);
+        const s1 = C.bladeSegment(p.x, p.y, p.weapon.theta, P1.r0, C.hasReach(p.weapon.cls) ? p.weapon.r : P1.len);
+        const s2 = C.bladeSegment(r.x, r.y, r.weapon.theta, P2.r0, C.hasReach(r.weapon.cls) ? r.weapon.r : P2.len);
         if (!C.segmentsCross(...s1, ...s2)) return false;
         const v1 = Math.abs(p.weapon.omega) * P1.len, v2 = Math.abs(r.weapon.omega) * P2.len;
         if (v1 < P1.vMin || v2 < P2.vMin) return false;
@@ -1117,7 +1479,7 @@
     function statusTick(t, dt) {
         if (t.dead) return;
         if (E.time < t.status.burnUntil && t.status.burnDps) {
-            t.hp -= t.status.burnDps * dt;
+            t.hp -= t.status.burnDps * elemAmp(t) * dt; // burns are fire: a rift makes them worse
             if (E.perf !== 'low' && rnd() < dt * 8) E.burst(t.x, t.y - t.r * 0.5, '#ff9a3d', 1, 40, { life: 0.5, grav: -80 });
             if (t.hp <= 0 && t.kind !== 'dummy') A.kill(t, game().player);
             if (t.kind === 'dummy') t.hp = t.maxHp;
@@ -1348,17 +1710,33 @@
     A.updateProjectiles = function (dt) {
         const g = game(), p = g.player;
         for (const pr of g.projectiles) {
-            pr.x += pr.vx * dt; pr.y += pr.vy * dt;
             pr.life -= dt;
-            const t = E.tileAt(pr.x, pr.y);
-            if (t === G.T.WALL || t === G.T.BUILDING) { pr.life = 0; E.burst(pr.x, pr.y, '#c9b38f', 3, 60, { life: 0.3 }); continue; }
+            if (pr.kind === 'wave') {
+                // a wave grows outward from where it was cast; walls shelter what is behind them (checked per target)
+                pr.rad += pr.speed * dt;
+                pr.x = pr.ox + Math.cos(pr.dir) * pr.rad; pr.y = pr.oy + Math.sin(pr.dir) * pr.rad;
+            } else {
+                pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+                const t = E.tileAt(pr.x, pr.y);
+                if (t === G.T.WALL || t === G.T.BUILDING) { pr.life = 0; E.burst(pr.x, pr.y, pr.kind === 'bolt' ? pr.color : '#c9b38f', pr.kind === 'bolt' ? 8 : 3, 60, { life: 0.3 }); continue; }
+            }
             if (pr.team === 'fx') continue; // another player's arrow, only for show: its hit arrives from their page
             if (pr.team === 'player') {
                 for (const a of g.actors.concat(pr.reflected ? [] : pvpTargets())) {
                     if (a.dead || !C.canDamage('player', a.team) || pr.hit.has(a.id)) continue;
-                    if (Math.hypot(a.x - pr.x, a.y - pr.y) > a.r + pr.r) continue;
+                    if (pr.kind === 'wave') {
+                        if (!C.waveHit(pr.ox, pr.oy, pr.dir, pr.arc, pr.rad, pr.band, a.x, a.y, a.r) || E.wallBetween(pr.ox, pr.oy, a.x, a.y)) continue;
+                    } else if (Math.hypot(a.x - pr.x, a.y - pr.y) > a.r + pr.r) continue;
                     pr.hit.add(a.id);
-                    const ang = Math.atan2(pr.vy, pr.vx);
+                    const ang = pr.kind === 'wave' ? Math.atan2(a.y - pr.oy, a.x - pr.ox) : Math.atan2(pr.vy, pr.vx);
+                    if (pr.spell) {
+                        if (pr.kind === 'bolt') E.burst(pr.x, pr.y, pr.color, 10 + Math.round(12 * pr.charge), 140, { life: 0.4 });
+                        spellHit(p, pr, a, pr.dmg, ang);
+                        if (pr.chain) chainFrom(p, pr, a);
+                        if (pr.pierce > 0) { pr.pierce--; continue; }
+                        pr.life = 0;
+                        break;
+                    }
                     if (a.kind === 'remote') {
                         if (pr.ability) WHW.online.hitRemote(a, { kind: 'ab', w: pr.abil, dmg: pr.dmg, ang });
                         else WHW.online.hitRemote(a, { kind: 'arrow', w: pr.w, dmg: pr.dmg * (rnd() < (pr.crit || 0) ? 1.5 : 1), ang, perfect: pr.steady, x: pr.x, y: pr.y });
@@ -1497,6 +1875,17 @@
             ctx.beginPath(); ctx.moveTo(tip - 66, 0); ctx.lineTo(tip - 8, 0); ctx.stroke();
             ctx.fillStyle = col;
             ctx.beginPath(); ctx.moveTo(tip + 6, 0); ctx.lineTo(tip - 10, -5); ctx.lineTo(tip - 10, 5); ctx.closePath(); ctx.fill();
+        } else if (cls === 'staff') {
+            // a gnarled shaft with a metal collar and an orb in its magic's colour that swells as it charges
+            const tip = w.r, sm = D.STAFF_MAGIC[opts.magic], glow = sm ? sm.color : '#bfe3ff', ch = w.charge || 0;
+            ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 3.5;
+            ctx.beginPath(); ctx.moveTo(tip - 62, 1); ctx.quadraticCurveTo(tip - 34, -2, tip - 9, 0); ctx.stroke();
+            ctx.strokeStyle = col; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(tip - 9, -5); ctx.quadraticCurveTo(tip - 2, -7, tip + 1, -3); ctx.moveTo(tip - 9, 5); ctx.quadraticCurveTo(tip - 2, 7, tip + 1, 3); ctx.stroke();
+            if (ch > 0) { ctx.globalAlpha = 0.25 + 0.3 * ch; ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(tip - 2, 0, 6 + 9 * ch + (ch >= 1 ? Math.sin(E.time * 18) * 1.5 : 0), 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
+            ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(tip - 2, 0, 4 + 1.5 * ch, 0, TAU); ctx.fill();
+            ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.arc(tip - 3.5, -1.5, 1.5, 0, TAU); ctx.fill();
+            if ((w.over || 0) > D.STAFF_OVER.safe) { ctx.strokeStyle = Math.floor(E.time * 16) % 2 ? '#ffffff' : '#ff4d4d'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(tip - 2, 0, 11 + Math.random() * 4, 0, TAU); ctx.stroke(); }
         } else {
             const len = P.len;
             if (cls === 'sword' || cls === 'dagger') {
@@ -1521,6 +1910,15 @@
                 ctx.strokeStyle = col; ctx.lineWidth = 5;
                 ctx.beginPath(); ctx.moveTo(len - 2, -16); ctx.quadraticCurveTo(len + 6, 0, len - 2, 16); ctx.stroke();
             }
+        }
+        // Burning Stick: the whole weapon in flames
+        if (opts.fire && cls !== 'bow') {
+            const end = C.hasReach(cls) ? w.r + 4 : P.len + 2, from = C.hasReach(cls) ? w.r - 60 : 6;
+            ctx.globalAlpha = 0.45 + Math.sin(E.time * 23) * 0.1; ctx.strokeStyle = '#ff7b3a'; ctx.lineWidth = 9;
+            ctx.beginPath(); ctx.moveTo(from, 0); ctx.lineTo(end, 0); ctx.stroke();
+            ctx.globalAlpha = 0.8; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.moveTo(from + 4, 0); ctx.lineTo(end - 2, 0); ctx.stroke();
+            ctx.globalAlpha = 1;
         }
         ctx.restore();
     };
@@ -1557,6 +1955,16 @@
             else circle(ctx, p.x, p.y, p.r + 6 + Math.sin(E.time * 14) * 1.5, null, a.color, 2);
         }
         if (p.protectedUntil > E.time && !g.inTown) circle(ctx, p.x, p.y, p.r + 7, 'rgba(120,200,255,0.12)', 'rgba(150,215,255,0.6)', 1.5);
+        if (p.beam) {
+            const a = D.ABILITIES[p.beam.id], ex = p.x + Math.cos(p.beam.ang) * p.beam.len, ey = p.y + Math.sin(p.beam.ang) * p.beam.len;
+            ctx.save(); ctx.lineCap = 'round';
+            ctx.globalAlpha = 0.3 + Math.sin(E.time * 30) * 0.06; ctx.strokeStyle = a.color; ctx.lineWidth = a.width * 2;
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+            ctx.globalAlpha = 0.9; ctx.strokeStyle = '#eaf8ff'; ctx.lineWidth = 4 + Math.random() * 2;
+            ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+            ctx.restore();
+        }
+        if (p.ignite) circle(ctx, p.x, p.y, p.r + 4 + Math.sin(E.time * 20) * 1.5, null, p.ignite.emptyAt === null ? 'rgba(255,123,58,0.7)' : 'rgba(255,60,40,0.95)', 2);
         if (p.riposteUntil > E.time) { ctx.setLineDash([4, 4]); circle(ctx, p.x, p.y, p.r + 9, 'rgba(255,231,163,0.12)', '#ffe7a3', 2.5); ctx.setLineDash([]); }
         if (p.hookFx && (p.hookFx.until > E.time || p.pull)) {
             const h = p.hookFx;
@@ -1570,7 +1978,7 @@
         ctx.globalAlpha = 1;
         if (b) {
             drawTrail(ctx, p);
-            A.drawWeapon(ctx, p.x, p.y, p.weapon, b.cls, b.tier);
+            A.drawWeapon(ctx, p.x, p.y, p.weapon, b.cls, b.tier, { magic: b.magic, fire: !!p.ignite });
         }
         const shb = W.baseOf(shieldItem());
         if (shb) A.drawShield(ctx, p.x, p.y, p.shield.theta, p.shield.up, shb.tier, p.shield.brokenUntil > E.time);
@@ -1613,7 +2021,7 @@
         const wb = D.GEAR_BY_ID[info.w];
         if (wb && !rp.dead) {
             drawTrail(ctx, rp);
-            A.drawWeapon(ctx, rp.x, rp.y, rp.weapon, wb.cls, wb.tier, { rival: true });
+            A.drawWeapon(ctx, rp.x, rp.y, rp.weapon, wb.cls, wb.tier, { rival: true, magic: wb.magic });
         }
         const sb = D.GEAR_BY_ID[info.sh];
         if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false);
@@ -1927,6 +2335,47 @@
                 ctx.strokeStyle = '#e9e2c8'; ctx.lineWidth = 1.5;
                 for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.moveTo(-9, 0); ctx.lineTo(9, 0); ctx.stroke(); ctx.rotate(Math.PI / 4); }
                 ctx.beginPath(); ctx.arc(0, 0, 6, 0, TAU); ctx.stroke();
+                ctx.restore();
+            } else if (pr.kind === 'bolt') {
+                const a = Math.atan2(pr.vy, pr.vx), col = pr.color || '#ff7b3a', r = pr.r;
+                ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(a);
+                if (pr.look === 'shard') {
+                    // an ice lance: a long pale crystal
+                    ctx.globalAlpha = 0.3; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r * 1.6, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 1; ctx.beginPath(); ctx.moveTo(r * 2.4, 0); ctx.lineTo(0, -r * 0.75); ctx.lineTo(-r * 1.8, 0); ctx.lineTo(0, r * 0.75); ctx.closePath(); ctx.fill();
+                    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(r * 2, 0); ctx.lineTo(0, -r * 0.25); ctx.lineTo(-r, 0); ctx.closePath(); ctx.fill();
+                } else if (pr.look === 'spark') {
+                    // a ball of lightning: a white core with arcs flickering off it
+                    ctx.globalAlpha = 0.35; ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r * 1.9, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 1; ctx.strokeStyle = col; ctx.lineWidth = 1.5; ctx.beginPath();
+                    for (let i = 0; i < 4; i++) { const aa = Math.random() * TAU; ctx.moveTo(0, 0); ctx.lineTo(Math.cos(aa) * r * 1.4 + (Math.random() - 0.5) * 4, Math.sin(aa) * r * 1.4); ctx.lineTo(Math.cos(aa + 0.4) * r * 2.4, Math.sin(aa + 0.4) * r * 2.4); }
+                    ctx.stroke();
+                    ctx.fillStyle = '#fffbe0'; ctx.beginPath(); ctx.arc(0, 0, r * 0.8, 0, TAU); ctx.fill();
+                } else {
+                    // a fireball: a hot core in a glow, with a short tail
+                    ctx.globalAlpha = 0.35; ctx.fillStyle = col;
+                    ctx.beginPath(); ctx.moveTo(-r * 3.2, 0); ctx.lineTo(0, -r); ctx.lineTo(0, r); ctx.closePath(); ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, r * 1.7, 0, TAU); ctx.fill();
+                    ctx.globalAlpha = 1; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+                    ctx.fillStyle = '#fff3c4'; ctx.beginPath(); ctx.arc(r * 0.2, 0, r * 0.5, 0, TAU); ctx.fill();
+                }
+                ctx.restore();
+                if (E.perf !== 'low' && pr.team !== 'fx' && Math.random() < 0.5) E.burst(pr.x, pr.y, col, 1, 25, { life: 0.3, size: 3 });
+            } else if (pr.kind === 'wave') {
+                // a flame wave: a thick arc that thins out as it spreads
+                const k = Math.max(0, Math.min(1, pr.life / 0.25)), col = pr.color || '#ff7b3a';
+                ctx.save(); ctx.lineCap = 'round';
+                ctx.globalAlpha = 0.35 * k; ctx.strokeStyle = col; ctx.lineWidth = pr.band;
+                ctx.beginPath(); ctx.arc(pr.ox, pr.oy, pr.rad, pr.dir - pr.arc / 2, pr.dir + pr.arc / 2); ctx.stroke();
+                if (pr.look === 'jagged') {
+                    // a thunderclap crackles along its front
+                    ctx.globalAlpha = k; ctx.strokeStyle = '#fffbe0'; ctx.lineWidth = 1.5; ctx.beginPath();
+                    const n = Math.max(6, Math.round(pr.arc * pr.rad / 14));
+                    for (let i = 0; i <= n; i++) { const aa = pr.dir - pr.arc / 2 + pr.arc * i / n, rr = pr.rad + pr.band * 0.3 + (Math.random() - 0.5) * pr.band * 0.6; const x = pr.ox + Math.cos(aa) * rr, y = pr.oy + Math.sin(aa) * rr; if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); }
+                    ctx.stroke();
+                }
+                ctx.globalAlpha = 0.9 * k; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = Math.max(2, pr.band * 0.25);
+                ctx.beginPath(); ctx.arc(pr.ox, pr.oy, pr.rad + pr.band * 0.2, pr.dir - pr.arc / 2, pr.dir + pr.arc / 2); ctx.stroke();
                 ctx.restore();
             } else if (pr.kind === 'arrow') {
                 const a = Math.atan2(pr.vy, pr.vx);

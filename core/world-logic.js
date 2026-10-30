@@ -178,7 +178,7 @@
     }
     // Saves from before skill trees kept learned abilities in "abilities"; their ids are still skills of the same class
     // Skills that were replaced keep their place in the tree: a save that learned the old one has the new one
-    const RENAMED = { blink: 'grapple', envenom: 'riposte', fan_of_knives: 'quick_cut', caltrops: 'deadly_throw', quick_hands: 'opportunist' };
+    const RENAMED = { blink: 'grapple', envenom: 'riposte', fan_of_knives: 'quick_cut', caltrops: 'deadly_throw', quick_hands: 'opportunist', fire_nova: 'burning_stick', frost_armor: 'ice_beam' };
     const renamed = (id) => (Object.prototype.hasOwnProperty.call(RENAMED, id) ? RENAMED[id] : id);
     function cleanSkills(raw, legacy) {
         const out = { learned: {} };
@@ -410,7 +410,7 @@
         }
     }
     function playerStats(s) {
-        const out = { maxHp: D.COMBAT.player.hp, armor: 0, speed: 1, rubies: 0, luck: 0, yield: 0, fireResist: 0, stamRegen: 1 };
+        const out = { maxHp: D.COMBAT.player.hp, armor: 0, speed: 1, rubies: 0, luck: 0, yield: 0, fireResist: 0, stamRegen: 1, manaRegen: 1 };
         for (const slot of SLOTS) {
             const st = gearStats(findGear(s, s.equip[slot]));
             if (!st) continue;
@@ -419,6 +419,7 @@
         }
         Object.assign(out, { crit: 0, dmgBy: {}, arrowSave: 0, lifesteal: 0, momentum: 0, backstab: 0, regen: 0, pierce: 0, thorns: 0, dodge: 0 }, MULT_BONUS);
         const cid = classId(s);
+        out.usesMana = !!D.CLASSES[cid].mana; // abilities and staff spells cost mana, not stamina
         addBonus(out, D.CLASSES[cid].bonus);
         for (const id in s.skills.learned) { const pk = D.PERKS[id]; if (pk && pk.cls === cid) addBonus(out, pk.bonus); }
         out.maxHp = Math.round(out.maxHp);

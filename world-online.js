@@ -169,8 +169,12 @@
         if (u.hp < r.hp) r.flash = 0.12;
         r.hp = u.hp; r.maxHp = u.mhp; r.fl = u.fl;
         // they shot an arrow: show it flying (their page sends the hit if it lands on someone)
+        // (a staff's spell instead: an odd shot number is a bolt, an even one a wave)
         if (r.shot >= 0 && u.shot > r.shot && ON.zone) {
-            game().projectiles.push({ kind: 'arrow', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * 900, vy: Math.sin(u.a) * 900, r: 4, life: 0.9, hit: new Set() });
+            const wb = r.info && D.GEAR_BY_ID[r.info.w], sm = wb && D.STAFF_MAGIC[wb.magic], P = game().projectiles;
+            if (!sm) P.push({ kind: 'arrow', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * 900, vy: Math.sin(u.a) * 900, r: 4, life: 0.9, hit: new Set() });
+            else if (u.shot % 2) P.push({ kind: 'bolt', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * sm.thrust.speed, vy: Math.sin(u.a) * sm.thrust.speed, r: sm.thrust.r, life: sm.thrust.life, color: sm.color, look: sm.thrust.look, hit: new Set() });
+            else P.push({ kind: 'wave', team: 'fx', ox: u.x, oy: u.y, dir: u.a, arc: (sm.swing.arcMin + sm.swing.arcMax) / 2, rad: 20, speed: sm.swing.speed, band: sm.swing.band, x: u.x, y: u.y, vx: 0, vy: 0, r: 0, life: sm.swing.life, color: sm.color, look: sm.swing.look, hit: new Set() });
         }
         r.shot = u.shot;
         // they cast an ability: show it (their page sends the hits)
@@ -199,7 +203,7 @@
     function myPos() {
         const p = game().player, w = p.weapon;
         let r = 0;
-        if (w && w.cls === 'spear') r = w.r; else if (w && w.cls === 'bow') r = w.draw * 100;
+        if (w && C.hasReach(w.cls)) r = w.r; else if (w && w.cls === 'bow') r = w.draw * 100;
         let fl = 0;
         if (p.shield.up) fl |= F.shield;
         if (p.dead) fl |= F.dead;
@@ -225,7 +229,7 @@
         ON.db.update(Z('i/' + ON.uid), Object.assign(info, { t: ON.db.serverNow() }));
     }
     function trail(r, P) {
-        const len = r.weapon.cls === 'spear' ? r.weapon.r : P.len || 0;
+        const len = C.hasReach(r.weapon.cls) ? r.weapon.r : P.len || 0;
         if (!len || r.weapon.cls === 'bow') { r.trail = []; return; }
         const v = Math.abs(r.weapon.omega) * len;
         r.trail.push({ x: r.x + Math.cos(r.weapon.theta) * len, y: r.y + Math.sin(r.weapon.theta) * len, kind: v >= (P.vFull || 1e9) * 0.97 ? 'perfect' : v >= (P.vMin || 1e9) ? 'hit' : 'slow' });
@@ -245,7 +249,7 @@
             r.x = s.x; r.y = s.y;
             const w = r.weapon;
             w.prevTheta = w.theta; w.theta = s.a; w.omega = C.wrap(s.a - w.prevTheta) / dt;
-            if (w.cls === 'spear') w.r = Math.max(D.WEAPON_CLASSES.spear.reachMin, s.r);
+            if (C.hasReach(w.cls)) w.r = Math.max(D.WEAPON_CLASSES[w.cls].reachMin, s.r);
             if (w.cls === 'bow') { w.draw = s.r / 100; w.drawing = !!(s.fl & F.draw); }
             r.facing = s.a;
             r.shield.theta = s.sa; r.shield.up = !!(s.fl & F.shield);
@@ -308,10 +312,15 @@
         ON.lastHitAt[raw.from] = E.time;
         g.lastPvp = { uid: raw.from, name: r.info ? r.info.n : 'Someone', at: E.time };
         p.protectedUntil = 0;
-        A.hurtPlayer(v.dmg, {
+        // a staff's spell burns or builds frost as its magic does (from the game's table, not from what they sent)
+        const sm = raw.k === 'spell' ? D.STAFF_MAGIC[D.GEAR_BY_ID[raw.w].magic] : null;
+        const burn = !!(sm && (sm.thrust.burn || sm.swing.burn));
+        const landed = A.hurtPlayer(v.dmg, {
+            burn, fire: burn, fromAngle: sm && Number.isFinite(+raw.ang) ? +raw.ang + Math.PI : undefined,
             from: { x: last.x, y: last.y }, kb: 160, remote: r, // a Riposte up just then sends it back at them
             onParry: () => ON.db.push(Z('h/' + raw.from), { from: ON.uid, k: 'parry', t: ON.db.serverNow() }),
         });
+        if (landed > 0 && sm && sm.frost) A.frostPlayer(sm.frost);
     }
     // Another player's ability hit me. Its effects come from the game's table (v.ability), not from what they sent.
     function takeAbility(raw, v, r, last) {

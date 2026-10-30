@@ -136,6 +136,131 @@ test('spear: flicking out thrusts fast, pulling back does not, and the reach fol
     assert.ok(slowMax < P.vMin, 'slow push ' + slowMax);
     assert.ok(C.thrustHit(0, 0, 0, 50, 70, 74, 0, 8));
     assert.equal(C.thrustHit(0, 0, 0, 50, 70, 74, 30, 8), null);
+    // the spear's own hitbox: a longer tip and some leeway either side of the shaft
+    assert.ok(C.thrustHit(0, 0, 0, 50, P.reachMax, P.reachMax - 20, 14, 8, P.tipLen, P.hitWidth), 'a near miss beside the tip still lands');
+    assert.equal(C.thrustHit(0, 0, 0, 50, P.reachMax, P.reachMax - 20, 14, 8), null, 'it would miss with no leeway');
+});
+
+test('staff: holding it drawn back charges the next spell, and a full charge hits hardest', () => {
+    const P = D.WEAPON_CLASSES.staff, ch = D.STAFF_MAGIC.fire.charge;
+    const w = C.newWeapon('staff', 0);
+    assert.equal(w.r, P.reachMin);
+    for (let t = 0; t < P.chargeTime / 2; t += DT) { C.spearStep(w, 30, DT, P); C.staffCharge(w, DT, P); }
+    assert.ok(w.charge > 0.4 && w.charge < 0.6, 'half the time, half charged: ' + w.charge);
+    for (let t = 0; t < P.chargeTime; t += DT) C.staffCharge(w, DT, P);
+    assert.equal(w.charge, 1);
+    // reaching out does not charge it
+    const out = C.newWeapon('staff', 0);
+    for (let i = 0; i < 120; i++) { C.spearStep(out, 200, DT, P); C.staffCharge(out, DT, P); }
+    assert.ok(out.charge < 0.15, 'only the moment before the tip left: ' + out.charge);
+    assert.equal(C.chargeMult(0, ch), ch.min);
+    assert.ok(C.chargeMult(0.5, ch) < 0.5, 'half a charge is worth less than half');
+    assert.equal(C.chargeMult(1, ch), ch.full);
+    // a full charge every 1.4 s beats spamming quarter charges every 0.55 s
+    assert.ok(C.chargeMult(1, ch) / 1.4 > C.chargeMult(0.25, ch) / 0.55);
+});
+
+test('mana comes back slower than stamina, much faster standing still, and not while it is being drained', () => {
+    const M = D.COMBAT.mana, S = D.COMBAT.stamina;
+    assert.ok(M.regen < S.regen && M.delay >= S.delay);
+    const regen = (still) => { const m = { val: 0, idle: 0 }; let s = 0; for (let t = 0; t < 4; t += DT) { s += still ? DT : 0; C.manaStep(m, 0, DT, 1, s); } return m.val; };
+    const st = { val: 0, idle: 0, winded: false };
+    for (let t = 0; t < 4; t += DT) C.staminaStep(st, 0, DT);
+    assert.ok(regen(false) < st.val / 2, 'walking: ' + regen(false) + ' vs stamina ' + st.val);
+    assert.ok(regen(true) > regen(false) * 1.8, 'standing still: ' + regen(true));
+    assert.ok(regen(false) < 12, 'a slow trickle on its own: ' + regen(false));
+    // the standing-still boost only starts after a while
+    const m1 = { val: 0, idle: 5 }, m2 = { val: 0, idle: 5 };
+    C.manaStep(m1, 0, 1, 1, M.stillAfter - 0.1); C.manaStep(m2, 0, 1, 1, M.stillAfter);
+    assert.equal(m1.val, M.regen); assert.equal(m2.val, M.regen * M.stillMult);
+    const m = { val: 50, idle: 5 };
+    C.manaStep(m, 10, 0.5);
+    assert.equal(m.val, 45); assert.equal(m.idle, 0);
+    for (let t = 0; t < 60; t += DT) C.manaStep(m, 0, DT, 1, 99);
+    assert.equal(m.val, M.max);
+});
+
+test('overcharge: a little more damage the longer, and past the safe part each staff turns on you its own way', () => {
+    const O = D.STAFF_OVER, SM = D.STAFF_MAGIC;
+    assert.equal(C.overBonus(0), 1);
+    assert.ok(C.overBonus(O.max / 2) > 1 && C.overBonus(O.max / 2) < C.overBonus(O.max));
+    assert.equal(C.overBonus(99), 1 + O.bonus, 'the bonus stops growing');
+    for (const id in SM) assert.deepEqual(C.overPenalty(SM[id].over, O.safe), { past: 0, burnDps: 0, slow: 0, stun: 0 }, id + ' is safe at first');
+    const fire = (s) => C.overPenalty(SM.fire.over, O.safe + s), frost = (s) => C.overPenalty(SM.frost.over, O.safe + s), bolt = (s) => C.overPenalty(SM.lightning.over, O.safe + s);
+    assert.ok(fire(2).burnDps > fire(0.5).burnDps && fire(1).slow === 0 && fire(1).stun === 0, 'fire burns, more the longer');
+    assert.ok(frost(1).slow > frost(0.2).slow && frost(99).slow === SM.frost.over.max && SM.frost.over.linger > 0, 'frost slows, up to a limit, and lingers');
+    assert.ok(bolt(1).stun > bolt(0.2).stun && bolt(99).stun === SM.lightning.over.max, 'lightning stuns');
+});
+
+test('a spell costs less mana the less it was charged', () => {
+    const m = D.STAFF_MAGIC.fire.thrust.mana;
+    assert.equal(C.spellCost(m, 1), m);
+    assert.equal(C.spellCost(m, 0), m * D.STAFF_MANA_MIN);
+    assert.ok(C.spellCost(m, 0.5) > C.spellCost(m, 0.2) && C.spellCost(m, 0.5) < m);
+    assert.equal(C.spellCost(m, 5), m, 'never more than full price');
+});
+
+test('desperation: Chain Lightning hits harder the lower your health', () => {
+    const a = D.ABILITIES.chain_lightning;
+    assert.equal(C.desperation(a.desperate, 100, 100), 1);
+    assert.ok(C.desperation(a.desperate, 20, 100) > C.desperation(a.desperate, 60, 100));
+    assert.equal(C.desperation(a.desperate, 0, 100), 1 + a.desperate);
+    assert.equal(C.desperation(undefined, 10, 100), 1);
+});
+
+test('frost: every few spell hits in a row slows the target, and old stacks melt', () => {
+    const F = D.STAFF_MAGIC.frost.frost, t = { status: { chillUntil: 0 } };
+    for (let i = 1; i < F.stacks; i++) assert.deepEqual(C.frostStack(t, F, i * 0.5), { n: i, slowed: false });
+    assert.deepEqual(C.frostStack(t, F, F.stacks * 0.5), { n: 0, slowed: true });
+    assert.equal(t.status.chillUntil, F.stacks * 0.5 + F.slow);
+    const u = { status: { chillUntil: 0 } };
+    C.frostStack(u, F, 0);
+    assert.equal(C.frostStack(u, F, F.keep + 1).n, 1, 'a stack too old is gone');
+});
+
+test('staff magic: fire for one target, lightning for groups, frost in between', () => {
+    const SM = D.STAFF_MAGIC;
+    assert.deepEqual(Object.keys(SM).sort(), ['fire', 'frost', 'lightning']);
+    // what one thrust and one swing deal to a single enemy, and to five bunched up in front of you
+    const single = (m) => m.thrust.dmg;
+    const group = (m) => { const ch = m.thrust.chain; let bolt = m.thrust.dmg * (1 + (m.thrust.pierce || 0)); if (ch) for (let i = 1, d = m.thrust.dmg; i <= Math.min(4, ch.jumps); i++) { d *= ch.falloff; bolt += d; } return bolt + 5 * m.swing.dmg * Math.min(1, m.swing.arcMax / 2); };
+    assert.ok(single(SM.fire) > single(SM.frost) && single(SM.frost) > single(SM.lightning));
+    assert.ok(group(SM.lightning) > group(SM.frost) && group(SM.frost) > group(SM.fire));
+    for (const id in SM) {
+        const m = SM[id];
+        assert.ok(m.users.every(c => D.CLASSES[c] && D.CLASSES[c].mana), id + ': its casters have mana');
+        for (const sp of [m.thrust, m.swing]) assert.ok(sp.mana > 0 && sp.dmg > 0 && sp.speed > 0 && sp.life > 0, id);
+        assert.ok(m.mat.slice(1).every(x => Object.keys(x).every(k => D.MATERIALS_BY_ID[k])), id + ' recipe materials');
+    }
+    assert.ok(SM.frost.frost && SM.frost.thrust.frost && SM.frost.swing.frost);
+    for (let t = 1; t <= 5; t++) for (const id in SM) assert.ok(D.GEAR_BY_ID[id + 'staff_' + t], id + ' tier ' + t);
+});
+
+test('staff spells: a wave hits what is inside its arc at its current distance', () => {
+    assert.ok(C.waveHit(0, 0, 0, 1.4, 100, 18, 100, 0, 10));
+    assert.ok(C.waveHit(0, 0, 0, 1.4, 100, 18, 100 * Math.cos(0.65), 100 * Math.sin(0.65), 10), 'near the edge of the arc');
+    assert.equal(C.waveHit(0, 0, 0, 1.4, 100, 18, 0, 100, 10), false, 'off to the side');
+    assert.equal(C.waveHit(0, 0, 0, 1.4, 100, 18, 40, 0, 10), false, 'already passed');
+    assert.equal(C.waveHit(0, 0, 0, 1.4, 100, 18, 180, 0, 10), false, 'not reached yet');
+});
+
+test('Burning Stick: the fire eats mana faster and faster, then health; the longer it burns the bigger the blow', () => {
+    const a = D.ABILITIES.burning_stick;
+    assert.ok(C.igniteDrain(a, 3, null).mana > C.igniteDrain(a, 1, null).mana);
+    assert.equal(C.igniteDrain(a, 3, null).hp, 0, 'health is safe while there is mana');
+    assert.equal(C.igniteDrain(a, 5, 4).mana, 0);
+    assert.ok(C.igniteDrain(a, 6, 4).hp > C.igniteDrain(a, 4.5, 4).hp);
+    // a full bar of mana lasts a few seconds; 90 health (a Mystic with no armor) a few more
+    let mp = D.COMBAT.mana.max, t = 0;
+    while (mp > 0) { mp -= C.igniteDrain(a, t, null).mana * DT; t += DT; }
+    const empty = t;
+    let hp = 90;
+    while (hp > 0) { hp -= C.igniteDrain(a, t, empty).hp * DT; t += DT; }
+    assert.ok(empty > 3.5 && empty < 6, 'mana lasts ' + empty);
+    assert.ok(t - empty > 3.5 && t - empty < 8, 'then health ' + (t - empty));
+    const quick = C.igniteBlow(a, 0.5), long = C.igniteBlow(a, empty);
+    assert.ok(long.dmg > quick.dmg * 2 && long.kb > quick.kb && long.stun > quick.stun);
+    assert.deepEqual(C.igniteBlow(a, 99), C.igniteBlow(a, a.maxSec), 'it stops growing at maxSec');
 });
 
 test('bow: the pull sets the aim and draw, the draw rises at a limited rate, weak draws cancel, steady shots', () => {

@@ -376,6 +376,7 @@ test('classes: the Mystic unlocks by beating The Overgrown, the Lancer with char
     assert.ok(W.unlockClass(s, 'mystic').ok);
     W.setClass(s, 'mystic');
     let ps = W.playerStats(s);
+    assert.equal(ps.usesMana, true, 'the Mystic pays for abilities with mana');
     assert.equal(ps.abilityCd, 0.9);
     assert.equal(ps.abilityDmg, 1.15);
     W.learnSkill(s, 'chain_lightning'); W.learnSkill(s, 'conduit');
@@ -387,6 +388,7 @@ test('classes: the Mystic unlocks by beating The Overgrown, the Lancer with char
     ps = W.playerStats(s);
     assert.equal(ps.momentum, 0.2);
     assert.equal(ps.dmgBy.spear, 1.15);
+    assert.equal(ps.usesMana, false, 'only the Mystic has mana');
     W.learnSkill(s, 'lunge'); W.learnSkill(s, 'gathering_speed'); W.learnSkill(s, 'javelin'); W.learnSkill(s, 'skewer');
     ps = W.playerStats(s);
     assert.ok(Math.abs(ps.momentum - 0.5) < 1e-9);
@@ -444,7 +446,7 @@ test('older saves keep their abilities: classes unlock, and each class gets its 
     assert.deepEqual(s.classes.unlocked, { warrior: true, rogue: true, mystic: true });
     assert.equal(s.classes.active, 'rogue');
     assert.deepEqual(W.abilityKit(s), ['grapple', null, null], 'Blink is the Grappling Hook now');
-    assert.deepEqual(s.skills.learned, { whirlwind: true, grapple: true, fire_nova: true });
+    assert.deepEqual(s.skills.learned, { whirlwind: true, grapple: true, burning_stick: true }, 'Fire Nova is Burning Stick now');
     assert.equal(s.abilities, undefined);
     // from before skill trees: three fixed abilities per class
     const t = W.migrate({ v: 1, classes: { active: 'warrior', unlocked: { warrior: true } }, abilities: { learned: { whirlwind: true, shockwave: true, berserk: true } } }, NOW);
@@ -483,9 +485,9 @@ test('material tooltips: every material and supply says where it comes from', ()
 test('every class has a tree of three branches, four skills deep, and every skill is sound', () => {
     const seen = new Set();
     const bossAt = (b) => (b ? D.ZONE_ORDER.indexOf(D.BOSSES[b].zone) : -1);
-    const KINDS = ['nova', 'cone', 'blink', 'charge', 'volley', 'shot', 'chain', 'smoke', 'heal', 'buff', 'leap', 'line', 'field', 'step', 'hook', 'parry'];
+    const KINDS = ['nova', 'cone', 'blink', 'charge', 'volley', 'shot', 'chain', 'smoke', 'heal', 'buff', 'leap', 'line', 'field', 'step', 'hook', 'parry', 'ignite', 'beam'];
     const BONUS = ['maxHp', 'armor', 'speed', 'crit', 'dmg', 'blockStam', 'arrowSave', 'abilityCd', 'abilityDmg', 'abilityStam', 'stamRegen', 'lifesteal',
-        'dashCd', 'dashStam', 'momentum', 'backstab', 'regen', 'pierce', 'thorns', 'dodge', 'fireResist', 'stunnedDmg'];
+        'dashCd', 'dashStam', 'momentum', 'backstab', 'regen', 'pierce', 'thorns', 'dodge', 'fireResist', 'stunnedDmg', 'manaRegen'];
     const stats = W.freshState(NOW).stats;
     for (const id of D.ABILITY_ORDER) assert.ok(!D.PERKS[id], id + ' is both an ability and a perk');
     for (const c of D.CLASS_ORDER) {
@@ -521,6 +523,8 @@ test('every class has a tree of three branches, four skills deep, and every skil
                     if (sk.kind === 'buff') assert.ok(sk.time > 0, id);
                     if (sk.kind === 'hook') assert.ok(sk.range > 0 && sk.stun > 0, id);
                     if (sk.kind === 'parry') assert.ok(sk.window > 0 && sk.stun > 0 && sk.exhaust > 0, id);
+                    if (sk.kind === 'beam') assert.ok(sk.len > 0 && sk.width > 0 && sk.tick > 0 && sk.drain > 0 && sk.turn > 0 && sk.maxTime > sk.minTime, id);
+                    if (sk.kind === 'ignite') assert.ok(sk.drain.mana > 0 && sk.drain.hp > 0 && sk.perSec > 0 && sk.maxSec > 0 && sk.stunPerSec > 0, id);
                     if (sk.charges !== undefined) assert.ok(Number.isInteger(sk.charges) && sk.charges >= 1, id + ' charges');
                 } else {
                     assert.equal(sk.type, 'perk', id);

@@ -112,19 +112,35 @@
     }
 
     // ---------------- PvP ----------------
+    // the most a Singularity can raise fire, frost and lightning damage
+    const AMP_MAX = Math.max(1, ...Object.values(D.ABILITIES).map(a => a.amp || 1));
+    // a staff's strongest spell (fully overcharged, in a rift), as a multiple of its damage
+    function spellMult(b) {
+        const sm = b && D.STAFF_MAGIC[b.magic];
+        return sm ? Math.max(sm.thrust.dmg, sm.swing.dmg) * sm.charge.full * (1 + D.STAFF_OVER.bonus) * AMP_MAX : 0;
+    }
     function maxHit(weaponId, kind) {
         const b = D.GEAR_BY_ID[weaponId];
         if (!b || b.slot !== 'weapon') return 0;
-        const cap = b.dmg * PVP.capMult;
-        return kind === 'bash' ? cap * D.WEAPON_CLASSES.spear.bashDmg * 2 : cap;
+        const cap = b.dmg * PVP.capMult, P = D.WEAPON_CLASSES[b.cls];
+        if (kind === 'bash') return cap * (P.bashDmg || 0) * 2;
+        if (kind === 'spell') return cap * spellMult(b);
+        return P.melee ? cap * P.melee : cap; // a staff's own blows are weak
     }
     function reachFor(weaponId, kind) {
         const b = D.GEAR_BY_ID[weaponId];
         if (kind === 'arrow') return PVP.arrowRange;
         if (kind === 'parry') return 260;
         if (!b) return 0;
+        if (kind === 'spell') {
+            const sm = D.STAFF_MAGIC[b.magic];
+            if (!sm) return 0;
+            // how far each spell flies, plus how far a chaining one can jump on from there
+            const far = (sp) => sp.speed * (sp.kind === 'bolt' ? 1.1 : 1) * sp.life + (sp.chain ? sp.chain.jumps * sp.chain.range : 0);
+            return Math.max(far(sm.thrust), far(sm.swing)) + PVP.moveAllow + PVP.hitR + PVP.lag;
+        }
         const P = D.WEAPON_CLASSES[b.cls];
-        return (b.cls === 'spear' ? P.reachMax : (P.len || 0)) + PVP.hitR + PVP.lag;
+        return (P.reachMax || P.len || 0) + PVP.hitR + PVP.lag;
     }
     // ---------------- PvP: abilities ----------------
     // An ability hit is { k: 'ab', w: ability id, dmg, ang }. What it does besides damage (stun, chill, burn, push) comes from the
@@ -141,11 +157,12 @@
             case 'blink': r = a.radius || 0; break; // Disengage's kick
             case 'charge': r = a.dist + a.width; break;
             case 'leap': r = a.dist + a.radius; break;
-            case 'line': r = a.len + a.width; break;
+            case 'line': case 'beam': r = a.len + a.width; break;
             case 'knives': case 'volley': case 'shot': r = a.speed * a.life; break;
             case 'chain': r = a.range + a.jump * a.jumps; break;
             case 'step': r = a.range + 40; break;
             case 'hook': case 'parry': r = a.range; break;
+            case 'ignite': r = Math.max(...Object.values(D.WEAPON_CLASSES).map(P => P.reachMax || P.len || 0)); break; // a weapon blow
             case 'field': r = (a.at === 'self' ? 0 : a.range) + a.r; break;
         }
         return r + (a.time || a.life || 0) * PVP.moveAllow + PVP.hitR + PVP.lag;
@@ -154,6 +171,7 @@
     function abilityBurst(a) {
         if (a.charges > 1) return { n: a.charges, span: a.cd * PVP.abilityCdMin }; // every charge at once
         if (a.kind === 'field') return { n: Math.floor((a.time - (a.delay || 0)) / a.tick + 1e-6) + 1, span: a.time + 1 };
+        if (a.kind === 'beam') return { n: Math.ceil(a.maxTime / a.tick) + 1, span: a.maxTime + 1 };
         if (a.kind === 'knives' || a.kind === 'volley') return { n: a.count, span: a.life + 1 };
         return { n: 1, span: 1 };
     }
@@ -161,7 +179,8 @@
     function abilityMaxHit(a, weaponId) {
         const b = D.GEAR_BY_ID[weaponId];
         const wd = b && b.slot === 'weapon' ? b.dmg : D.GEAR_BY_ID.sword_0.dmg;
-        return wd * (a.dmg || 0) * PVP.abilityCap * (a.momentum === true ? 3 : 1) * (a.execute ? 2 : 1);
+        const mult = a.kind === 'ignite' ? a.dmg + a.perSec * a.maxSec : (a.dmg || 0); // Burning Stick: after the longest burn
+        return wd * mult * PVP.abilityCap * (a.momentum === true ? 3 : 1) * (a.execute ? 2 : 1) * (1 + (a.desperate || 0)) * (a.elem ? AMP_MAX : 1);
     }
     // ctx.abRate: this attacker's last burst of this ability ({ start, n }); the result's rate is the one to keep
     function validateAbility(hit, ctx) {
@@ -193,7 +212,7 @@
     function validateHit(hit, ctx) {
         if (!isObj(hit)) return { ok: false, reason: 'shape' };
         if (ctx.zone === 'town' || !D.ZONES[ctx.zone]) return { ok: false, reason: 'town' };
-        const kind = ['melee', 'thrust', 'bash', 'arrow', 'parry', 'ab'].includes(hit.k) ? hit.k : null;
+        const kind = ['melee', 'thrust', 'bash', 'arrow', 'spell', 'parry', 'ab'].includes(hit.k) ? hit.k : null;
         if (!kind) return { ok: false, reason: 'kind' };
         const a = ctx.attacker;
         if (!a || (a.fl & FLAGS.dead)) return { ok: false, reason: 'attacker' };
@@ -202,12 +221,13 @@
         const b = D.GEAR_BY_ID[hit.w];
         if (kind !== 'parry' && (!b || b.slot !== 'weapon')) return { ok: false, reason: 'weapon' };
         if (kind === 'arrow' && b.cls !== 'bow') return { ok: false, reason: 'weapon' };
-        if ((kind === 'thrust' || kind === 'bash') && b.cls !== 'spear') return { ok: false, reason: 'weapon' };
-        if (kind === 'melee' && (b.cls === 'bow' || b.cls === 'spear')) return { ok: false, reason: 'weapon' };
+        if ((kind === 'thrust' || kind === 'bash') && !D.WEAPON_CLASSES[b.cls].reachMax) return { ok: false, reason: 'weapon' };
+        if (kind === 'melee' && (b.cls === 'bow' || D.WEAPON_CLASSES[b.cls].reachMax)) return { ok: false, reason: 'weapon' };
+        if (kind === 'spell' && !D.STAFF_MAGIC[b.magic]) return { ok: false, reason: 'weapon' };
         const d = Math.hypot(a.x - ctx.me.x, a.y - ctx.me.y);
         if (d > reachFor(hit.w, kind)) return { ok: false, reason: 'range' };
         if (kind === 'parry') return { ok: true, dmg: 0 };
-        const gap = kind === 'arrow' ? PVP.arrowGap : D.WEAPON_CLASSES[b.cls].cd * PVP.minGapMult;
+        const gap = kind === 'arrow' ? PVP.arrowGap : (kind === 'spell' ? D.WEAPON_CLASSES.staff.shotCd : D.WEAPON_CLASSES[b.cls].cd) * PVP.minGapMult;
         if (ctx.lastAt !== undefined && ctx.now - ctx.lastAt < gap) return { ok: false, reason: 'rate' };
         const dmg = Number(hit.dmg);
         if (!Number.isFinite(dmg) || dmg <= 0) return { ok: false, reason: 'dmg' };

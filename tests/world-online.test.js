@@ -88,6 +88,38 @@ test('arrows reach far; damage is capped by what the weapon could ever do', () =
     assert.ok(O.reachFor('spear_1', 'thrust') > O.reachFor('dagger_1', 'melee'));
 });
 
+test('staffs: weak blows up close, spells from afar, and only a staff casts them', () => {
+    assert.equal(O.validateHit(O.makeHit('firestaff_1', 'thrust', 5, 0), ctx()).ok, true);
+    assert.equal(O.validateHit(O.makeHit('firestaff_1', 'bash', 2, 0), ctx()).ok, true);
+    assert.equal(O.validateHit(O.makeHit('firestaff_1', 'melee', 5, 0), ctx()).reason, 'weapon', 'a staff thrusts and bashes like a spear');
+    assert.ok(O.maxHit('firestaff_1', 'thrust') < O.maxHit('spear_1', 'thrust'), 'its own blows are weak');
+    const far = ctx({ me: { x: 500, y: 100 } });
+    assert.equal(O.validateHit(O.makeHit('firestaff_1', 'spell', 30, 0), far).ok, true);
+    assert.equal(O.validateHit(O.makeHit('sword_1', 'spell', 30, 0), far).reason, 'weapon', 'a sword casts nothing');
+    assert.equal(O.validateHit(O.makeHit('firestaff_1', 'spell', 30, 0), ctx({ me: { x: 2000, y: 100 } })).reason, 'range');
+    assert.ok(O.maxHit('firestaff_1', 'spell') > O.maxHit('firestaff_1', 'thrust') * 3, 'spells are what a staff is for');
+    assert.equal(O.validateHit(O.makeHit('firestaff_1', 'spell', 1e9, 0), far).dmg, O.maxHit('firestaff_1', 'spell') * O.PVP.mult);
+    // a lightning bolt can jump on to players further away; frost and lightning staffs cast too
+    assert.ok(O.reachFor('lightningstaff_1', 'spell') > O.reachFor('firestaff_1', 'spell'));
+    assert.equal(O.validateHit(O.makeHit('froststaff_3', 'spell', 30, 0), far).ok, true);
+    assert.equal(O.validateHit(O.makeHit('lightningstaff_3', 'spell', 30, 0), ctx({ me: { x: 1000, y: 100 } })).ok, true);
+});
+
+test('Ice Beam may hit a player many times in one go, but only along its length', () => {
+    const a = D.ABILITIES.ice_beam;
+    let rate;
+    for (let i = 0; i < 20; i++) { const r = ab('ice_beam', 10, { now: 10 + i * a.tick, abRate: rate }); assert.equal(r.ok, true, 'tick ' + i); rate = r.rate; }
+    assert.equal(ab('ice_beam', 10, { me: { x: 100 + a.len + 600, y: 100 } }).reason, 'range');
+    assert.ok(O.abilityMaxHit(D.ABILITIES.chain_lightning, 'sword_1') > D.GEAR_BY_ID.sword_1.dmg * D.ABILITIES.chain_lightning.dmg * 4.5 * 2, 'desperate and amplified hits fit under the cap');
+});
+
+test('Burning Stick reaches as far as a weapon blow, and may hit as hard as its longest burn', () => {
+    const a = D.ABILITIES.burning_stick;
+    assert.equal(ab('burning_stick', 50).ok, true);
+    assert.equal(ab('burning_stick', 50, { me: { x: 600, y: 100 } }).reason, 'range');
+    assert.ok(O.abilityMaxHit(a, 'sword_1') >= D.GEAR_BY_ID.sword_1.dmg * (a.dmg + a.perSec * a.maxSec));
+});
+
 test('a parry notice needs only to come from nearby', () => {
     assert.deepEqual(O.validateHit({ k: 'parry' }, ctx()), { ok: true, dmg: 0 });
     assert.equal(O.validateHit({ k: 'parry' }, ctx({ me: { x: 900, y: 100 } })).reason, 'range');

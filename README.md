@@ -34,7 +34,7 @@ test blocks ad, analytics, Firestore and Auth hosts, so it never touches product
 | `index.html`, `main.js` | the game page and most game logic |
 | `core/` | logic that needs no page, tested on its own: `calc.js` (prices, bulk buying, prestige awards, offline earnings), `save.js` (versions, migrations, validation, what a prestige keeps), `progress.js` (cloud sync rules, backups, export/import), `guide.js`, `consent.js`, `clan-buffs.js` |
 | `world.html`, `world*.js`, `world.css` | The Wilds: the top-down adventure (menu > The Wilds). Its rules are pure and tested in `core/world-*.js`: `world-data.js` (every table: zones, monsters, gear, recipes, caps), `world-logic.js` (the save, crafting, loot, death, trader, quests, statues), `world-combat.js` (mouse-driven weapon physics), `world-craft-score.js` (minigame scoring), `world-gen.js` (seeded maps), `world-bridge.js` (rewards to the main game, and rubies back), `world-gods.js` (the Hall of Gods statues, the hidden one too: costs, and the blessings main.js applies to the clicker; also loaded by index.html), `world-online.js` (PvP checks, loot bags, chat, shared bosses), `world-net-tree.js` (the local relay's data). The page scripts: `world-engine.js` (loop, input, map), `world-actors.js` (player, monsters, bosses, rivals), `world-craft.js` (minigames), `world-ui.js` (HUD and menus), `world-online.js` (playing together), `world-net-rtdb.js` / `world-net-dev.js` (Firebase Realtime Database, or the local relay in `server.js`), `world.js` (wiring). Add `?whdebug` to the URL for a tuning overlay and test hooks |
-| `cloud.js`, `account.html/js` | Firebase sign-in and the cloud-save screens; the sync rules themselves are in `core/progress.js` |
+| `cloud.js`, `account.html/js` | Firebase sign-in and the cloud-save screens; the sync rules themselves are in `core/progress.js`. Both the game (`index.html`) and the Wilds (`world.html`) keep the signed-in account up to date, and the Wilds' save, play time and rubies count as progress there |
 | `guide.js`, `save-tools.js`, `consent.css` | first-run guide card, Settings > Save backup, the ad notice |
 | `firestore-*.rules` | Firestore rules to copy into the Firebase console (see below) |
 | `docs/trust-boundaries.md` | what the online features trust, and what is still open |
@@ -63,7 +63,7 @@ runs on **Firebase Realtime Database**, which has to be switched on once in the 
 1. Build > Realtime Database > **Create database** (any location). If it is not in us-central1, copy the database URL shown at the
    top of its Data tab into `DATABASE_URL` in `world-net-rtdb.js`.
 2. Realtime Database > Rules: paste `database.rules.json` and publish. (These are not the Firestore rules.)
-3. Authentication > Sign-in method: enable **Anonymous**. Players who are signed in to an account play as that account.
+3. Authentication > Sign-in method: enable **Anonymous**. Online play always signs in anonymously to this project (the Wilds' own, separate from the accounts project), so a player's account and saves are never involved.
 
 Until that is done the Wilds still works; the 🌐 button just says online play isn't available. On `localhost`, `npm start` serves a
 small stand-in for the database (in `server.js`), so online play can be tried with two browsers (or a normal and a private window)

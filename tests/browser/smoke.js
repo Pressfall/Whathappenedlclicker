@@ -160,6 +160,14 @@ async function main() {
         // ---- 9. the Wilds: moving, swinging, and rewards reaching the game ----
         await navigate(`http://localhost:${PORT}/world.html?whdebug`, 'typeof window.WHWorldDebug === "object" && WHWorldDebug.frames() > 30');
         check('wilds: game loop running', (await evalJs('WHWorldDebug.frames()')) > 30);
+        // accounts: the Wilds sync to the account like the game does (cloud.js), next to online play's own Firebase app
+        await waitFor('typeof window.WHCloud === "object" && window._saveLoaded === true', 20000);
+        const acct = await evalJs(`(() => { const b = document.getElementById('cloudBtn');
+            return { sync: typeof window.WHCloud === 'object' && typeof window.WHCloud.saveNow === 'function', loaded: window._saveLoaded === true,
+                btn: !!b && b.getAttribute('href') === 'account.html' && b.textContent.trim() === '☁️' && /Save to account/.test(b.getAttribute('aria-label') || '') && b.classList.contains('is-off'),
+                hooks: typeof window.saveGame === 'function' && typeof window.freezeSavesForReload === 'function' && typeof window.notify === 'function' }; })()`);
+        check('wilds: connected to accounts (the ☁️ button, signed out here)', acct.sync && acct.loaded && acct.btn && acct.hooks, acct);
+        check('wilds: saving for the account writes the Wilds save now', await evalJs('(() => { const s = WHWorldDebug.state(); s.stats.kills += 7; const want = s.stats.kills; window.saveGame(); return JSON.parse(localStorage.getItem("whathappened_world")).stats.kills === want; })()'));
         await evalJs('WHW.ui.closeModal()');
         const key = (type) => send('Input.dispatchKeyEvent', { type, key: 'd', code: 'KeyD', text: type === 'keyDown' ? 'd' : undefined, windowsVirtualKeyCode: 68 });
         const x0 = await evalJs('WHWorldDebug.player().x');
@@ -231,7 +239,7 @@ async function main() {
                 for (const br of D.CLASSES[c].branches) for (const id of br.skills) {
                     if (!D.ABILITIES[id]) continue;
                     s.skills.learned[id] = true; W.equipAbility(s, id, 0);
-                    p.x = x0; p.y = y0; p.abCharges = {}; p.buffs = {}; p.stam.val = 100; p.hp = 40; p.pull = null; p.riposteUntil = 0; p.iframes = 0;
+                    p.x = x0; p.y = y0; p.abCharges = {}; p.buffs = {}; p.stam.val = 100; p.mana.val = 100; p.hp = 40; p.pull = null; p.riposteUntil = 0; p.iframes = 0; p.ignite = null; p.beam = null;
                     d.dead = false; d.hp = d.maxHp; d.x = p.x + 40; d.y = p.y; d.status.stunUntil = 0;
                     const shots = g.projectiles.length, fields = g.fields.length;
                     out[id] = WHW.actors.castAbility(0);
@@ -245,32 +253,64 @@ async function main() {
                     if (a.kind === 'shot' && g.projectiles.length - shots !== 1) bad.push(id + ' shot');
                     if (a.kind === 'field' && g.fields.length - fields !== 1) bad.push(id + ' field');
                     if (a.kind === 'smoke' && !(d.status.stunUntil > T)) bad.push(id + ' stun');
+                    if (a.kind === 'ignite' && !(p.ignite && p.ignite.id === id)) bad.push(id + ' ignite');
+                    if (a.kind === 'beam' && !(p.beam && p.beam.id === id)) bad.push(id + ' beam');
                     // every charge casts, then it waits
-                    for (let k = 1; k < (a.charges || 1); k++) { p.pull = null; p.stam.val = 100; if (!WHW.actors.castAbility(0)) bad.push(id + ' charge ' + (k + 1)); }
-                    p.pull = null; p.stam.val = 100;
+                    for (let k = 1; k < (a.charges || 1); k++) { p.pull = null; p.stam.val = 100; p.mana.val = 100; if (!WHW.actors.castAbility(0)) bad.push(id + ' charge ' + (k + 1)); }
+                    p.pull = null; p.stam.val = 100; p.mana.val = 100;
                     if (WHW.actors.castAbility(0)) bad.push(id + ' ignored its cooldown');
                 }
             }
-            p.x = x0; p.y = y0; p.buffs = {}; p.pull = null; p.riposteUntil = 0; g.fields = []; g.projectiles = [];
+            p.x = x0; p.y = y0; p.buffs = {}; p.pull = null; p.riposteUntil = 0; p.ignite = null; p.beam = null; g.fields = []; g.projectiles = [];
             W.setClass(s, 'warrior'); g.pstats = W.playerStats(s);
             const instant = ['nova', 'cone', 'charge', 'leap', 'line', 'chain', 'step', 'hook'];
             return { ok: out, bad, missed: D.ABILITY_ORDER.filter(id => instant.includes(D.ABILITIES[id].kind) && !hurt[id]) };
         })()`);
-        check('wilds: all 36 abilities can be cast', Object.values(cast.ok).length === 36 && Object.values(cast.ok).every(Boolean), cast.ok);
+        check('wilds: all 37 abilities can be cast', Object.values(cast.ok).length === 37 && Object.values(cast.ok).every(Boolean), cast.ok);
         check('wilds: novas, cones, charges, leaps, lines, lightning, hooks and Shadowstep hurt a monster in front of you', cast.missed.length === 0, cast.missed);
         check('wilds: heals, buffs, volleys, shots, areas, smoke, the Riposte guard, charges and cooldowns work', cast.bad.length === 0, cast.bad);
         // an area keeps hurting what stands in it
         await evalJs(`(() => { const D = WHWorldData, W = WHWorld, g = WHW.game, p = g.player, s = g.state, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
             s.classes.unlocked.mystic = true; W.setClass(s, 'mystic'); g.pstats = W.playerStats(s); s.skills.learned.blizzard = true; W.equipAbility(s, 'blizzard', 0);
-            p.abCharges = {}; p.stam.val = 100; d.dead = false; d.hp = d.maxHp; d.x = p.x + 70; d.y = p.y; WHW.actors.castAbility(0); return true; })()`);
+            p.abCharges = {}; p.stam.val = 100; p.mana.val = 100; d.dead = false; d.hp = d.maxHp; d.x = p.x + 70; d.y = p.y; WHW.actors.castAbility(0); return true; })()`);
         await sleep(700);
         check('wilds: Blizzard hurts a monster standing in it over time', (await evalJs(`WHWorldDebug.actorHp(${JSON.stringify(dummy)})`)) < (await evalJs(`WHW.game.actors.find(a => a.id === ${JSON.stringify(dummy)}).maxHp`)));
         await evalJs('(() => { const W = WHWorld, g = WHW.game; g.fields = []; W.setClass(g.state, "warrior"); g.pstats = W.playerStats(g.state); return true; })()');
+        // the Mystic's fire staff: hold it drawn back to charge, flick it out at a monster too far to reach and a fireball flies
+        const staffSlot = await evalJs(`(() => { const W = WHWorld, g = WHW.game, p = g.player, s = g.state, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
+            s.classes.unlocked.mystic = true; W.setClass(s, 'mystic'); g.pstats = W.playerStats(s);
+            const it = W.addGear(s, 'firestaff_1', 60, [], Date.now()), i = s.hotbar.indexOf(null) >= 0 ? s.hotbar.indexOf(null) : 4;
+            s.hotbar[i] = it.uid; WHW.actions.selectSlot(i);
+            p.stam.val = 100; p.mana.val = 100; p.hp = p.maxHp; d.dead = false; d.hp = d.maxHp; d.x = p.x + 240; d.y = p.y; d.status.stunUntil = 0; g.projectiles = [];
+            return i; })()`);
+        await mouseTo(0, 34); await sleep(1300);
+        const charged = await evalJs('WHW.game.player.weapon.charge'), shot0 = await evalJs('WHW.game.player.shotSeq || 0');
+        await mouseTo(0, 170);
+        // a cast bumps the shot number (odd: a bolt); counting casts can't miss a fireball that is already gone
+        let bolt = false;
+        for (let i = 0; i < 40 && !bolt; i++) { await sleep(25); bolt = await evalJs(`(() => { const n = WHW.game.player.shotSeq || 0; return n > ${shot0} && n % 2 === 1; })()`); }
+        await sleep(600);
+        check('wilds: a Mystic charges a fire staff by holding it back, and a thrust at nothing shoots a fireball that lands', charged === 1 && bolt
+            && (await evalJs(`WHWorldDebug.actorHp(${JSON.stringify(dummy)})`)) < (await evalJs(`WHW.game.actors.find(a => a.id === ${JSON.stringify(dummy)}).maxHp`)), { charged, bolt });
+        check('wilds: the Mystic has a mana bar, and the fireball spent mana from it', await evalJs('!document.getElementById("mpBar").hidden && WHW.game.player.mana.val < 100 && WHW.game.player.stam.val > 0'));
+        // Burning Stick: the staff burns (eating mana) until it hits the monster, which takes a heavy, stunning blow
+        const lit = await evalJs(`(() => { const W = WHWorld, g = WHW.game, p = g.player, s = g.state, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
+            s.skills.learned.burning_stick = true; W.equipAbility(s, 'burning_stick', 0); p.abCharges = {}; p.stam.val = 100; p.mana.val = 100;
+            d.hp = d.maxHp = 5000; d.x = p.x + 60; d.y = p.y; return WHW.actors.castAbility(0) && !!p.ignite; })()`);
+        await mouseTo(0, 34); await sleep(1200);
+        const burnt = await evalJs('WHW.game.player.mana.val');
+        await mouseTo(0, 170); await sleep(150);
+        const blow = await evalJs(`(() => { const p = WHW.game.player, d = WHW.game.actors.find(a => a.id === ${JSON.stringify(dummy)});
+            return { out: !p.ignite, hurt: d.maxHp - d.hp, stunned: d.status.stunUntil > WHW.engine.time }; })()`);
+        check('wilds: Burning Stick eats mana, then a blow with the burning staff puts it out: heavy damage and a stun', lit && burnt < 90 && blow.out && blow.hurt > 50 && blow.stunned, { lit, burnt, blow });
+        await evalJs(`(() => { const W = WHWorld, g = WHW.game, s = g.state, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)}); g.player.ignite = null; g.player.abCharges = {};
+            s.hotbar[${staffSlot}] = null; WHW.actions.selectSlot(0); d.hp = d.maxHp = 500; d.status.stunUntil = 0; d.kbx = d.kby = 0;
+            W.setClass(s, 'warrior'); g.pstats = W.playerStats(s); return true; })()`);
         // the Rogue: the Grappling Hook pulls you to a monster and stuns it, and holds two charges
         const hook = await evalJs(`(() => { const W = WHWorld, g = WHW.game, p = g.player, s = g.state, T = WHW.engine.time, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
             s.classes.unlocked.rogue = true; W.setClass(s, 'rogue'); g.pstats = W.playerStats(s);
             s.skills.learned.grapple = true; s.skills.learned.riposte = true; W.equipAbility(s, 'grapple', 0); W.equipAbility(s, 'riposte', 1); WHW.ui.renderHotbar();
-            p.abCharges = {}; p.stam.val = 100; p.pull = null; p.iframes = 0; p.riposteUntil = 0;
+            p.abCharges = {}; p.stam.val = 100; p.mana.val = 100; p.pull = null; p.iframes = 0; p.riposteUntil = 0;
             d.dead = false; d.hp = d.maxHp; d.x = p.x + 150; d.y = p.y; d.status.stunUntil = 0;
             const ok = WHW.actors.castAbility(0);
             return { ok, pulling: !!p.pull, hurt: d.hp < d.maxHp, stunned: d.status.stunUntil > T, left: WHW.actors.abilityCharges(p, 'grapple'), gap0: Math.round(d.x - p.x) };
@@ -282,7 +322,7 @@ async function main() {
         check('wilds: one of its two charges is left, and the hotbar shows it', hook.left === 1 && hooked.badge === '1', [hook, hooked]);
         // Riposte: a hit inside the guard does nothing, and the monster that threw it is cut and stunned; a hit after it lands
         const rip = await evalJs(`(() => { const g = WHW.game, p = g.player, T = WHW.engine.time, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
-            p.iframes = 0; p.hp = p.maxHp; p.stam.val = 100; d.hp = d.maxHp; d.status.stunUntil = 0;
+            p.iframes = 0; p.hp = p.maxHp; p.stam.val = 100; p.mana.val = 100; d.hp = d.maxHp; d.status.stunUntil = 0;
             const cast = WHW.actors.castAbility(1), guard = p.riposteUntil > T;
             const taken = WHW.actors.hurtPlayer(25, { from: d });
             const out = { cast, guard, taken, unhurt: p.hp === p.maxHp, cut: d.hp < d.maxHp, stunned: d.status.stunUntil > T, spent: !(p.riposteUntil > T) };

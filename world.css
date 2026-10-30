@@ -25,6 +25,10 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-bar--st { height: 8px; }
 .w-bar--st i { background: linear-gradient(180deg, #ffe58a, var(--stam)); }
 .w-bar--st.is-winded i { background: #8c7a3a; }
+.w-bar--mp { height: 8px; }
+.w-bar--mp[hidden] { display: none; }
+.w-bar--mp i { background: linear-gradient(180deg, #9fd0ff, #3d7dff); }
+.w-bar--mp.is-gain { box-shadow: 0 0 8px #6fb0ff; }
 .w-bar span { position: relative; display: block; text-align: center; font-size: 11px; font-weight: 800; line-height: 15px; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
 .w-zone { align-self: flex-start; padding: 4px 10px; border-radius: 10px; background: rgba(15, 18, 27, 0.72); font-family: var(--font-display); font-size: 14px; letter-spacing: 0.5px; }
 .w-zone small { display: block; font-family: var(--font); font-size: 11px; color: var(--text-dim); letter-spacing: 0; }
@@ -78,6 +82,7 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-slot .n { position: absolute; bottom: 1px; right: 4px; font-size: 11px; font-weight: 800; text-shadow: 0 1px 2px #000; }
 .w-slot .q { position: absolute; inset: auto 6px 3px 6px; height: 3px; border-radius: 3px; }
 .w-slot--cons { width: 44px; font-size: 20px; }
+.w-staff-ico { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: middle; }
 .w-abil { overflow: hidden; }
 .w-abil.is-empty { opacity: 0.4; font-size: 14px; }
 .w-abil .cd { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, 0.62); font-size: 13px; font-weight: 800; color: #fff; }
@@ -163,6 +168,12 @@ button.w-load:hover { border-color: var(--border-strong); }
 .w-power i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: inherit; background: #8a8f9c; }
 .w-power i.is-hit { background: #f3f5fa; }
 .w-power i.is-perfect { background: var(--gold); }
+.w-power i.is-fire { background: linear-gradient(90deg, #ffb347, #ff5a2b); }
+.w-power i.is-over { background: linear-gradient(90deg, var(--gold), #ff9a3d); }
+.w-power i.is-danger { background: #ff3d3d; animation: w-over-blink 0.25s steps(2) infinite; }
+@keyframes w-over-blink { 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .w-power i.is-danger { animation: none; } }
+.w-power i.is-fire.is-perfect { background: #ff3d2b; }
 .w-power b { position: absolute; top: -3px; width: 2px; height: 12px; background: #fff; opacity: 0.6; }
 .w-power span { position: absolute; left: -48px; top: -4px; font-size: 9px; font-weight: 800; letter-spacing: 1px; color: var(--text-dim); }
 
@@ -191,6 +202,13 @@ button.w-load:hover { border-color: var(--border-strong); }
 .w-ach-next .w-ach-bar i { background: var(--rc); }
 .w-ach-num { font-size: 12px; font-weight: 700; color: var(--text-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .w-section h3 .muted { font-size: 11px; letter-spacing: 0; text-transform: none; margin-left: 6px; }
+/* the account button: dimmed while signed out, pulsing while it saves, amber when a save needs choosing */
+.w-cloud { display: grid; place-items: center; text-decoration: none; }
+.w-cloud.is-off { opacity: 0.6; }
+.w-cloud.is-busy { animation: w-cloud-pulse 1s ease-in-out infinite alternate; }
+.w-cloud.is-warn { border-color: #ffb347; box-shadow: 0 0 0 2px rgba(255, 179, 71, 0.35); }
+@keyframes w-cloud-pulse { from { opacity: 1; } to { opacity: 0.45; } }
+@media (prefers-reduced-motion: reduce) { .w-cloud.is-busy { animation: none; } }
 .w-toasts { position: absolute; top: 64px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
 .w-toast { padding: 7px 14px; border-radius: 10px; background: rgba(15, 18, 27, 0.92); border: 1px solid var(--border-strong); font-size: 13px; font-weight: 600; box-shadow: var(--shadow); animation: w-in 180ms ease; max-width: 80vw; text-align: center; }
 .w-toast--gem { border-color: rgba(94, 231, 255, 0.6); color: #bff6ff; }
@@ -356,6 +374,13 @@ button.w-load:hover { border-color: var(--border-strong); }
     .w-power span { display: none; }
     .w-prompt { bottom: 110px; }
     .w-hud-tr .w-icon-btn { width: 32px; height: 32px; font-size: 15px; }
+    /* room for the account button: tighter spacing, and How to play is in Settings here */
+    .w-hud-tr { gap: 4px; right: 8px; }
+    .w-hud-tr #btnHelp { display: none; }
+    .w-back { padding: 6px 10px; }
+    .w-back span { display: none; }
+    .w-rubies { padding: 4px 9px; gap: 5px; font-size: 14px; }
+    .w-online { height: 32px; padding: 0 8px; }
     .w-boss { top: 100px; width: 80vw; }
 }
 /* touch screens have their own ability and potion buttons, so the hotbar keeps to weapons and the shield */

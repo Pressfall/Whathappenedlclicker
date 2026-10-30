@@ -17,12 +17,17 @@
     const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
     function wrap(a) { a = (a + Math.PI) % TAU; if (a < 0) a += TAU; return a - Math.PI; }
 
+    // weapons with a reach (spear, staff): the tip moves in and out along the angle
+    function hasReach(cls) { const P = D.WEAPON_CLASSES[cls]; return !!(P && P.reachMax); }
     function newWeapon(cls, theta = 0) {
+        const r = (hasReach(cls) ? D.WEAPON_CLASSES[cls] : D.WEAPON_CLASSES.spear).reachMin;
         return {
             cls, theta, prevTheta: theta, omega: 0,
             swingId: 0, lastSign: 0,
-            // spear
-            r: D.WEAPON_CLASSES.spear.reachMin, rPrev: D.WEAPON_CLASSES.spear.reachMin, vr: 0, armed: true,
+            // spear and staff
+            r, rPrev: r, vr: 0, armed: true,
+            // staff: charge 0..1, the thrust or swing in progress (see world-actors.js staffHits)
+            charge: 0, thrust: null, swing: null, shotAt: -9,
             // bow
             drawing: false, anchorX: 0, anchorY: 0, draw: 0, fullFor: 0,
             // assisted swings
@@ -113,14 +118,81 @@
         return w;
     }
     function radialSpeed(w, dt) { return (w.r - w.rPrev) / dt; }
-    // Does the front of the spear (the last tipLen px, from where the tip was to where it is) touch the circle?
-    function thrustHit(px, py, theta, rFrom, rTo, tx, ty, tr, tipLen = 16) {
+    // Does the front of the spear (the last tipLen px, from where the tip was to where it is) come within width px of the circle?
+    function thrustHit(px, py, theta, rFrom, rTo, tx, ty, tr, tipLen = 16, width = 0) {
         const a = Math.min(rFrom, rTo - tipLen), b = rTo;
         const ux = Math.cos(theta), uy = Math.sin(theta);
         const rx = tx - px, ry = ty - py;
         const along = clamp(rx * ux + ry * uy, a, b);
         const cx = ux * along - rx, cy = uy * along - ry;
-        return Math.hypot(cx, cy) <= tr ? { along } : null;
+        return Math.hypot(cx, cy) <= tr + width ? { along } : null;
+    }
+
+    // Mana (classes that have it) comes back slowly after a rest, faster once you have stood still for a while.
+    // m: { val, idle }; stillSec: how long you have been standing still
+    function manaStep(m, drainPerSec, dt, regenMult = 1, stillSec = 0) {
+        const M = C.mana;
+        if (drainPerSec > 0) { m.val = Math.max(0, m.val - drainPerSec * dt); m.idle = 0; }
+        else { m.idle += dt; if (m.idle >= M.delay) m.val = Math.min(M.max, m.val + M.regen * (stillSec >= M.stillAfter ? M.stillMult : 1) * regenMult * dt); }
+        return m;
+    }
+    // Damage multiplier as your health runs out: 1 at full health, 1 + desperate near 0
+    function desperation(desperate, hp, maxHp) { return 1 + (desperate || 0) * clamp(1 - hp / Math.max(1, maxHp), 0, 1); }
+
+    // ---- staff: spells, and the charge for them ----
+    // Frost stacks on t ({ frost?, status }): spell hits within F.keep s add up, and every F.stacks-th slows (chills) t for
+    // F.slow s. Returns how many stacks t has now (0 right after the one that slowed it) and whether it was just slowed.
+    function frostStack(t, F, now) {
+        const fr = t.frost && now - t.frost.at <= F.keep ? t.frost : { n: 0, at: now };
+        fr.n++; fr.at = now; t.frost = fr;
+        if (fr.n < F.stacks) return { n: fr.n, slowed: false };
+        fr.n = 0;
+        if (t.status) t.status.chillUntil = Math.max(t.status.chillUntil || 0, now + F.slow);
+        return { n: 0, slowed: true };
+    }
+    // Holding the staff drawn back (tip within chargeBelow of its reach) charges it over chargeTime s. Returns the charge 0..1.
+    function staffCharge(w, dt, P) {
+        if (w.r <= P.reachMin + (P.reachMax - P.reachMin) * P.chargeBelow) w.charge = Math.min(1, (w.charge || 0) + dt / P.chargeTime);
+        return w.charge || 0;
+    }
+    // A spell's damage multiplier for a charge 0..1 (ch: a STAFF_MAGIC charge): little uncharged, a bonus when full
+    function chargeMult(c, ch) {
+        c = clamp(c || 0, 0, 1);
+        const m = ch.min + (1 - ch.min) * Math.pow(c, 1.5);
+        return c >= 1 ? m * ch.full : m;
+    }
+    // Overcharge: held over s past a full charge. The spell's extra damage, and (ov: the staff magic's over) what it does to
+    // you: { past: s past the safe part, burnDps, slow, stun } (each 0 when it isn't that kind or still safe)
+    function overBonus(over) { const O = D.STAFF_OVER; return 1 + O.bonus * clamp((over || 0) / O.max, 0, 1); }
+    function overPenalty(ov, over) {
+        const past = Math.max(0, (over || 0) - D.STAFF_OVER.safe), out = { past, burnDps: 0, slow: 0, stun: 0 };
+        if (!ov || past <= 0) return out;
+        if (ov.kind === 'burn') out.burnDps = ov.dps + ov.grow * past;
+        else if (ov.kind === 'chill') out.slow = Math.min(ov.max, ov.slow + ov.grow * past);
+        else if (ov.kind === 'shock') out.stun = Math.min(ov.max, ov.stun + ov.grow * past);
+        return out;
+    }
+    // What a spell costs at a charge 0..1: a share of its full price, the rest growing with the charge
+    function spellCost(mana, c) { return mana * (D.STAFF_MANA_MIN + (1 - D.STAFF_MANA_MIN) * clamp(c || 0, 0, 1)); }
+    // Is the circle inside a wave: an arc arc rad wide centred on dir, now rad px from its origin and band px thick?
+    function waveHit(ox, oy, dir, arc, rad, band, tx, ty, tr) {
+        const d = Math.hypot(tx - ox, ty - oy);
+        if (Math.abs(d - rad) > band / 2 + tr) return false;
+        const widen = d > tr ? Math.asin(Math.min(1, tr / d)) : Math.PI;
+        return Math.abs(wrap(Math.atan2(ty - oy, tx - ox) - dir)) <= arc / 2 + widen;
+    }
+
+    // ---- ignite (Burning Stick): a weapon on fire ----
+    // What the fire eats per second, t s after it was lit; emptyAt: when the mana ran out (null while some is left)
+    function igniteDrain(a, t, emptyAt) {
+        const d = a.drain;
+        if (emptyAt === null || emptyAt === undefined) return { mana: d.mana + d.manaGrow * t, hp: 0 };
+        return { mana: 0, hp: d.hp + d.hpGrow * Math.max(0, t - emptyAt) };
+    }
+    // The blow that puts the fire out, after it burned sec s: damage multiplier, knockback and stun
+    function igniteBlow(a, sec) {
+        const s = clamp(sec, 0, a.maxSec);
+        return { sec: s, dmg: a.dmg + a.perSec * s, kb: a.kb + a.kbPerSec * s, stun: a.stunBase + a.stunPerSec * s };
     }
 
     // ---- bow: press, pull the mouse away from the target, release ----
@@ -213,7 +285,7 @@
 
     return {
         TAU, wrap, clamp, newWeapon, track, sweepHit, contactSpeed, swingPower, hitDamage, mitigate, comboHit, staminaStep,
-        spearStep, radialSpeed, thrustHit, bowPull, bowStep, bowRelease, bowShaking, assistStart, assistTarget,
+        hasReach, spearStep, radialSpeed, thrustHit, staffCharge, chargeMult, waveHit, frostStack, manaStep, desperation, overBonus, overPenalty, spellCost, igniteDrain, igniteBlow, bowPull, bowStep, bowRelease, bowShaking, assistStart, assistTarget,
         segmentsCross, bladeSegment, canDamage, knockback, fromBehind, blockHit, momentumMult,
     };
 }));

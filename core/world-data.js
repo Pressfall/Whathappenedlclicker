@@ -104,12 +104,25 @@
         axe: { name: 'Axe', r0: 10, len: 42, k: 12, wMax: 14, aMax: 95, vMin: 200, vFull: 520, cd: 0.35, stam: 12, kb: 260, dmg: 1.3, chop: true, armored: 1.5 },
         pickaxe: { name: 'Pickaxe', r0: 10, len: 38, k: 16, wMax: 16, aMax: 120, vMin: 200, vFull: 500, cd: 0.3, stam: 10, kb: 120, dmg: 0.6, mine: true },
         dagger: { name: 'Dagger', r0: 8, len: 30, k: 35, wMax: 30, aMax: 420, vMin: 220, vFull: 560, cd: 0.12, stam: 6, kb: 80, dmg: 0.6, backstab: 1.5 },
-        // spear: angle tracking plus a tip that reaches toward the cursor; damage from how fast the tip moves outward
-        spear: { name: 'Spear', r0: 16, len: 76, k: 14, wMax: 12, aMax: 110, reachMin: 24, reachMax: 76, aimNear: 40, aimFar: 150,
+        // spear: angle tracking plus a tip that reaches toward the cursor; damage from how fast the tip moves outward.
+        // tipLen: how much of the front of the spear counts for a thrust; hitWidth: px of leeway either side of the shaft.
+        spear: { name: 'Spear', r0: 16, len: 86, k: 14, wMax: 12, aMax: 110, reachMin: 24, reachMax: 86, aimNear: 40, aimFar: 150,
             extendV: 900, retractV: 600, tipAccel: 9000, vMin: 260, vFull: 650, cd: 0.25, stam: 8, kb: 140, dmg: 1.1, pierce: 2,
-            bashV: 300, bashDmg: 0.25, bashKb: 300, bashCd: 0.4,
+            tipLen: 32, hitWidth: 9, bashV: 300, bashDmg: 0.25, bashKb: 300, bashCd: 0.4,
             // momentum: a thrust is worth more the faster you are moving toward the target (a dash is about 480 px/s)
             momentum: { ref: 480, max: 0.9 } },
+        // staff: handled like a spear (flick out to thrust, sweep it to swing), but its own blows are weak (melee: share of
+        // its damage; the damage stat is its magic power, which abilities also use). Held by a class its magic names
+        // (STAFF_MAGIC users), a thrust or a swing that touches nobody casts a spell instead. swingW: turn speed (rad/s) that
+        // counts as a swing; swingArc: how far (rad) it must sweep to cast. Holding the staff drawn back (the tip within
+        // chargeBelow of its reach, so the cursor close to you) charges the next spell over chargeTime s. shotCd: s between spells.
+        staff: { name: 'Staff', r0: 14, len: 74, k: 14, wMax: 13, aMax: 160, reachMin: 22, reachMax: 74, aimNear: 40, aimFar: 150,
+            extendV: 850, retractV: 600, tipAccel: 9000, vMin: 240, vFull: 600, cd: 0.3, stam: 6, kb: 110, dmg: 0.9, melee: 0.35, pierce: 1,
+            tipLen: 28, hitWidth: 7, bashDmg: 0.2, bashKb: 240, bashCd: 0.4,
+            swingW: 7.5, swingArc: 0.9, chargeTime: 1.1, chargeBelow: 0.3, shotCd: 0.3,
+            // telling a swing from a thrust: a thrust only starts while the staff turns slower than thrustTurn x swingW, and its
+            // spell waits thrustHold s, cancelled if the staff starts sweeping (or has turned more than thrustDrift rad) by then
+            thrustTurn: 0.6, thrustHold: 0.08, thrustDrift: 0.35 },
         // bow: press, pull the mouse away from the target, release
         bow: { name: 'Bow', k: 30, wMax: 26, aMax: 400, fullPull: 120, drawRate: 2.5, minDraw: 0.2, speedMin: 320, speedMax: 680,
             life: 0.9, steadyFrom: 0.15, steadyTo: 0.6, steadyMult: 1.35, shakeAfter: 1.5, spreadDeg: 6, shakeDeg: 10, moveMult: 0.6, dmg: 1, kb: 90 },
@@ -118,6 +131,11 @@
         combo: { window: 0.7, max: 3, step: 0.1 },
         perfect: { at: 0.95, mult: 1.25 },
         stamina: { max: 100, regen: 28, delay: 0.35, windedMult: 0.5, recoverAt: 30, dash: 25 },
+        // mana: only classes with mana: true (the Mystic) have it; their abilities and staff spells cost mana instead of
+        // stamina. It comes back far slower than stamina (regen per s, delay s after spending), stillMult times as fast once
+        // you have stood still (slower than stillSpeed px/s, no keys held) for stillAfter s, and hitGain comes back with each
+        // plain staff hit: the fastest way to refill it is to fight up close.
+        mana: { max: 100, regen: 3, delay: 1.2, stillMult: 3.5, stillAfter: 1.5, stillSpeed: 12, hitGain: 8 },
         dash: { time: 0.18, speedMult: 3.2, iframes: 0.15, cooldown: 0.6 },
         player: { hp: 100, speed: 150, radius: 13, regenTown: 25 },
         hitStop: 0.04,
@@ -181,6 +199,46 @@
         return null;
     }
     const WEAPON_NAMES = { sword: 'Sword', axe: 'Axe', pickaxe: 'Pickaxe', dagger: 'Dagger', spear: 'Spear', bow: 'Bow' };
+    // ---------------- staffs ----------------
+    // Each kind of staff (its gear has magic: id) casts its own spells. users: the classes that can cast with it; in anyone
+    // else's hands it only has its weak blows. mat: what each tier (1-5) adds to the Rune Altar recipe.
+    // focus: what it is good at (shown on the staff). charge: a spell's damage multiplier is min + (1 - min) x charge^1.5,
+    // then x full once fully charged. frost: spell hits on one target within keep s of each other add up, and every
+    // stacks-th one slows it (chilled) for slow s.
+    // over: holding a full charge keeps overcharging it (STAFF_OVER: a small damage bonus), but past STAFF_OVER.safe s it
+    // turns on you until the spell is cast, by kind: burn (you burn for dps + grow per s past safe, for linger s after),
+    // chill (you are slowed by slow + grow per s past safe, at most max, until linger s after you cast it), shock (casting
+    // it stuns you for stun + grow per s past safe, at most max; it goes off by itself at STAFF_OVER.max).
+    // thrust / swing: the spell a thrust / a swing that touches nobody casts. dmg: x the staff's damage. mana: per cast at a
+    // full charge (STAFF_MANA_MIN of it uncharged, growing with the charge).
+    // look: how it is drawn. burn: sets them on fire. frost: counts toward the magic's frost stacks.
+    //   bolt: one projectile (speed px/s, life s, r) that stops at the first enemy it hits (pierce: goes through that many
+    //   more). chain: from the one it hits, it jumps up to jumps times to the nearest enemy within range px, x falloff each jump.
+    //   wave: an arc that grows outward from you at speed for life s, as wide as the swing was (arcMin..arcMax rad), band px
+    //   thick, hitting everything it passes once (walls shelter).
+    const STAFF_MANA_MIN = 0.35;
+    const STAFF_OVER = { safe: 0.5, max: 3, bonus: 0.2 }; // bonus: extra damage at max s of overcharge (it grows to that)
+    const STAFF_MAGIC = {
+        // one target, hard
+        fire: { name: 'Fire', icon: '🔥', color: '#ff7b3a', users: ['mystic'], focus: 'Single target',
+            mat: [null, { coal: 3 }, { coal: 4 }, { sulfur: 3 }, { imp_horn: 2 }, { imp_horn: 3 }],
+            charge: { min: 0.2, full: 1.25 }, over: { kind: 'burn', dps: 4, grow: 6, linger: 2.5 },
+            thrust: { kind: 'bolt', look: 'fireball', name: 'Fireball', dmg: 2.1, speed: 560, life: 0.9, r: 7, kb: 260, burn: true, mana: 10 },
+            swing: { kind: 'wave', name: 'Flame Wave', dmg: 0.5, speed: 380, life: 0.5, band: 16, arcMin: 0.9, arcMax: 1.6, kb: 200, burn: true, mana: 14 } },
+        // groups: a bolt that arcs from enemy to enemy, and a wide, far-reaching wave
+        lightning: { name: 'Lightning', icon: '⚡', color: '#ffe66b', users: ['mystic'], focus: 'Area',
+            mat: [null, { copper_ore: 3 }, { copper_bar: 2 }, { gold_bar: 2 }, { obsidian: 3 }, { gold_bar: 3 }],
+            charge: { min: 0.2, full: 1.25 }, over: { kind: 'shock', stun: 0.3, grow: 0.5, max: 1.6 },
+            thrust: { kind: 'bolt', look: 'spark', name: 'Arc Bolt', dmg: 1.3, speed: 760, life: 0.6, r: 6, kb: 120, chain: { jumps: 4, range: 150, falloff: 0.8 }, mana: 14 },
+            swing: { kind: 'wave', look: 'jagged', name: 'Thunderclap', dmg: 1.0, speed: 520, life: 0.5, band: 22, arcMin: 1.6, arcMax: 3.0, kb: 240, mana: 16 } },
+        // some of both, and keeps them slow
+        frost: { name: 'Frost', icon: '❄️', color: '#8fe3ff', users: ['mystic'], focus: 'Single target and area, slows',
+            mat: [null, { slime_gel: 3 }, { bone: 3 }, { bone: 4 }, { frost_crystal: 2 }, { wraith_essence: 2 }],
+            charge: { min: 0.2, full: 1.25 }, over: { kind: 'chill', slow: 0.35, grow: 0.15, max: 0.75, linger: 3 },
+            frost: { stacks: 3, keep: 4, slow: 3 },
+            thrust: { kind: 'bolt', look: 'shard', name: 'Ice Lance', dmg: 1.9, speed: 640, life: 0.8, r: 6, kb: 200, pierce: 1, frost: true, mana: 11 },
+            swing: { kind: 'wave', name: 'Frost Wave', dmg: 0.8, speed: 420, life: 0.55, band: 18, arcMin: 1.0, arcMax: 2.2, kb: 180, frost: true, mana: 14 } },
+    };
     const ARMOR_NAMES = { helmet: 'Helmet', chest: 'Chestplate', boots: 'Boots' };
     // shields by tier: share of a blocked hit stopped, arc covered (degrees), stability (stamina efficiency)
     const SHIELD_STATS = [
@@ -207,6 +265,15 @@
                 tool: (cls === 'axe' || cls === 'pickaxe') ? t + 1 : 0, // highest node tier it can work
                 burn: !!T.burn, chill: !!T.chill,
                 recipe: t === 0 ? null : gearRecipe(cls, t),
+            });
+        }
+        // staffs: made of wood at the Rune Altar, one line per kind of magic
+        if (t > 0) for (const mid of Object.keys(STAFF_MAGIC)) {
+            const SM = STAFF_MAGIC[mid];
+            GEAR.push({
+                id: mid + 'staff_' + t, name: WOOD_NAMES[t] + ' ' + SM.name + ' Staff', slot: 'weapon', cls: 'staff', magic: mid, tier: t,
+                dmg: Math.round(T.swordDmg * WEAPON_CLASSES.staff.dmg * 10) / 10, tool: 0, burn: false, chill: false,
+                recipe: { station: 'altar', in: Object.assign({ [T.plank]: 2, [T.bar]: 1 }, t >= 2 ? { [T.extra]: 1 } : {}, SM.mat[t]) },
             });
         }
         GEAR.push(Object.assign({ id: 'shield_' + t, name: t === 0 ? 'Old Buckler' : T.name + ' Shield', slot: 'offhand', cls: 'shield', tier: t, armor: 0, hp: 0,
@@ -584,8 +651,8 @@
     // boss named in "boss" beaten. The Warrior is free; the other classes unlock once their challenge ("unlock") is done
     // and the rubies are paid.
     // Bonus keys (innate and perks) add up, except the multipliers dmg {weapon class: mult}, blockStam, abilityCd,
-    // abilityDmg, abilityStam, dashCd and dashStam. The others: maxHp, armor, speed (+share), crit (+chance), arrowSave
-    // (chance a shot keeps its arrow), stamRegen (+share), lifesteal (share of weapon damage healed), momentum (+ the spear
+    // abilityDmg, abilityStam (ability cost: mana for a class with mana, its staff spells too), dashCd and dashStam. The others: maxHp, armor, speed (+share), crit (+chance), arrowSave
+    // (chance a shot keeps its arrow), stamRegen (+share), manaRegen (+share), lifesteal (share of weapon damage healed), momentum (+ the spear
     // momentum bonus at full speed), backstab (+ backstab mult), regen (HP per second, even mid-fight), pierce (+ enemies a
     // thrust goes through), thorns (share of a melee hit sent back), dodge (chance to avoid a hit), fireResist,
     // stunnedDmg (a multiplier: damage to stunned enemies).
@@ -638,13 +705,13 @@
                 { name: 'Warden', skills: ['sweep', 'footwork', 'fervor', 'dragoon'] },
             ] },
         mystic: { name: 'Mystic', icon: '🔮', color: '#7fd4ff', cost: 500, unlock: { boss: 'overgrown', text: 'Beat The Overgrown' },
-            desc: 'Bends fire, frost and lightning, but bruises easily.',
-            passive: 'Abilities hit 15% harder and recharge 10% faster, -10 max health.',
-            bonus: { maxHp: -10, abilityDmg: 1.15, abilityCd: 0.9 },
+            desc: 'Bends fire, frost and lightning, but bruises easily. The only class that can cast with a staff, and the only one with mana.',
+            passive: 'Casts spells with staffs. Abilities and spells cost mana, not stamina. Abilities hit 15% harder and recharge 10% faster, +10% staff damage, -10 max health.',
+            mana: true, bonus: { maxHp: -10, abilityDmg: 1.15, abilityCd: 0.9, dmg: { staff: 1.1 } },
             branches: [
                 { name: 'Storm', skills: ['chain_lightning', 'conduit', 'singularity', 'overcharge'] },
-                { name: 'Fire', skills: ['fire_nova', 'kindling', 'meteor', 'ember_soul'] },
-                { name: 'Frost', skills: ['frost_armor', 'blizzard', 'clarity', 'frost_nova'] },
+                { name: 'Fire', skills: ['burning_stick', 'kindling', 'meteor', 'ember_soul'] },
+                { name: 'Frost', skills: ['ice_beam', 'blizzard', 'clarity', 'frost_nova'] },
             ] },
     };
     const CLASS_ORDER = Object.keys(CLASSES);
@@ -658,7 +725,17 @@
     // hook (a hook out to range px: it pulls you to the wall or enemy it catches; an enemy is hurt and stunned), parry (a
     // guard window s long: the next hit in it is cancelled and its attacker is hurt; stunned if a monster, out of stamina
     // and unable to recover it for exhaust s if a player).
+    // beam (you stand still pouring a beam len px long and width wide toward the cursor, turning at most turn rad/s; it hits
+    // everything along it every tick s, costs drain mana per s, can be stopped after minTime s and stops at maxTime s or no mana).
+    // elem: fire | frost | lightning (Singularity's amp makes these hurt more). desperate: up to that much extra damage as
+    // your health runs out. amp: elemental damage to anything inside the field is multiplied by it. selfHit: share of the
+    // damage you take when caught in your own area (once). groundBurn: after it lands, the area sets whoever stands in it
+    // on fire (enemies and you), for that x the ability's damage per s.
     // momentum: true scales the hit with how fast you were moving toward the target, like a spear thrust.
+    // ignite (your weapon burns until it hits someone. The fire eats mana: drain.mana per s, plus drain.manaGrow per s for
+    // every second burning; once the mana is gone, health: drain.hp per s plus drain.hpGrow per s for every second since.
+    // The hit that puts it out deals dmg + perSec, knockback kb + kbPerSec and a stun of stunBase + stunPerSec for every
+    // second it burned, counted up to maxSec. A player hit by it gets the table's stun and kb: their page can't know how long it burned).
     // charges: how many casts it holds; each comes back cd s after it was used, one at a time (default 1).
     // stunnedMult: extra damage multiplier against a stunned enemy.
     const ABILITIES = {
@@ -728,17 +805,23 @@
         fervor:      { name: 'Fervor',      icon: '🐉', kind: 'buff',   cost: 900,  boss: 'inferno',   cd: 30, stam: 10, time: 8, speedMult: 1.3, momentum: 0.6, color: '#ffb347',
             desc: 'For 8 seconds you move 30% faster and gain a much bigger momentum bonus.' },
         // Mystic
-        chain_lightning: { name: 'Chain Lightning', icon: '⚡', kind: 'chain', cost: 250, boss: null, cd: 6, stam: 20, range: 280, jump: 150, jumps: 4, dmg: 1.5, falloff: 0.8, stun: 0.3, color: '#bfe3ff',
-            desc: 'Lightning strikes the enemy nearest your cursor and jumps to 4 more.' },
-        singularity: { name: 'Singularity', icon: '🕳️', kind: 'field',  cost: 900,  boss: 'gilded',    cd: 16, stam: 25, at: 'cursor', range: 300, r: 150, tick: 0.2, time: 2, dmg: 0.12, pull: 280, color: '#b48bff',
-            desc: 'Open a rift near your cursor that drags enemies into its centre for 2 seconds.' },
-        fire_nova:   { name: 'Fire Nova',   icon: '🔥', kind: 'nova',   cost: 300,  boss: null,        cd: 10, stam: 30, radius: 125, dmg: 1.6, kb: 360, burn: true, color: '#ff7b3a',
-            desc: 'A ring of fire that burns everything it touches.' },
-        meteor:      { name: 'Meteor',      icon: '🌠', kind: 'field',  cost: 1000, boss: 'inferno',   cd: 18, stam: 30, at: 'cursor', range: 320, r: 95, delay: 1.1, tick: 9, time: 1.15, dmg: 4.0, kb: 450, burn: true, stun: 1.0, color: '#ff7b3a',
-            desc: 'Call down a meteor near your cursor. It lands a second later: huge damage, burns and stuns.' },
-        blizzard:    { name: 'Blizzard',    icon: '🌨️', kind: 'field',  cost: 700,  boss: 'gilded',    cd: 15, stam: 25, at: 'cursor', range: 300, r: 120, tick: 0.5, time: 4, dmg: 0.4, chill: true, color: '#cfefff',
+        chain_lightning: { name: 'Chain Lightning', icon: '⚡', kind: 'chain', cost: 250, boss: null, cd: 6, stam: 20, range: 280, jump: 150, jumps: 4, dmg: 1.5, falloff: 0.8, stun: 0.3, elem: 'lightning', desperate: 1.5, color: '#bfe3ff',
+            desc: 'Lightning strikes the enemy nearest your cursor and jumps to 4 more. The lower your health, the harder it hits: up to 2.5x near death.' },
+        singularity: { name: 'Singularity', icon: '🕳️', kind: 'field',  cost: 900,  boss: 'gilded',    cd: 16, stam: 25, at: 'cursor', range: 300, r: 150, tick: 0.2, time: 2, dmg: 0.12, pull: 280, amp: 1.4, color: '#b48bff',
+            desc: 'Open a rift near your cursor that drags enemies into its centre for 2 seconds. Fire, frost and lightning hurt anything caught in it 40% more (spells, abilities and burns alike).' },
+        burning_stick: { name: 'Burning Stick', icon: '🔥', kind: 'ignite', cost: 300, boss: null,     cd: 12, stam: 0,
+            drain: { mana: 6, manaGrow: 7, hp: 5, hpGrow: 4 }, dmg: 1.5, perSec: 1.0, maxSec: 10, kb: 300, kbPerSec: 80, stunBase: 0.4, stunPerSec: 0.22,
+            stun: 2.4, burn: true, elem: 'fire', color: '#ff7b3a',
+            desc: 'Set your weapon on fire. The fire eats your mana, faster and faster, then your health once the mana is gone, and your staff casts no spells while it burns. It goes out the moment your weapon hits someone: a huge blow that sends them flying and stuns them, bigger the longer you burned.' },
+        meteor:      { name: 'Meteor',      icon: '🌠', kind: 'field',  cost: 1000, boss: 'inferno',   cd: 18, stam: 30, at: 'cursor', range: 320, r: 95, delay: 1.1, tick: 9, time: 4.1, dmg: 4.0, kb: 450, burn: true, stun: 1.0, elem: 'fire',
+            selfHit: 0.5, groundBurn: 0.3, color: '#ff7b3a',
+            desc: 'Call down a meteor near your cursor; its target shows on the ground. It lands a second later: huge damage, burns and stuns, then the ground burns for 3 seconds. It does not care who is under it: caught in it, you take half its damage and burn too.' },
+        ice_beam:    { name: 'Ice Beam',    icon: '🧊', kind: 'beam',   cost: 250,  boss: null,        cd: 10, stam: 15, len: 320, width: 14, tick: 0.12, dmg: 0.45, drain: 28, turn: 1.6, minTime: 1.2, maxTime: 5,
+            chill: true, elem: 'frost', color: '#9ad7ff',
+            desc: 'Plant your feet and pour out a beam of ice toward your cursor: heavy damage to everything along it, chilling them. It turns slowly, you can\'t move, dodge or attack while it lasts, and it burns through your mana. Press the key again to stop (after the first second); it stops on its own when your mana runs out.' },
+        blizzard:    { name: 'Blizzard',    icon: '🌨️', kind: 'field',  cost: 700,  boss: 'gilded',    cd: 15, stam: 25, at: 'cursor', range: 300, r: 120, tick: 0.5, time: 4, dmg: 0.4, chill: true, elem: 'frost', color: '#cfefff',
             desc: 'A freezing storm near your cursor for 4 seconds that chills and hurts everything inside.' },
-        frost_nova:  { name: 'Frost Nova',  icon: '❄️', kind: 'nova',   cost: 1500, boss: 'frozen',    cd: 14, stam: 30, radius: 140, dmg: 1.3, kb: 200, chill: true, stun: 0.8, color: '#9ad7ff',
+        frost_nova:  { name: 'Frost Nova',  icon: '❄️', kind: 'nova',   cost: 1500, boss: 'frozen',    cd: 14, stam: 30, radius: 140, dmg: 1.3, kb: 200, chill: true, stun: 0.8, elem: 'frost', color: '#9ad7ff',
             desc: 'A burst of ice that chills and briefly freezes enemies around you.' },
     };
     // Perks: passive bonuses (keys as for class bonuses above), on while you are their class
@@ -781,10 +864,9 @@
         // Mystic
         conduit:      { name: 'Conduit',      icon: '🔋', cost: 400,  boss: null,     bonus: { abilityCd: 0.85 }, desc: 'Abilities recharge 15% faster.' },
         overcharge:   { name: 'Overcharge',   icon: '💫', cost: 1500, boss: 'frozen', bonus: { abilityDmg: 1.15 }, desc: 'Abilities hit 15% harder.' },
-        kindling:     { name: 'Kindling',     icon: '🕯️', cost: 400,  boss: null,     bonus: { abilityStam: 0.75 }, desc: 'Abilities cost 25% less stamina.' },
+        kindling:     { name: 'Kindling',     icon: '🕯️', cost: 400,  boss: null,     bonus: { abilityStam: 0.75 }, desc: 'Abilities, staff spells and Burning Stick cost 25% less mana.' },
         ember_soul:   { name: 'Ember Soul',   icon: '❤️‍🔥', cost: 1300, boss: null,   bonus: { fireResist: 0.3, maxHp: 15 }, desc: 'Take 30% less fire and lava damage, +15 max health.' },
-        frost_armor:  { name: 'Frost Armor',  icon: '🧊', cost: 250,  boss: null,     bonus: { armor: 6, maxHp: 15 }, desc: '+6 armor and +15 max health.' },
-        clarity:      { name: 'Clarity',      icon: '🌙', cost: 900,  boss: null,     bonus: { stamRegen: 0.25, abilityStam: 0.8 }, desc: '+25% stamina regen, and abilities cost 20% less stamina.' },
+        clarity:      { name: 'Clarity',      icon: '🌙', cost: 900,  boss: null,     bonus: { manaRegen: 0.25, abilityStam: 0.8 }, desc: '+25% mana regen, and abilities and staff spells cost 20% less mana.' },
     };
     // every skill knows its id, class, branch, row and the skill it needs (the one above it)
     for (const c of CLASS_ORDER) CLASSES[c].branches.forEach((br, b) => br.skills.forEach((id, row) => {
@@ -822,7 +904,7 @@
 
     return {
         TILE, WORLD_SEED, MATERIALS, MATERIALS_BY_ID, CONSUMABLES, CONSUMABLES_BY_ID, WEAPON_CLASSES, COMBAT,
-        QUALITY, AFFIXES, TIERS, GEAR, GEAR_BY_ID, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
+        QUALITY, AFFIXES, TIERS, GEAR, GEAR_BY_ID, STAFF_MAGIC, STAFF_OVER, STAFF_MANA_MIN, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
         ELITE_RESPAWN_SEC, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,

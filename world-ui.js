@@ -12,7 +12,7 @@
     const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[c]);
     const fmt = (n) => Math.floor(Number(n) || 0).toLocaleString();
     const game = () => WHW.game;
-    const ICONS = { sword: '🗡️', axe: '🪓', pickaxe: '⛏️', dagger: '🔪', spear: '🔱', bow: '🏹', helmet: '⛑️', chest: '🦺', boots: '🥾', ring: '💍', shield: '🛡️', offhand: '🛡️' };
+    const ICONS = { sword: '🗡️', axe: '🪓', pickaxe: '⛏️', dagger: '🔪', spear: '🔱', staff: '🪄', bow: '🏹', helmet: '⛑️', chest: '🦺', boots: '🥾', ring: '💍', shield: '🛡️', offhand: '🛡️' };
     const STATION_TABS = { forge: ['craft', 'basic', 'reforge'], workbench: ['craft', 'basic', 'reforge'], altar: ['boxes', 'craft', 'basic', 'reforge'] };
 
     // ---------------- modal ----------------
@@ -58,6 +58,7 @@
             return true;
         }
         if ($('tabLock') && !$('tabLock').hidden) return true;
+        if (document.querySelector('.cs-wrap')) return true; // choosing between this device's and the account's progress
         const k = ev.key.toLowerCase();
         if (k === 'i' || ev.key === 'Tab') { ev.preventDefault(); openBag(); return true; }
         if (k === 'm') { openMap(); return true; }
@@ -242,6 +243,14 @@
         setText($('hpText'), `${Math.ceil(Math.max(0, p.hp))} / ${p.maxHp}`);
         setStyle($('stFill'), 'width', (100 * p.stam.val / D.COMBAT.stamina.max).toFixed(1) + '%');
         $('stBar').classList.toggle('is-winded', p.stam.winded);
+        // mana: only a class that has it (the Mystic)
+        const mp = $('mpBar'), mana = !!(g.pstats && g.pstats.usesMana);
+        if (mp.hidden === mana) mp.hidden = !mana;
+        if (mana) {
+            setStyle($('mpFill'), 'width', (100 * p.mana.val / D.COMBAT.mana.max).toFixed(1) + '%');
+            mp.classList.toggle('is-gain', p.manaFlash > 0);
+            mp.setAttribute('aria-valuenow', Math.round(p.mana.val));
+        }
         if (s.rubies !== lastRubies) {
             const el = $('rubyCount');
             el.textContent = fmt(s.rubies);
@@ -273,7 +282,7 @@
             const q = it ? W.qualityOf(it.score) : null;
             const extra = b && b.cls === 'bow' ? `<span class="n">${fmt(s.cons.arrow)}</span>` : '';
             html += `<button class="w-slot${i === s.sel ? ' is-sel' : ''}" data-slot="${i}" title="${b ? esc(W.gearName(it)) : 'Empty slot'}" aria-label="Slot ${i + 1}: ${b ? esc(W.gearName(it)) : 'empty'}">
-                <span class="k">${i + 1}</span>${b ? ICONS[b.cls] : ''}${extra}${q ? `<i class="q" style="background:${q.color}"></i>` : ''}</button>`;
+                <span class="k">${i + 1}</span>${b ? iconFor(b) : ''}${extra}${q ? `<i class="q" style="background:${q.color}"></i>` : ''}</button>`;
         }
         const pot = bestPotion(s);
         const potions = (s.cons.potion_small || 0) + (s.cons.potion_big || 0) + (s.cons.potion_max || 0);
@@ -385,7 +394,7 @@
         else if (st.reason === 'boss') act = `<span class="lock">🔒 Beat ${esc(D.BOSSES[sk.boss].name)}</span>` + cost;
         else act = `<button class="btn btn-sm btn-primary" data-learn="${sid}" ${st.ok ? '' : 'disabled'}>Learn · ${fmt(sk.cost)} rubies</button>`;
         const state = known ? 'is-known' : (st.ok || st.reason === 'rubies') ? 'is-open' : 'is-locked';
-        const kind = isAb ? `Ability · ${sk.cd}s cooldown${sk.charges > 1 ? ' · ' + sk.charges + ' charges' : ''}${sk.stam ? ' · ' + sk.stam + ' stamina' : ''}` : 'Perk · always on';
+        const kind = isAb ? `Ability · ${sk.cd}s cooldown${sk.charges > 1 ? ' · ' + sk.charges + ' charges' : ''}${sk.stam ? ' · ' + sk.stam + (D.CLASSES[sk.cls].mana ? ' mana' : ' stamina') : ''}` : 'Perk · always on';
         return `<div class="w-node ${state}${sk.req && s.skills.learned[sk.req] ? ' is-linked' : ''}${isAb ? ' is-ability' : ''}">
             <div class="w-node-top"><span class="w-node-ico" style="border-color:${isAb ? sk.color : 'var(--border-strong)'}">${sk.icon}</span><div><div class="w-card-name">${esc(sk.name)}</div><div class="w-node-kind">${kind}</div></div></div>
             <div class="w-card-sub">${esc(sk.desc)}</div><div class="w-card-actions">${act}</div></div>`;
@@ -527,17 +536,25 @@
         if (!b) { if (!meter.hidden) meter.hidden = true; return; }
         if (meter.hidden) meter.hidden = false;
         const P = D.WEAPON_CLASSES[b.cls];
+        // the meter also shows a staff's charge (a caster's) and how long Burning Stick has burned
+        const mode = p.powerMode || '';
         let minMark, fullMark;
-        if (b.cls === 'bow') { minMark = P.minDraw; fullMark = 0.95; }
+        if (mode) { minMark = 0; fullMark = 1; }
+        else if (b.cls === 'bow') { minMark = P.minDraw; fullMark = 0.95; }
         else { minMark = P.vMin / P.vFull; fullMark = (P.vMin + (P.vFull - P.vMin) * D.COMBAT.perfect.at) / P.vFull; }
-        if (meter._cls !== b.cls) {
-            meter._cls = b.cls;
+        if (meter._cls !== b.cls + mode) {
+            meter._cls = b.cls + mode;
             meter.querySelector('.w-power-min').style.left = (minMark * 100) + '%';
             meter.querySelector('.w-power-full').style.left = (Math.min(1, fullMark) * 100) + '%';
+            meter.title = mode === 'fire' ? 'Burning Stick: the longer it burns, the bigger the blow' : mode === 'charge' ? 'Staff charge: hold the staff drawn back (cursor close to you) to charge your next spell' : 'Swing speed: the blade only hurts past the first mark';
         }
-        p.powerShown = Math.max(p.power, (p.powerShown || 0) * 0.9);
+        p.powerShown = mode ? p.power : Math.max(p.power, (p.powerShown || 0) * 0.9);
         setStyle(f, 'width', Math.min(100, p.powerShown * 100).toFixed(1) + '%');
-        const cls = p.powerPerfect ? 'is-perfect' : p.powerHit ? 'is-hit' : '';
+        // an overcharging staff: the bar turns red once it is past the safe part
+        const over = mode === 'charge' && p.weapon ? (p.weapon.over || 0) : 0;
+        const label = over > D.STAFF_OVER.safe ? 'OVER!' : mode === 'fire' ? 'FIRE' : mode === 'charge' ? 'CHARGE' : 'SWING';
+        setText(meter.querySelector('span'), label);
+        const cls = (mode === 'fire' ? 'is-fire ' : '') + (over > D.STAFF_OVER.safe ? 'is-danger ' : over > 0 ? 'is-over ' : '') + (p.powerPerfect ? 'is-perfect' : p.powerHit ? 'is-hit' : '');
         if (f.className !== cls) f.className = cls;
     }
     let promptHtml = null;
@@ -636,6 +653,8 @@
             out.push(`<span>Damage <b>${(st ? st.dmg : base.dmg).toFixed(1)}</b></span>`);
             if (base.tool) out.push(`<span>${base.cls === 'axe' ? 'Chops' : 'Mines'} tier <b>${base.tool}</b></span>`);
             if (base.burn) out.push('<span>Burns</span>'); if (base.chill) out.push('<span>Chills</span>');
+            const sm = D.STAFF_MAGIC[base.magic];
+            if (sm) out.push(`<span style="color:${sm.color}">${sm.icon} ${esc(sm.focus)}: thrust casts ${esc(sm.thrust.name)}, swing casts ${esc(sm.swing.name)} (${esc(sm.users.map(c => D.CLASSES[c].name).join(' or '))} only)</span>`);
         } else if (base.slot === 'ring') {
             out.push(`<span>${esc(base.desc)}</span>`);
         } else if (base.slot === 'offhand') {
@@ -663,7 +682,21 @@
     const SLOT_NAMES = { helmet: 'Helmet', chest: 'Chest', boots: 'Boots', ring: 'Ring', offhand: 'Shield' };
     const GEAR_FILTERS = { all: 'All', weapon: 'Weapons', tool: 'Tools', armor: 'Armor', offhand: 'Shields', ring: 'Rings' };
     const GEAR_SORTS = { best: 'Best first', quality: 'Quality', newest: 'Newest', type: 'Type', name: 'Name' };
-    const TYPE_ORDER = ['sword', 'dagger', 'spear', 'bow', 'axe', 'pickaxe', 'helmet', 'chest', 'boots', 'offhand', 'ring'];
+    // A piece of gear's icon. Staffs each get a small picture with their magic's head (a flame, a bolt, a crystal) so
+    // they can be told apart on the hotbar; everything else is its type's emoji.
+    const STAFF_HEADS = {
+        fire: (c) => `<path d="M17.5 1.5c2.6 2.6 4 4.6 4 6.6a4 4 0 0 1-8 0c0-1.6.8-2.6 1.8-3.6.2 1.2.8 1.8 1.6 2 .2-1.8.2-3.2.6-5z" fill="${c}"/><circle cx="17.5" cy="8.6" r="1.6" fill="#fff3c4"/>`,
+        lightning: (c) => `<path d="M19.5 0.8 13.4 9h3.6l-2.2 6.2 6.4-8.6h-3.7z" fill="${c}" stroke="#7a5a00" stroke-width="0.6" stroke-linejoin="round"/>`,
+        frost: (c) => `<path d="M17.5 0.8 21.2 6.6 17.5 13.4 13.8 6.6z" fill="${c}" stroke="#ffffff" stroke-width="0.8" stroke-linejoin="round"/><path d="M17.5 2.6v8.8" stroke="#ffffff" stroke-width="0.8"/>`,
+    };
+    function iconFor(b) {
+        const sm = b && b.cls === 'staff' && D.STAFF_MAGIC[b.magic];
+        if (!sm) return b ? ICONS[b.cls] : '';
+        const head = STAFF_HEADS[b.magic] ? STAFF_HEADS[b.magic](sm.color) : `<circle cx="17.5" cy="6.5" r="3.4" fill="${sm.color}"/>`;
+        return `<svg class="w-staff-ico" viewBox="0 0 24 24" role="img" aria-label="${esc(sm.name)} staff"><circle cx="17.5" cy="7" r="6" fill="${sm.color}" opacity="0.25"/>`
+            + `<path d="M4 22.5 15.6 10.6" stroke="#8a5a32" stroke-width="2.6" stroke-linecap="round"/><path d="M14 9.6l3 3" stroke="#c9b38f" stroke-width="1.6" stroke-linecap="round"/>${head}</svg>`;
+    }
+    const TYPE_ORDER = ['sword', 'dagger', 'spear', 'staff', 'bow', 'axe', 'pickaxe', 'helmet', 'chest', 'boots', 'offhand', 'ring'];
     const MAT_SORTS = { kind: 'Kind', amount: 'Amount', name: 'Name', value: 'Sell value' };
     const MAT_KINDS = { raw: 'Gathered', bar: 'Bars', plank: 'Planks', part: 'Monster parts and crafted parts', trophy: 'Boss trophies (the Trader pays well)', key: 'Keys' };
     const gearGroup = (b) => (b.slot === 'weapon' ? (b.cls === 'axe' || b.cls === 'pickaxe' ? 'tool' : 'weapon') : b.slot === 'helmet' || b.slot === 'chest' || b.slot === 'boots' ? 'armor' : b.slot);
@@ -703,7 +736,7 @@
     function slotRow(s, slot) {
         const it = W.findGear(s, s.equip[slot]), b = W.baseOf(it), q = it ? W.qualityOf(it.score) : null;
         return `<div class="w-slotrow${it ? '' : ' is-empty'}" style="--q:${q ? q.color : 'var(--border-strong)'}">
-            <div class="w-slotrow-ico">${it ? ICONS[b.cls] : `<span class="ghost">${ICONS[slot]}</span>`}</div>
+            <div class="w-slotrow-ico">${it ? iconFor(b) : `<span class="ghost">${ICONS[slot]}</span>`}</div>
             <div class="w-slotrow-main"><small>${SLOT_NAMES[slot]}</small>${it ? `<b style="color:${q.color}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
             ${it ? `<button class="btn btn-sm btn-ghost" data-equip="${it.uid}">Take off</button>`
                 : `<button class="btn btn-sm btn-ghost" data-show="${slot === 'offhand' || slot === 'ring' ? slot : 'armor'}">Find one</button>`}
@@ -712,7 +745,7 @@
     function hotbarRow(s, i) {
         const it = W.findGear(s, s.hotbar[i]), b = W.baseOf(it), q = it ? W.qualityOf(it.score) : null;
         return `<div class="w-slotrow${it ? '' : ' is-empty'}${s.sel === i ? ' is-sel' : ''}" style="--q:${q ? q.color : 'var(--border-strong)'}">
-            <div class="w-slotrow-ico"><span class="k">${i + 1}</span>${it ? ICONS[b.cls] : ''}</div>
+            <div class="w-slotrow-ico"><span class="k">${i + 1}</span>${it ? iconFor(b) : ''}</div>
             <div class="w-slotrow-main"><small>Slot ${i + 1}${s.sel === i ? ' · in hand' : ''}</small>${it ? `<b style="color:${q.color}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
             ${it ? `<button class="btn btn-sm btn-ghost" data-equip="${it.uid}">Off hotbar</button>` : ''}
         </div>`;
@@ -737,7 +770,7 @@
         html += `<div class="w-grid">${shown.map(it => {
             const b = W.baseOf(it), q = W.qualityOf(it.score), weapon = b.slot === 'weapon';
             return `<div class="w-card w-item" style="--q:${q.color}">
-                <div class="w-card-top"><div class="w-card-ico">${ICONS[b.cls]}</div>
+                <div class="w-card-top"><div class="w-card-ico">${iconFor(b)}</div>
                 <div><div class="w-card-name" style="color:${q.color}">${esc(W.gearName(it))}</div><div class="w-card-sub"><span class="w-qual">${esc(q.name)}</span> · tier ${b.tier} · score ${it.score}</div></div></div>
                 ${statLine(b, it)}
                 <div class="w-cmps">${compareHtml(s, it)}</div>
@@ -880,7 +913,7 @@
             const card = (b) => {
                 const c = W.canCraft(s, 'gear', b.id, now);
                 const why = c.ok ? '' : c.reason === 'busy' ? 'Finish your other craft first' : c.reason === 'full' ? 'Your bag of gear is full' : '';
-                return `<div class="w-card"><div class="w-card-top"><div class="w-card-ico" style="border-color:${D.TIERS[b.tier].color}">${ICONS[b.cls]}</div>
+                return `<div class="w-card"><div class="w-card-top"><div class="w-card-ico" style="border-color:${D.TIERS[b.tier].color}">${iconFor(b)}</div>
                     <div><div class="w-card-name">${esc(b.name)}</div><div class="w-card-sub">Tier ${b.tier} ${esc(b.slot === 'weapon' ? D.WEAPON_CLASSES[b.cls].name : b.slot)}</div></div></div>
                     ${statLine(b, null)}
                     ${needHtml(s, b.recipe.in, b.recipe.fee)}
@@ -914,7 +947,7 @@
                 const b = W.baseOf(it), q = W.qualityOf(it.score);
                 const part = {}; for (const k in b.recipe.in) part[k] = Math.max(1, Math.ceil(b.recipe.in[k] * D.RULES.reforgeShare));
                 const ok = !s.pendingCraft && s.rubies >= b.recipe.fee && W.has(s, part);
-                return `<div class="w-card"><div class="w-card-top"><div class="w-card-ico" style="border-color:${q.color}">${ICONS[b.cls]}</div>
+                return `<div class="w-card"><div class="w-card-top"><div class="w-card-ico" style="border-color:${q.color}">${iconFor(b)}</div>
                     <div><div class="w-card-name" style="color:${q.color}">${esc(W.gearName(it))}</div><div class="w-card-sub">score ${it.score}</div></div></div>
                     ${needHtml(s, part, b.recipe.fee)}
                     <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-reforge="${it.uid}" ${ok ? '' : 'disabled'}>Reforge</button></div></div>`;
@@ -938,7 +971,7 @@
             html += `<p class="w-note" style="text-align:center">Practice only: a real craft with this score would be <b style="color:${q.color}">${esc(q.name)}</b> (stats ×${W.qualityMult(res.score).toFixed(2)}).</p>`;
         } else if (res.kind === 'gear' && res.item) {
             const b = W.baseOf(res.item);
-            html += `<div class="w-card" style="max-width:420px;margin:0 auto"><div class="w-card-top"><div class="w-card-ico" style="border-color:${q.color}">${ICONS[b.cls]}</div>
+            html += `<div class="w-card" style="max-width:420px;margin:0 auto"><div class="w-card-top"><div class="w-card-ico" style="border-color:${q.color}">${iconFor(b)}</div>
                 <div><div class="w-card-name" style="color:${q.color}">${esc(W.gearName(res.item))}</div><div class="w-card-sub">Stats ×${W.qualityMult(res.score).toFixed(2)}</div></div></div>${statLine(b, res.item)}</div>`;
         } else if (res.kind === 'reforge') {
             html += `<p class="w-note" style="text-align:center">${res.improved ? `Better! <b>${esc(W.gearName(res.item))}</b> is now score ${res.item.score}.` : `Not better than the score it had (${res.item ? res.item.score : '?'}), so it stays as it was.`}</p>`;
@@ -973,7 +1006,7 @@
         } else if (traderTab === 'buy') {
             html += `<div class="w-grid">${D.TRADER_STOCK.map(it => {
                 const name = it.gear ? D.GEAR_BY_ID[it.gear].name : Object.entries(it.give).map(([id, n]) => `${n} × ${matName(id)}`).join(', ');
-                const icon = it.gear ? ICONS[D.GEAR_BY_ID[it.gear].cls] : (D.CONSUMABLES_BY_ID[Object.keys(it.give)[0]] || {}).icon || '📦';
+                const icon = it.gear ? iconFor(D.GEAR_BY_ID[it.gear]) : (D.CONSUMABLES_BY_ID[Object.keys(it.give)[0]] || {}).icon || '📦';
                 return `<div class="w-card"><div class="w-card-top"><div class="w-card-ico">${icon}</div><div><div class="w-card-name">${esc(name)}</div><div class="w-card-sub">♦ ${fmt(it.price)}</div></div></div>
                     <div class="w-card-actions"><button class="btn btn-sm btn-primary" data-buy="${it.id}" ${s.rubies >= it.price ? '' : 'disabled'}>Buy</button></div></div>`;
             }).join('')}</div>`;
@@ -1039,6 +1072,8 @@
             <li><b>The Hall of Gods</b>: the dark temple north of the plaza. Its six statues take offerings of rubies and materials (boss trophies too, at some levels), and each level blesses your clicker game: more CPS, click power, crits, offline earnings, gems or Golden. Bosses also drop trophies the Trader pays well for.</li>
             <li><b>Classes</b> (<kbd>K</kbd>): you start as a Warrior. Unlock the Guardian, Rogue, Ranger, Lancer and Mystic by completing their challenges, and change class in town. Each class has a bonus and its own skill tree of abilities and perks, learned with rubies from the top of each branch down (some after beating a boss). Equip up to three abilities on <kbd>R</kbd> <kbd>Q</kbd> <kbd>C</kbd>; an ability you equip outside town starts on its cooldown. Abilities hurt monsters, bosses and rivals, and other players outside town (at PvP strength; stuns on players are shorter).</li>
             <li><b>Spears</b>: flick the mouse outward from your character to thrust, then pull back. A thrust hits harder the faster you are moving toward the target: dash into it for up to +90%. The Lancer class builds on this.</li>
+            <li><b>Staffs</b> (made at the Rune Altar) move like spears but hit weakly up close. In a <b>Mystic</b>'s hands, a thrust that touches nobody casts the staff's bolt and a fast swing that touches nobody sends out its wave. <b>Fire</b> staffs are for single targets (a heavy fireball), <b>Lightning</b> for groups (a bolt that jumps between enemies, and a wide thunderclap), <b>Frost</b> a bit of both, and every third frost hit on someone slows them. Hold the staff drawn back, with the cursor close to you, to <b>charge</b> the next spell: the meter under your hotbar fills, and a full charge hits much harder. Keep holding past full to <b>overcharge</b> it for a little more damage, but not for long: once the meter turns red it turns on you until you cast. A fire staff sets you alight (worse the longer you hold), a frost staff slows you right down (and for a while after), and a lightning staff stuns you when it lets go (or goes off by itself if you hold it too long). Anyone else only gets the weak blows.</li>
+            <li><b>Mana</b> (the Mystic's blue bar): abilities and staff spells cost mana, not stamina (dashing and swinging still use stamina). It comes back slowly; stand still for a moment and it comes back faster, but the quickest way to refill it is to land staff blows up close, since every one gives some back.</li>
             <li><b>Bows</b>: press anywhere, pull the mouse <i>away</i> from where you want to shoot, and let go. Hold a full draw briefly for a steady shot. They need arrows.</li>
             <li><b>Daggers</b> are quick and hit much harder from behind.</li></ul>
             <h3>Gathering</h3>

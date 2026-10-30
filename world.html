@@ -11,6 +11,7 @@
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
         <link rel="stylesheet" href="theme.css">
+        <link rel="stylesheet" href="cloud.css">
         <link rel="stylesheet" href="world.css">
     </head>
     <body data-site-nav="off">
@@ -19,10 +20,11 @@
         <!-- HUD -->
         <div id="wHud" class="w-hud">
             <div class="w-hud-tl">
-                <a class="w-back" href="index.html" title="Back to the clicker">← Game</a>
+                <a class="w-back" href="index.html" title="Back to the clicker" aria-label="Back to the clicker">← <span>Game</span></a>
                 <div class="w-bars">
                     <div class="w-bar w-bar--hp" role="meter" aria-label="Health" id="hpBar"><i id="hpFill"></i><span id="hpText">100 / 100</span></div>
                     <div class="w-bar w-bar--st" role="meter" aria-label="Stamina" id="stBar"><i id="stFill"></i></div>
+                    <div class="w-bar w-bar--mp" role="meter" aria-label="Mana" id="mpBar" title="Mana: pays for abilities and staff spells. Comes back faster standing still, and with each staff blow that lands" hidden><i id="mpFill"></i></div>
                 </div>
                 <div class="w-zone" id="zoneName">Wildgate Town</div>
                 <div class="w-quests" id="questTracker" hidden></div>
@@ -35,6 +37,8 @@
                 <button class="w-icon-btn" id="btnMap" title="Map (M)" aria-label="Map">🗺️</button>
                 <button class="w-icon-btn" id="btnHelp" title="How to play" aria-label="How to play">❔</button>
                 <button class="w-icon-btn" id="btnSettings" title="Settings" aria-label="Settings">⚙️</button>
+                <!-- your account (cloud.js keeps the icon and tooltip current: saved, saving, or a save to choose) -->
+                <a class="w-icon-btn w-cloud" id="cloudBtn" href="account.html" title="Sign in to save your progress and play on any device" aria-label="Save to account">☁️</a>
             </div>
             <canvas id="minimap" class="w-minimap" width="150" height="150" aria-hidden="true"></canvas>
             <div class="w-boss" id="bossBar" hidden>
@@ -94,6 +98,7 @@
             <div class="w-cover-card"><div class="w-title">The Wilds</div><p class="muted" id="loadingText">Loading…</p></div>
         </div>
 
+        <script src="core/progress.js"></script>
         <script src="core/world-data.js"></script>
         <script src="core/world-bridge.js"></script>
         <script src="core/world-gods.js"></script>
@@ -112,5 +117,11 @@
         <script src="world-ui.js"></script>
         <script src="world-online.js"></script>
         <script src="world.js"></script>
+        <!-- Accounts and cloud saves (cloud.js): while signed in, the Wilds save to the account like the game does, and load
+             newer progress from the account when they open. Drives #cloudBtn. -->
+        <script type="module">
+            import { startGameSync } from './cloud.js';
+            window.WHCloud = startGameSync({ compact: true });
+        </script>
     </body>
 </html>

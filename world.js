@@ -147,6 +147,11 @@
     }
     WHW.save = save;
     function stopSaving() { g.canSave = false; }
+    // for cloud.js (accounts): the same hooks the game page gives it. saveGame writes the Wilds save now; freezeSavesForReload
+    // stops saving because progress from the account is about to replace it (the page reloads after); notify shows a message
+    window.saveGame = () => { save(); return true; };
+    window.freezeSavesForReload = stopSaving;
+    window.notify = (msg) => WHW.toast(msg);
 
     // only one tab plays at a time: the lock is held for the page's lifetime; "Play here" steals it
     function holdLock(steal) {
@@ -168,6 +173,7 @@
     }
     function lostToOtherTab() {
         stopSaving();
+        window._saveLoaded = false; // the other tab syncs the Wilds to the account now
         E.paused = true;
         document.getElementById('tabLock').hidden = false;
     }
@@ -525,7 +531,8 @@
         setTimeout(() => WHW.ui.openDeath(drop, killer, () => {
             p.dead = false;
             p.hp = g.pstats.maxHp;
-            p.status.burnUntil = 0; p.slow = 0; p.stam.val = D.COMBAT.stamina.max; p.stam.winded = false;
+            p.status.burnUntil = 0; p.slow = 0; p.stam.val = D.COMBAT.stamina.max; p.stam.winded = false; p.mana.val = D.COMBAT.mana.max;
+            p.overSlow = null; p.beam = null; if (p.weapon) { p.weapon.charge = 0; p.weapon.over = 0; }
             enterZone('town', { silent: true });
             WHW.banner('Wildgate Town', 'You wake up by the plaza');
         }), 700);
@@ -1000,6 +1007,7 @@
                 // the other tab may have played on: start from what it saved
                 g.state = loadState();
                 g.canSave = true;
+                window._saveLoaded = true;
                 collectRubies();
                 document.getElementById('tabLock').hidden = true;
                 E.paused = false;
@@ -1099,6 +1107,7 @@
         holdLock(false).then((ok) => {
             if (!ok) { lostToOtherTab(); return; }
             collectRubies();
+            window._saveLoaded = true; // (cloud.js) this tab owns the Wilds save: it can sync it
         });
         g.zoneId = g.state.zone;
         enterZone(g.state.zone, { pos: g.state.pos, silent: g.state.zone !== 'town' });

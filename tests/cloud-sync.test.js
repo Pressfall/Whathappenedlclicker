@@ -376,9 +376,51 @@ test('summarize reads the headline numbers, tolerating junk', () => {
         whathappened_followers: JSON.stringify({ list: [{}, {}] }),
         whathappened_playtime_seconds: '3600', whathappened_prestige_times: '4', ach_a: '1', ach_b: '0', ach_clicks: '1',
     };
-    assert.deepEqual(Progress.summarize(data), { count: '1.5e+30', golden: 3, totalGolden: 9, prestiges: 4, gems: 8, playSeconds: 3600, achievements: 1, followers: 2 });
+    assert.deepEqual(Progress.summarize(data), { count: '1.5e+30', golden: 3, totalGolden: 9, prestiges: 4, gems: 8, playSeconds: 3600, achievements: 1, followers: 2, wildsSeconds: 0, wildsRubies: 0 });
     assert.equal(Progress.summarize({ whathappened_save: 'garbage' }).count, '0');
     assert.equal(Progress.summarize({}).prestiges, 0);
+});
+
+// ---------- The Wilds (world.html) ----------
+const wilds = (playSec, rubiesEarned) => ({ whathappened_world: JSON.stringify({ v: 1, rubies: rubiesEarned, stats: { playSec, rubiesEarned } }) });
+
+test('the Wilds count: their play time adds to play time, and their numbers are in the summary', () => {
+    const sum = Progress.summarize({ whathappened_save: JSON.stringify({ count: 10 }), whathappened_playtime_seconds: '600', ...wilds(3000, 4200) });
+    assert.equal(sum.playSeconds, 3600);
+    assert.equal(sum.wildsSeconds, 3000);
+    assert.equal(sum.wildsRubies, 4200);
+    assert.equal(Progress.summarize({ whathappened_world: '{broken' }).wildsSeconds, 0);
+    // progress in the Wilds alone is worth keeping
+    assert.equal(Progress.hasProgress(wilds(60, 0)), false, 'a minute of looking around is not');
+    assert.equal(Progress.hasProgress(wilds(600, 0)), true);
+    assert.equal(Progress.hasProgress({ whathappened_save: JSON.stringify({ count: 5 }), ...wilds(100, 50) }), true);
+});
+
+test('an afternoon in the Wilds is real play: when the account changed too, the player is asked, not overwritten', async () => {
+    const { pc, phone } = setup();
+    pc.play({ count: 5000, goldenWhat: 1 }, PLAY);
+    await pc.reconcile();
+    await phone.reconcile();
+    // the phone only plays the Wilds: the clicker's play time barely moves
+    phone.play({ count: 5000, goldenWhat: 1 }, { whathappened_playtime_seconds: '1010', ...wilds(2 * 3600, 30000) });
+    pc.play({ count: 900000, goldenWhat: 1 }, { whathappened_playtime_seconds: '5000' });
+    await pc.reconcile();
+    const res = await phone.reconcile('later');
+    assert.equal(res.state, 'conflict', 'asked');
+    assert.equal(res.asked[0].local.wildsRubies, 30000, 'with the Wilds numbers to compare');
+    assert.equal(JSON.parse(phone.store.getItem('whathappened_world')).stats.rubiesEarned, 30000, 'nothing replaced');
+});
+
+test("a device that has only played the Wilds keeps a backup when the account's progress loads onto it", async () => {
+    const { pc, phone } = setup();
+    pc.play({ count: 900000, goldenWhat: 3 }, PLAY);
+    await pc.reconcile();
+    phone.play({ count: 10 }, wilds(3600, 8000));
+    const res = await phone.reconcile('cloud');
+    assert.ok(res.asked.length === 1 || res.state === 'loaded');
+    const backup = phone.engine.readBackup();
+    assert.ok(backup, 'kept as a backup');
+    assert.equal(JSON.parse(JSON.parse(backup.payload).whathappened_world).stats.rubiesEarned, 8000);
 });
 
 test('hasProgress ignores a fresh install and notices real progress', () => {

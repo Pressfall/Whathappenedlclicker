@@ -30,6 +30,7 @@
     // long since it last synced (and didn't prestige), the account's progress loads without asking (this device's is
     // still kept as a backup).
     const SMALL_PLAY_SEC = 180;
+    const WORLD_KEY = 'whathappened_world';       // The Wilds' save (world.html)
 
     // Progress keys. Device settings, chat state, half-played casino rounds and cross-tab signals stay on the device.
     const SYNC_KEYS = new Set([
@@ -72,15 +73,23 @@
         const num = (v) => Number(v) || 0;
         let followers = 0;
         try { const f = JSON.parse(data.whathappened_followers || 'null'); followers = (f && Array.isArray(f.list)) ? f.list.length : 0; } catch (e) {}
+        // The Wilds (world.html) keep their own save and count their own play time
+        let w = {};
+        try { w = JSON.parse(data[WORLD_KEY] || '{}') || {}; } catch (e) { w = {}; }
+        const ws = (w && typeof w.stats === 'object' && w.stats) || {};
+        const wildsSeconds = num(ws.playSec);
         return {
             count: String(s.count == null ? '0' : s.count).slice(0, 40),
             golden: num(s.goldenWhat),
             totalGolden: num(s.totalGoldenEver),
             prestiges: Math.max(num(s.prestigeTimes), num(data.whathappened_prestige_times)),
             gems: num(s.diamonds),
-            playSeconds: num(data.whathappened_playtime_seconds),
+            // the clicker's and the Wilds' together: an afternoon in the Wilds is real play (see barelyPlayedSince)
+            playSeconds: num(data.whathappened_playtime_seconds) + wildsSeconds,
             achievements: Object.keys(data).filter((k) => k.startsWith('ach_') && k !== 'ach_clicks' && data[k] === '1').length,
             followers,
+            wildsSeconds,
+            wildsRubies: num(ws.rubiesEarned),
         };
     }
     function countLog10(c) {
@@ -97,9 +106,10 @@
     }
     // A brand-new device (nothing worth asking about) can take the account's progress without a prompt
     function hasProgress(data) {
-        if (!data[SAVE_KEY]) return false;
+        if (!data[SAVE_KEY] && !data[WORLD_KEY]) return false;
         const s = summarize(data);
-        return s.prestiges > 0 || s.totalGolden > 0 || s.golden > 0 || s.gems > 0 || s.followers > 0 || countLog10(s.count) >= 3;
+        return s.prestiges > 0 || s.totalGolden > 0 || s.golden > 0 || s.gems > 0 || s.followers > 0 || countLog10(s.count) >= 3
+            || s.wildsRubies > 0 || s.wildsSeconds >= 300; // progress in the Wilds is worth keeping too
     }
 
     class SyncConflict extends Error {
