@@ -1,7 +1,8 @@
 /**
- * First-run guide card on the game page (#guideCard): a short checklist for new players, then a pointer to the next
- * thing they can unlock. What it says is decided in core/guide.js; this reads the game, draws the card and remembers
- * when the player closes it. Reads main.js and specials.js globals, so it loads after them.
+ * First-run guide card on the game page (#guideCard): a short checklist for new players, a bar showing how close the
+ * current step is (and what the first upgrades do), then a pointer to the next thing they can unlock. Also the one-time
+ * "keep your progress safe" reminder (#saveReminder). What they say is decided in core/guide.js; this reads the game,
+ * draws the cards and remembers when the player closes them. Reads main.js and specials.js globals, so it loads after them.
  */
 (function () {
     'use strict';
@@ -17,6 +18,8 @@
     }
 
     const KEY = 'whathappened_guide'; // 'dismissed' (closed it), 'pinned' (asked for it in Settings) or absent
+    const REMINDER_KEY = 'whathappened_save_reminder'; // 'shown' or 'done' (downloaded a save file): the reminder appears at most once
+    const CLOUD_META_KEY = 'whathappened_cloud_meta'; // written by cloud.js once this browser has synced with an account
     const $ = (id) => document.getElementById(id);
     const stored = () => { try { return localStorage.getItem(KEY); } catch (e) { return null; } };
     const store = (v) => { try { if (v) localStorage.setItem(KEY, v); else localStorage.removeItem(KEY); } catch (e) {} };
@@ -50,6 +53,40 @@
         if (u.kind === 'prestige') return `Next unlock: Prestige, when ${u.upgradeName} reaches level ${u.level} (${plural(u.remaining, 'more level')}).`;
         return '';
     }
+    // the bar under the current step: how close it is, and what the upgrade does
+    function progressText(pr) {
+        if (!pr) return ['', ''];
+        if (pr.kind === 'level') {
+            return [`${pr.name}: level ${pr.have} of ${pr.need}.`, pr.unlocks ? `Level ${pr.unlocks.level} unlocks the ${pr.unlocks.name} special.` : ''];
+        }
+        const which = pr.first ? `your first ${pr.name}` : pr.name;
+        const line = pr.ready ? `You have the ${fmt(pr.need)} What Happeneds for ${which}: buy it in Upgrades.`
+            : `${fmt(pr.have)} / ${fmt(pr.need)} What Happeneds for ${which}.`;
+        const what = pr.upgrade === 1 ? `${pr.name} makes every click worth more` + (pr.unlocks ? `, and at level ${pr.unlocks.level} it unlocks the ${pr.unlocks.name} special.` : '.')
+            : pr.upgrade === 2 ? `It earns What Happeneds every second, even while you aren't clicking.` : '';
+        return [line, what];
+    }
+    // sameUnlock: the "Next unlock" line below already names the special the bar leads to, so the bar doesn't repeat it
+    function drawProgress(pr, sameUnlock) {
+        const wrap = $('guideBarWrap');
+        if (!wrap) return;
+        wrap.hidden = !pr;
+        if (!pr) return;
+        const [line, full] = progressText(pr);
+        const what = sameUnlock && pr.kind === 'level' ? '' : full;
+        const frac = pr.need > 0 ? Math.min(1, pr.have / pr.need) : 0;
+        const bar = $('guideBar');
+        bar.setAttribute('aria-valuemax', String(pr.need));
+        bar.setAttribute('aria-valuenow', String(Math.min(pr.have, pr.need)));
+        bar.setAttribute('aria-valuetext', line);
+        bar.classList.toggle('is-ready', !!pr.ready);
+        $('guideBarFill').style.width = (frac * 100).toFixed(1) + '%';
+        $('guideBarText').textContent = line;
+        const w = $('guideBarWhat');
+        w.textContent = what;
+        w.hidden = !what;
+    }
+
     function upgradeText(u, have) {
         if (!u) return '';
         const cost = u.cost === undefined ? '' : `, ${fmt(u.cost)} What Happeneds` + (Number(have) >= Number(u.cost) ? ' (you can afford it now)' : '');
@@ -61,10 +98,11 @@
         const card = $('guideCard');
         // wait for the real save to load, or a veteran would see the guide flash up
         if (!card || !window._saveLoaded || typeof getUpgradeLevel !== 'function' || typeof WHGuide === 'undefined') return;
-        let p;
-        try { p = WHGuide.plan(snapshot()); } catch (e) { return; }
+        let p, snap;
+        try { snap = snapshot(); p = WHGuide.plan(snap); } catch (e) { return; }
+        updateReminder(snap);
         const show = stored() === 'pinned' || p.visible;
-        const text = show ? JSON.stringify([expanded, p.steps.map((s) => [s.label, s.done, s.current]), p.allDone, unlockText(p.nextUnlock), upgradeText(p.nextUpgrade, Number(count) || 0)]) : 'hidden';
+        const text = show ? JSON.stringify([expanded, p.steps.map((s) => [s.label, s.done, s.current]), p.allDone, p.progress, unlockText(p.nextUnlock), upgradeText(p.nextUpgrade, Number(count) || 0)]) : 'hidden';
         if (text === last) return;
         last = text;
         card.hidden = !show;
@@ -88,6 +126,8 @@
             if (s.done) { const sr = document.createElement('span'); sr.className = 'sr-only'; sr.textContent = ' (done)'; li.appendChild(sr); }
             list.appendChild(li);
         }
+        const sameUnlock = !!(p.progress && p.progress.unlocks && p.nextUnlock && p.nextUnlock.name === p.progress.unlocks.name);
+        drawProgress(p.progress, sameUnlock);
         const next = $('guideNext'), up = $('guideUpgrade');
         next.textContent = unlockText(p.nextUnlock);
         next.hidden = !next.textContent;
@@ -105,6 +145,32 @@
         update();
     }
 
+    // ---- the one-time save reminder: shown at most once (recorded the moment it appears), never opens or downloads anything
+    // by itself, and goes away for good when closed or used ----
+    let reminderOpen = false;
+    function updateReminder(snap) {
+        const el = $('saveReminder');
+        if (!el || reminderOpen) return;
+        let due = false;
+        try {
+            due = WHGuide.saveReminderDue({ ...snap, reminder: localStorage.getItem(REMINDER_KEY), accountSynced: !!localStorage.getItem(CLOUD_META_KEY) });
+            if (due) localStorage.setItem(REMINDER_KEY, 'shown'); // if this can't be stored, it would come back every visit: don't show it
+        } catch (e) { due = false; }
+        if (!due) return;
+        reminderOpen = true;
+        el.hidden = false;
+    }
+    function closeReminder() {
+        const el = $('saveReminder');
+        if (el) el.hidden = true;
+    }
+    function downloadFromReminder() {
+        try { window.WHSaveTools.doExport(); } catch (e) { return; }
+        const t = $('saveReminderText');
+        if (t) t.textContent = 'Downloaded. Keep the file somewhere safe: Settings > Save backup can import it again.';
+        setTimeout(closeReminder, 6000);
+    }
+
     function dismiss() { store('dismissed'); last = null; update(); }
     function show() { store('pinned'); last = null; update(); }
 
@@ -113,9 +179,12 @@
         if (close) close.addEventListener('click', dismiss);
         if (toggle) toggle.addEventListener('click', () => setExpanded(!expanded));
         if (again) again.addEventListener('click', () => { show(); try { toggleSettingsMenu(); } catch (e) {} });
+        const rClose = $('saveReminderClose'), rDownload = $('saveReminderDownload');
+        if (rClose) rClose.addEventListener('click', closeReminder);
+        if (rDownload) rDownload.addEventListener('click', downloadFromReminder);
         update();
         setInterval(update, 1000);
     }
-    window.WHGuideUI = { update, dismiss, show, setExpanded };
+    window.WHGuideUI = { update, dismiss, show, setExpanded, closeReminder };
     onReady(init);
 })();

@@ -8,9 +8,9 @@
  * and in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'));
-    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods);
-}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods) {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'));
+    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves);
+}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves) {
     'use strict';
 
     const WORLD_VERSION = 1;
@@ -46,6 +46,8 @@
             zone: 'town', pos: null, hp: D.COMBAT.player.hp,
             unlocked: { zones: { town: true, greenwood: true }, camps: {} },
             bosses: {}, rivals: {}, nodes: {},
+            seals: {},  // per Far Reaches zone: the wards broken there, as a bitmask (bit i = ward i)
+            arena: Arena.freshArena(), // the Arena: rating, record, Glory and its daily caps, titles, a match in progress
             grave: null, pendingCraft: null,
             caps: freshCaps(now),
             outSeq: 0, outbox: [], overflow: null,
@@ -125,6 +127,14 @@
             const b = raw.bosses[id];
             s.bosses[id] = { kills: int(b.kills), lastKillDay: String(b.lastKillDay || ''), lastKillWeek: String(b.lastKillWeek || ''), mythicWeek: String(b.mythicWeek || '') };
         }
+        // a boss already beaten opens the zone after it, even one added since (Frozen WH and the Far Reaches)
+        for (const id in s.bosses) if (s.bosses[id].kills > 0) { const next = nextZoneAfter(D.BOSSES[id].zone); if (next) s.unlocked.zones[next] = true; }
+        s.seals = {};
+        if (isObj(raw.seals)) for (const z in raw.seals) { const n = wardCount(z), v = int(raw.seals[z], (1 << n) - 1); if (n && v) s.seals[z] = v; }
+        s.arena = Arena.cleanArena(raw.arena);
+        // a match was still on when this save was last written (the page closed or reloaded mid-match): that is a forfeit,
+        // so leaving can't dodge a loss. The stake was already paid.
+        if (s.arena.live) { s.arena.rating = Arena.clampRating(s.arena.rating + s.arena.live.delta); s.arena.l++; s.arena.live = null; }
         s.rivals = {};
         if (isObj(raw.rivals)) for (const z in raw.rivals) {
             if (!D.RIVAL_TIERS[z] || !isObj(raw.rivals[z])) continue;
@@ -265,6 +275,7 @@
         for (const id in s.skills.learned) if (!skillDef(id)) p.push('skills.' + id);
         for (const id in s.gods) if (!Gods.GODS[id] || !(s.gods[id] >= 1 && s.gods[id] <= Gods.LEVEL_CAP)) p.push('gods.' + id);
         for (const id in s.quests) if (!D.NPCS[id]) p.push('quests.' + id);
+        for (const z in s.seals) if (!wardCount(z) || !(s.seals[z] > 0 && s.seals[z] < (1 << wardCount(z)))) p.push('seals.' + z);
         for (const c in s.classes.loadout) {
             const lo = s.classes.loadout[c];
             if (!D.CLASSES[c] || !Array.isArray(lo) || lo.length !== D.ABILITY_KEYS.length) { p.push('loadout.' + c); continue; }
@@ -553,7 +564,7 @@
             const b = D.GEAR_BY_ID[p.id];
             const it = addGear(s, p.id, sc, rollAffixes(b, sc, rng), now);
             if (qualityOf(sc).id === 'legendary') s.stats.legendaries++;
-            questEvent(s, { kind: 'craft', score: sc });
+            questEvent(s, { kind: 'craft', score: sc, tier: b.tier });
             return { kind: 'gear', item: it, score: sc };
         }
         if (p.kind === 'reforge') {
@@ -726,8 +737,7 @@
             mythic = true;
         }
         // the next zone opens
-        const zi = D.ZONE_ORDER.indexOf(b.zone);
-        const next = D.ZONE_ORDER[zi + 1];
+        const next = nextZoneAfter(b.zone);
         if (next) s.unlocked.zones[next] = true;
         return { mats, rubies, gems, golden, mythic, firstToday, firstEver, unlocked: next || null };
     }
@@ -753,6 +763,108 @@
             }
         }
         return { rubies, item, firstToday };
+    }
+
+    // ---------------- the Arena ----------------
+    // A match is about to start (its 'go'): the stake is paid now, and what losing would cost is noted in the save, so a page
+    // closed mid-match counts it as lost (migrate). Returns false when the stake can't be paid.
+    function arenaEscrow(s, m) {
+        if (m.stake && s.rubies < m.stake) return false;
+        s.rubies -= m.stake;
+        const lose = Arena.outcome(Object.assign({}, m, { result: m.team === 'a' ? 'b' : 'a' }), s.arena.rating, s.arena.day.vs[Arena.vsKey(m)] || 0).ratingDelta;
+        s.arena.live = { mid: m.id, stake: m.stake, delta: Math.min(0, lose), at: 0 };
+        return true;
+    }
+    // A finished match: rating, record, Glory, the day's first-win rubies and the wager. Returns what it came to.
+    function arenaResult(s, m, now) {
+        const a = s.arena, day = Arena.refreshDay(a, dayKey(now)), key = Arena.vsKey(m);
+        const o = Arena.outcome(m, a.rating, day.vs[key] || 0);
+        day.vs[key] = (day.vs[key] || 0) + 1;
+        a.live = null;
+        a.rating = o.newRating; a.peak = Math.max(a.peak, a.rating);
+        if (o.won) { a.w++; if (o.team) a.teamW++; } else if (o.lost) { a.l++; if (o.team) a.teamL++; } else a.d++;
+        let glory = 0, rubies = 0;
+        if (o.counts) {
+            const myRounds = m.history.filter(h => h === m.team).length;
+            glory = Arena.giveGlory(a, 'match', (o.won ? Arena.GLORY.win : Arena.GLORY.loss) + myRounds * Arena.GLORY.roundWin, dayKey(now));
+            if (o.won && day.rubyWins < Arena.RULES.rubyWins) { day.rubyWins++; rubies = addRubies(s, Arena.RULES.rubyWin * furthestTier(s)); }
+        }
+        if (o.payout) s.rubies += o.payout; // the pot: rubies that were already the players', so not "earned" for the stat
+        if (m.stake) { a.wagerNet += o.payout - m.stake; if (o.won) a.wagerWins++; }
+        if (o.won) questEvent(s, { kind: 'arena' });
+        return Object.assign(o, { glory, rubies });
+    }
+    // Knocked someone out in the Pit (their page told us), or got knocked out there
+    function pitKO(s, now) { s.arena.pitKO++; s.stats.pvpWins++; questEvent(s, { kind: 'pitko' }); return Arena.giveGlory(s.arena, 'pit', Arena.GLORY.pitKO, dayKey(now)); }
+    function pitDown(s) { s.arena.pitDown++; }
+    // The Arena Master's shop (Glory). Returns { ok, reason?, item }
+    function arenaBuy(s, id, now, ack) {
+        const it = Arena.SHOP_BY_ID[id];
+        if (!it) return { ok: false, reason: 'unknown' };
+        const a = s.arena;
+        if (it.title && a.titles[it.title]) return { ok: false, reason: 'owned' };
+        if (it.weekly && a.coffer === weekKey(now)) return { ok: false, reason: 'week' };
+        if (it.coffer !== undefined && boxAllowanceLeft(s, now) < D.BOX_POINTS[it.coffer]) return { ok: false, reason: 'allowance' };
+        if (a.glory < it.glory) return { ok: false, reason: 'glory' };
+        a.glory -= it.glory;
+        if (it.give) giveAll(s, it.give, true);
+        if (it.title) { a.titles[it.title] = true; a.title = it.title; }
+        if (it.coffer !== undefined) {
+            a.coffer = weekKey(now);
+            s.caps.boxPts += D.BOX_POINTS[it.coffer];
+            const boxes = D.BOX_NAMES.map(() => 0); boxes[it.coffer] = 1;
+            Bridge.push(s, { boxes, src: 'arena' }, ack, now);
+        }
+        return { ok: true, item: it };
+    }
+    // A wave of the Proving Grounds was cleared with this player in it: rubies, Glory (inside today's cap, a one-time bonus
+    // at waves 10, 20, 30 and 40), and their best wave. Returns { rubies, glory, milestone, best }
+    function waveCleared(s, wave, now) {
+        const a = s.arena, first = wave > a.waveBest;
+        const r = Waves.rewardFor(wave, first);
+        const rubies = addRubies(s, r.rubies);
+        let glory = Arena.giveGlory(a, 'waves', r.glory, dayKey(now));
+        if (r.bonusGlory) { a.glory += r.bonusGlory; a.gloryTotal += r.bonusGlory; glory += r.bonusGlory; }
+        a.waveBest = Math.max(a.waveBest, wave);
+        questEvent(s, { kind: 'wave' });
+        return { rubies, glory, milestone: r.milestone, best: first };
+    }
+    function setTitle(s, title) {
+        if (title && !Arena.titlesOf(s.arena).includes(title)) return false;
+        s.arena.title = title || '';
+        return true;
+    }
+
+    function nextZoneAfter(zoneId) { const i = D.ZONE_ORDER.indexOf(zoneId); return i >= 0 ? D.ZONE_ORDER[i + 1] || null : null; }
+
+    // ---------------- wards (the Far Reaches' sealed lairs) ----------------
+    // A zone's boss lair opens once all its ward stones are broken. Waking a ward needs its zone's Ward Key, which is only
+    // spent when the ward's guardian is beaten (dying or walking away keeps it).
+    function wardCount(zoneId) { const z = D.ZONES[zoneId]; return z && z.wards ? z.wards : 0; }
+    function wardBroken(s, zoneId, i) { return !!((s.seals[zoneId] || 0) & (1 << i)); }
+    function wardsBroken(s, zoneId) { let n = 0; for (let i = 0; i < wardCount(zoneId); i++) if (wardBroken(s, zoneId, i)) n++; return n; }
+    // Is this zone's lair open? (zones without wards always are)
+    function lairOpen(s, zoneId) { return wardsBroken(s, zoneId) >= wardCount(zoneId); }
+    // Can ward i of a zone be woken now? Returns { ok, reason? ('unknown' | 'broken' | 'key'), key }
+    function wardState(s, zoneId, i) {
+        const z = D.ZONES[zoneId];
+        if (!z || !(i >= 0 && i < wardCount(zoneId))) return { ok: false, reason: 'unknown' };
+        if (wardBroken(s, zoneId, i)) return { ok: false, reason: 'broken', key: z.wardKey };
+        if (!count(s, z.wardKey)) return { ok: false, reason: 'key', key: z.wardKey };
+        return { ok: true, key: z.wardKey };
+    }
+    // The guardian of ward i was beaten: the key is spent and the ward stays broken. Returns { ok, lairOpen, broken, of }
+    function breakWard(s, zoneId, i) {
+        const r = wardState(s, zoneId, i);
+        if (!r.ok) return r;
+        take(s, { [r.key]: 1 });
+        s.seals[zoneId] = (s.seals[zoneId] || 0) | (1 << i);
+        return { ok: true, lairOpen: lairOpen(s, zoneId), broken: wardsBroken(s, zoneId), of: wardCount(zoneId) };
+    }
+    // How much a potion heals someone with this much max health
+    function potionHeal(id, maxHp) {
+        const c = D.CONSUMABLES_BY_ID[id];
+        return c ? Math.max(c.heal || 0, (c.healPct || 0) * (maxHp || 0)) : 0;
     }
 
     // ---------------- death ----------------
@@ -1000,6 +1112,7 @@
             for (const id in g.mats) { need += g.mats[id]; have += Math.min(g.mats[id], count(s, id)); }
             return { have, need, done: has(s, g.mats) };
         }
+        if (g.kind === 'ward') { const need = g.n || 1, have = Math.min(need, wardsBroken(s, g.zone)); return { have, need, done: have >= need }; }
         const need = g.n || 1, have = Math.min(need, rec.active.prog);
         return { have, need, done: have >= need };
     }
@@ -1041,6 +1154,7 @@
         if (g.boss && g.boss !== ev.boss) return false;
         if (g.tool && g.tool !== ev.tool) return false;
         if (g.minScore && !(ev.score >= g.minScore)) return false;
+        if (g.tier && ev.tier !== g.tier) return false;
         return true;
     }
     // Something quests may count happened (a kill, a harvest, a craft...). ev: { kind, monster, elite, zone, boss, tool, score }.
@@ -1051,7 +1165,7 @@
             const a = s.quests[npcId].active;
             if (!a) continue;
             const g = D.QUESTS[a.id].goal;
-            if (g.kind === 'deliver' || a.prog >= (g.n || 1) || !goalMatches(g, ev)) continue;
+            if (g.kind === 'deliver' || g.kind === 'ward' || a.prog >= (g.n || 1) || !goalMatches(g, ev)) continue;
             a.prog++;
             changed = true;
         }
@@ -1086,7 +1200,9 @@
         equip, unequip, isEquipped, salvage, toolPower,
         recipeFor, craftBasic, canCraft, beginCraft, beginReforge, abortCraft, finishCraft, boxTierShift, boxAllowanceLeft,
         refreshCaps, gemsLeftToday, goldenLeftToday, grantGems, grantGolden,
-        rollLoot, rollRubies, monsterLoot, nodeLoot, bossLoot, rivalLoot, die, recoverGrave,
+        rollLoot, rollRubies, monsterLoot, nodeLoot, bossLoot, rivalLoot, die, recoverGrave, nextZoneAfter,
+        wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal,
+        arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, setTitle, waveCleared,
         sell, buy, exchange, classId, classOf, classProgress, classState, unlockClass, setClass, skillDef, skillState, learnSkill, loadoutOf, equipAbility, unequipAbility, abilityKit, treeOrder,
         godState, upgradeGod, isHallWord, speak, hiddenShopState, buyHidden, questOffer, questProgress, acceptQuest, turnInQuest, abandonQuest, questEvent, activeQuests, furthestTier, noteNode, nodeReadyAt, pruneNodes, serialize,
     };

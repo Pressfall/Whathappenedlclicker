@@ -17,6 +17,13 @@
 .wh-consent-copy p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-dim, #a7b0c4); }
 .wh-consent-copy a { color: var(--gold, #ffc83d); }
 .wh-consent-actions { display: flex; gap: 8px; flex: 0 0 auto; }
+/* Choose: allow ads and visit counting separately (nothing ticked in advance) */
+.wh-consent-more { margin-top: 6px; padding: 0; background: none; border: 0; color: var(--text-dim, #a7b0c4); font-size: 13px; text-decoration: underline; cursor: pointer; }
+.wh-consent-more:hover { color: var(--text, #f3f5fa); }
+.wh-consent-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 8px; font-size: 13px; }
+.wh-consent-pick[hidden] { display: none; }
+.wh-consent-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.wh-consent-check input { width: 16px; height: 16px; accent-color: var(--gold, #ffc83d); }
 /* Accept and Decline look the same on purpose: neither is nudged */
 .wh-consent-btn {
     min-width: 96px; padding: 9px 16px; border-radius: var(--radius-sm, 8px); font-weight: 700; font-size: 14px;

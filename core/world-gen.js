@@ -12,11 +12,16 @@
 
     const TILE = D.TILE;
     // tile types
-    const T = { FLOOR: 0, FLOOR2: 1, PATH: 2, WALL: 3, WATER: 4, LAVA: 5, ICE: 6, PLAZA: 7, BUILDING: 8, ARENA: 9 };
+    // SHALLOW: tide flats you wade through slowly. VOID: the open sky under the Skyreach Isles: monsters won't step on it,
+    // and a player who does falls (world-actors.js), so for reaching places it counts as a wall.
+    const T = { FLOOR: 0, FLOOR2: 1, PATH: 2, WALL: 3, WATER: 4, LAVA: 5, ICE: 6, PLAZA: 7, BUILDING: 8, ARENA: 9, SHALLOW: 10, VOID: 11 };
     const SOLID = new Set([T.WALL, T.WATER, T.BUILDING]);
     const isSolid = (t) => SOLID.has(t);
+    const blocksWalk = (t) => SOLID.has(t) || t === T.VOID;
 
     // ---------------- seeded randomness ----------------
+    // one value in [0, 1) per city block
+    function valueBlock(seed, bx, by) { let h = hashStr(seed + ':block:' + bx + ',' + by); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995) >>> 0; return (h >>> 8) / 16777216; }
     function hashStr(str) {
         let h = 2166136261 >>> 0;
         for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
@@ -73,7 +78,7 @@
     function flood(m, sx, sy) {
         const seen = new Uint8Array(m.w * m.h);
         const q = [sy * m.w + sx];
-        if (isSolid(get(m, sx, sy))) return seen;
+        if (blocksWalk(get(m, sx, sy))) return seen;
         seen[q[0]] = 1;
         while (q.length) {
             const i = q.pop(), x = i % m.w, y = (i / m.w) | 0;
@@ -81,16 +86,16 @@
                 const X = x + dx, Y = y + dy;
                 if (!inside(m, X, Y)) continue;
                 const j = Y * m.w + X;
-                if (seen[j] || isSolid(m.tiles[j])) continue;
+                if (seen[j] || blocksWalk(m.tiles[j])) continue;
                 seen[j] = 1; q.push(j);
             }
         }
         return seen;
     }
-    // Walls in every pocket the player couldn't reach
-    function sealUnreachable(m, from) {
+    // Walls (or open sky, fill) in every pocket the player couldn't reach
+    function sealUnreachable(m, from, fill = T.WALL) {
         const seen = flood(m, from.x, from.y);
-        for (let i = 0; i < m.tiles.length; i++) if (!seen[i] && !isSolid(m.tiles[i])) m.tiles[i] = T.WALL;
+        for (let i = 0; i < m.tiles.length; i++) if (!seen[i] && !blocksWalk(m.tiles[i])) m.tiles[i] = fill;
         return seen;
     }
     const px = (t) => (t + 0.5) * TILE;
@@ -130,8 +135,8 @@
         for (let x = 1; x < m.w - 1; x++) { set(m, x, cy, T.PATH); set(m, x, cy + 1, T.PATH); }
         for (let y = 1; y < m.h - 1; y++) { set(m, cx, y, T.PATH); set(m, cx + 1, y, T.PATH); }
         for (let y = cy - 5; y <= cy + 5; y++) for (let x = cx - 8; x <= cx + 8; x++) set(m, x, y, T.PLAZA);
-        // a little pond
-        disc(m, cx + 13, cy - 9, 2.6, T.WATER);
+        // a little pond, out west by the trees
+        disc(m, 5, cy - 7, 2.6, T.WATER);
         // buildings: { id, x, y, w, h } in tiles; the door is the middle of the bottom edge
         const B = [
             { id: 'forge', x: cx - 17, y: cy - 11, w: 7, h: 5 },
@@ -153,6 +158,17 @@
         const hdx = H.x + Math.floor(H.w / 2), hdy = H.y + H.h;
         for (let y = hdy; y < cy - 5; y++) { set(m, hdx - 1, y, T.PATH); set(m, hdx, y, T.PATH); }
         m.hall = { x: H.x * TILE, y: H.y * TILE, w: H.w * TILE, h: H.h * TILE, door: { x: hdx * TILE, y: px(hdy) } };
+        // the Arena: a round-walled building north-east of the plaza, its door leading into the 'arena' zone
+        const AR = { x: cx + 12, y: 2, w: 10, h: 7 };
+        for (let y = AR.y; y < AR.y + AR.h; y++) for (let x = AR.x; x < AR.x + AR.w; x++) set(m, x, y, T.BUILDING);
+        const adx = AR.x + Math.floor(AR.w / 2), ady = AR.y + AR.h;
+        for (let y = ady; y < cy; y++) { set(m, adx - 1, y, T.PATH); set(m, adx, y, T.PATH); }
+        m.arena = { x: AR.x * TILE, y: AR.y * TILE, w: AR.w * TILE, h: AR.h * TILE, door: { x: adx * TILE, y: px(ady) } };
+        // the Waystone, south of the plaza: a standing stone in a ring of flagstones. It carries you to the Far Reaches.
+        const ws = { x: cx - 5, y: cy + 9 };
+        for (let y = ws.y - 2; y <= ws.y + 2; y++) for (let x = ws.x - 2; x <= ws.x + 2; x++) if ((x - ws.x) ** 2 + (y - ws.y) ** 2 <= 5) set(m, x, y, T.PLAZA);
+        set(m, ws.x, ws.y, T.BUILDING);
+        m.waystone = { x: px(ws.x), y: px(ws.y) };
         // where the quest givers stand
         m.npcs = npcsIn(def.id, cx, cy);
         const portals = [
@@ -258,6 +274,7 @@
         const boss = { x: Math.floor(m.w / 2) + Math.floor((rng() - 0.5) * m.w * 0.3), y: 13 };
         const side1 = { x: 12 + Math.floor(rng() * 10), y: Math.floor(m.h * 0.35) };
         const side2 = { x: m.w - 22 + Math.floor(rng() * 10), y: Math.floor(m.h * 0.7) };
+        if (def.gen === 'coast') side2.x = Math.floor(m.w * 0.58); // the sea is out east
 
         if (def.gen === 'cave') {
             // cellular automaton caves
@@ -282,9 +299,29 @@
                 if (def.gen === 'meadow') { if (a < 0.27) t = T.WATER; else if (b > 0.74) t = T.WALL; }
                 else if (def.gen === 'wastes') { if (a < 0.26) t = T.LAVA; else if (b > 0.72) t = T.WALL; }
                 else if (def.gen === 'tundra') { if (a < 0.17) t = T.WATER; else if (a < 0.33) t = T.ICE; else if (b > 0.75) t = T.WALL; }
+                else if (def.gen === 'coast') {
+                    // the sea along the east edge, tide flats along the shore and in pools, rocks on the beach
+                    const shore = m.w * 0.68 + (a - 0.5) * 22;
+                    if (x > shore + 3) t = T.WATER;
+                    else if (x > shore - 2 || nC(x, y) < 0.13) t = T.SHALLOW;
+                    else if (b > 0.77) t = T.WALL;
+                }
+                else if (def.gen === 'peaks') { if (b > 0.64 || a < 0.15) t = T.WALL; else if (a < 0.19) t = T.WATER; }
+                else if (def.gen === 'city') {
+                    // city blocks 8 tiles square with 3-tile streets; the buildings are hollow, broken in places, some
+                    // collapsed to rubble; fires burn in the streets
+                    const bx = x % 11, by = y % 11, inBlock = bx >= 1 && bx <= 8 && by >= 1 && by <= 8;
+                    const standing = valueBlock(seed, Math.floor(x / 11), Math.floor(y / 11)) > 0.28;
+                    if (inBlock && standing && (bx === 1 || bx === 8 || by === 1 || by === 8) && wob(x * 3, y * 3) < 0.62) t = T.WALL;
+                    else if (inBlock) t = T.FLOOR2;
+                    else t = T.FLOOR;
+                    if (t !== T.WALL && a < 0.15) t = T.LAVA;
+                }
+                else if (def.gen === 'isles') { if (a * 0.75 + b * 0.25 < 0.4) t = T.VOID; else if (nC(x, y) > 0.82) t = T.WALL; }
                 set(m, x, y, t);
             }
             border(m, 3);
+            if (def.gen === 'isles') for (let i = 0; i < m.tiles.length; i++) { const x = i % m.w, y = (i / m.w) | 0; if (x < 3 || y < 3 || x >= m.w - 3 || y >= m.h - 3) m.tiles[i] = T.VOID; }
         }
         // roads between the key points (lava and water under a road become floor)
         const road = def.gen === 'cave' ? T.FLOOR : T.PATH;
@@ -299,7 +336,7 @@
         disc(m, boss.x, boss.y, 10.5, T.WALL);
         disc(m, boss.x, boss.y, 9, T.ARENA);
         carve(m, { x: boss.x, y: boss.y + 8 }, { x: boss.x, y: boss.y + 13 }, 1.6, road, wob, 0);
-        sealUnreachable(m, entry);
+        sealUnreachable(m, entry, def.gen === 'isles' ? T.VOID : T.WALL);
 
         const avoid = [{ x: entry.x, y: entry.y, r: 7 }, { x: camp.x, y: camp.y, r: 5 }, { x: boss.x, y: boss.y, r: 11 }];
         const nodes = [];
@@ -343,13 +380,88 @@
         m.keyTiles = { entry, camp, boss, side1, side2 };
         m.stations = []; m.portals = []; m.deco = [];
         m.npcs = npcsIn(def.id, camp.x, camp.y);
+        if (def.wards) placeWards(m, def, rng, { entry, camp, boss }, nodes);
+        return m;
+    }
+    // A sealed lair (the Far Reaches): ward stones spread far apart across the zone, and a barrier across the arena's mouth
+    // (m.lair.tiles) until openLair. Placed last, so the zone's other rolls don't depend on it.
+    function placeWards(m, def, rng, key, nodes) {
+        const avoid = [{ x: key.entry.x, y: key.entry.y, r: 30 }, { x: key.boss.x, y: key.boss.y, r: 18 }, { x: key.camp.x, y: key.camp.y, r: 8 }];
+        const isFree = (t) => t === T.FLOOR || t === T.FLOOR2;
+        let pts = [];
+        for (let gap = 34; gap >= 10 && pts.length < def.wards; gap -= 4) pts = scatter(m, rng, def.wards, { minGap: gap, takenGap: 2.5, avoid, allow: isFree, taken: nodes });
+        m.wards = pts.slice(0, def.wards).map((p, i) => { set(m, p.tx, p.ty, T.BUILDING); return { i, x: px(p.tx), y: px(p.ty) }; });
+        // the barrier: every open tile across the ring's opening (inside the ring's wall, where nothing else stands)
+        const tiles = [], nodeAt = new Set(nodes.map(n => n.tx + ',' + n.ty));
+        for (let y = key.boss.y + 9; y <= key.boss.y + 10; y++) for (let x = key.boss.x - 4; x <= key.boss.x + 4; x++) {
+            const t = get(m, x, y);
+            if (!isSolid(t) && t !== T.VOID && !nodeAt.has(x + ',' + y)) { tiles.push([x, y, t]); set(m, x, y, T.BUILDING); }
+        }
+        m.lair = { tiles, open: false, at: { x: px(key.boss.x), y: px(key.boss.y + 10) } };
+    }
+    // Break the seal on a lair: the barrier goes and the arena can be walked into. Calling it again does nothing.
+    function openLair(m) {
+        if (!m.lair || m.lair.open) return m;
+        m.lair.open = true;
+        for (const [x, y, t] of m.lair.tiles) set(m, x, y, t);
+        return m;
+    }
+
+    // ---------------- the Arena ----------------
+    // A walled yard: the lobby along the bottom (the door to town, the Arena Master, the ranking board, the gate to the
+    // Proving Grounds), the Pit in the middle (one opening, toward the lobby) and four sealed rings for matches, which
+    // players are brought into. m.rings[i].spots: where each team stands at the start of a round.
+    function buildArena(def) {
+        const m = { id: def.id, w: def.w, h: def.h, tiles: grid(def.w, def.h, T.WALL) };
+        const n = valueNoise(D.WORLD_SEED + ':arena:n', 5);
+        for (let y = 2; y < m.h - 2; y++) for (let x = 2; x < m.w - 2; x++) set(m, x, y, n(x, y) > 0.56 ? T.FLOOR2 : T.FLOOR);
+        const cx = Math.floor(m.w / 2), lobbyY = m.h - 9, pitY = 21;
+        for (let y = m.h - 13; y < m.h - 3; y++) for (let x = 3; x < m.w - 3; x++) set(m, x, y, T.PLAZA);
+        disc(m, cx, pitY, 12.6, T.WALL, 0);
+        disc(m, cx, pitY, 11, T.ARENA, 0);
+        for (let y = pitY + 10; y <= pitY + 15; y++) for (let x = cx - 1; x <= cx + 1; x++) set(m, x, y, y <= pitY + 11 ? T.ARENA : T.PATH);
+        const centres = [{ x: 10, y: 10 }, { x: m.w - 11, y: 10 }, { x: 10, y: 30 }, { x: m.w - 11, y: 30 }];
+        m.rings = centres.map((c, i) => {
+            disc(m, c.x, c.y, 7, T.WALL, 0);
+            disc(m, c.x, c.y, 5.5, T.ARENA, 0);
+            const R = 5.5 * TILE, spot = (side, k) => { const a = (side < 0 ? Math.PI : 0) + (k - 1) * 0.55 * side; return { x: px(c.x) + Math.cos(a) * R * 0.6, y: px(c.y) + Math.sin(a) * R * 0.6 }; };
+            return { i, x: px(c.x), y: px(c.y), r: R, spots: { a: [0, 1, 2].map(k => spot(-1, k)), b: [0, 1, 2].map(k => spot(1, k)) } };
+        });
+        m.pit = { x: px(cx), y: px(pitY), r: 11 * TILE };
+        m.pitGate = { x: px(cx), y: px(pitY + 15) };
+        m.board = { x: px(m.w - 10), y: px(lobbyY) };
+        m.trialsGate = { x: px(8), y: px(lobbyY) };
+        m.lobby = { y0: (m.h - 13) * TILE, y1: (m.h - 3) * TILE };
+        m.entry = { x: px(cx), y: px(m.h - 6) };
+        m.exit = { x: px(cx), y: px(m.h - 4), to: 'town' };
+        m.npcs = npcsIn(def.id, cx, lobbyY);
+        m.nodes = []; m.spawns = []; m.elites = []; m.stations = []; m.portals = []; m.deco = [];
+        m.camp = null; m.boss = null; m.rival = null;
+        return m;
+    }
+    // ---------------- the Proving Grounds ----------------
+    // A round floor walled in, its six gates where the waves come from, and a small room by the door with the ready circle
+    function buildTrials(def) {
+        const m = { id: def.id, w: def.w, h: def.h, tiles: grid(def.w, def.h, T.WALL) };
+        const cx = Math.floor(m.w / 2), cy = 20, R = 15;
+        disc(m, cx, cy, R, T.ARENA, 0);
+        for (let y = cy + R - 1; y <= cy + R + 3; y++) for (let x = cx - 1; x <= cx + 1; x++) set(m, x, y, T.PATH);
+        for (let y = cy + R + 3; y < m.h - 2; y++) for (let x = cx - 8; x <= cx + 8; x++) set(m, x, y, T.PLAZA);
+        m.floor = { x: px(cx), y: px(cy), r: R * TILE };
+        m.ready = { x: px(cx), y: px(cy + R + 4), r: 2.4 * TILE };
+        m.gates = [Math.PI, -2.4, -1.9, -1.25, -0.6, 0].map((a, i) => ({ i, x: px(cx) + Math.cos(a) * (R - 1.5) * TILE, y: px(cy) + Math.sin(a) * (R - 1.5) * TILE }));
+        m.entry = { x: px(cx), y: px(cy + R + 5) };
+        m.exit = { x: px(cx), y: px(m.h - 3), to: 'arena' };
+        m.npcs = npcsIn(def.id, cx, cy + R + 5);
+        m.nodes = []; m.spawns = []; m.elites = []; m.stations = []; m.portals = []; m.deco = [];
+        m.camp = null; m.boss = null; m.rival = null;
         return m;
     }
 
     function generateZone(zoneId) {
         const def = D.ZONES[zoneId];
         if (!def) throw new Error('unknown zone ' + zoneId);
-        return def.gen === 'town' ? buildTown(def) : def.gen === 'hall' ? buildHall(def) : buildWild(def);
+        return def.gen === 'town' ? buildTown(def) : def.gen === 'hall' ? buildHall(def) : def.gen === 'arena' ? buildArena(def) : def.gen === 'trials' ? buildTrials(def) : buildWild(def);
     }
     // A fingerprint of a map (for the determinism test)
     function mapHash(m) {
@@ -360,5 +472,5 @@
     }
     function tileAt(m, wx, wy) { return get(m, Math.floor(wx / TILE), Math.floor(wy / TILE)); }
 
-    return { T, SOLID, isSolid, hashStr, mulberry32, valueNoise, generateZone, openSecret, flood, mapHash, tileAt, get };
+    return { T, SOLID, isSolid, blocksWalk, hashStr, mulberry32, valueNoise, generateZone, openSecret, openLair, flood, mapHash, tileAt, get };
 }));

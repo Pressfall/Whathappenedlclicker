@@ -32,7 +32,7 @@
       <div id="clanDetailArea"></div>
 
       <section id="findArea" class="card">
-        <div id="clanLockNote" class="lock-note" hidden>🔒 Clans unlock after your first prestige. You can look around until then.</div>
+        <div id="clanLockNote" class="lock-note" hidden>🔒 Clans unlock after your first prestige. To prestige, raise <b>CR lurker</b> to level 150 in the game, then press <b>Prestige</b>: your run starts over and you get Golden What Happeneds that make every run after it faster. You can look around until then. <span id="clanLockProgress"></span> <a href="how-to-play.html#prestige">How prestige works</a></div>
         <div class="find-head">
           <h2>Find a clan</h2>
           <div class="find-tools">
@@ -72,6 +72,7 @@
   <div id="clanToasts" aria-live="polite"></div>
 
   <script src="achievements-data.js"></script>
+  <script src="core/chat-safety.js"></script>
   <script type="module">
   import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot, runTransaction, increment, deleteField } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
@@ -105,6 +106,16 @@
   }catch(e){}
   // Local helper: escape HTML to prevent XSS and ensure availability in this module
   function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
+  // Chat safety (core/chat-safety.js, shared with the game's chat and the Wilds): every clan chat row shows its name and
+  // message through chatName/chatText (swear filter on unless turned off), repeats in a row show once with a count, and
+  // sending goes through chatAllowed (send limits on this page).
+  const CHAT_SAFETY = window.WHChatSafety;
+  const chatLimiter = CHAT_SAFETY.limiter();
+  function chatText(raw){ return escapeHtml(CHAT_SAFETY.display(String(raw || ''), CHAT_SAFETY.isOn(localStorage))); }
+  function chatName(raw){ return escapeHtml(CHAT_SAFETY.display(String(raw || 'Anon'), CHAT_SAFETY.isOn(localStorage))); }
+  function collapseChat(list){ return CHAT_SAFETY.collapse(list, m => ({ name: m && (m.system ? '\u0000system' : m.name), message: m && m.message })).map(x => Object.assign({}, x.item, { _repeat: x.repeat })); }
+  function repeatBadge(m){ return m && m._repeat > 1 ? ` <span class="muted">×${m._repeat}</span>` : ''; }
+  function chatAllowed(txt){ const r = chatLimiter.check('clan', txt, Date.now()); if(!r.ok){ notify(r.message, 'bad'); return false; } return true; }
   // Non-blocking toasts. alert() is routed here so the page's status messages (including event rewards) don't freeze
   // the page; confirm() and prompt() stay native for real decisions.
   function notify(msg, kind){
@@ -609,6 +620,9 @@
       // the clan finder is only for players without a clan
       const fa = document.getElementById('findArea'); if(fa) fa.style.display = cid ? 'none' : '';
       const lock = document.getElementById('clanLockNote'); if(lock) lock.hidden = clansUnlocked();
+      // how far the player is from the first prestige, from their own save
+      const lp = document.getElementById('clanLockProgress');
+      if(lp && !clansUnlocked()){ const s = readSaveObj() || {}; const cr = Math.max(0, Math.floor(Number(s.upgrade12Level) || 0)); lp.textContent = cr >= 150 ? 'Your CR lurker has reached level 150: the Prestige button is waiting in the game.' : cr > 0 ? `Your CR lurker: level ${cr} of 150.` : 'You have not bought CR lurker yet (upgrade 12).'; }
       updateCreateHint();
     }catch(e){ }
   }
@@ -845,7 +859,7 @@
           </section>
         </div>
         <section class="card chat-card">
-          <div class="sec-head"><h2>Clan chat</h2></div>
+          <div class="sec-head"><h2>Clan chat</h2>${isMember ? '<label class="chat-safe" title="Hides swear words in chat. On unless you turn it off."><input type="checkbox" id="clanChatSafe"> Safe mode</label>' : ''}</div>
           ${isMember
             ? '<div id="clanChatPinned" class="pinned"></div><div id="clanChatBox" class="chat-box"></div><form class="chat-form" id="clanChatForm"><input id="clanChatInput" type="text" maxlength="500" placeholder="Say something to your clan…" autocomplete="off"><button id="clanChatSend" class="btn btn-primary" type="submit">Send</button></form>'
             : '<div class="chat-locked"><span>💬</span><p class="muted">Join the clan to read and send messages.</p></div>'}
@@ -858,6 +872,8 @@
     if(isMember){
       const form = document.getElementById('clanChatForm');
       if(form) form.addEventListener('submit', e => { e.preventDefault(); sendClanChat(clanId); });
+      const safe = document.getElementById('clanChatSafe');
+      if(safe){ safe.checked = CHAT_SAFETY.isOn(localStorage); safe.addEventListener('change', () => { CHAT_SAFETY.setOn(localStorage, safe.checked); loadClanChat(clanId); }); }
       const box = document.getElementById('clanChatBox'), pinned = document.getElementById('clanChatPinned');
       [box, pinned].forEach(el => el && el.addEventListener('click', e => onChatClick(e, clanId)));
       loadClanChat(clanId);
@@ -1329,14 +1345,14 @@
         const canPin = canPinMessages(role);
         const pinnedEl = document.getElementById('clanChatPinned');
         if(pinnedEl) pinnedEl.innerHTML = msgs.filter(m => m.pinned && !m.system).map(m =>
-          `<div class="pin-msg"><span>📌 <b>${escapeHtml(m.name || 'Anon')}</b>: ${escapeHtml(m.message || '')}</span>${canPin && roleRank(role) >= roleRank(m.pinnedByRole || 'member') ? `<button type="button" class="link-btn" data-unpin="${escapeHtml(m.id)}">Unpin</button>` : ''}</div>`).join('');
+          `<div class="pin-msg"><span>📌 <b>${chatName(m.name)}</b>: ${chatText(m.message)}</span>${canPin && roleRank(role) >= roleRank(m.pinnedByRole || 'member') ? `<button type="button" class="link-btn" data-unpin="${escapeHtml(m.id)}">Unpin</button>` : ''}</div>`).join('');
         let html = '', prev = null;
-        for(const m of msgs){
+        for(const m of collapseChat(msgs)){
           const t = ts(m);
           const when = `<time data-ts="${t}" title="${escapeHtml(new Date(t).toLocaleString())}">${timeAgo(t)}</time>`;
           if(m.system){
             const tone = ['green', 'red', 'gold'].includes(m.color) ? m.color : 'green';
-            html += `<div class="msg-sys sys-${tone}"><span>${escapeHtml(m.message || '')}</span>${when}</div>`;
+            html += `<div class="msg-sys sys-${tone}"><span>${chatText(m.message)}</span>${when}</div>`;
             prev = null; continue;
           }
           const name = String(m.name || 'Anon');
@@ -1344,8 +1360,8 @@
           const grouped = prev && prev.name === name && t - prev.t < 5 * 60000;
           const title = m.title ? String(m.title) : (mine ? (localStorage.getItem('equipped_title') || '') : '');
           html += `<div class="msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.pinned ? ' pinned' : ''}">`
-            + (grouped ? '' : `<div class="msg-head">${title ? `<span class="msg-title" style="color:${titleColor(title)}">${escapeHtml(title)}</span>` : ''}<b>${escapeHtml(name)}</b>${when}</div>`)
-            + `<div class="msg-text"><span>${escapeHtml(m.message || '')}</span>${canPin && !m.pinned ? `<button type="button" class="pin-btn" data-pin="${escapeHtml(m.id)}" title="Pin this message" aria-label="Pin this message">📌</button>` : ''}</div></div>`;
+            + (grouped ? '' : `<div class="msg-head">${title ? `<span class="msg-title" style="color:${titleColor(title)}">${escapeHtml(title)}</span>` : ''}<b>${chatName(name)}</b>${when}</div>`)
+            + `<div class="msg-text"><span>${chatText(m.message)}${repeatBadge(m)}</span>${canPin && !m.pinned ? `<button type="button" class="pin-btn" data-pin="${escapeHtml(m.id)}" title="Pin this message" aria-label="Pin this message">📌</button>` : ''}</div></div>`;
           prev = { name, t };
         }
         box.innerHTML = html || '<div class="muted chat-empty">No messages yet. Say hi!</div>';
@@ -1360,9 +1376,12 @@
     const txt = (input && input.value ? input.value : '').trim();
     if(!txt) return;
     const username = ensureUsername(); if(!username){ notify('Pick a username first.', 'bad'); return; }
+    if(!chatAllowed(txt)) return;
     if(btn) btn.disabled = true;
     try{
-      await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0, 500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
+      chatLimiter.note('clan', txt, Date.now());
+      try{ await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0, 500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }
+      catch(e){ chatLimiter.undo('clan'); throw e; }
       if(input) input.value = '';
       // keep the newest 100 messages per clan
       try{

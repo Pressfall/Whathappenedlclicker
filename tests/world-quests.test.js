@@ -6,7 +6,7 @@ const W = require('../core/world-logic');
 
 const NOW = new Date(2026, 9, 28, 12, 0, 0).getTime();
 const DAY = 24 * 3600 * 1000;
-const KINDS = ['kill', 'boss', 'rival', 'harvest', 'craft', 'box', 'deliver', 'visit', 'god'];
+const KINDS = ['kill', 'boss', 'rival', 'harvest', 'craft', 'box', 'deliver', 'visit', 'god', 'ward', 'wave'];
 
 test('every quest giver has a story and daily quests (wanderers only talk), and every quest asks for things that exist', () => {
     const seen = new Set();

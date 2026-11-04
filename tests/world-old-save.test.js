@@ -20,7 +20,10 @@ test('an old save loads whole: rubies, materials, gear, progress and where you s
     assert.deepEqual(s.gear.map(g => [g.uid, g.base, g.score, g.aff]), old.gear.map(g => [g.uid, g.base, g.score, g.aff]));
     assert.deepEqual(s.equip, old.equip);
     assert.deepEqual(s.hotbar, old.hotbar);
-    assert.deepEqual(s.unlocked, old.unlocked);
+    for (const z in old.unlocked.zones) assert.ok(s.unlocked.zones[z], 'still open: ' + z);
+    assert.deepEqual(s.unlocked.camps, old.unlocked.camps);
+    // that save had beaten Inferno WH without Frostveil opening (made by hand); a beaten boss always opens the next zone
+    assert.ok(s.unlocked.zones.frost, 'Inferno WH was beaten, so Frostveil is open');
     for (const b in old.bosses) assert.equal(s.bosses[b].kills, old.bosses[b].kills, b);
     for (const k in old.stats) assert.equal(s.stats[k], old.stats[k], 'stats.' + k);
     assert.equal(s.zone, 'ember');

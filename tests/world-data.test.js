@@ -45,6 +45,8 @@ test('progression: from the starter kit, every gear tier, lootbox and zone can b
             }
             for (const [m] of def.spawns) D.MONSTERS[m].drops.forEach(d => add(d[0]));
             D.MONSTERS[def.elite].drops.forEach(d => add(d[0]));
+            // a sealed lair: its boss only once the zone's Ward Key can be made (from what has been found so far)
+            if (def.wards && !have.has(def.wardKey)) continue;
             const b = D.BOSSES[def.boss];
             b.drops.forEach(d => add(d[0])); add(b.sigil);
         }
@@ -61,6 +63,23 @@ test('progression: from the starter kit, every gear tier, lootbox and zone can b
     assert.deepEqual(unreachable, []);
     for (const r of D.BOX_RECIPES) assert.ok(Object.keys(r.in).every(id => have.has(id)), r.id);
     assert.deepEqual([...zones].sort(), [...D.ZONE_ORDER].sort());
+});
+
+test('the Far Reaches: a Ward Key recipe and enough wards for every sealed lair, tier tables up to the top tier', () => {
+    for (const z of D.ZONE_ORDER) {
+        const def = D.ZONES[z];
+        if (!def.via) { assert.ok(!def.wards, z + ' is not sealed'); continue; }
+        assert.ok(def.wards >= 3 && D.MATERIALS_BY_ID[def.wardKey] && D.MATERIALS_BY_ID[def.wardKey].kind === 'key', z + ' ward key');
+        const r = D.BASIC_RECIPES.find(x => x.out[def.wardKey]);
+        assert.ok(r && r.station === 'altar', z + ' key recipe');
+        // the key needs the zone elite's own part
+        const elitePart = D.MONSTERS[def.elite].drops.map(d => d[0]).find(id => r.in[id]);
+        assert.ok(elitePart, z + ' key needs an elite part');
+        assert.ok(D.RIVAL_TIERS[z] && D.RIVAL_TIERS[z].title, z + ' rival');
+    }
+    for (const arr of [D.SHIELD_STATS]) assert.equal(arr.length, D.TIERS.length);
+    for (const m of Object.values(D.STAFF_MAGIC)) assert.equal(m.mat.length, D.TIERS.length, m.name + ' staff materials');
+    for (let t = 1; t <= D.MAX_TIER; t++) for (const cls of ['sword', 'helmet', 'chest', 'boots', 'shield', 'pickaxe', 'axe', 'spear', 'bow', 'dagger']) assert.ok(D.GEAR_BY_ID[cls + '_' + t], cls + '_' + t);
 });
 
 test('each gear tier is stronger than the last, and quality tiers line up with items.js rarity colours', () => {

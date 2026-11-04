@@ -27,6 +27,8 @@ const MIME_TYPES = {
 const Tree = require('./core/world-net-tree');
 const net = { tree: null, streams: new Map(), onDisconnect: new Map() }; // streams: response -> uid
 const NET_PATH = /^wilds\/[A-Za-z0-9_\/-]{1,200}$/;
+// Like the free Spark plan's limit on players at once (100 there): `WH_NET_MAX=1 npm start` shows the "full" message
+const NET_MAX = Number(process.env.WH_NET_MAX) || 100;
 function netSet(p, value) {
     const before = JSON.stringify(Tree.get(net.tree, p));
     net.tree = Tree.set(net.tree, p, value);
@@ -58,6 +60,7 @@ function handleNet(req, res, url) {
     if (!/^[A-Za-z0-9_-]{4,40}$/.test(uid)) { res.writeHead(400); res.end(); return; }
     if (url.pathname === '/__net/stream') {
         res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+        if (net.streams.size >= NET_MAX) { res.end('data: ' + JSON.stringify({ type: 'full' }) + '\n\n'); return; }
         res.write('data: ' + JSON.stringify({ type: 'hello', now: Date.now(), tree: net.tree }) + '\n\n');
         net.streams.set(res, uid);
         const ping = setInterval(() => res.write(': ping\n\n'), 15000);

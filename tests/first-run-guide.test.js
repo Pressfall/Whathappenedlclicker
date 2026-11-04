@@ -137,3 +137,95 @@ test('the guide draws nothing it was not given: names come from the game, text f
     const g = refresh(game());
     assert.equal(el(g, 'guideCard').querySelectorAll('script, img, a').length, 0);
 });
+
+test('a new player sees how close the first OP mouse is and what it unlocks', () => {
+    const g = game();
+    g.eval('count = 37; updateDisplays()');
+    refresh(g);
+    assert.equal(el(g, 'guideBarWrap').hidden, false);
+    assert.equal(el(g, 'guideBarText').textContent, '37 / 100 What Happeneds for your first OP mouse.');
+    assert.equal(el(g, 'guideBarWhat').textContent, 'OP mouse makes every click worth more, and at level 10 it unlocks the Mousepad of Destiny special.');
+    assert.equal(parseFloat(el(g, 'guideBarFill').style.width), 37);
+    assert.equal(el(g, 'guideBar').getAttribute('aria-valuenow'), '37');
+    assert.equal(el(g, 'guideBar').getAttribute('aria-valuemax'), '100');
+    g.eval('count = 150; updateDisplays()');
+    refresh(g);
+    assert.equal(el(g, 'guideBarText').textContent, 'You have the 100 What Happeneds for your first OP mouse: buy it in Upgrades.');
+    assert.equal(parseFloat(el(g, 'guideBarFill').style.width), 100);
+    // then the Pirate, then the levels toward the first special (and the "next unlock" line doesn't repeat it)
+    g.eval('setBulkPurchase(1); buyUpgrade1(); count = 50; updateDisplays()');
+    refresh(g);
+    assert.equal(el(g, 'guideBarText').textContent, '50 / 500 What Happeneds for your first Somalian Pirate.');
+    assert.match(el(g, 'guideBarWhat').textContent, /every second/);
+    g.eval('count = 1000; buyUpgrade2(); updateDisplays()');
+    refresh(g);
+    assert.equal(el(g, 'guideBarText').textContent, 'OP mouse: level 1 of 10.');
+    assert.match(el(g, 'guideNext').textContent, /Next unlock: Mousepad of Destiny/);
+    assert.equal(el(g, 'guideBarWhat').hidden, true, 'the bar does not repeat the next-unlock line');
+});
+
+test('the guide changes no prices: OP mouse still costs 100', () => {
+    const g = game();
+    assert.equal(g.eval('UPGRADE_BASE_COSTS[1]'), 100);
+    g.eval('count = 100; setBulkPurchase(1); buyUpgrade1(); updateDisplays()');
+    assert.equal(g.eval('Number(count)'), 0);
+    assert.equal(g.eval('Number(upgrade1Level)'), 1);
+});
+
+const reminder = (g) => !el(g, 'saveReminder').hidden;
+const progressed = { version: 3, count: 5000, upgrade1Level: 20, upgrade2Level: 10 };
+
+test('the save reminder: not for a brand-new player, once when there is progress, and never again', () => {
+    assert.equal(reminder(refresh(game())), false, 'nothing to lose yet');
+    const g = refresh(game({ storage: { whathappened_save: JSON.stringify(progressed) } }));
+    assert.equal(reminder(g), true);
+    assert.equal(el(g, 'saveReminderText').textContent, "Save to account or download a save file so you don't lose progress on this browser.");
+    assert.equal(g.storage.getItem('whathappened_save_reminder'), 'shown', 'recorded as soon as it appears');
+    refresh(g);
+    assert.equal(reminder(g), true, 'stays until closed');
+    el(g, 'saveReminderClose').click();
+    assert.equal(reminder(g), false);
+    assert.equal(reminder(refresh(g.reload())), false, 'not after a reload either');
+});
+
+test('a reload never brings the save reminder back, even if it was never clicked', () => {
+    const g = refresh(game({ storage: { whathappened_save: JSON.stringify(progressed) } }));
+    assert.equal(reminder(g), true);
+    assert.equal(reminder(refresh(g.reload())), false);
+});
+
+test('the save reminder never signs in or downloads by itself; its buttons do only what they say', () => {
+    const g = refresh(game({ storage: { whathappened_save: JSON.stringify(progressed) } }));
+    const card = el(g, 'saveReminder');
+    assert.equal(card.querySelector('a').getAttribute('href'), 'account.html', 'a plain link to the account page');
+    assert.equal(card.querySelectorAll('script, iframe, form').length, 0);
+    let exported = 0;
+    g.window.WHSaveTools.doExport = () => { exported++; };
+    refresh(g);
+    assert.equal(exported, 0, 'nothing downloaded on its own');
+    el(g, 'saveReminderDownload').click();
+    assert.equal(exported, 1, 'downloads only when asked');
+    assert.match(el(g, 'saveReminderText').textContent, /^Downloaded\./);
+});
+
+test('no save reminder for a player who already downloaded a save file or syncs to an account', () => {
+    const done = refresh(game({ storage: { whathappened_save: JSON.stringify(progressed), whathappened_save_reminder: 'done' } }));
+    assert.equal(reminder(done), false);
+    const synced = refresh(game({ storage: { whathappened_save: JSON.stringify(progressed), whathappened_cloud_meta: JSON.stringify({ uid: 'u1', rev: 3 }) } }));
+    assert.equal(reminder(synced), false);
+    // downloading from Settings > Save backup counts too
+    const g = refresh(game());
+    g.window.URL.createObjectURL = () => 'blob:test';
+    g.window.URL.revokeObjectURL = () => {};
+    g.window.WHSaveTools.doExport();
+    assert.equal(g.storage.getItem('whathappened_save_reminder'), 'done');
+});
+
+test('the clan page explains the lock (first prestige) and shows how far the player is, without changing it', () => {
+    const fs = require('fs'), path = require('path');
+    const clan = fs.readFileSync(path.join(__dirname, '..', 'clan.html'), 'utf8');
+    assert.match(clan, /Clans unlock after your first prestige\. To prestige, raise <b>CR lurker<\/b> to level 150 in the game, then press <b>Prestige<\/b>/);
+    assert.match(clan, /<a href="how-to-play\.html#prestige">How prestige works<\/a>/);
+    assert.match(clan, /Number\(s\.upgrade12Level\)/, 'reads CR lurker from the save');
+    assert.match(clan, /function clansUnlocked\(\)\{ return \(Number\(localStorage\.getItem\('whathappened_prestige_times'\) \|\| 0\) \|\| 0\) >= 1/, 'the lock itself is unchanged');
+});

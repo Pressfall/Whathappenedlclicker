@@ -81,6 +81,11 @@
                     setConnected(true);
                     if (!settled) { settled = true; resolve(db); }
                 } else if (msg.type === 'set') apply(msg.path, msg.value);
+                else if (msg.type === 'full') {
+                    // the relay is at its limit of players (like the database plan's): say so, and hold nothing open
+                    es.close(); setConnected(false);
+                    if (!settled) { settled = true; const err = new Error('full'); err.code = 'full'; reject(err); }
+                }
             };
             es.onerror = () => {
                 setConnected(false);

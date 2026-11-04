@@ -48,7 +48,12 @@ test('names, chat and faces are cleaned; the swear filter matches the game chat'
     assert.equal(O.censor('what the hell, shitty boss'), 'what the ***, *** boss');
     assert.equal(O.censor('hello shell'), 'hello shell', 'whole words only');
     const info = O.sanitizeInfo({ n: 'Ok Name', f: 'https://evil.example/x.png', w: 'nope', sh: 'sword_1', c: 99, say: { m: ' gg ', t: 5 } });
-    assert.deepEqual([info.n, info.f, info.w, info.sh, info.c, info.say.m], ['Ok Name', 'mainimage/whathappened.jpeg', 'sword_0', '', 5, 'gg']);
+    assert.deepEqual([info.n, info.f, info.w, info.sh, info.c, info.say.m], ['Ok Name', 'mainimage/whathappened.jpeg', 'sword_0', '', D.MAX_TIER, 'gg']);
+    // the arena's fields: kept when well formed, emptied otherwise (and absent from older pages)
+    const ar = O.sanitizeInfo({ n: 'Ok Name', r: 1234, ti: 'Gladiator', cl: 'mystic', am: 'm1abc:2', aq: 't3', pt: 'party1', wb: 12 });
+    assert.deepEqual([ar.r, ar.ti, ar.cl, ar.am, ar.aq, ar.pt, ar.wb], [1234, 'Gladiator', 'mystic', 'm1abc:2', 't3', 'party1', 12]);
+    const bad = O.sanitizeInfo({ n: 'Ok Name', r: 1e9, ti: '<img src=x>', cl: 'wizard', am: 'nope', aq: 'ffa', pt: 'a b' });
+    assert.deepEqual([bad.r, bad.ti, bad.cl, bad.am, bad.aq, bad.pt, bad.wb], [5000, '', '', '', '', '', 0]);
     assert.equal(O.sanitizeInfo({ f: 'mainimage/thumbs/WHchad.webp' }).f, 'mainimage/thumbs/WHchad.webp');
     const s = W.freshState(0);
     const me = O.infoFor(s, 'Me', 'mainimage/whathappened.jpeg');
@@ -228,12 +233,96 @@ test('remote players move smoothly between updates', () => {
     assert.equal(O.interpolate([], 0), null);
 });
 
+test('position sends: events at once, movement throttled, a heartbeat while still', () => {
+    const at = { x: 100, y: 100, a: 0.5, r: 0, sa: 0, fl: 0, hp: 80, mhp: 100, shot: 0, k: 1 };
+    const R = O.RATE;
+    assert.equal(O.sendDue(null, at, 0, false), 'event', 'the first position goes at once');
+    // nothing changed: only the heartbeat, every beatSec (the k counter alone is not a change)
+    assert.equal(O.sendDue(at, { ...at, k: 2 }, 1, false), null);
+    assert.equal(O.sendDue(at, { ...at, k: 3 }, R.beatSec, false), 'beat');
+    // tiny jitter (under the thresholds) is not worth a send
+    assert.equal(O.posChange(at, { ...at, x: 101, a: 0.55 }), null);
+    // moving or aiming: at most moveHz, or fightHz with another player close by
+    const moved = { ...at, x: 130 };
+    assert.equal(O.sendDue(at, moved, 0.2, false), null, 'too soon while just walking');
+    assert.equal(O.sendDue(at, moved, 1 / R.moveHz, false), 'move');
+    assert.equal(O.sendDue(at, moved, 1 / R.fightHz, true), 'move', 'faster near another player');
+    assert.equal(O.sendDue(at, { ...at, a: 1.5 }, 1 / R.moveHz, false), 'move', 'aiming counts');
+    assert.equal(O.posChange(at, { ...at, a: 0.5 + Math.PI * 2 }), null, 'a full turn is no turn');
+    assert.ok(R.moveHz <= 3 && R.fightHz <= 10 && R.beatSec < R.staleSec / 2, 'stays under the old 10 a second, and a still player never looks gone');
+    // events: shield/dash/death flags, a shot, a cast, getting hurt; not before eventGapSec
+    for (const c of [{ fl: O.FLAGS.shield }, { shot: 1 }, { cs: 1, ci: 'whirlwind' }, { hp: 70 }, { mhp: 120 }]) {
+        assert.equal(O.posChange(at, { ...at, ...c }), 'event', JSON.stringify(c));
+        assert.equal(O.sendDue(at, { ...at, ...c }, R.eventGapSec, false), 'event');
+        assert.equal(O.sendDue(at, { ...at, ...c }, R.eventGapSec / 2, false), null);
+    }
+    assert.equal(O.posChange(at, { ...at, hp: 81 }), 'move', 'healing is not urgent');
+    assert.equal(O.posChange(at, { ...at, sa: 2 }), null, 'a lowered shield turning does not matter');
+    assert.equal(O.posChange({ ...at, fl: O.FLAGS.shield }, { ...at, fl: O.FLAGS.shield, sa: 2 }), 'move', 'a raised one does');
+});
+
+test('remote players are drawn far enough behind to glide at the slower rate, and walk off cleanly after standing still', () => {
+    // the usual gap follows real updates, ignoring heartbeat-length pauses
+    let gap = O.RATE.gapMs;
+    for (let i = 0; i < 20; i++) gap = O.nextGap(gap, 125);
+    assert.ok(Math.abs(gap - 125) < 5, 'learns a fast sender: ' + gap);
+    assert.equal(O.nextGap(gap, 2500), gap, 'a heartbeat pause does not count');
+    assert.equal(O.interpDelay(10), O.RATE.interpMinMs);
+    assert.ok(O.interpDelay(1 / O.RATE.moveHz * 1000) > 1000 / O.RATE.moveHz, 'behind by more than one gap at the walking rate');
+    assert.ok(O.interpDelay(1e6) <= O.RATE.interpMaxMs);
+    // a 3-a-second walk drawn at that delay never runs past the newest update (no stop-and-jump)
+    const buf = [];
+    for (let i = 0; i <= 10; i++) O.addSample(buf, { at: i * 333, x: i * 50, y: 0, a: 0, sa: 0, r: 0 }, 333);
+    let prev = null, maxStep = 0;
+    for (let t = 1000; t <= 3330; t += 16) {
+        const latest = buf.filter(s => s.at <= t).pop(), s = O.interpolate(buf, t - O.interpDelay(333));
+        assert.ok(s.x <= latest.x + 1e-9);
+        if (prev) maxStep = Math.max(maxStep, s.x - prev.x);
+        prev = s;
+    }
+    assert.ok(maxStep < 4, 'moves a little each frame: ' + maxStep);
+    // standing still for 3 s, then walking: it stays put until just before the first new update, instead of drifting
+    const b2 = [];
+    O.addSample(b2, { at: 0, x: 0, y: 0, a: 0, sa: 0, r: 0 }, 333);
+    O.addSample(b2, { at: 3000, x: 50, y: 0, a: 0, sa: 0, r: 0 }, 333);
+    assert.equal(b2.length, 3, 'a held copy of where it stood');
+    assert.equal(O.interpolate(b2, 2500).x, 0);
+    assert.ok(O.interpolate(b2, 2835).x > 0 && O.interpolate(b2, 2835).x < 50);
+    // the buffer stays short
+    for (let i = 0; i < 40; i++) O.addSample(b2, { at: 4000 + i * 100, x: 0, y: 0, a: 0, sa: 0, r: 0 }, 100);
+    assert.ok(b2.length <= 12);
+});
+
+test('where players can hurt each other: open in the wild zones, never in town or the Proving Grounds, in the arena only where its rules say', () => {
+    assert.equal(O.pvpRule('greenwood'), 'open');
+    assert.equal(O.pvpRule('sky'), 'open');
+    assert.equal(O.pvpRule('town'), 'off');
+    assert.equal(O.pvpRule('trials'), 'off');
+    assert.equal(O.pvpRule('hall'), 'off');
+    assert.equal(O.pvpRule('arena'), 'arena');
+    const hit = O.makeHit('sword_1', 'melee', 10, 0, false);
+    assert.equal(O.validateHit(hit, ctx({ zone: 'trials' })).reason, 'town');
+    assert.equal(O.validateHit(hit, ctx({ zone: 'arena' })).reason, 'arena', 'the lobby');
+    assert.equal(O.validateHit(hit, ctx({ zone: 'arena', arenaOk: true })).ok, true, 'the Pit or a match');
+    // a staff spell from a page that shows a class other than the Mystic is refused
+    const spell = O.makeHit('firestaff_2', 'spell', 30, 0, false);
+    assert.equal(O.validateHit(spell, ctx({ cls: 'warrior' })).reason, 'class');
+    assert.equal(O.validateHit(spell, ctx({ cls: 'mystic' })).ok, true);
+    assert.equal(O.validateHit(spell, ctx({})).ok, true, 'older pages show no class');
+});
+
 test('database.rules.json is valid and covers every place the game writes', () => {
     const rules = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
     assert.equal(rules['.read'], false);
     assert.equal(rules['.write'], false);
     const zone = rules.wilds.v1.zones.$zone;
-    for (const k of ['p', 'i', 'h', 'l', 'b']) assert.ok(zone[k], 'rule for ' + k);
+    for (const k of ['p', 'i', 'h', 'l', 'b', 'd', 'w']) assert.ok(zone[k], 'rule for ' + k);
+    // arena messages work like hits: signed by the sender, read only by who they are for
+    assert.match(zone.d.$to['.read'], /auth\.uid === \$to/);
+    assert.match(zone.d.$to.$mid['.write'], /newData\.child\('from'\)\.val\(\) === auth\.uid/);
+    for (const f of ['r', 'ti', 'cl', 'am', 'aq', 'pt', 'wb']) assert.ok(zone.i.$uid[f], 'info field ' + f);
+    // the leaderboard: everyone writes only their own record
+    assert.match(rules.wilds.v1.arena.top.$uid['.write'], /auth\.uid === \$uid/);
     assert.match(zone.p.$uid['.write'], /auth\.uid === \$uid/, 'only you write your position');
     assert.match(zone.h.$victim['.read'], /auth\.uid === \$victim/, 'only the target reads its hits');
     assert.match(zone.h.$victim.$hid['.write'], /newData\.child\('from'\)\.val\(\) === auth\.uid/, 'hits are signed by their sender');

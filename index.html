@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <!--
   WHAT HAPPENED clicker — Main game page
-  Entry point: loads styles.css, main.js. Navigation to leaderboard, achievements, clan, gamba, privacy.
+  Entry point: loads styles.css, main.js. Navigation to leaderboard, achievements, clan, gamba; footer links to the help pages and privacy.
   Sections: head/meta, loading overlay, left upgrades bar, quick buttons, main content, stats/modals, shop, chat, clan panel, footer, Firebase/scripts.
 -->
 <html lang="en">
@@ -505,9 +505,23 @@
                 </div>
             </div>
             <p id="guideCurrent" class="guide-current"></p>
+            <div id="guideBarWrap" class="guide-bar-wrap" hidden>
+                <div id="guideBar" class="guide-bar" role="progressbar" aria-label="Progress on this step" aria-valuemin="0"><span id="guideBarFill" class="guide-bar-fill"></span></div>
+                <p id="guideBarText" class="guide-bar-text"></p>
+                <p id="guideBarWhat" class="guide-next" hidden></p>
+            </div>
             <ol id="guideSteps" class="guide-steps" hidden></ol>
             <p id="guideNext" class="guide-next" hidden></p>
             <p id="guideUpgrade" class="guide-next" hidden></p>
+        </section>
+        <!-- One-time reminder to back up progress (guide.js): shown once, never signs in or downloads by itself -->
+        <section id="saveReminder" class="guide-card save-reminder glass-panel" aria-label="Keep your progress safe" role="status" hidden>
+            <p id="saveReminderText" class="save-reminder-text">Save to account or download a save file so you don't lose progress on this browser.</p>
+            <div class="save-reminder-actions">
+                <a class="btn btn-primary btn-sm" href="account.html">☁️ Save to account</a>
+                <button id="saveReminderDownload" class="btn btn-ghost btn-sm" type="button">Download save file</button>
+                <button id="saveReminderClose" class="modal-close" type="button" aria-label="Close this reminder" title="Close (it won't come back)">✕</button>
+            </div>
         </section>
         <div class="main-image-wrap">
             <button class="main-image-btn" onclick="increment()" aria-label="Click What Happened">
@@ -614,6 +628,7 @@
     <div id="adWrapper" style="text-align:center;margin:12px 0;" hidden>
         <ins class="adsbygoogle"
             style="display:block;max-width:728px;margin:0 auto;"
+            data-ad-client="ca-pub-7259344384263515"
             data-ad-slot="1234567890"
             data-ad-format="auto"
             data-full-width-responsive="true"></ins>
@@ -648,10 +663,18 @@
 
     <!-- Leaderboard removed (replaced by Firebase later) -->
     
-    <!-- Footer with Privacy link -->
-    <!-- ========== Footer and nav links ========== -->
+    <!-- ========== Footer: help pages and privacy (plain links, readable without JavaScript) ========== -->
     <footer class="site-footer">
-        <a href="privacy.html">Privacy Policy</a>
+        <nav aria-label="Help, info and support">
+            <a href="how-to-play.html">How to play</a>
+            <a href="wilds-guide.html">The Wilds guide</a>
+            <a href="upgrades-followers-gems.html">Upgrades, followers &amp; gems</a>
+            <a href="faq.html">FAQ</a>
+            <a href="about.html">About</a>
+            <a href="privacy.html">Privacy Policy</a>
+            <!-- Ko-fi tips (voluntary; nothing in the game depends on them). Replace YOUR_KOFI_NAME here and in Settings > Help & privacy. -->
+            <a href="https://ko-fi.com/YOUR_KOFI_NAME" target="_blank" rel="noopener">☕ Support the game — keep The Wilds online</a>
+        </nav>
     </footer>
 
 
@@ -772,6 +795,11 @@
                     <button id="adChoicesBtn" class="btn btn-ghost btn-sm" type="button">Ad &amp; cookie choices</button>
                     <div id="adChoicesStatus" class="setting-help"></div>
                     <a class="setting-help" href="privacy.html" target="_blank" rel="noopener">Privacy policy</a>
+                </div>
+                <div class="setting-row">
+                    <!-- Ko-fi tips: replace YOUR_KOFI_NAME here and in the page footer -->
+                    <a class="btn btn-ghost btn-sm" href="https://ko-fi.com/YOUR_KOFI_NAME" target="_blank" rel="noopener">☕ Support the game — keep The Wilds online</a>
+                    <div class="setting-help">Tips go toward the Firebase bill for online play. The game itself stays free.</div>
                 </div>
             </section>
             <div class="settings-footer">
@@ -947,15 +975,17 @@
 
   // Initialize Firebase (cloud.js shares this app for accounts and cloud saves)
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
-  // Google Analytics only starts once the player has accepted ads and visit counting (core/consent.js, privacy.html)
-  let analyticsStarted = false;
+  // Google Analytics only starts once the player has allowed visit counting (core/consent.js, privacy.html), and stops
+  // collecting as soon as they withdraw it
+  let analyticsStarted = false, analyticsMod = null, analytics = null;
   function startAnalytics() {
-      if (analyticsStarted) return;
+      if (analyticsStarted) { if (analyticsMod && analytics) analyticsMod.setAnalyticsCollectionEnabled(analytics, true); return; }
       analyticsStarted = true;
-      import("https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js").then(m => m.getAnalytics(app)).catch(() => { analyticsStarted = false; });
+      import("https://www.gstatic.com/firebasejs/12.8.0/firebase-analytics.js").then(m => { analyticsMod = m; analytics = m.getAnalytics(app); }).catch(() => { analyticsStarted = false; });
   }
-  if (window.WHConsent && window.WHConsent.allowed()) startAnalytics();
-  window.addEventListener('wh:consent', e => { if (e.detail === 'granted') startAnalytics(); });
+  function stopAnalytics() { try { if (analyticsMod && analytics) analyticsMod.setAnalyticsCollectionEnabled(analytics, false); } catch (e) {} }
+  if (window.WHConsent && window.WHConsent.analyticsAllowed()) startAnalytics();
+  window.addEventListener('wh:consent', () => { if (window.WHConsent && window.WHConsent.analyticsAllowed()) startAnalytics(); else stopAnalytics(); });
     // Firestore instance used for leaderboard submissions from the game
     try {
         const db = getFirestore(app);
@@ -993,16 +1023,21 @@
         // small helper to escape HTML for chat display
         function escapeHtml(s){ try{ return String(s).replace(/[&<>'"]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;',"'":"&#39;",'"':'&quot;' })[c]); }catch(e){ return String(s||''); } }
 
-        // Chat safe mode: censor curse words when enabled (whole-word, case-insensitive)
-        function getChatSafeMode(){ try{ return localStorage.getItem('chat_safe_mode')==='1'; }catch(e){ return false; } }
-        function setChatSafeMode(v){ try{ localStorage.setItem('chat_safe_mode', v?'1':'0'); }catch(e){} }
-        function censorForSafeMode(txt){
-            if(!txt || !getChatSafeMode()) return txt;
-            const words = ['damn','hell','crap','ass','bastard','bitch','shit','shitty','fuck','fucking','fucker','fucked','wtf','stfu','dick','dumbass','bullshit','piss','pissed','slut','whore','cunt','nigger','nigga','fag','faggot','retard','retarded','rape','raped'];
-            let out = String(txt);
-            for(let i=0;i<words.length;i++){ const w = words[i]; const r = new RegExp('\\b'+w.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'\\b','gi'); out = out.replace(r,'***'); }
-            return out;
-        }
+        // Chat safety (core/chat-safety.js, shared with the clan page and the Wilds): the swear filter ("safe mode") is on
+        // unless the player turned it off; every chat row below shows its name and message through chatName/chatText, and
+        // repeats of the same message in a row are shown once with a count. Sending goes through chatAllowed (send limits).
+        const CHAT_SAFETY = window.WHChatSafety;
+        const chatLimiter = CHAT_SAFETY.limiter();
+        function getChatSafeMode(){ return CHAT_SAFETY.isOn(localStorage); }
+        function setChatSafeMode(v){ CHAT_SAFETY.setOn(localStorage, !!v); }
+        function censorForSafeMode(txt){ return CHAT_SAFETY.display(txt, getChatSafeMode()); }
+        function chatText(raw){ return escapeHtml(censorForSafeMode(String(raw||''))); }
+        function chatName(raw){ return escapeHtml(censorForSafeMode(String(raw||'Anon'))); }
+        function collapseChat(list){ return CHAT_SAFETY.collapse(list, d => ({ name: d && d.name, message: d && d.message })).map(x => Object.assign({}, x.item, { _repeat: x.repeat })); }
+        function repeatBadge(d){ return d && d._repeat > 1 ? ` <span style="color:#999;font-size:11px">×${d._repeat}</span>` : ''; }
+        // the sender's own limits (a short gap, a burst cap, no exact repeats soon after); false (and says why) when blocked
+        function chatAllowed(channel, txt){ const r = chatLimiter.check(channel, txt, Date.now()); if(!r.ok){ try{ notify(r.message); }catch(e){} return false; } return true; }
+        function chatSent(channel, txt){ chatLimiter.note(channel, txt, Date.now()); }
 
         // Chat unread indicator (badge with count when new messages and panel closed)
         const CHAT_LASTREAD_KEY = 'whathappened_chat_lastRead';
@@ -1037,10 +1072,11 @@
                         const prevScrollTop = messagesEl.scrollTop;
                         messagesEl.innerHTML = '';
                         let lastData = null;
-                        snap.forEach(docSnap => {
-                            const d = docSnap.data(); lastData = d;
-                            const name = escapeHtml(String(d.name||'Anon'));
-                            const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
+                        const all = []; snap.forEach(docSnap => all.push(docSnap.data()));
+                        collapseChat(all).forEach(d => {
+                            lastData = d;
+                            const name = chatName(d.name);
+                            const msg = chatText(d.message) + repeatBadge(d);
                             const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                             const row = document.createElement('div'); row.style.padding='4px 0';
                             row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1100,13 +1136,13 @@
                     snap.forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                     const titles = await getProfileTitles(Array.from(names));
                     function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
-                    for(const d of docs){
+                    for(const d of collapseChat(docs)){
                         const nameRaw = String(d.name||'Anon');
                         const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
+                        const msg = chatText(d.message) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div');
                         row.style.padding='4px 0';
@@ -1128,7 +1164,9 @@
                 if (!input) return;
                 const txt = (input.value||'').trim();
                 if (!txt) return;
-                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
+                if(!chatAllowed('global', txt)) return;
+                chatSent('global', txt);
+                try{ await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('global'); throw e; }
                 input.value = '';
                 try{ await trimCollection('global_chat', 100); }catch(e){}
                 // ensure sender sees latest immediately
@@ -1154,7 +1192,7 @@
                         <button id="sideTabGlobal" class="side-tab active" role="tab">🌍 Global</button>
                         <button id="sideTabClan" class="side-tab" role="tab">🛡️ Clan</button>
                     </div>
-                    <label class="side-safe" title="Hide swear words in chat"><input type="checkbox" id="chatSafeModeCheck"> Safe mode</label>
+                    <label class="side-safe" title="Hides swear words in chat. On unless you turn it off."><input type="checkbox" id="chatSafeModeCheck"> Safe mode</label>
                     <button id="sidePanelClose" class="modal-close" aria-label="Close chat">✕</button>
                 </div>
                 <div id="sidePanelBody" class="side-body">
@@ -1173,7 +1211,7 @@
             document.getElementById('sidePanelClose').addEventListener('click', closeSidePanel);
             document.getElementById('sideTabGlobal').addEventListener('click', ()=>setSideTab('global'));
             document.getElementById('sideTabClan').addEventListener('click', ()=>setSideTab('clan'));
-            const safeCheck = document.getElementById('chatSafeModeCheck'); if(safeCheck){ safeCheck.checked = getChatSafeMode(); safeCheck.addEventListener('change', ()=>{ setChatSafeMode(safeCheck.checked); try{ loadGlobalInto('sideGlobalMessages'); }catch(e){} }); }
+            const safeCheck = document.getElementById('chatSafeModeCheck'); if(safeCheck){ safeCheck.checked = getChatSafeMode(); safeCheck.addEventListener('change', ()=>{ setChatSafeMode(safeCheck.checked); try{ const clanOpen = document.getElementById('sideClanArea').style.display !== 'none'; setSideTab(clanOpen ? 'clan' : 'global'); }catch(e){} }); }
             document.getElementById('sideGlobalSend').addEventListener('click', async ()=>{ await sideSendGlobal(); });
             document.getElementById('sideGlobalInput').addEventListener('keydown', (e)=>{ if(e.key==='Enter') sideSendGlobal(); });
             document.getElementById('sideClanSend').addEventListener('click', async ()=>{ await sideSendClan(); });
@@ -1221,13 +1259,13 @@
                     snap.forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                     const titles = await getProfileTitles(Array.from(names));
                     function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
-                    for(const d of docs){
+                    for(const d of collapseChat(docs)){
                         const nameRaw = String(d.name||'Anon');
                         const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
+                        const msg = chatText(d.message) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1293,13 +1331,13 @@
                         snap.forEach(docSnap => { const d = docSnap.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                         const titles = await getProfileTitles(Array.from(names));
                     function titleHtmlWithColor(t){ try{ if(!t) return ''; const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rarity = (rarityMap && rarityMap[t]) ? rarityMap[t] : 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = (typeof RARITY_COLORS !== 'undefined' && RARITY_COLORS[rarity]) ? RARITY_COLORS[rarity] : (FALLBACK[rarity] || FALLBACK.common); return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(t)}</span>`; }catch(e){ return escapeHtml(t||''); } }
-                    for(const d of docs){
+                    for(const d of collapseChat(docs)){
                         const nameRaw = String(d.name||'Anon');
                         const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(typeof censorForSafeMode === 'function' ? censorForSafeMode(String(d.message||'')) : String(d.message||''));
+                        const msg = chatText(d.message) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1347,13 +1385,13 @@
                                             msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
                                             const titles = await getProfileTitles(Array.from(names));
                                             function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
-                                            msgs.forEach(d => {
+                                            collapseChat(msgs).forEach(d => {
                                                 const nameRaw = String(d.name||'Anon');
                                                 const title = (titles[nameRaw] || '');
                                                 const titleHtml = title ? titleHtmlWithColor(title) + ' ' : '';
-                                                const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                                                const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
                                                 const displayHtml = titleHtml + nameHtml;
-                                                const msg = escapeHtml(String(d.message||''));
+                                                const msg = chatText(d.message) + repeatBadge(d);
                                                 const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                                                 const row = document.createElement('div'); row.style.padding='4px 0';
                                                 row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1424,7 +1462,9 @@
             try{
                 const username = ensureUsername(); if(!username) { notify('Set username'); return; }
                 const input = document.getElementById('sideGlobalInput'); const txt = (input.value||'').trim(); if(!txt) return;
-                await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
+                if(!chatAllowed('global', txt)) return;
+                chatSent('global', txt);
+                try{ await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('global'); throw e; }
                 input.value = '';
                 try{ await trimCollection('global_chat', 100); }catch(e){}
                 // live listener will update; ensure immediate refresh as fallback
@@ -1454,14 +1494,14 @@
                     snap.forEach(doc => { const d = doc.data(); msgs.push(d); names.add(String(d.name||'Anon')); });
                     msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
                     const titles = await getProfileTitles(Array.from(names));
-                    msgs.forEach(d => {
+                    collapseChat(msgs).forEach(d => {
                         const nameRaw = String(d.name||'Anon');
                         const title = (titles[nameRaw] || '');
                                             function titleHtmlWithColor(t){ try{ if(!t) return ''; const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rarity = (rarityMap && rarityMap[t]) ? rarityMap[t] : 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = (typeof RARITY_COLORS !== 'undefined' && RARITY_COLORS[rarity]) ? RARITY_COLORS[rarity] : (FALLBACK[rarity] || FALLBACK.common); return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(t)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                                             const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${escapeHtml(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = escapeHtml(String(d.message||''));
+                        const msg = chatText(d.message) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1481,7 +1521,9 @@
                 const username = ensureUsername(); if(!username) { notify('Set username'); return; }
                 const clanId = localStorage.getItem('player_clanId') || null; if(!clanId){ notify('You are not in a clan'); return; }
                 const input = document.getElementById('sideClanInput'); const txt = (input.value||'').trim(); if(!txt) return;
-                await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true });
+                if(!chatAllowed('clan', txt)) return;
+                chatSent('clan', txt);
+                try{ await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('clan'); throw e; }
                 input.value = '';
                 try{ await trimClanMessages(clanId, 100); }catch(e){}
                 try { const m = document.getElementById('sideClanMessages'); if (m) m.scrollTop = m.scrollHeight; } catch (e) {}
@@ -1654,6 +1696,7 @@
         <script src="core/guide.js"></script>
         <script src="core/consent.js"></script>
         <script src="core/clan-buffs.js"></script>
+        <script src="core/chat-safety.js"></script>
         <script src="core/world-bridge.js"></script>
         <script src="core/world-gods.js"></script>
         <script src="followers-data.js"></script>

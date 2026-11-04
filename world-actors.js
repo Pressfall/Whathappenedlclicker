@@ -15,6 +15,7 @@
     const rnd = () => Math.random();
     const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
     const angTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+    const SHALLOW_SPEED = 0.65; // wading through tide flats
     let nextId = 1;
 
     // ---------------- creation ----------------
@@ -32,11 +33,14 @@
         p.shield = Object.assign(C.newWeapon('shield', Math.PI / 2), { up: false, raisedAt: -9, brokenUntil: 0 });
         return p;
     };
+    // opts: spawn, eliteSpawn, flank, summoned; hpMult / dmgMult on top of the zone's; name; guardian ({ zone, i }: a ward's
+    // guardian); champion (a crowned one)
     A.makeMonster = function (type, x, y, opts = {}) {
         const def = D.MONSTERS[type];
         const z = D.ZONES[game().zoneId] || {};
         const m = base('monster', 'monster', x, y, def.r);
-        Object.assign(m, { type, def, name: def.name, hp: def.hp * (z.hpMult || 1), maxHp: def.hp * (z.hpMult || 1), dmg: def.dmg * (z.dmgMult || 1),
+        const hm = (z.hpMult || 1) * (opts.hpMult || 1), dm = (z.dmgMult || 1) * (opts.dmgMult || 1);
+        Object.assign(m, { type, def, name: opts.name || def.name, hp: def.hp * hm, maxHp: def.hp * hm, dmg: def.dmg * dm, guardian: opts.guardian || null, champion: !!opts.champion,
             armor: def.armor || 0, baseArmor: def.armor || 0, speed: def.speed, elite: !!def.elite, home: { x, y }, aggro: false, spawn: opts.spawn, eliteSpawn: opts.eliteSpawn,
             cds: def.attacks.map(() => 0), hopT: rnd(), wanderT: rnd() * 3, wander: null, flank: opts.flank || 0, summoned: !!opts.summoned, mass: def.r / 14 });
         if (def.dummy) Object.assign(m, { kind: 'dummy', hp: def.hp, maxHp: def.hp, solid: true, mass: 99, lastDmg: 0, dmgLog: [] });
@@ -54,7 +58,7 @@
         const rt = D.RIVAL_TIERS[zoneId], rv = D.RIVALS[rt.rival];
         const gear = D.GEAR_BY_ID[rv.cls + '_' + rt.tier];
         const r = base('rival', 'rival', x, y, 13);
-        Object.assign(r, { name: rv.name, face: rv.face, color: rv.color, cls: rv.cls, tier: rt.tier, rt, weapon: C.newWeapon(rv.cls, 0), hp: rt.hp, maxHp: rt.hp,
+        Object.assign(r, { name: rv.name + (rt.title ? ' ' + rt.title : ''), face: rv.face, color: rv.color, cls: rv.cls, tier: rt.tier, rt, weapon: C.newWeapon(rv.cls, 0), hp: rt.hp, maxHp: rt.hp,
             armor: rt.tier * 12, baseArmor: rt.tier * 12, dmg: gear.dmg * 0.9, speed: 135, home: { x, y }, aggro: false, mass: 1,
             ai: { next: 0, attackUntil: 0, aimX: x, aimY: y, strafe: rnd() < 0.5 ? 1 : -1, strafeT: 0, dodgeCd: 0, staggerUntil: 0, iframes: 0, drawing: false }, combo: {} });
         return r;
@@ -196,18 +200,24 @@
             if (t.hp <= 0) t.hp = 1; // waits for the shared health to reach 0
             return;
         }
+        // a co-op wave's monster: everyone's damage adds up, and only the page running the wave kills it
+        if (t.wave && WHW.waves && WHW.waves.shareDamage(t, dmg)) { if (t.hp <= 0) t.hp = 1; return; }
         if (t.hp <= 0) A.kill(t, info.from);
     };
 
     function isStunned(t) { return (t.status && t.status.stunUntil > E.time) || (t.kind === 'rival' && t.ai.staggerUntil > E.time); }
     A.kill = function (t, by) {
         const g = game();
+        if (t.wave && WHW.waves && !WHW.waves.mayKill(t)) { t.hp = 1; return; } // the page running the wave decides
         t.dead = true;
         E.burst(t.x, t.y, t.def && t.def.color ? t.def.color : '#fff', 18, 180, { life: 0.7, size: 4 });
         const at = now();
+        // the Proving Grounds pay per wave, not per monster (so they are no way round the zones' own drops)
+        if (t.wave) { WHW.waves.killed(t); WHW.sfx('kill'); return; }
         if (t.kind === 'monster') {
             const loot = W.monsterLoot(g.state, t.type, Math.random, at, { ack: g.ack, zone: g.zoneId });
             WHW.showLoot(t.x, t.y, loot);
+            if (t.guardian) WHW.onGuardianKilled && WHW.onGuardianKilled(t);
             if (!t.summoned && t.spawn !== undefined) {
                 const sec = t.elite ? D.ELITE_RESPAWN_SEC : D.MONSTER_RESPAWN_SEC;
                 g.respawns.push({ spawn: t.spawn, elite: t.elite, at: E.time + sec });
@@ -821,6 +831,7 @@
         if (p.slow) speed *= 1 - p.slow;
         if (p.overSlow && p.overSlow.until > E.time) speed *= 1 - p.overSlow.amt; // an overcharged frost staff
         speed *= buffMult(p, 'speedMult');
+        if (tile === T.SHALLOW) speed *= SHALLOW_SPEED;
         if (p.pull) pullStep(p, dt);
         else {
             if (p.dashT > 0) {
@@ -847,6 +858,10 @@
             if (p.lavaT > 0.25) { p.lavaT = 0; E.burst(p.x, p.y + 10, '#ff8a3d', 3, 50, { life: 0.4, grav: -60 }); }
             if (p.hp <= 0 && !p.dead) { p.hp = 0; p.dead = true; WHW.onPlayerDeath(); return; }
         }
+        // the open sky: step off an island (not mid-dash, so a dash can cross a gap) and you fall back to where you stood
+        const under = E.tileAt(p.x, p.y);
+        if (under === T.VOID && p.dashT <= 0 && !p.pull) { fallOff(p); if (p.dead) return; }
+        else if (under !== T.VOID && firmGround(p)) { p.safeX = p.x; p.safeY = p.y; }
         if (E.time < p.status.burnUntil) {
             p.hp -= p.status.burnDps * (1 - st.fireResist) * dt;
             if (p.hp <= 0 && !p.dead) { p.hp = 0; p.dead = true; WHW.onPlayerDeath(); return; }
@@ -865,6 +880,31 @@
         A.updatePlayerWeapon(p, dt);
     };
 
+    // somewhere to put a player back after a fall: solid ground a little way in from every edge
+    function firmGround(p) {
+        const d = p.r + 10, T = G.T;
+        return [[d, 0], [-d, 0], [0, d], [0, -d]].every(([dx, dy]) => E.tileAt(p.x + dx, p.y + dy) !== T.VOID);
+    }
+    function fallOff(p) {
+        const z = D.ZONES[game().zoneId] || {};
+        E.burst(p.x, p.y, '#cfe7ff', 16, 140, { life: 0.6, grav: 120 });
+        p.hp -= p.maxHp * (z.voidFall || 0.2);
+        p.vx = p.vy = p.kbx = p.kby = 0; p.dashT = 0;
+        if (p.safeX !== undefined) { p.x = p.safeX; p.y = p.safeY; }
+        E.collideTiles(p);
+        p.iframes = Math.max(p.iframes, 0.8);
+        p.steadyUntil = E.time + 2.5; // back on your feet: no gust or pull moves you for a moment, so one gust can't throw you off twice
+        p.lastHurt = E.time;
+        E.floatText(p.x, p.y - 34, 'YOU FELL', '#cfe7ff', 14, 1.2);
+        E.addShake(6);
+        WHW.sfx('hurt');
+        if (p.hp <= 0 && !p.dead) { p.hp = 0; p.dead = true; WHW.onPlayerDeath(); }
+    }
+    // A hit that drags the player toward whatever threw it (a siren's song, a tidecaller's wave)
+    function pullToward(p, src, speed) {
+        const d = dist(p, src), reach = Math.min(110, d - p.r - (src.r || 10) - 10);
+        if (reach > 8 && !p.dead) p.pull = { x: p.x + (src.x - p.x) / d * reach, y: p.y + (src.y - p.y) / d * reach, speed, until: E.time + reach / speed + 0.1 };
+    }
     function trailPush(owner, x, y, kind) {
         owner.trail.push({ x, y, kind, t: E.time });
         if (owner.trail.length > 9) owner.trail.shift();
@@ -1328,6 +1368,19 @@
         const a = m.def.attacks ? m.def.attacks[i] : null;
         m.atk = { a, i, t: 0, phase: 'windup', dir: angTo(m, target), tx: target.x, ty: target.y, hit: false, sx: m.x, sy: m.y };
         m.facing = m.atk.dir;
+        // what a co-op wave's host shares, so the other pages replay the same attack at the same spot
+        m.atkSeq = (m.atkSeq || 0) + 1; m.atkI = i; m.atkTx = target.x; m.atkTy = target.y;
+    }
+    // A wave monster run on another page (world-waves.js): it goes where that page says, and its attacks play out here
+    // against this page's player, aimed where they were aimed there
+    function followMonster(m, dt) {
+        const f = 1 - Math.exp(-12 * dt);
+        if (m.netX !== undefined) { m.x += (m.netX - m.x) * f; m.y += (m.netY - m.y) * f; if (!m.atk) m.facing = m.netFa || m.facing; }
+        const k = m.atk;
+        if (!k) return;
+        k.t += dt;
+        if (k.phase === 'windup') { if (k.t >= k.a.windup) { k.phase = 'active'; k.t = 0; attackBegin(m, k, k.aimPt); } }
+        else { const stop = attackActive(m, k, k.aimPt, dt); if (stop || k.t >= (k.a.active || 0.1)) m.atk = null; }
     }
     function inSector(m, target, dir, reach, arc) {
         const d = dist(m, target);
@@ -1338,7 +1391,7 @@
         const g = game();
         g.projectiles.push(Object.assign({ kind: 'orb', team: m.team, x: m.x + Math.cos(angle) * m.r, y: m.y + Math.sin(angle) * m.r,
             vx: Math.cos(angle) * a.speed, vy: Math.sin(angle) * a.speed, r: a.pr || 7, life: 2.2, dmg: m.dmg * (a.dmg || 1), color: m.def.color,
-            burn: a.burn || m.def.burn, chill: a.chill, owner: m.id }, extra));
+            burn: a.burn || m.def.burn, chill: a.chill, stun: a.stun, pull: a.pull, owner: m.id }, extra));
     }
     // An attack's windup is over: it lands (or starts moving). target: who it was aimed at (a shared boss may aim at another
     // player); damage is only ever checked against the player on this page.
@@ -1347,7 +1400,7 @@
         const me = game().player;
         const fire = !!(a.burn || (m.def && m.def.burn));
         if (a.type === 'slam' || a.type === 'nova') {
-            if (dist(m, me) <= a.radius + me.r) A.hurtPlayer(m.dmg * (a.dmg || 1), { from: m, kb: 260, burn: a.burn, chill: a.chill, fire, drain: m.def.drain });
+            if (dist(m, me) <= a.radius + me.r) { const got = A.hurtPlayer(m.dmg * (a.dmg || 1), { from: m, kb: 260, burn: a.burn, chill: a.chill, fire, drain: m.def.drain }); if (got > 0 && a.stun) A.stunPlayer(a.stun); }
             E.burst(m.x, m.y, a.chill ? '#bfefff' : '#d9c6a5', 22, 220, { life: 0.5 });
             E.addShake(5);
             WHW.sfx('slam');
@@ -1366,6 +1419,11 @@
         } else if (a.type === 'lunge' || a.type === 'charge') {
             m.vx = Math.cos(k.dir) * a.speed; m.vy = Math.sin(k.dir) * a.speed;
             WHW.sfx('swoosh');
+        } else if (a.type === 'spikes') {
+            // a line of spikes (or fire, or light) bursting out of the ground toward the target
+            const ang = angTo(m, target);
+            for (let i = 1; i <= a.count; i++) hazard({ kind: 'circle', x: m.x + Math.cos(ang) * (m.r + i * a.gap), y: m.y + Math.sin(ang) * (m.r + i * a.gap), r: a.radius, windup: (a.delay || 0.6) + i * 0.06,
+                dmg: m.dmg * (a.dmg || 1), chill: !!a.chill, burn: !!a.burn, ice: !!a.chill, owner: m.id });
         }
     }
     function attackActive(m, k, target, dt) {
@@ -1401,21 +1459,24 @@
         return -1;
     }
     A.updateMonster = function (m, dt) {
-        const g = game(), p = g.player;
+        const g = game();
+        // a co-op wave's monster chases whoever in the room is nearest (on any page); the rest chase this page's player
+        const p = m.wave && WHW.waves ? WHW.waves.targetFor(m) : g.player;
         statusTick(m, dt);
         if (m.dead) return;
         m.flash = Math.max(0, m.flash - dt);
         const d = dist(m, p);
         const def = m.def;
         if (m.kind === 'dummy') return;
+        if (m.follow) { followMonster(m, dt); return; }
         // knockback drift
         if (m.kbx || m.kby) { moveActor(m, m.kbx * dt, m.kby * dt); const kd = Math.exp(-8 * dt); m.kbx *= kd; m.kby *= kd; if (Math.abs(m.kbx) + Math.abs(m.kby) < 2) m.kbx = m.kby = 0; }
         if (E.time < m.status.stunUntil) { m.atk = null; return; }
-        const slow = E.time < m.status.chillUntil ? 0.6 : 1;
+        const slow = (E.time < m.status.chillUntil ? 0.6 : 1) * (E.tileAt(m.x, m.y) === G.T.SHALLOW ? SHALLOW_SPEED : 1);
         // aggro and leash
         const aggroR = m.elite ? 340 : 280;
         if (!p.dead && !g.inTown && d < aggroR) m.aggro = true;
-        if (m.aggro && (p.dead || Math.hypot(m.x - m.home.x, m.y - m.home.y) > 700 || d > 600)) { m.aggro = false; m.atk = null; m.returning = true; }
+        if (m.aggro && !m.wave && (p.dead || Math.hypot(m.x - m.home.x, m.y - m.home.y) > 700 || d > 600)) { m.aggro = false; m.atk = null; m.returning = true; }
         if (m.returning) {
             const hd = Math.hypot(m.home.x - m.x, m.home.y - m.y);
             if (hd < 12) { m.returning = false; m.hp = m.maxHp; }
@@ -1500,6 +1561,13 @@
         meteors: { type: 'targets', windup: 0.4, active: 0.2, count: 5, radius: 58, delay: 1.0, stagger: 0.25, around: 'player', spread: 120, burn: true, dmg: 1 },
         clone: { type: 'clone', windup: 0.8, active: 0.2 },
         spikes: { type: 'spikes', windup: 0.4, active: 0.6, count: 9, gap: 44, radius: 26, delay: 0.75, dmg: 1 },
+        // the Far Reaches
+        tide: { type: 'wave', windup: 0.7, active: 0.2, speed: 260, width: 60, dmg: 1.0, color: 'rgba(90,180,255,0.75)' },
+        whirlpool: { type: 'pull', windup: 0.7, active: 0.2, r: 320, strength: 150, time: 2.2, burst: 110, dmg: 1.3 },
+        lightning: { type: 'targets', windup: 0.4, active: 0.2, count: 4, radius: 52, spread: 140, delay: 1.0, stagger: 0.15, around: 'player', dmg: 1.0, stun: 0.6, bolt: true },
+        gust: { type: 'push', windup: 0.6, active: 0.2, reach: 420, arc: 1.6, force: 380, time: 1.0, dmg: 0.4 },
+        orbs: { type: 'orbs', windup: 0.6, active: 0.2, count: 3, speed: 150, life: 4.5, turn: 2.2, pr: 12, dmg: 1.1 },
+        starfall: { type: 'targets', windup: 0.4, active: 0.2, count: 9, radius: 50, delay: 1.2, stagger: 0.08, around: 'arena', dmg: 1.0, stun: 0.3, bolt: true },
     };
     A.BOSS_MOVES = BOSS_MOVES;
     function bossPhase(b) { const f = b.hp / b.maxHp; return f > 0.66 ? 0 : f > 0.33 ? 1 : 2; }
@@ -1523,14 +1591,22 @@
             }
             E.burst(b.x, b.y, '#9cff9c', 20, 160);
         } else if (a.type === 'wave') {
-            hazard({ kind: 'wave', x: b.x, y: b.y, r: b.r, speed: a.speed * scale, width: a.width, max: 420, dmg: b.dmg * (a.dmg || 1), owner: b.id });
+            hazard({ kind: 'wave', x: b.x, y: b.y, r: b.r, speed: a.speed * scale, width: a.width, max: 420, dmg: b.dmg * (a.dmg || 1), owner: b.id, color: a.color });
+        } else if (a.type === 'pull') {
+            hazard({ kind: 'pull', x: b.x, y: b.y, r: a.r, strength: a.strength * scale, time: a.time, burst: a.burst, dmg: b.dmg * (a.dmg || 1), owner: b.id });
+        } else if (a.type === 'push') {
+            hazard({ kind: 'push', x: b.x, y: b.y, ang: angTo(b, p), arc: a.arc, reach: a.reach, force: a.force * scale, time: a.time, dmg: b.dmg * (a.dmg || 0), owner: b.id });
+            E.burst(b.x, b.y, '#e6f0ff', 16, 260, { angle: angTo(b, p), spread: a.arc, life: 0.5 });
+        } else if (a.type === 'orbs') {
+            const n = a.count + b.phase, ang0 = angTo(b, p);
+            for (let i = 0; i < n; i++) shoot(b, ang0 + (i - (n - 1) / 2) * 0.5, { speed: a.speed, pr: a.pr, dmg: a.dmg }, { homing: a.turn, life: a.life, color: '#b07dff', burn: !!b.def.burn });
         } else if (a.type === 'targets') {
             const n = a.count + b.phase * 2;
             for (let i = 0; i < n; i++) {
                 let x, y;
                 if (a.around === 'arena') { const ang = rnd() * TAU, rr = Math.sqrt(rnd()) * (g.map.boss.r - 40); x = g.map.boss.x + Math.cos(ang) * rr; y = g.map.boss.y + Math.sin(ang) * rr; }
                 else { const ang = rnd() * TAU, rr = i === 0 ? 0 : rnd() * (a.spread || 80); x = p.x + (p.vx || 0) * 0.3 + Math.cos(ang) * rr; y = p.y + (p.vy || 0) * 0.3 + Math.sin(ang) * rr; }
-                hazard({ kind: 'circle', x, y, r: a.radius, windup: a.delay + (a.stagger || 0) * i, dmg: b.dmg * (a.dmg || 1), burn: a.burn, owner: b.id, lingering: a.burn && b.def.burn ? 3 : 0 });
+                hazard({ kind: 'circle', x, y, r: a.radius, windup: a.delay + (a.stagger || 0) * i, dmg: b.dmg * (a.dmg || 1), burn: a.burn, stun: a.stun, bolt: a.bolt, owner: b.id, lingering: a.burn && b.def.burn ? 3 : 0 });
             }
         } else if (a.type === 'spikes') {
             const ang = angTo(b, p);
@@ -1716,6 +1792,11 @@
                 pr.rad += pr.speed * dt;
                 pr.x = pr.ox + Math.cos(pr.dir) * pr.rad; pr.y = pr.oy + Math.sin(pr.dir) * pr.rad;
             } else {
+                if (pr.homing && pr.team !== 'player' && !p.dead) {
+                    // a void orb: turns slowly toward the player on this page
+                    const cur = Math.atan2(pr.vy, pr.vx), turn = Math.max(-pr.homing * dt, Math.min(pr.homing * dt, C.wrap(angTo(pr, p) - cur))), sp = Math.hypot(pr.vx, pr.vy);
+                    pr.vx = Math.cos(cur + turn) * sp; pr.vy = Math.sin(cur + turn) * sp;
+                }
                 pr.x += pr.vx * dt; pr.y += pr.vy * dt;
                 const t = E.tileAt(pr.x, pr.y);
                 if (t === G.T.WALL || t === G.T.BUILDING) { pr.life = 0; E.burst(pr.x, pr.y, pr.kind === 'bolt' ? pr.color : '#c9b38f', pr.kind === 'bolt' ? 8 : 3, 60, { life: 0.3 }); continue; }
@@ -1765,7 +1846,10 @@
             } else if (!p.dead && Math.hypot(p.x - pr.x, p.y - pr.y) <= p.r + pr.r) {
                 if (p.iframes > 0) continue;
                 const from = g.actors.find(a => a.id === pr.owner) || pr;
-                A.hurtPlayer(pr.dmg, { from, kb: 120, burn: pr.burn, chill: pr.chill, fire: !!pr.burn, fromAngle: Math.atan2(-pr.vy, -pr.vx), projectile: pr });
+                const got = A.hurtPlayer(pr.dmg, { from, kb: 120, burn: pr.burn, chill: pr.chill, fire: !!pr.burn, fromAngle: Math.atan2(-pr.vy, -pr.vx), projectile: pr });
+                if (got > 0 && pr.stun) A.stunPlayer(pr.stun);
+                if (got > 0 && pr.pull && from !== pr) pullToward(p, from, pr.pull);
+                if (pr.homing) { E.burst(pr.x, pr.y, pr.color || '#b07dff', 14, 160, { life: 0.4 }); E.addShake(3); }
                 pr.life = 0;
             }
         }
@@ -1778,8 +1862,8 @@
             if (h.kind === 'circle') {
                 if (!h.done && h.t >= h.windup) {
                     h.done = true;
-                    if (Math.hypot(p.x - h.x, p.y - h.y) <= h.r + p.r) A.hurtPlayer(h.dmg, { from: h, kb: 200, burn: h.burn, chill: h.chill, fire: !!h.burn, unblockable: true });
-                    E.burst(h.x, h.y, h.ice ? '#bfefff' : h.burn ? '#ff9a3d' : '#cbb89a', 12, 180, { life: 0.45 });
+                    if (Math.hypot(p.x - h.x, p.y - h.y) <= h.r + p.r) { const got = A.hurtPlayer(h.dmg, { from: h, kb: 200, burn: h.burn, chill: h.chill, fire: !!h.burn, unblockable: true }); if (got > 0 && h.stun) A.stunPlayer(h.stun); }
+                    E.burst(h.x, h.y, h.ice ? '#bfefff' : h.burn ? '#ff9a3d' : h.bolt ? '#ffe66b' : '#cbb89a', 12, 180, { life: 0.45 });
                     E.addShake(3);
                 }
                 if (h.done && h.lingering) {
@@ -1793,6 +1877,30 @@
                 const pd = Math.hypot(p.x - h.x, p.y - h.y);
                 if (!h.hit && pd + p.r >= prev - h.width / 2 && pd - p.r <= h.r + h.width / 2 && p.iframes <= 0) { h.hit = true; A.hurtPlayer(h.dmg, { from: h, kb: 220 }); }
                 if (h.r > h.max) h.gone = true;
+            } else if (h.kind === 'pull') {
+                // a whirlpool: drags whoever stands in it toward the middle (a dash breaks free), then bursts
+                const d = Math.hypot(p.x - h.x, p.y - h.y);
+                if (h.t < h.time) {
+                    if (d < h.r && d > 6 && p.dashT <= 0 && !p.dead && !(p.steadyUntil > E.time)) { const f = h.strength * dt * (0.5 + 0.5 * (1 - d / h.r)); E.move(p, (h.x - p.x) / d * f, (h.y - p.y) / d * f, solidsNear(p.x, p.y, 80)); }
+                } else if (!h.done) {
+                    h.done = true;
+                    if (d <= h.burst + p.r && !p.dead) A.hurtPlayer(h.dmg, { from: h, kb: 320, unblockable: true });
+                    E.burst(h.x, h.y, '#9fdcff', 26, 240, { life: 0.5 }); E.addShake(5);
+                } else if (h.t > h.time + 0.3) h.gone = true;
+            } else if (h.kind === 'push') {
+                // a gust: shoves you (a boss's: in a cone in front of it; the isles' wind: everywhere). A raised shield
+                // halves it, a dash nearly ignores it, and it can blow you off an edge.
+                const warn = h.warn || 0;
+                if (h.t >= warn && h.t < warn + h.time && !p.dead && !(p.steadyUntil > E.time)) {
+                    let inside = true;
+                    if (h.arc) { const d = Math.hypot(p.x - h.x, p.y - h.y); inside = d < h.reach && Math.abs(C.wrap(Math.atan2(p.y - h.y, p.x - h.x) - h.ang)) < h.arc / 2; }
+                    if (inside) {
+                        const f = h.force * dt * (p.shield.up ? 0.5 : 1) * (p.dashT > 0 ? 0.3 : 1);
+                        E.move(p, Math.cos(h.ang) * f, Math.sin(h.ang) * f, solidsNear(p.x, p.y, 80));
+                        if (h.dmg && !h.hit) { h.hit = true; A.hurtPlayer(h.dmg, { from: h, kb: 0, unblockable: true }); }
+                    }
+                }
+                if (h.t >= warn + h.time) h.gone = true;
             }
         }
         g.hazards = g.hazards.filter(h => !h.gone);
@@ -2038,6 +2146,9 @@
         ctx.font = emote ? '26px sans-serif' : '600 12px Inter, sans-serif';
         ctx.textAlign = 'center';
         if (emote) { ctx.fillText(text, x, y - 6); ctx.restore(); return; }
+        // every bubble (other players, your own, speaking in the Hall) goes through the chat filter here (core/chat-safety.js)
+        const CS = window.WHChatSafety;
+        if (CS) text = CS.display(text, CS.isOn(localStorage));
         const w = Math.min(220, ctx.measureText(text).width + 16), h = 22;
         ctx.fillStyle = 'rgba(15,18,27,0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - h - 6, w, h, 8) : ctx.rect(x - w / 2, y - h - 6, w, h); ctx.fill(); ctx.stroke();
@@ -2146,6 +2257,10 @@
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 1, y - 1, w + 2, 5);
         ctx.fillStyle = '#ff9a3d'; ctx.fillRect(x, y, w * Math.max(0, r.hp / r.maxHp), 3);
     };
+    // the Far Reaches' monsters borrow the older ones' shapes in their own colours
+    const DRAW_AS = { crawler: 'crab', drowned: 'skeleton', ghoul: 'skeleton', knight: 'skeleton', gull: 'bat', hawk: 'bat', harpy: 'bat',
+        siren: 'sprite', wisp: 'sprite', seraph: 'sprite', witch: 'imp', ram: 'boar', rat: 'hound', serpent: 'wolf',
+        tidecaller: 'golem', sentinel: 'golem', roc: 'golem', colossus: 'ember_brute', cloud_golem: 'golem', warden: 'crystal_golem' };
     A.drawMonster = function (ctx, m) {
         const d = m.def, x = m.x, y = m.y, r = m.r;
         shadow(ctx, x, y, r);
@@ -2157,8 +2272,8 @@
             circle(ctx, x + fx * r * ex + px * r * 0.3, y + fy * r * ex + py * r * 0.3 - 2, size, colr);
             circle(ctx, x + fx * r * ex - px * r * 0.3, y + fy * r * ex - py * r * 0.3 - 2, size, colr);
         };
-        if (m.elite) { ctx.strokeStyle = 'rgba(255,200,61,0.7)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 5 + Math.sin(E.time * 4) * 1.5, 0, TAU); ctx.stroke(); }
-        switch (m.type) {
+        if (m.elite || m.champion) { ctx.strokeStyle = m.guardian ? 'rgba(120,200,255,0.8)' : 'rgba(255,200,61,0.7)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 5 + Math.sin(E.time * 4) * 1.5, 0, TAU); ctx.stroke(); }
+        switch (DRAW_AS[m.type] || m.type) {
             case 'slime': {
                 const sq = m.hopLeft > 0 ? 0.85 : 1 + Math.sin(E.time * 6 + m.hopT) * 0.05;
                 ctx.fillStyle = col; ctx.globalAlpha = 0.9;
@@ -2231,7 +2346,7 @@
         if (m.status.chillUntil > E.time) circle(ctx, x, y, r + 2, 'rgba(160,220,255,0.25)');
         if (m.status.stunUntil > E.time) { ctx.fillStyle = '#ffe14d'; for (let i = 0; i < 3; i++) { const a = E.time * 5 + i * TAU / 3; ctx.fillRect(x + Math.cos(a) * r * 0.8 - 2, y - r - 6 + Math.sin(a) * 3, 4, 4); } }
         hpBar(ctx, m);
-        if (m.elite) E.label(ctx, d.name, x, y - r - 18, { font: '700 11px Inter, sans-serif', fill: '#ffe7a3', stroke: 'rgba(0,0,0,0.7)' });
+        if (m.elite || m.champion) E.label(ctx, m.name, x, y - r - 18, { font: '700 11px Inter, sans-serif', fill: m.guardian ? '#9fdcff' : '#ffe7a3', stroke: 'rgba(0,0,0,0.7)' });
         if (m.kind === 'dummy' && m.dmgLog.length) {
             const recent = m.dmgLog.filter(e => E.time - e.at < 3);
             m.dmgLog = recent;
@@ -2289,7 +2404,7 @@
                     ctx.strokeStyle = '#7fd36b'; ctx.lineWidth = 10; ctx.lineCap = 'round';
                     ctx.beginPath(); ctx.moveTo(a.x + Math.cos(k.cur) * a.r, a.y + Math.sin(k.cur) * a.r); ctx.lineTo(a.x + Math.cos(k.cur) * at.reach, a.y + Math.sin(k.cur) * at.reach); ctx.stroke();
                 }
-            } else if (k.phase === 'windup' && (at.type === 'shoot' || at.type === 'ring' || at.type === 'summon' || at.type === 'clone' || at.type === 'wave' || at.type === 'targets' || at.type === 'spikes')) {
+            } else if (k.phase === 'windup' && (at.type === 'shoot' || at.type === 'ring' || at.type === 'summon' || at.type === 'clone' || at.type === 'wave' || at.type === 'targets' || at.type === 'spikes' || at.type === 'pull' || at.type === 'push' || at.type === 'orbs')) {
                 circle(ctx, a.x, a.y, a.r + 6 + 6 * f, null, `rgba(255,200,80,${0.3 + 0.5 * f})`, 3);
             }
         }
@@ -2309,8 +2424,23 @@
                     ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
                 }
             } else if (h.kind === 'wave') {
-                ctx.strokeStyle = 'rgba(120,200,90,0.85)'; ctx.lineWidth = h.width;
+                ctx.strokeStyle = h.color || 'rgba(120,200,90,0.85)'; ctx.lineWidth = h.width;
                 ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.stroke();
+            } else if (h.kind === 'pull') {
+                const live = h.t < h.time;
+                ctx.strokeStyle = live ? 'rgba(120,200,255,0.55)' : 'rgba(200,240,255,0.8)'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.arc(h.x, h.y, live ? h.r : h.burst, 0, TAU); ctx.stroke();
+                if (live) for (let i = 0; i < 4; i++) { const a0 = -E.time * 3 + i * TAU / 4; ctx.beginPath(); ctx.arc(h.x, h.y, h.r * (0.3 + 0.15 * i), a0, a0 + 1.6); ctx.stroke(); }
+                ctx.fillStyle = 'rgba(255,90,100,' + (0.08 + 0.2 * Math.min(1, h.t / h.time)) + ')'; ctx.beginPath(); ctx.arc(h.x, h.y, h.burst, 0, TAU); ctx.fill();
+            } else if (h.kind === 'push') {
+                const warn = h.warn || 0, live = h.t >= warn;
+                ctx.strokeStyle = live ? 'rgba(230,240,255,0.55)' : 'rgba(230,240,255,' + (0.15 + 0.3 * (h.t / Math.max(0.01, warn))) + ')'; ctx.lineWidth = 2;
+                const ox = h.arc ? h.x : g.player.x, oy = h.arc ? h.y : g.player.y;
+                for (let i = 0; i < 9; i++) {
+                    const s = ((E.time * (live ? 2.2 : 0.6) + i * 0.37) % 1), off = (i - 4) * (h.arc ? 22 : 60), along = h.arc ? 40 + s * (h.reach - 40) : (s - 0.5) * 700;
+                    const x = ox + Math.cos(h.ang) * along - Math.sin(h.ang) * off, y = oy + Math.sin(h.ang) * along + Math.cos(h.ang) * off;
+                    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(h.ang) * 26, y + Math.sin(h.ang) * 26); ctx.stroke();
+                }
             }
         }
         ctx.restore();

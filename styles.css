@@ -1034,7 +1034,10 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
 
 /* ========== Footer, ads, cookie banner ========== */
 .site-footer { position: relative; z-index: 1; text-align: center; padding: 12px 0 90px; font-size: 13px; }
+/* an ad slot AdSense could not fill takes no space (the form Google recommends) */
+ins.adsbygoogle[data-ad-status="unfilled"] { display: none !important; }
 .site-footer a { color: var(--text-dim); }
+.site-footer nav { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; padding: 0 12px; }
 #adWrapper { position: relative; z-index: 1; text-align: center; margin: 12px 0; }
 #cookie-consent-banner { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 2500; justify-content: center; }
 #cookie-consent-banner .cookie-consent-inner {

@@ -1,0 +1,31 @@
+/* The help and info pages (how-to-play, wilds-guide, upgrades-followers-gems, faq, about). Plain reading pages:
+   no scripts, so they read the same with JavaScript off. Tokens come from theme.css. */
+body { max-width: 860px; margin: 0 auto; padding: 24px 22px 48px; background: var(--bg); line-height: 1.6; }
+.info-top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-bottom: 18px; font-size: 14px; }
+.info-top a { color: var(--text-dim); }
+.info-top a.info-play { color: var(--text); font-weight: 700; text-decoration: none; padding: 7px 14px; border-radius: 999px; border: 1px solid var(--border-strong); background: var(--surface-2); }
+.info-top a.info-play:hover { background: var(--surface-3); }
+h1 { font-family: var(--font-display); font-weight: 400; color: var(--gold); line-height: 1.2; margin: 8px 0 6px; }
+h2 { margin-top: 32px; font-size: 20px; }
+h3 { margin-top: 22px; font-size: 16px; }
+p, li, dd { color: var(--text-dim); }
+strong, b { color: var(--text); }
+.lede { font-size: 17px; }
+code { background: rgba(255, 255, 255, 0.08); padding: 1px 6px; border-radius: 6px; color: var(--text); }
+kbd { display: inline-block; min-width: 1.6em; padding: 0 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; background: var(--surface-2); color: var(--text); font: 600 12px/1.6 var(--font); text-align: center; }
+.toc { padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-solid); }
+.toc ol { margin: 0; padding-left: 20px; }
+.note { padding: 10px 14px; border-left: 3px solid var(--gold); background: rgba(255, 200, 61, 0.06); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top; }
+th { color: var(--text); font-weight: 700; background: var(--surface-2); }
+td { color: var(--text-dim); }
+td.num, th.num { text-align: right; white-space: nowrap; }
+dl.faq dt { margin-top: 20px; font-weight: 700; color: var(--text); }
+dl.faq dd { margin: 6px 0 0; }
+.info-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--border); font-size: 13px; }
+.info-footer nav { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+.info-footer a { color: var(--text-dim); }
+.info-footer a[aria-current="page"] { color: var(--text); font-weight: 700; text-decoration: none; }
+.info-footer p { margin: 10px 0 0; color: var(--text-faint); }

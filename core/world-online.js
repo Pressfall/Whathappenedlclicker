@@ -8,16 +8,22 @@
  * player it hits agrees it was possible; the rest is bounded so one modified page can't do unlimited harm (see
  * docs/trust-boundaries.md).
  *
- * Works in a browser (<script src="core/world-online.js"> sets window.WHWorldOnline, after world-data.js) and in Node.
+ * Works in a browser (<script src="core/world-online.js"> sets window.WHWorldOnline, after world-data.js and chat-safety.js) and in Node.
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'));
-    else root.WHWorldOnline = factory(root.WHWorldData);
-}(typeof self !== 'undefined' ? self : this, function (D) {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./chat-safety'));
+    else root.WHWorldOnline = factory(root.WHWorldData, root.WHChatSafety);
+}(typeof self !== 'undefined' ? self : this, function (D, CS) {
     'use strict';
 
     const ROOT = 'wilds/v1/zones';
-    const RATE = { sendHz: 10, staleSec: 6, hiddenLeaveSec: 20, interpMs: 120 };
+    // Position updates. Every other page in the zone downloads each one, so they are most of the database's download bill
+    // (the free Spark plan: 10 GB a month). A page sends at once when something others must see happens (sendDue: 'event'),
+    // otherwise at most moveHz while it moves or aims (fightHz with another player close by outside town, so swings still
+    // read), and a heartbeat every beatSec while nothing changes. Receivers smooth between updates (interpDelay, addSample).
+    // A remote unseen for staleSec is hidden; after pruneSec it is forgotten until it sends again.
+    const RATE = { moveHz: 3, fightHz: 8, beatSec: 2.5, eventGapSec: 0.1, checkSec: 0.05, fightRange: 600, moveEps: 3, angEps: 0.12, reachEps: 4,
+        staleSec: 6, pruneSec: 30, hiddenLeaveSec: 20, interpMinMs: 120, interpMaxMs: 650, gapMs: 333 };
     const PVP = {
         mult: 0.5,          // players hit each other at half strength (gear makes one-shots too easy otherwise)
         protectSec: 5,      // after arriving in a zone or waking up
@@ -37,9 +43,8 @@
     const CHAT = { maxLen: 60, bubbleSec: 6, gapSec: 1.2, logMax: 40 };
     const EMOTES = ['👋', '😂', '😮', '😡', '❤️', '👍', '🔥', 'GG'];
     const FLAGS = { shield: 1, dead: 2, dash: 4, protect: 8, draw: 16 };
-    // same list as the game's chat safe mode (index.html censorForSafeMode)
-    const SAFE_WORDS = ['damn', 'hell', 'crap', 'ass', 'bastard', 'bitch', 'shit', 'shitty', 'fuck', 'fucking', 'fucker', 'fucked', 'wtf', 'stfu',
-        'dick', 'dumbass', 'bullshit', 'piss', 'pissed', 'slut', 'whore', 'cunt', 'nigger', 'nigga', 'fag', 'faggot', 'retard', 'retarded', 'rape', 'raped'];
+    // the game's chat filter (core/chat-safety.js), shared with every other chat
+    const SAFE_WORDS = CS.WORDS;
     const FACE_RE = /^mainimage\/(thumbs\/)?[A-Za-z0-9_'-]{1,40}\.(webp|png|jpe?g)$/;
     const UID_RE = /^[A-Za-z0-9_-]{4,64}$/;
 
@@ -48,9 +53,9 @@
     const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
     // ---------------- position updates ----------------
-    // x, y, weapon angle, reach/draw, shield angle, flags, hp, max hp, shot counter, heartbeat: one short string, sent ~10 times
-    // a second while anything changes. The heartbeat (k) changes every second, because the database tells nobody about a write
-    // that changes nothing, and a player standing still must still look present.
+    // x, y, weapon angle, reach/draw, shield angle, flags, hp, max hp, shot counter, heartbeat: one short string, sent when
+    // sendDue says so. The heartbeat (k) changes every second, because the database tells nobody about a write that changes
+    // nothing, and a player standing still must still look present.
     // Once a player has cast an ability, four more fields follow so others can see it: a cast counter (cs), the ability (ci) and
     // where it was aimed (cx, cy). A player who never casts sends the short form.
     function packPos(o) {
@@ -74,6 +79,40 @@
         }
         return out;
     }
+    const angDiff = (a, b) => { let d = ((a || 0) - (b || 0)) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return Math.abs(d); };
+    // How a position (packPos fields) differs from the last one sent: 'event' (others must see it now: flags, a shot, a cast,
+    // getting hurt), 'move' (moved, aimed, healed), or null (nothing worth sending)
+    function posChange(prev, cur) {
+        if (!prev) return 'event';
+        if ((cur.fl | 0) !== (prev.fl | 0) || (cur.shot | 0) !== (prev.shot | 0) || (cur.cs | 0) !== (prev.cs | 0) || (cur.mhp | 0) !== (prev.mhp | 0)
+            || Math.ceil(cur.hp || 0) < Math.ceil(prev.hp || 0)) return 'event';
+        if (Math.hypot(cur.x - prev.x, cur.y - prev.y) >= RATE.moveEps || angDiff(cur.a, prev.a) >= RATE.angEps || Math.abs((cur.r || 0) - (prev.r || 0)) >= RATE.reachEps
+            || ((cur.fl & FLAGS.shield) && angDiff(cur.sa, prev.sa) >= RATE.angEps) || Math.ceil(cur.hp || 0) !== Math.ceil(prev.hp || 0)) return 'move';
+        return null;
+    }
+    // Should a page send its position now? sinceSec: since its last send; fighting: another player is close outside town.
+    // Returns 'event', 'move', 'beat' (heartbeat) or null.
+    function sendDue(prev, cur, sinceSec, fighting) {
+        if (!prev) return 'event'; // just arrived
+        const c = posChange(prev, cur);
+        if (c === 'event' && sinceSec >= RATE.eventGapSec) return 'event';
+        if (c && sinceSec >= 1 / (fighting ? RATE.fightHz : RATE.moveHz)) return 'move';
+        if (sinceSec >= RATE.beatSec) return 'beat';
+        return null;
+    }
+    // How far behind a remote player is drawn (ms), from the usual time between its updates: far enough back that the next
+    // update has nearly always arrived, so it glides instead of stopping and jumping
+    function interpDelay(gapMs) { return Math.max(RATE.interpMinMs, Math.min(RATE.interpMaxMs, (gapMs || RATE.gapMs) * 1.3 + 60)); }
+    // Keep the usual gap between a remote's updates (ignoring heartbeat-length pauses)
+    function nextGap(gapMs, intervalMs) { return intervalMs > 0 && intervalMs < 1000 ? (gapMs || RATE.gapMs) * 0.7 + intervalMs * 0.3 : (gapMs || RATE.gapMs); }
+    // Add an update to a remote's buffer. After a long quiet spell (standing still) it was where it last was until just
+    // before this update, so it walks off from there instead of sliding across the whole pause.
+    function addSample(buf, u, gapMs) {
+        const last = buf[buf.length - 1], g = gapMs || RATE.gapMs;
+        if (last && u.at - last.at > g * 2) buf.push(Object.assign({}, last, { at: u.at - g }));
+        buf.push(u);
+        while (buf.length > 12) buf.shift();
+    }
 
     // ---------------- who a player is ----------------
     function sanitizeName(name) {
@@ -85,13 +124,12 @@
         const s = String(text || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, CHAT.maxLen);
         return s || null;
     }
-    function censor(text) {
-        let out = String(text);
-        for (const w of SAFE_WORDS) out = out.replace(new RegExp('\\b' + w + '\\b', 'gi'), '***');
-        return out;
-    }
+    const censor = CS.censor;
     const tierOf = (id, slot) => { const b = D.GEAR_BY_ID[id]; return b && b.slot === slot ? b.tier : 0; };
-    // A player's look and gear as shown to others: { n, f, w, q, sh, c, h, b, say }
+    // A player's look and gear as shown to others: { n, f, w, q, sh, c, h, b, say }, and for the arena: r (rating), ti (title),
+    // cl (class: lets the player hit check the Mystic-only staff rule), am (the match they are in: id:ring), aq (the queue they
+    // wait in), pt (their party), wb (their best wave). The newer fields are '' / 0 from pages made before them.
+    const TITLE_RE = /^[A-Za-z0-9 '\-]{1,24}$/, MATCH_RE = /^[A-Za-z0-9]{4,24}:\d$/, PARTY_RE = /^[A-Za-z0-9]{4,24}$/;
     function sanitizeInfo(raw) {
         if (!isObj(raw)) return null;
         const w = D.GEAR_BY_ID[raw.w] && D.GEAR_BY_ID[raw.w].slot === 'weapon' ? raw.w : 'sword_0';
@@ -100,7 +138,10 @@
         if (isObj(raw.say)) { const m = cleanChat(raw.say.m); if (m) say = { m, t: num(raw.say.t, 0, 1e15), e: !!raw.say.e }; }
         return {
             n: sanitizeName(raw.n) || 'Adventurer', f: FACE_RE.test(String(raw.f || '')) ? raw.f : 'mainimage/whathappened.jpeg',
-            w, q: int(raw.q, 0, D.QUALITY.length - 1), sh, c: int(raw.c, 0, 5), h: int(raw.h, 0, 5), b: int(raw.b, 0, 5), say,
+            w, q: int(raw.q, 0, D.QUALITY.length - 1), sh, c: int(raw.c, 0, D.MAX_TIER), h: int(raw.h, 0, D.MAX_TIER), b: int(raw.b, 0, D.MAX_TIER), say,
+            r: int(raw.r, 0, 5000), ti: TITLE_RE.test(String(raw.ti || '')) ? raw.ti : '', cl: D.CLASSES[raw.cl] ? raw.cl : '',
+            am: MATCH_RE.test(String(raw.am || '')) ? raw.am : '', aq: ['duel', 't2', 't3'].includes(raw.aq) ? raw.aq : '',
+            pt: PARTY_RE.test(String(raw.pt || '')) ? raw.pt : '', wb: int(raw.wb, 0, 9999),
         };
     }
     function infoFor(state, name, face) {
@@ -108,7 +149,16 @@
         const wpn = find(s.hotbar[s.sel]), q = wpn ? D.QUALITY.indexOf(D.QUALITY.slice().reverse().find(t => wpn.score >= t.min)) : 0;
         const tier = (slot) => { const it = find(s.equip[slot]); return it ? D.GEAR_BY_ID[it.base].tier : 0; };
         const shield = find(s.equip.offhand);
-        return { n: name, f: face, w: wpn ? wpn.base : 'sword_0', q: Math.max(0, q), sh: shield ? shield.base : '', c: tier('chest'), h: tier('helmet'), b: tier('boots') };
+        const ar = s.arena || {};
+        return { n: name, f: face, w: wpn ? wpn.base : 'sword_0', q: Math.max(0, q), sh: shield ? shield.base : '', c: tier('chest'), h: tier('helmet'), b: tier('boots'),
+            cl: D.CLASSES[s.classes && s.classes.active] ? s.classes.active : 'warrior', r: Math.round(ar.rating || 1000), ti: ar.title || '', wb: ar.waveBest || 0 };
+    }
+    // Where other players can hurt you: 'off' (town, the Proving Grounds, inside buildings), 'arena' (only in the Pit or a
+    // match: core/world-arena.js hitAllowed) or 'open' (the wild zones)
+    function pvpRule(zoneId) {
+        const z = D.ZONES[zoneId];
+        if (!z || z.interior) return 'off';
+        return z.pvp || (z.safe ? 'off' : 'open');
     }
 
     // ---------------- PvP ----------------
@@ -208,10 +258,13 @@
 
     // A hit someone sent us. Returns { ok: true, dmg } with the damage to take (PvP strength), or { ok: false, reason }.
     // ctx: { zone, attacker: unpacked position, me: { x, y, protected }, now (s), lastAt (s, this attacker's last weapon hit),
-    // weapon (the weapon the attacker shows), abRate (abilities, see validateAbility) }
+    // weapon (the weapon the attacker shows), abRate (abilities, see validateAbility), arenaOk (in the arena: may they hit me
+    // there, from core/world-arena.js hitAllowed), cls (the attacker's class, when their page shows it) }
     function validateHit(hit, ctx) {
         if (!isObj(hit)) return { ok: false, reason: 'shape' };
-        if (ctx.zone === 'town' || !D.ZONES[ctx.zone]) return { ok: false, reason: 'town' };
+        const rule = pvpRule(ctx.zone);
+        if (rule === 'off') return { ok: false, reason: 'town' };
+        if (rule === 'arena' && !ctx.arenaOk) return { ok: false, reason: 'arena' };
         const kind = ['melee', 'thrust', 'bash', 'arrow', 'spell', 'parry', 'ab'].includes(hit.k) ? hit.k : null;
         if (!kind) return { ok: false, reason: 'kind' };
         const a = ctx.attacker;
@@ -224,6 +277,8 @@
         if ((kind === 'thrust' || kind === 'bash') && !D.WEAPON_CLASSES[b.cls].reachMax) return { ok: false, reason: 'weapon' };
         if (kind === 'melee' && (b.cls === 'bow' || D.WEAPON_CLASSES[b.cls].reachMax)) return { ok: false, reason: 'weapon' };
         if (kind === 'spell' && !D.STAFF_MAGIC[b.magic]) return { ok: false, reason: 'weapon' };
+        // only a class the staff's magic names can cast with it (checked when the attacker's page shows its class)
+        if (kind === 'spell' && ctx.cls && !D.STAFF_MAGIC[b.magic].users.includes(ctx.cls)) return { ok: false, reason: 'class' };
         const d = Math.hypot(a.x - ctx.me.x, a.y - ctx.me.y);
         if (d > reachFor(hit.w, kind)) return { ok: false, reason: 'range' };
         if (kind === 'parry') return { ok: true, dmg: 0 };
@@ -303,7 +358,7 @@
 
     return {
         ROOT, RATE, PVP, LOOT, BOSS, CHAT, EMOTES, FLAGS, SAFE_WORDS,
-        packPos, unpackPos, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor,
+        packPos, unpackPos, posChange, sendDue, interpDelay, nextGap, addSample, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor, pvpRule,
         maxHit, reachFor, validateHit, makeHit, abilityById, abilityReach, abilityBurst, abilityMaxHit, playerStun, sanitizeLoot, canClaim, lootExpired,
         sanitizeBoss, bossNeedsReset, bossDeadFor, earnedReward, hostOf, sanitizeHost, lerpAngle, interpolate,
     };

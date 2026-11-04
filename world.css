@@ -391,3 +391,15 @@ button.w-load:hover { border-color: var(--border-strong); }
     .w-banner, .w-toast, .w-rubies.is-bump { animation: none; }
     .w-bar i, .w-boss-bar i { transition: none; }
 }
+
+/* the Arena: the match bar at the top, the invitation card, the menu's ranking list */
+.w-arena-hud { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 16px; border-radius: 14px; background: rgba(15, 18, 27, 0.88); border: 1px solid var(--border-strong); pointer-events: auto; text-align: center; }
+.w-arena-score { font: 900 22px var(--font); color: var(--gold); }
+.w-arena-what { font: 700 13px var(--font); color: var(--text); }
+.w-arena-teams { display: flex; gap: 10px; font: 600 12px var(--font); color: var(--text-dim); }
+.w-arena-teams .is-down { text-decoration: line-through; opacity: 0.55; }
+.w-arena-invite { position: absolute; right: 12px; top: 220px; width: min(320px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 6px; padding: 12px; border-radius: 14px; background: rgba(15, 18, 27, 0.94); border: 1px solid var(--gold); pointer-events: auto; box-sizing: border-box; }
+.w-arena-me { margin-bottom: 10px; font: 600 14px var(--font); }
+.w-arena-top { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
+.w-waves-hud { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border-radius: 14px; background: rgba(15, 18, 27, 0.88); border: 1px solid var(--border-strong); font: 700 13px var(--font); color: var(--text); text-align: center; }
+.w-waves-hud b { color: var(--gold); font-size: 18px; }

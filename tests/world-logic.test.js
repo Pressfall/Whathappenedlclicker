@@ -214,6 +214,23 @@ test('worst-case weekly gems and Golden from the Wilds stay within the caps', ()
     assert.ok(sent.golden <= 7 * D.CAPS.goldenPerDay, 'golden ' + sent.golden);
 });
 
+test('bosses: every kill rolls the rare drops again, they stack, and enough kills pay for the Auto Clicker', () => {
+    const s = W.freshState(NOW);
+    const rare = ['verdant_crown', 'midas_eye', 'phoenix_feather', 'crown_of_winter'];
+    // a lucky roll (0) drops everything that can drop: each kill of a boss, however many before, adds its rare drops
+    for (let k = 1; k <= 6; k++) {
+        for (const b of Object.keys(D.BOSSES)) W.bossLoot(s, b, rngOf(0), NOW + k * 1000, 0);
+        for (const id of rare) assert.equal(W.count(s, id), k, id + ' after ' + k + ' kills');
+        assert.equal(W.count(s, 'hidden_shard'), k, 'shards stack too');
+    }
+    s.secrets.hallDoor = true; s.rubies = 1e6;
+    assert.equal(W.hiddenShopState(s, 'autoClicker', { gems: 5000, golden: 500 }).ok, true, 'it can be bought after repeat kills');
+    // the real odds: rare drops keep coming after the first
+    let got = 0;
+    for (let i = 0; i < 200; i++) { const r = W.bossLoot(s, 'frozen', Math.random, NOW + (10 + i) * 1000, 0); if (r.mats.hidden_shard) got++; }
+    assert.ok(got > 5 && got < 50, 'about 1 kill in 10 drops a Shard of the Hidden: ' + got + ' of 200');
+});
+
 test('bosses: the first kill of the day pays the most, drops the sigil once, and opens the next zone', () => {
     const s = W.freshState(NOW);
     const r1 = W.bossLoot(s, 'overgrown', rngOf(0.01), NOW, 0);

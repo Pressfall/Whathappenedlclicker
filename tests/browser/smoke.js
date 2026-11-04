@@ -94,7 +94,13 @@ async function main() {
         check('page title loads', /WHAT HAPPENED/i.test(await evalJs('document.title') || ''));
         check('guide card visible for a new player', await evalJs('!document.getElementById("guideCard").hidden'));
         check('guide shows 5 steps', (await evalJs('document.querySelectorAll("#guideSteps li").length')) === 5);
-        check('consent notice shown with 2 buttons', (await evalJs('document.querySelectorAll("#whConsent button").length')) === 2);
+        check('guide shows the way to the first OP mouse and what it unlocks', await evalJs(`!document.getElementById('guideBarWrap').hidden &&
+            /^\\d+ \\/ 100 What Happeneds for your first OP mouse\\.$/.test(document.getElementById('guideBarText').textContent) &&
+            /level 10 it unlocks the Mousepad of Destiny special/.test(document.getElementById('guideBarWhat').textContent) &&
+            document.getElementById('guideBar').getBoundingClientRect().width > 100`));
+        check('no save reminder for a brand-new player', await evalJs('document.getElementById("saveReminder").hidden'));
+        check('consent notice shown with Decline and Accept side by side', (await evalJs('document.querySelectorAll("#whConsent .wh-consent-actions button").length')) === 2);
+        check('consent notice: Choose opens two unticked boxes', (await evalJs('(() => { document.querySelector("#whConsent .wh-consent-more").click(); const b = [...document.querySelectorAll("#whConsentPick input")]; const ok = !document.getElementById("whConsentPick").hidden && b.length === 2 && b.every(x => !x.checked); document.querySelector("#whConsent .wh-consent-more").click(); return ok; })()')) === true);
         check('no AdSense script before consent', (await evalJs('[...document.scripts].filter(s=>/googlesyndication/.test(s.src)).length')) === 0);
         check('no AdSense request was even attempted before consent', !seen.some((u) => /googlesyndication/.test(u)));
         check('ad slot hidden before consent', await evalJs('document.getElementById("adWrapper").hidden'));
@@ -122,13 +128,32 @@ async function main() {
         await sleep(300);
         const shot2 = await send('Page.captureScreenshot', { format: 'png' });
         if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-settings.png'), Buffer.from(shot2.result.data, 'base64'));
-        await evalJs('toggleSettingsMenu()');
+        // Ko-fi row in Help & privacy: shown, opens in a new tab, with its help text
+        await evalJs('document.getElementById("settingsMenu").classList.contains("open") || toggleSettingsMenu()');
+        await waitFor('document.getElementById("settingsMenu").classList.contains("open") && document.getElementById("settingsMenu").getBoundingClientRect().right > 100', 10000);
+        await sleep(500);
+        const kofi = await evalJs(`(() => { const a = [...document.querySelectorAll('#settingsMenu a')].find(x => /ko-fi\.com/.test(x.href)); if (!a) return null;
+            a.scrollIntoView({ block: 'center' }); const r = a.getBoundingClientRect();
+            return { visible: r.width > 50 && r.height > 10 && getComputedStyle(a).visibility !== 'hidden', target: a.target, text: a.textContent.trim(), help: a.nextElementSibling && a.nextElementSibling.textContent }; })()`);
+        check('Settings: Ko-fi row visible with its help text', kofi && kofi.visible && kofi.target === '_blank' && /Support the game/.test(kofi.text) && /Firebase bill/.test(kofi.help || ''), kofi);
+        await sleep(300);
+        if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, 'shot-settings-kofi.png'), Buffer.from(s.result.data, 'base64')); }
+        await evalJs('document.getElementById("settingsMenu").classList.contains("open") && toggleSettingsMenu()');
 
         // ---- 4. Accept ----
         await evalJs('document.querySelector("#whConsent [data-consent=granted]").click()');
         await sleep(2500);
         check('AdSense script added after Accept', (await evalJs('[...document.scripts].filter(s=>/googlesyndication/.test(s.src)).length')) === 1);
         check('ad slot visible after Accept', !(await evalJs('document.getElementById("adWrapper").hidden')));
+        // the ad code itself: the AdSense script for this publisher, the slot queued once with the same publisher, and room to render
+        // (AdSense refuses a slot with no width). The request is blocked here, so the slot stays queued in window.adsbygoogle.
+        const ad = await evalJs(`(() => { const ins = document.querySelector('#adWrapper ins.adsbygoogle'); const s = [...document.scripts].find(x => /googlesyndication/.test(x.src));
+            return { src: s && s.src, client: ins.getAttribute('data-ad-client'), slot: ins.getAttribute('data-ad-slot'), filled: ins.dataset.whFilled, queued: Array.isArray(window.adsbygoogle) ? window.adsbygoogle.length : -1,
+                width: ins.getBoundingClientRect().width, async: s && s.async, cors: s && s.crossOrigin }; })()`);
+        check('ad code: AdSense script for the right publisher, slot queued once with the same publisher and a width',
+            ad && /adsbygoogle\.js\?client=ca-pub-7259344384263515$/.test(ad.src) && ad.client === 'ca-pub-7259344384263515' && ad.slot === '1234567890' &&
+            ad.filled === '1' && ad.queued === 1 && ad.width > 300 && ad.async === true && ad.cors === 'anonymous', ad);
+        check('AdSense request was made (and blocked by this test)', seen.some((u) => /pagead2\.googlesyndication\.com\/pagead\/js\/adsbygoogle\.js\?client=ca-pub-7259344384263515/.test(u)));
         check('consent notice gone after Accept', !(await evalJs('!!document.getElementById("whConsent")')));
         check('Analytics module requested only after Accept', seen.some((u) => /firebase-analytics/.test(u)));
 
@@ -151,7 +176,51 @@ async function main() {
             await navigate(`http://localhost:${PORT}/${p}`);
             check(`${p}: no AdSense script before consent`, (await evalJs('[...document.scripts].filter(s=>/googlesyndication/.test(s.src)).length')) === 0);
             check(`${p}: consent notice present`, !!(await evalJs('!!document.getElementById("whConsent")')));
+            if (p === 'leaderboard.html') {
+                // the tabs explain themselves (Firestore is blocked here, so the board itself shows an error)
+                const lb = await evalJs(`(() => { const e = () => document.getElementById('lbExplain').textContent; const m = e();
+                    document.getElementById('alltimeTab').click(); const a = e(); const pressed = document.getElementById('alltimeTab').getAttribute('aria-pressed');
+                    document.getElementById('monthlyTab').click(); return { m, a, pressed, back: document.getElementById('monthlyTab').getAttribute('aria-pressed') }; })()`);
+                check('leaderboard: each tab says what it shows (UTC month, names are not accounts)', lb && /^This month \(\w+ \d{4}\): .*00:00 UTC.*your time\)\. .*not an account/.test(lb.m) &&
+                    /^All time: the best score each name has ever submitted/.test(lb.a) && lb.pressed === 'true' && lb.back === 'true', lb);
+                if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, 'shot-leaderboard.png'), Buffer.from(s.result.data, 'base64')); }
+            }
         }
+        // ---- 7a. the one-time save reminder: shown once there is progress, in the page (not over the game), and only once ----
+        await evalJs(`(() => { suppressAutosave = true; const s = JSON.parse(localStorage.getItem('whathappened_save') || '{}'); s.upgrade1Level = 30;
+            localStorage.setItem('whathappened_save', JSON.stringify(s)); localStorage.removeItem('whathappened_save_reminder'); return true; })()`);
+        await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
+        await waitFor('!document.getElementById("saveReminder").hidden', 5000);
+        const rem = await evalJs(`(() => { const r = document.getElementById('saveReminder'); const b = r.getBoundingClientRect(); const g = document.querySelector('.main-image-wrap').getBoundingClientRect();
+            return { shown: !r.hidden, text: document.getElementById('saveReminderText').textContent, inFlow: getComputedStyle(r).position === 'static', above: b.bottom <= g.top + 1, stored: localStorage.getItem('whathappened_save_reminder') }; })()`);
+        check('save reminder shows once there is progress, in the page flow above the image', rem && rem.shown && rem.inFlow && rem.above && rem.stored === 'shown' &&
+            rem.text === "Save to account or download a save file so you don't lose progress on this browser.", rem);
+        if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, 'shot-save-reminder.png'), Buffer.from(s.result.data, 'base64')); }
+        await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
+        await sleep(1500);
+        check('save reminder does not come back after a reload', await evalJs('document.getElementById("saveReminder").hidden'));
+
+        // ---- 7b. help pages: readable with JavaScript off, on a computer and a phone, and they load nothing from Google ads ----
+        check('game footer links the help pages, then Ko-fi', /^how-to-play\.html,wilds-guide\.html,upgrades-followers-gems\.html,faq\.html,about\.html,privacy\.html,https:\/\/ko-fi\.com\/\w+$/.test(
+            await evalJs('[...document.querySelectorAll(".site-footer a")].map(a => a.getAttribute("href")).join()')));
+        await send('Emulation.setScriptExecutionDisabled', { value: true });
+        for (const [w, h, label] of [[1280, 1400, 'desktop'], [390, 844, 'phone']]) {
+            await send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: label === 'phone' });
+            for (const p of ['how-to-play.html', 'wilds-guide.html', 'upgrades-followers-gems.html', 'faq.html', 'about.html']) {
+                const before = seen.length;
+                await navigate(`http://localhost:${PORT}/${p}`);
+                const info = await evalJs(`({ text: document.querySelector('main').innerText.length, h1: getComputedStyle(document.querySelector('h1')).color,
+                    overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, links: document.querySelectorAll('.info-footer a').length,
+                    rows: document.querySelectorAll('#upgradeTable tbody tr').length })`);
+                check(`${p} (${label}, no JavaScript): readable`, info && info.text > 1500 && info.h1 === 'rgb(255, 200, 61)' && info.links === 7 && info.overflow <= 0, info);
+                if (p === 'upgrades-followers-gems.html') check(`${p}: all 29 upgrades listed`, info.rows === 29, info);
+                check(`${p} (${label}): nothing from Google ads or analytics requested`, !seen.slice(before).some((u) => /googlesyndication|google-analytics|googletagmanager|consent\.js/.test(u)));
+                if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, `shot-${label}-${p}.png`), Buffer.from(s.result.data, 'base64')); }
+            }
+        }
+        await send('Emulation.clearDeviceMetricsOverride');
+        await send('Emulation.setScriptExecutionDisabled', { value: false });
+
         // ---- 8. account page loads its modules with the shared core ----
         await navigate(`http://localhost:${PORT}/account.html`);
         check('account page: no script errors', errors().filter((e) => /progress|WHProgress|cloud|account/i.test(e)).length === 0, errors());
@@ -306,6 +375,16 @@ async function main() {
         await evalJs(`(() => { const W = WHWorld, g = WHW.game, s = g.state, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)}); g.player.ignite = null; g.player.abCharges = {};
             s.hotbar[${staffSlot}] = null; WHW.actions.selectSlot(0); d.hp = d.maxHp = 500; d.status.stunUntil = 0; d.kbx = d.kby = 0;
             W.setClass(s, 'warrior'); g.pstats = W.playerStats(s); return true; })()`);
+        // a boss comes back on its timer even while you wait in its arena (it used to need you to walk away), and pays again
+        const boss2 = await evalJs(`(() => { const g = WHW.game, W = WHWorld, s = g.state; window.__pos0 = { x: g.player.x, y: g.player.y }; let paid = 0; const orig = WHW.onBossKilled; WHW.onBossKilled = function (b, r) { paid++; return orig.apply(this, arguments); };
+            const kill = () => { const b = g.actors.find(a => a.kind === 'boss' && !a.dead); if (!b) return false; WHWorldDebug.teleport(g.map.boss.x - 60, g.map.boss.y); WHW.actors.damage(b, 1e7, { from: g.player, kbAngle: 0, kb: 0, s: 1 }); return true; };
+            const out = { first: kill() }; g.bossDeadUntil[g.zoneId] = WHW.engine.time + 1; window.__bossPaid = () => paid; return out; })()`);
+        await sleep(2500);
+        const boss2b = await evalJs(`(() => { const g = WHW.game, b = g.actors.find(a => a.kind === 'boss' && !a.dead); const near = Math.hypot(g.player.x - g.map.boss.x, g.player.y - g.map.boss.y) < g.map.boss.r + 300;
+            return { back: !!b, near, again: b ? (WHWorldDebug.teleport(g.map.boss.x - 60, g.map.boss.y), WHW.actors.damage(b, 1e7, { from: g.player, kbAngle: 0, kb: 0, s: 1 }), true) : false, paid: window.__bossPaid() }; })()`);
+        await sleep(300);
+        check('wilds: a boss returns while you wait in its arena, and its drops are paid again', boss2.first && boss2b.back && boss2b.near && boss2b.again && (await evalJs('window.__bossPaid()')) === 2, { boss2, boss2b });
+        await evalJs('(() => { const g = WHW.game; g.bossDeadUntil[g.zoneId] = 0; g.actors = g.actors.filter(a => a.kind !== "boss"); WHWorldDebug.teleport(window.__pos0.x, window.__pos0.y); WHW.engine.snapCamera(); return true; })()'); await sleep(300); // the camera follows the player: the cursor aims through it
         // the Rogue: the Grappling Hook pulls you to a monster and stuns it, and holds two charges
         const hook = await evalJs(`(() => { const W = WHWorld, g = WHW.game, p = g.player, s = g.state, T = WHW.engine.time, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
             s.classes.unlocked.rogue = true; W.setClass(s, 'rogue'); g.pstats = W.playerStats(s);
@@ -391,6 +470,85 @@ async function main() {
         await evalJs('WHWorldDebug.travel("town")');
         await sleep(300);
         check('hall: leaving puts you back at its door in town', await evalJs('WHW.game.zoneId === "town" && Math.hypot(WHW.game.player.x - WHW.game.map.hall.door.x, WHW.game.player.y - WHW.game.map.hall.door.y) < 80'));
+        // ---- the Far Reaches: the Waystone, a sealed lair and its wards, the void ----
+        const shot = async (name) => { if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, name), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64')); };
+        if (SCRATCH) { await evalJs('(() => { const w = WHW.game.map.waystone; WHWorldDebug.teleport(w.x + 60, w.y + 40); WHW.engine.snapCamera(); return true; })()'); await sleep(500); await shot('shot-town-waystone.png'); }
+        check('waystone: it stands in town, asleep until Frozen WH falls', await evalJs('!!WHW.game.map.waystone && !WHWorldDebug.state().unlocked.zones.coast'));
+        await evalJs('(() => { WHWorldDebug.unlockAll(); WHW.ui.openWaystone(); return true; })()');
+        await sleep(150);
+        check('waystone: it lists the four Far Reaches, open once unlocked', await evalJs('document.querySelectorAll("[data-go]").length === 4 && document.querySelectorAll("[data-go]:not([disabled])").length === 4 && /Saltspray Coast/.test(document.getElementById("wModalBody").textContent)'));
+        await evalJs('document.querySelector("[data-go=coast]").click()');
+        await sleep(500);
+        check('waystone: it carries you to Saltspray Coast', await evalJs('WHW.game.zoneId === "coast" && !!WHW.game.map.wards && WHW.game.map.wards.length === 3'));
+        if (SCRATCH) { await evalJs('(() => { const w = WHW.game.map.wards[0]; WHWorldDebug.teleport(w.x, w.y + 90); WHW.engine.snapCamera(); return true; })()'); await sleep(600); await shot('shot-coast-ward.png'); }
+        check('coast: the lair is sealed and its boss asleep', await evalJs('WHW.game.map.lair && !WHW.game.map.lair.open && !WHW.game.actors.some(a => a.kind === "boss")'));
+        const ward = await evalJs(`(() => { const g = WHW.game, W = WHWorld;
+            WHWorldDebug.give('key_coast', 3);
+            const w = g.map.wards[0]; WHWorldDebug.teleport(w.x, w.y + 50);
+            WHW.actions.wakeWard(0);
+            const gd = g.actors.find(a => a.guardian && !a.dead);
+            const keys = W.count(g.state, 'key_coast');
+            if (gd) WHW.actors.damage(gd, 1e9, { from: g.player, kbAngle: 0, kb: 0, s: 1 });
+            return { guardian: !!gd, name: gd && gd.name, keysWhileAwake: keys, broken: W.wardBroken(g.state, 'coast', 0), keysAfter: W.count(g.state, 'key_coast') }; })()`);
+        check('wards: waking one brings its guardian, and the key is kept until it falls', ward.guardian && ward.keysWhileAwake === 3, ward);
+        check('wards: beating the guardian breaks the ward and spends one key', ward.broken && ward.keysAfter === 2, ward);
+        const lair = await evalJs(`(() => { const g = WHW.game, W = WHWorld;
+            for (const i of [1, 2]) { WHWorldDebug.teleport(g.map.wards[i].x, g.map.wards[i].y + 50); WHW.actions.wakeWard(i); const gd = g.actors.find(a => a.guardian && !a.dead); if (gd) WHW.actors.damage(gd, 1e9, { from: g.player, kbAngle: 0, kb: 0, s: 1 }); }
+            return { open: g.map.lair.open, saved: W.lairOpen(g.state, 'coast'), boss: g.actors.some(a => a.kind === 'boss' && !a.dead) }; })()`);
+        check('wards: the last one opens the lair for good, and the boss is there', lair.open && lair.saved && lair.boss, lair);
+        await evalJs('WHWorldDebug.travel("sky")');
+        await sleep(400);
+        const fall = await evalJs(`(() => { const g = WHW.game, G = WHWorldGen, p = g.player, m = g.map;
+            g.actors.forEach(a => { a.dead = true; }); g.hazards.length = 0; g.gustT = 999;
+            // find open sky right next to an island, and step off
+            for (let y = 6; y < m.h - 6; y++) for (let x = 6; x < m.w - 6; x++) if (G.get(m, x, y) === G.T.VOID && G.get(m, x - 1, y) === G.T.FLOOR && G.get(m, x - 2, y) === G.T.FLOOR) {
+                WHWorldDebug.teleport((x - 2) * 32 + 16, y * 32 + 16); p.hp = p.maxHp; window.__safe = { x: p.x, y: p.y };
+                setTimeout(() => { p.x = x * 32 + 16; p.y = y * 32 + 16; p.dashT = 0; }, 150);
+                return { x, y };
+            }
+            return null; })()`);
+        await sleep(700);
+        const fell = await evalJs('(() => { const p = WHW.game.player; return { hp: p.hp / p.maxHp, onVoid: WHWorldGen.tileAt(WHW.game.map, p.x, p.y) === WHWorldGen.T.VOID }; })()');
+        await shot('shot-sky.png');
+        if (SCRATCH) await evalJs('(() => { WHW.ui.closeModal(); return true; })()');
+        if (SCRATCH) for (const z of ['storm', 'ruins']) { await evalJs('WHWorldDebug.travel("' + z + '")'); await evalJs('(() => { const c = WHW.game.map.camp, p = WHW.game.player; WHWorldDebug.teleport(c.x + 200, c.y - 150); p.maxHp = p.hp = 1e6; WHW.engine.snapCamera(); return true; })()'); await sleep(900); await shot('shot-' + z + '.png'); }
+        if (SCRATCH) await evalJs('(() => { WHW.ui.closeModal(); const g = WHW.game, p = g.player; p.dead = false; p.maxHp = g.pstats.maxHp; p.hp = p.maxHp; return true; })()');
+        check('sky: stepping off an island drops you back on solid ground, a fifth of your health lighter', !!fall && !fell.onVoid && fell.hp > 0.7 && fell.hp < 0.85, { fall, fell });
+        // ---- the Arena and the Proving Grounds ----
+        await evalJs('WHWorldDebug.travel("town")');
+        await sleep(300);
+        check('arena: its building stands in town with a door', await evalJs('!!WHW.game.map.arena && !!WHW.game.map.arena.door'));
+        await evalJs('WHWorldDebug.travel("arena")');
+        await sleep(400);
+        check('arena: inside, the Pit, four rings and Varro the Arena Master', await evalJs('WHW.game.zoneId === "arena" && !!WHW.game.map.pit && WHW.game.map.rings.length === 4 && WHW.game.map.npcs.some(n => n.id === "varro")'));
+        if (SCRATCH) { await evalJs('(() => { const p = WHW.game.map.pit; WHWorldDebug.teleport(p.x, p.y + p.r + 120); WHW.engine.snapCamera(); return true; })()'); await sleep(600); await shot('shot-arena.png'); }
+        await evalJs('WHW.ui.openNpc("varro")');
+        await sleep(150);
+        await evalJs('document.querySelector("[data-arenamenu]").click()');
+        await sleep(150);
+        check('arena: Varro opens the Arena menu', await evalJs('/The queue/.test(document.getElementById("wModalBody").textContent) && /rating/.test(document.getElementById("wModalBody").textContent)'));
+        await evalJs('document.querySelector("[data-artab=shop]").click()');
+        await sleep(150);
+        check('arena: the Glory shop lists its wares', await evalJs('document.querySelectorAll("[data-arbuy]").length === WHWorldArena.SHOP.length'));
+        await evalJs('WHW.ui.closeModal()');
+        await evalJs('WHWorldDebug.travel("trials")');
+        await sleep(400);
+        await shot('shot-trials.png');
+        const waves = await evalJs(`(async () => { const g = WHW.game, s = g.state, rub = s.rubies;
+            WHWorldDebug.teleport(g.map.ready.x, g.map.ready.y);
+            WHW.waves.start();
+            await new Promise(r => setTimeout(r, 6200)); // the ready countdown
+            const wave = WHW.waves.run && WHW.waves.run.wave, st = WHW.waves.run && WHW.waves.run.st;
+            // clear it
+            for (let i = 0; i < 20 && WHW.waves.run && WHW.waves.run.st === 'fight'; i++) {
+                for (const a of g.actors) if (a.wave && !a.dead) WHW.actors.damage(a, 1e9, { from: g.player, kbAngle: 0, kb: 0, s: 1 });
+                await new Promise(r => setTimeout(r, 400));
+            }
+            return { wave, st, after: WHW.waves.run.st, best: s.arena.waveBest, paid: s.rubies - rub, glory: s.arena.glory, loot: Object.keys(s.bag).length }; })()`);
+        check('waves: a run starts at wave 1 and its first wave is fought', waves.wave === 1 && waves.st === 'fight', waves);
+        check('waves: clearing it pays rubies and Glory, and nothing else drops', waves.after === 'break' && waves.best === 1 && waves.paid > 0 && waves.glory > 0 && waves.loot === 0, waves);
+        await evalJs('WHWorldDebug.travel("town")');
+        await sleep(300);
         // performance settings: they apply straight away and are remembered on this device
         await evalJs('WHW.ui.openSettings()');
         await sleep(150);

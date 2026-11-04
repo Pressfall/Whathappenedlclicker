@@ -6,7 +6,7 @@
       "v1": {
         "zones": {
           "$zone": {
-            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost)$/)",
+            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost|coast|storm|ruins|sky|arena|trials)$/)",
             "p": {
               ".read": "auth != null",
               "$uid": {
@@ -28,6 +28,13 @@
                 "h": { ".validate": "newData.isNumber()" },
                 "b": { ".validate": "newData.isNumber()" },
                 "t": { ".validate": "newData.isNumber()" },
+                "r": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5000" },
+                "ti": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "cl": { ".validate": "newData.isString() && newData.val().length <= 12" },
+                "am": { ".validate": "newData.isString() && newData.val().length <= 32" },
+                "aq": { ".validate": "newData.isString() && newData.val().length <= 8" },
+                "pt": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "wb": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 9999" },
                 "say": {
                   ".validate": "newData.hasChildren(['m', 't'])",
                   "m": { ".validate": "newData.isString() && newData.val().length <= 60" },
@@ -55,6 +62,60 @@
                   "$other": { ".validate": false }
                 }
               }
+            },
+            "d": {
+              "$to": {
+                ".read": "auth != null && auth.uid === $to",
+                ".write": "auth != null && auth.uid === $to && !newData.exists()",
+                "$mid": {
+                  ".write": "auth != null && ((!data.exists() && newData.child('from').val() === auth.uid) || (auth.uid === $to && !newData.exists()))",
+                  ".validate": "newData.hasChildren(['from', 'm', 't'])",
+                  "from": { ".validate": "newData.isString()" },
+                  "m": { ".validate": "newData.isString() && newData.val().length <= 8" },
+                  "id": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                  "x": { ".validate": "newData.isString() && newData.val().length <= 400" },
+                  "t": { ".validate": "newData.isNumber()" },
+                  "$other": { ".validate": false }
+                }
+              }
+            },
+            "w": {
+              ".read": "auth != null",
+              ".write": "auth != null && newData.child('gen').val() !== data.child('gen').val()",
+              "gen": { ".validate": "newData.isString() && newData.val().length <= 24" },
+              "seed": { ".validate": "newData.isNumber()" },
+              "start": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 999" },
+              "wave": { ".write": "auth != null", ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999" },
+              "st": { ".write": "auth != null", ".validate": "newData.isString() && newData.val().length <= 6" },
+              "n": { ".write": "auth != null", ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 8" },
+              "at": { ".write": "auth != null", ".validate": "newData.isNumber()" },
+              "t": { ".write": "auth != null", ".validate": "newData.isNumber()" },
+              "m": {
+                "$mid": { ".write": "auth != null", ".validate": "$mid.length <= 8 && newData.isNumber() && newData.val() >= -10000000 && newData.val() <= 10000000" }
+              },
+              "x": {
+                "$eid": {
+                  ".write": "auth != null && (data.exists() ? !newData.exists() : newData.child('from').val() === auth.uid)",
+                  ".validate": "newData.hasChildren(['from', 'mid', 'st', 't'])",
+                  "from": { ".validate": "newData.isString()" },
+                  "mid": { ".validate": "newData.isString() && newData.val().length <= 8" },
+                  "st": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 3" },
+                  "t": { ".validate": "newData.isNumber()" },
+                  "$other": { ".validate": false }
+                }
+              },
+              "f": {
+                "$uid": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isNumber()" }
+              },
+              "h": {
+                ".write": "auth != null && newData.child('u').val() === auth.uid",
+                ".validate": "newData.hasChildren(['u', 'n', 's'])",
+                "u": { ".validate": "newData.isString()" },
+                "n": { ".validate": "newData.isNumber()" },
+                "s": { ".validate": "newData.isString() && newData.val().length <= 1000" },
+                "$other": { ".validate": false }
+              },
+              "$other": { ".validate": false }
             },
             "l": {
               ".read": "auth != null",
@@ -88,6 +149,23 @@
                 ".write": "auth != null && newData.child('u').val() === auth.uid",
                 ".validate": "newData.hasChildren(['u', 'x', 'y'])"
               },
+              "$other": { ".validate": false }
+            }
+          }
+        },
+        "arena": {
+          "top": {
+            ".read": "auth != null",
+            ".indexOn": ["r"],
+            "$uid": {
+              ".write": "auth != null && auth.uid === $uid",
+              ".validate": "newData.hasChildren(['n', 'r', 't'])",
+              "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
+              "r": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5000" },
+              "w": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "l": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "ti": { ".validate": "newData.isString() && newData.val().length <= 24" },
+              "t": { ".validate": "newData.isNumber()" },
               "$other": { ".validate": false }
             }
           }

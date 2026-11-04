@@ -134,6 +134,13 @@
         { key: 'w_rival1', cat: 'The Wilds', name: 'Friendly Rivalry', desc: 'Beat a rival adventurer.', title: 'Rival Beater', rarity: 'uncommon', badge: '🤺', stat: 'wildsRivals', target: 1 },
         { key: 'w_rival10', cat: 'The Wilds', name: 'No Contest', desc: 'Beat 10 rival adventurers.', title: 'Undefeated', rarity: 'rare', badge: '🥇', stat: 'wildsRivals', target: 10 },
         { key: 'w_frost', cat: 'The Wilds', name: 'Cold Feet', desc: 'Open every zone, all the way to Frostveil.', title: 'Frostbitten', rarity: 'rare', badge: '❄️', stat: 'wildsZones', target: 5 },
+        // the Far Reaches, past the Waystone
+        { key: 'w_coast', cat: 'The Wilds', name: 'Beyond the Waystone', desc: 'Open Saltspray Coast, the first of the Far Reaches.', title: 'Far Wanderer', rarity: 'rare', badge: '🗿', stat: 'wildsZones', target: 6 },
+        { key: 'w_sky', cat: 'The Wilds', name: 'Edge of the World', desc: 'Open every zone, all the way to the Skyreach Isles.', title: 'Skywalker', rarity: 'epic', badge: '☁️', stat: 'wildsZones', target: 9 },
+        { key: 'w_ward1', cat: 'The Wilds', name: 'Seal Breaker', desc: 'Break a ward stone in the Far Reaches.', title: 'Seal Breaker', rarity: 'rare', badge: '🗝️', stat: 'wildsWards', target: 1 },
+        { key: 'w_wards_all', cat: 'The Wilds', name: 'Unsealed', desc: 'Break all 14 ward stones of the Far Reaches.', title: 'Wardbreaker', rarity: 'legendary', badge: '🔓', stat: 'wildsWards', target: 14 },
+        { key: 'w_boss8', cat: 'The Wilds', name: 'Eight Down', desc: 'Defeat all eight bosses, Vrill WH included.', title: 'Bane of the Reaches', rarity: 'legendary', badge: '🐉', stat: 'wildsBosses', target: 8 },
+        { key: 'w_starmetal', cat: 'The Wilds', name: 'Forged from the Sky', desc: 'Own a piece of Starmetal gear (tier 9).', title: 'Starsmith', rarity: 'legendary', badge: '🌠', stat: 'wildsTopTier', target: 9 },
         { key: 'w_gather500', cat: 'The Wilds', name: 'Resource Goblin', desc: 'Chop, mine or pick 500 resources.', title: 'Resource Goblin', rarity: 'uncommon', badge: '⛏️', stat: 'wildsGathered', target: 500 },
         { key: 'w_craft1', cat: 'The Wilds', name: 'Apprentice Smith', desc: 'Craft your first piece of gear.', title: 'Apprentice Smith', rarity: 'common', badge: '🔨', stat: 'wildsCrafted', target: 1 },
         { key: 'w_master', cat: 'The Wilds', name: 'Practice Makes Perfect', desc: 'Score 90 or better in a crafting minigame.', title: 'Master Smith', rarity: 'rare', badge: '🛠️', stat: 'wildsBestScore', target: 90 },
@@ -154,6 +161,15 @@
         { key: 'w_god20', cat: 'The Wilds', name: 'Zealot', desc: 'Bring a god to level 20. There is no limit.', title: 'Zealot', rarity: 'legendary', badge: '🔆', stat: 'wildsGodTop', target: 20 },
         { key: 'w_pvp1', cat: 'The Wilds', name: 'Player Versus Player', desc: 'Knock out another player in the Wilds.', title: 'Duelist', rarity: 'uncommon', badge: '⚔️', stat: 'wildsPvpWins', target: 1 },
         { key: 'w_pvp25', cat: 'The Wilds', name: 'Arena Regular', desc: 'Knock out 25 other players.', title: 'Gladiator', rarity: 'epic', badge: '🛡️', stat: 'wildsPvpWins', target: 25 },
+        // the Arena in Wildgate Town
+        { key: 'w_arena1', cat: 'The Wilds', name: 'Into the Arena', desc: 'Win an arena match: a duel or a team battle.', title: 'Contender', rarity: 'uncommon', badge: '🏟️', stat: 'wildsArenaWins', target: 1 },
+        { key: 'w_arena25', cat: 'The Wilds', name: 'Crowd Favourite', desc: 'Win 25 arena matches.', title: 'Crowd Favourite', rarity: 'epic', badge: '📣', stat: 'wildsArenaWins', target: 25 },
+        { key: 'w_team1', cat: 'The Wilds', name: 'Better Together', desc: 'Win a 2v2 or 3v3 team battle.', title: 'Teammate', rarity: 'rare', badge: '🤝', stat: 'wildsTeamWins', target: 1 },
+        { key: 'w_rank_plat', cat: 'The Wilds', name: 'Platinum Gladiator', desc: 'Reach an arena rating of 1,400 (Platinum).', title: 'Platinum Gladiator', rarity: 'epic', badge: '💠', stat: 'wildsRating', target: 1400 },
+        { key: 'w_pit10', cat: 'The Wilds', name: 'King of the Pit', desc: 'Knock out 10 players in the Pit.', title: 'Pit Fighter', rarity: 'rare', badge: '🕳️', stat: 'wildsPitKOs', target: 10 },
+        { key: 'w_wager', cat: 'The Wilds', name: 'High Roller', desc: 'Win a duel played for rubies.', title: 'High Roller', rarity: 'rare', badge: '🎲', stat: 'wildsWagerWins', target: 1 },
+        { key: 'w_wave10', cat: 'The Wilds', name: 'Holding the Line', desc: 'Clear wave 10 in the Proving Grounds.', title: 'Line Holder', rarity: 'rare', badge: '🌊', stat: 'wildsWaveBest', target: 10 },
+        { key: 'w_wave30', cat: 'The Wilds', name: 'Unbreakable', desc: 'Clear wave 30 in the Proving Grounds.', title: 'Unbreakable', rarity: 'legendary', badge: '🗻', stat: 'wildsWaveBest', target: 30 },
         { key: 'w_death10', cat: 'The Wilds', name: 'Learning Experience', desc: 'Get knocked out 10 times.', title: 'Respawn Regular', rarity: 'common', badge: '💫', stat: 'wildsDeaths', target: 10 },
         { key: 'w_gems10', cat: 'The Wilds', name: 'Care Package', desc: 'Send 10 gems home from the Wilds.', title: 'Gem Courier', rarity: 'uncommon', badge: '💎', stat: 'wildsGemsSent', target: 10 },
         { key: 'w_hours10', cat: 'The Wilds', name: 'Frontier Regular', desc: 'Spend 10 hours in the Wilds.', title: 'Frontiersman', rarity: 'uncommon', badge: '⏱️', stat: 'wildsHours', target: 10, unit: 'h' },
@@ -182,6 +198,11 @@
         const wBosses = w.bosses && typeof w.bosses === 'object' ? Object.keys(w.bosses).filter(b => w.bosses[b] && w.bosses[b].kills > 0).length : 0;
         const wGods = w.gods && typeof w.gods === 'object' ? w.gods : {};
         const wHall = Object.keys(wGods).filter(g => g !== 'briley'); // the six statues in the Hall; the hidden god has its own room
+        // wards broken in the Far Reaches (a bitmask per zone), the best gear tier owned, and the arena's record
+        const bits = (n) => { let c = 0, v = Math.max(0, Math.floor(Number(n) || 0)) & 0xff; while (v) { c += v & 1; v >>= 1; } return c; };
+        const wWards = w.seals && typeof w.seals === 'object' ? Object.keys(w.seals).reduce((a, z) => a + bits(w.seals[z]), 0) : 0;
+        const wTier = Array.isArray(w.gear) ? Math.max(0, ...w.gear.map(g => { const m = /_(\d+)$/.exec(String((g && g.base) || '')); return m ? Number(m[1]) : 0; })) : 0;
+        const wa = w.arena && typeof w.arena === 'object' ? w.arena : {};
         const list = Array.isArray(f.list) ? f.list : [];
         const W = window.WHF;
         const sp = id => (W && W.SPECIES_BY_ID[id]) || null;
@@ -248,6 +269,9 @@
             wildsPvpWins: wc(ws.pvpWins), wildsDeaths: wc(ws.deaths), wildsGemsSent: wc(ws.gemsSent),
             wildsHours: wc(ws.playSec) / 3600,
             wildsHall: (w.secrets || {}).hallDoor === true ? 1 : 0,
+            wildsWards: wWards, wildsTopTier: wTier,
+            wildsArenaWins: wc(wa.w), wildsTeamWins: wc(wa.teamW), wildsRating: wc(wa.rating), wildsPitKOs: wc(wa.pitKO),
+            wildsWagerWins: wc(wa.wagerWins), wildsWaveBest: wc(wa.waveBest),
         }, divine, live || {});
         const ups = snap.upgrades.slice(1);
         snap.upgradeMax = Math.max(0, ...ups);

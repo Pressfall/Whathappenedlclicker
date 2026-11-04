@@ -43,20 +43,21 @@
       <img src="mainimage/lbicon.png" alt="">
       <div>
         <h1 class="page-title">Leaderboard</h1>
-        <p class="muted" style="margin:0">Each player's best submitted score. Submit yours from the game.</p>
+        <p class="muted" style="margin:0">Each name's best submitted score. Submit yours from the game.</p>
         <p class="muted" style="margin:4px 0 0;font-size:12px">Scores are sent from players' own browsers and are not checked, so treat the top of the board as for fun.</p>
       </div>
     </div>
 
     <div style="margin:12px 0;">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap;">
-        <div class="lb-tabs">
-          <button id="monthlyTab" data-type="monthly">This month</button>
-          <button id="alltimeTab" data-type="alltime">All time</button>
+        <div class="lb-tabs" role="group" aria-label="Which board">
+          <button id="monthlyTab" data-type="monthly" aria-pressed="true">This month</button>
+          <button id="alltimeTab" data-type="alltime" aria-pressed="false">All time</button>
         </div>
         <div style="flex:1"></div>
         <button id="loadAllBtn" title="Reload the leaderboard">↻ Refresh</button>
       </div>
+      <p id="lbExplain" class="muted" style="margin:0 0 8px;font-size:13px">This month: the best score each name has submitted since the 1st of this month (UTC). All time: the best score each name has ever submitted.</p>
       <div id="status" class="muted"></div>
       <div id="myRank"></div>
     </div>
@@ -230,6 +231,24 @@
       }
     }
 
+    // What each tab shows, in words. "This month" is the calendar month in UTC (isSameMonth above), so the board
+    // starts over at 00:00 UTC on the 1st, which is a different local time for each player.
+    // ---- board explanation (tests/leaderboard.test.js runs this part) ----
+    function boardExplain(type, now){
+      const y = now.getUTCFullYear(), m = now.getUTCMonth();
+      const start = new Date(Date.UTC(y, m, 1)), next = new Date(Date.UTC(y, m + 1, 1));
+      const utc = (d, o) => d.toLocaleString('en-US', Object.assign({ timeZone: 'UTC' }, o));
+      const names = ' A name is whatever the player typed, not an account, so the board keeps one score per name.';
+      if (type === 'monthly'){
+        let local = '';
+        try { local = ' (' + next.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' your time)'; } catch(e){}
+        return `This month (${utc(start, { month: 'long', year: 'numeric' })}): the best score each name has submitted since ${utc(start, { month: 'long', day: 'numeric' })}, 00:00 UTC. ` +
+          `It starts over on ${utc(next, { month: 'long', day: 'numeric' })}, 00:00 UTC${local}.` + names;
+      }
+      return 'All time: the best score each name has ever submitted, from any month.' + names;
+    }
+    // ---- end board explanation ----
+
     // tab handling
     let activeTab = 'monthly';
     const monthlyTab = document.getElementById('monthlyTab');
@@ -238,6 +257,9 @@
       activeTab = t;
       monthlyTab.classList.toggle('active', t === 'monthly');
       alltimeTab.classList.toggle('active', t !== 'monthly');
+      monthlyTab.setAttribute('aria-pressed', String(t === 'monthly'));
+      alltimeTab.setAttribute('aria-pressed', String(t !== 'monthly'));
+      try { document.getElementById('lbExplain').textContent = boardExplain(t, new Date()); } catch(e){}
       loadBoard(t).catch(e=>console.warn('load failed', e));
     }
     monthlyTab.addEventListener('click', ()=>setActiveTab('monthly'));

@@ -33,7 +33,7 @@ test('with no choice yet: no ad script, no ad space, and a notice with Accept an
     assert.equal(p.adScripts().length, 0);
     assert.equal(p.wrapper().hidden, true);
     assert.ok(p.banner());
-    assert.equal(p.doc.querySelectorAll('#whConsent button').length, 2);
+    assert.equal(p.doc.querySelectorAll('#whConsent .wh-consent-actions button').length, 2, 'Decline and Accept side by side');
     assert.match(p.banner().textContent, /Google AdSense/);
     assert.match(p.banner().textContent, /Google Analytics/);
     assert.match(p.banner().textContent, /only load if you accept/);
@@ -43,7 +43,7 @@ test('with no choice yet: no ad script, no ad space, and a notice with Accept an
 test('Accept and Decline are the same size and style', () => {
     const p = page();
     p.consent.init();
-    const [a, b] = p.doc.querySelectorAll('#whConsent button');
+    const [a, b] = p.doc.querySelectorAll('#whConsent .wh-consent-actions button');
     assert.equal(a.className, b.className);
 });
 
@@ -176,6 +176,101 @@ test('only "granted" and "denied" can be stored', () => {
     assert.equal(p.consent.choice(), null);
 });
 
+test('Accept and Decline answer both; each is stored under its own key', () => {
+    const p = page();
+    p.consent.init();
+    p.click('granted');
+    assert.equal(p.storage.getItem('wh_ad_consent'), 'granted');
+    assert.equal(p.storage.getItem('wh_analytics_consent'), 'granted');
+    assert.equal(p.consent.analyticsAllowed(), true);
+    const d = page();
+    d.consent.init();
+    d.click('denied');
+    assert.equal(d.storage.getItem('wh_analytics_consent'), 'denied');
+    assert.equal(d.consent.analyticsAllowed(), false);
+});
+
+test('Choose: one tick box per purpose, nothing ticked in advance, and ads can be allowed without visit counting', () => {
+    const p = page();
+    p.consent.init();
+    const pick = p.doc.getElementById('whConsentPick');
+    assert.equal(pick.hidden, true, 'closed until asked for');
+    p.doc.querySelector('#whConsent .wh-consent-more').click();
+    assert.equal(pick.hidden, false);
+    const boxes = [...pick.querySelectorAll('input[type=checkbox]')];
+    assert.deepEqual(boxes.map((b) => [b.dataset.purpose, b.checked]), [['ads', false], ['analytics', false]], 'not pre-ticked');
+    boxes[0].checked = true;
+    p.click('save');
+    assert.equal(p.consent.choice(), 'granted');
+    assert.equal(p.consent.analyticsChoice(), 'denied');
+    assert.equal(p.adScripts().length, 1, 'ads load');
+    assert.equal(p.consent.analyticsAllowed(), false, 'visit counting does not');
+    assert.equal(p.banner(), null);
+    assert.match(p.doc.getElementById('adChoicesStatus').textContent, /Ads are on and visit counting is off/);
+});
+
+test('visit counting can be allowed without ads: no ad script and no ad space', () => {
+    const p = page();
+    p.consent.init();
+    p.doc.querySelector('#whConsent .wh-consent-more').click();
+    p.doc.querySelector('#whConsentPick [data-purpose=analytics]').checked = true;
+    p.click('save');
+    assert.equal(p.consent.analyticsAllowed(), true);
+    assert.equal(p.consent.allowed(), false);
+    assert.equal(p.adScripts().length, 0);
+    assert.equal(p.wrapper().hidden, true);
+    assert.deepEqual(p.events, ['denied'], 'the event says what happened to ads; the page asks analyticsAllowed() itself');
+});
+
+test('reopening the choices shows what was chosen, and withdrawing only visit counting keeps the ads', () => {
+    const p = page({ storage: { wh_ad_consent: 'granted', wh_analytics_consent: 'granted' } });
+    p.consent.init();
+    p.doc.getElementById('adChoicesBtn').click();
+    const boxes = [...p.doc.querySelectorAll('#whConsentPick input')];
+    assert.deepEqual(boxes.map((b) => b.checked), [true, true]);
+    boxes[1].checked = false;
+    p.click('save');
+    assert.equal(p.consent.allowed(), true);
+    assert.equal(p.consent.analyticsAllowed(), false);
+    assert.equal(p.adScripts().length, 1);
+    assert.match(p.doc.getElementById('adChoicesStatus').textContent, /visit counting is off/);
+});
+
+test('one answer from before the choices were separate still counts for both, and nobody is asked again', () => {
+    for (const v of ['granted', 'denied']) {
+        const p = page({ storage: { wh_ad_consent: v } });
+        p.consent.init();
+        assert.equal(p.consent.analyticsChoice(), v, v);
+        assert.equal(p.banner(), null, v);
+    }
+});
+
+test('the oldest notice never mentioned visit counting: it counts for ads only, and the player is asked', () => {
+    const p = page({ storage: { wh_cookie_consent: 'accepted' } });
+    p.consent.init();
+    assert.equal(p.consent.allowed(), true, 'ads, as before');
+    assert.equal(p.adScripts().length, 1);
+    assert.equal(p.consent.analyticsChoice(), null);
+    assert.equal(p.consent.analyticsAllowed(), false, 'no Analytics without asking');
+    assert.ok(p.banner(), 'asked once');
+});
+
+test('the notice tells visitors where Google may ask again', () => {
+    const p = page();
+    p.consent.init();
+    assert.match(p.banner().textContent, /allow one without the other/);
+    assert.match(p.banner().textContent, /EEA, the UK or Switzerland, Google may then ask you/);
+});
+
+test('the game page fills its slot with the same publisher as the AdSense script, and hides a slot left unfilled', () => {
+    const html = read('index.html');
+    const ins = html.slice(html.indexOf('<ins class="adsbygoogle"'), html.indexOf('</ins>'));
+    const client = Consent.ADSENSE_SRC.match(/client=(ca-pub-\d+)/)[1];
+    assert.ok(ins.includes(`data-ad-client="${client}"`), 'data-ad-client matches');
+    assert.ok(ins.includes('data-ad-slot="1234567890"'), 'the slot id is still the placeholder to replace');
+    assert.match(fs.readFileSync(path.join(ROOT, 'styles.css'), 'utf8'), /ins\.adsbygoogle\[data-ad-status="unfilled"\] \{ display: none !important; \}/);
+});
+
 test('the notice is built from text nodes, not markup', () => {
     const p = page();
     p.consent.init();
@@ -202,7 +297,7 @@ test('the game page does not start Google Analytics without consent', () => {
     const html = read('index.html');
     assert.doesNotMatch(html, /import \{ getAnalytics \}/, 'no static import: that would load the module for everyone');
     const first = html.indexOf('firebase-analytics.js');
-    const gate = html.indexOf('WHConsent.allowed()');
+    const gate = html.indexOf('WHConsent.analyticsAllowed()');
     assert.ok(first > 0 && gate > 0);
     assert.equal((html.match(/firebase-analytics\.js/g) || []).length, 1, 'loaded in one place only');
     const fn = html.slice(html.indexOf('function startAnalytics'), html.indexOf('window.addEventListener(\'wh:consent\''));

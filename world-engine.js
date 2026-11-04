@@ -170,7 +170,8 @@
         E.nodeGrid = null;
     }
     const tileAt = (wx, wy) => G.get(E.map, Math.floor(wx / TILE), Math.floor(wy / TILE));
-    const blocksMove = (t) => G.isSolid(t);
+    // open sky (the Skyreach Isles) stops everything but the player, who can step off and fall (world-actors.js)
+    const blocksMove = (t, e) => G.isSolid(t) || (t === G.T.VOID && !(e && e.kind === 'player'));
     const blocksSight = (t) => t === G.T.WALL || t === G.T.BUILDING;
     // Push a circle out of solid tiles (and out of the map)
     function collideTiles(e) {
@@ -181,7 +182,7 @@
             const x0 = Math.floor((e.x - e.r) / TILE), x1 = Math.floor((e.x + e.r) / TILE);
             const y0 = Math.floor((e.y - e.r) / TILE), y1 = Math.floor((e.y + e.r) / TILE);
             for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++) {
-                if (!blocksMove(G.get(m, tx, ty))) continue;
+                if (!blocksMove(G.get(m, tx, ty), e)) continue;
                 const nx = Math.max(tx * TILE, Math.min(e.x, tx * TILE + TILE));
                 const ny = Math.max(ty * TILE, Math.min(e.y, ty * TILE + TILE));
                 let dx = e.x - nx, dy = e.y - ny;
@@ -275,6 +276,7 @@
         const colorOf = (t) => ({
             [T.FLOOR]: P.floor, [T.FLOOR2]: P.floor2, [T.PATH]: P.path, [T.WALL]: P.wall, [T.WATER]: P.water || P.wall,
             [T.LAVA]: P.hazard || '#ff5a1f', [T.ICE]: P.ice || '#a9dcf5', [T.PLAZA]: P.plaza || P.path, [T.BUILDING]: zone.gen === 'hall' ? P.floor : '#2a2420', [T.ARENA]: shade(P.floor, 0.82),
+            [T.SHALLOW]: P.shallow || P.water || '#4fa3bd', [T.VOID]: P.void || '#0b0d18',
         })[t];
         const detail = E.perf !== 'low';
         for (let y = 0; y < CHUNK; y++) for (let x = 0; x < CHUNK; x++) {
@@ -312,6 +314,15 @@
                 g.globalAlpha = 1;
             } else if (t === T.ICE) {
                 if (detail) { g.strokeStyle = 'rgba(255,255,255,0.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X + r1 * 24, Y + 4); g.lineTo(X + 4 + r2 * 24, Y + 26); g.stroke(); }
+            } else if (t === T.SHALLOW) {
+                // tide flats: sand showing through, ripples on top
+                g.fillStyle = 'rgba(230,214,170,0.18)'; g.fillRect(X + r1 * 18, Y + r2 * 18, 10, 8);
+                if (detail) { g.strokeStyle = 'rgba(255,255,255,0.28)'; g.lineWidth = 1.5; g.beginPath(); g.arc(X + 8 + r1 * 16, Y + 8 + r2 * 16, 4 + r1 * 3, 0.2, 2.6); g.stroke(); }
+            } else if (t === T.VOID) {
+                // open sky below the isles: far stars, and the cliff edge's shadow under land
+                if (detail && r1 < 0.35) { g.fillStyle = 'rgba(255,255,255,' + (0.25 + r2 * 0.5) + ')'; g.fillRect(X + r2 * 30, Y + r1 * 80 % 30, 1.5, 1.5); }
+                const up = G.get(m, tx, ty - 1);
+                if (up !== T.VOID) { g.fillStyle = shade(P.wall, 0.8); g.fillRect(X, Y, TILE, 10); g.fillStyle = 'rgba(0,0,0,0.35)'; g.fillRect(X, Y + 10, TILE, 6); }
             } else if (t === T.ARENA) {
                 if ((tx + ty) % 2 === 0) { g.fillStyle = 'rgba(255,255,255,0.03)'; g.fillRect(X, Y, TILE, TILE); }
             } else if (zone.gen === 'hall') {
@@ -355,7 +366,8 @@
         const data = g.createImageData(m.w, m.h);
         const rgb = (hex) => { const n = parseInt((hex || '#000000').slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
         const cols = { [T.FLOOR]: rgb(P.floor), [T.FLOOR2]: rgb(P.floor2), [T.PATH]: rgb(P.path), [T.WALL]: rgb(shadeHex(P.wall, 0.6)), [T.WATER]: rgb(P.water || P.wall),
-            [T.LAVA]: rgb(P.hazard || '#ff5a1f'), [T.ICE]: rgb(P.ice || '#a9dcf5'), [T.PLAZA]: rgb(P.plaza || P.path), [T.BUILDING]: [70, 60, 50], [T.ARENA]: [120, 40, 50] };
+            [T.LAVA]: rgb(P.hazard || '#ff5a1f'), [T.ICE]: rgb(P.ice || '#a9dcf5'), [T.PLAZA]: rgb(P.plaza || P.path), [T.BUILDING]: [70, 60, 50], [T.ARENA]: [120, 40, 50],
+            [T.SHALLOW]: rgb(P.shallow || P.water || '#4fa3bd'), [T.VOID]: rgb(P.void || '#0b0d18') };
         for (let i = 0; i < m.tiles.length; i++) { const c = cols[m.tiles[i]] || [0, 0, 0]; data.data.set([c[0], c[1], c[2], 255], i * 4); }
         g.putImageData(data, 0, 0);
         E.minimapCache = cv;

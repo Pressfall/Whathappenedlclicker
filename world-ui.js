@@ -106,12 +106,14 @@
             const list = here.length ? '<div class="w-players">' + here.map(r => '<span>' + esc(r.info.n) + '<b>' + (r.dead ? 'knocked out' : Math.ceil(r.hp) + ' HP') + '</b></span>').join('') + '</div>'
                 : '<p class="muted">Nobody else in this zone right now.</p>';
             html += '<div class="w-section"><h3>Here with you (' + here.length + ')</h3>' + list + '</div>';
-            const log = on.log.length ? on.log.map(l => '<div class="' + (l.mine ? 'mine' : '') + '"><b>' + esc(l.name) + ':</b> ' + esc(l.m) + '</div>').join('')
+            const CS = window.WHChatSafety, safe = CS.isOn(localStorage);
+            const log = on.log.length ? on.log.map(l => '<div class="' + (l.mine ? 'mine' : '') + '"><b>' + esc(l.name) + ':</b> ' + esc(CS.display(l.m, safe)) +
+                (l.n > 1 ? ' <span class="muted">×' + l.n + '</span>' : '') + '</div>').join('')
                 : '<span class="muted">Press Enter in the game to say something.</span>';
             html += '<div class="w-section"><h3>Chat</h3><div class="w-log" id="onLog">' + log + '</div></div>';
         }
         html += '<label class="w-setting"><span>Play online<small>See and meet other players. Turn off to play alone.</small></span><input type="checkbox" id="onToggle" ' + (S.online ? 'checked' : '') + '></label>' +
-            '<label class="w-setting"><span>Swear filter<small>Hides rude words in chat (the same setting as the game\'s chat).</small></span><input type="checkbox" id="onSafe" ' + (localStorage.getItem('chat_safe_mode') === '1' ? 'checked' : '') + '></label>';
+            '<label class="w-setting"><span>Swear filter<small>Hides rude words in chat. On unless you turn it off; the same setting as the game\'s chat.</small></span><input type="checkbox" id="onSafe" ' + (window.WHChatSafety.isOn(localStorage) ? 'checked' : '') + '></label>';
         body.innerHTML = html;
         const retry = body.querySelector('#onRetry');
         if (retry) retry.addEventListener('click', () => { on.stop(); WHW.settings.online = true; WHW.saveSettings(); on.start(); renderOnline(); });
@@ -127,7 +129,7 @@
             if (S.online) on.start(); else on.stop();
             renderOnline();
         });
-        body.querySelector('#onSafe').addEventListener('change', (e) => { try { localStorage.setItem('chat_safe_mode', e.target.checked ? '1' : '0'); } catch (err2) {} });
+        body.querySelector('#onSafe').addEventListener('change', (e) => { window.WHChatSafety.setOn(localStorage, e.target.checked); renderOnline(); });
     }
     function chatLogChanged() { if (isOpen() && modalRender === renderOnline) renderOnline(); }
     function openChat() {
@@ -406,10 +408,11 @@
         const n = goal.n || 1, zone = goal.zone && goal.kind !== 'visit' ? ' in ' + D.ZONES[goal.zone].name : '';
         switch (goal.kind) {
             case 'kill': return 'Defeat ' + n + ' ' + plural(n, goal.monster ? D.MONSTERS[goal.monster].name : goal.elite ? 'elite' : 'monster') + zone;
-            case 'boss': return goal.boss ? 'Beat ' + D.BOSSES[goal.boss].name : 'Beat any of the four great bosses';
+            case 'boss': return goal.boss ? 'Beat ' + D.BOSSES[goal.boss].name : 'Beat any great boss';
+            case 'ward': return 'Break ' + (n === 1 ? 'a ward stone' : n + ' ward stones') + zone;
             case 'rival': return 'Beat ' + n + ' ' + plural(n, 'rival adventurer');
             case 'harvest': return (goal.tool === 'axe' ? 'Chop ' + n + ' ' + plural(n, 'tree') : goal.tool === 'pickaxe' ? 'Mine ' + n + (n === 1 ? ' rock or ore vein' : ' rocks or ore veins') : 'Gather ' + n + ' times (ore, wood or plants)') + zone;
-            case 'craft': return 'Craft ' + n + ' ' + plural(n, 'piece') + ' of gear' + (goal.minScore ? ' of ' + W.qualityOf(goal.minScore).name + ' quality or better' : '');
+            case 'craft': return 'Craft ' + n + ' ' + plural(n, 'piece') + ' of ' + (goal.tier ? D.TIERS[goal.tier].name + ' ' : '') + 'gear' + (goal.minScore ? ' of ' + W.qualityOf(goal.minScore).name + ' quality or better' : '');
             case 'box': return 'Craft a lootbox at the Rune Altar';
             case 'deliver': return 'Bring ' + Object.entries(goal.mats).map(([id, k]) => k + ' ' + matName(id)).join(' and ');
             case 'visit': return 'Step inside the ' + D.ZONES[goal.zone].name;
@@ -441,6 +444,7 @@
         const o = W.questOffer(s, id, Date.now()), rec = s.quests[id] || { step: 0 };
         let html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(npc.greet)}"</p></div></div>`;
         if (npc.rumor) html += `<p class="w-npc-rumor"><b>They mention:</b> "${esc(npc.rumor)}"</p>`;
+        if (npc.arena) html += '<div class="w-card-actions" style="margin-bottom:10px"><button class="btn btn-gold" data-arenamenu>🏟️ The Arena: play, ranking, Glory shop</button></div>';
         if (npc.lines) {
             const line = s.secrets.hallDoor && npc.opened ? npc.opened : npc.lines[(npcLine[id] = ((npcLine[id] === undefined ? -1 : npcLine[id]) + 1) % npc.lines.length)];
             html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(line)}"</p></div></div>`;
@@ -464,6 +468,7 @@
                 <div class="w-card-actions">${act}</div></div>`;
         }
         body.innerHTML = html;
+        on(body, '[data-arenamenu]', () => WHW.arena && WHW.arena.openMenu('play'));
         on(body, '[data-qaccept]', () => WHW.actions.acceptQuest(id));
         on(body, '[data-qturnin]', () => WHW.actions.turnInQuest(id));
         on(body, '[data-qquit]', () => WHW.actions.abandonQuest(id));
@@ -894,7 +899,11 @@
         let html = tabs(STATION_TABS[id], tab, null, labels);
         html += `<p class="w-note">${esc(D.STATIONS[id].desc)}. ${tab === 'craft' || tab === 'boxes' || tab === 'reforge' ? 'Crafting plays a minigame: <b>the better you play, the better it turns out.</b> Materials and the ruby fee are paid when you start; quitting gives the materials back but not the fee. Try it free with <b>Practice</b>.' : 'Instant: no minigame.'}</p>`;
         if (tab === 'basic') {
-            const list = D.BASIC_RECIPES.filter(r => r.station === id);
+            const all = D.BASIC_RECIPES.filter(r => r.station === id);
+            const reachable = (mat) => W.count(s, mat) > 0 || W.materialSources(mat).some(src => !src.zone || s.unlocked.zones[src.zone]);
+            const list = all.filter(r => Object.keys(r.in).every(reachable));
+            const later = all.length - list.length;
+            if (later) html += `<p class="muted">${later} more recipe${later > 1 ? 's' : ''} appear as you open new zones.</p>`;
             html += `<div class="w-grid">${list.map(r => {
                 const outId = Object.keys(r.out)[0];
                 const can = W.has(s, r.in);
@@ -1046,18 +1055,38 @@
         const gc = body.querySelector('#goCamp');
         if (gc) gc.addEventListener('click', () => { closeModal(); WHW.actions.travel(zoneId, true); });
     }
+    // The Waystone in town: a travel list of the Far Reaches (it sleeps until Frozen WH has fallen)
+    function openWaystone() {
+        const g = game(), s = g.state;
+        const far = D.ZONE_ORDER.filter(id => D.ZONES[id].via === 'waystone');
+        const cards = far.map(id => {
+            const z = D.ZONES[id], open = !!s.unlocked.zones[id], camp = !!s.unlocked.camps[id];
+            const prev = Object.values(D.BOSSES).find(b => b.sigil === z.gate);
+            return `<div class="w-card${open ? '' : ' is-locked'}"><div class="w-zone-card"><img src="${z.bg}" alt=""><div>
+                <div class="w-card-name">${open ? '' : '🔒 '}${esc(z.name)}</div>
+                <div class="w-card-sub">Tier ${z.tier} · ${esc(D.BOSSES[z.boss].name)} · wards ${W.wardsBroken(s, id)}/${W.wardCount(id)}${camp ? ' · camp found' : ''}</div>
+                ${open ? '' : `<div class="w-card-sub" style="color:#ffb3bb">Opens when ${esc(prev ? prev.name : 'the last boss')} falls.</div>`}</div></div>
+                <div class="w-card-actions"><button class="btn btn-sm btn-primary" data-go="${id}" ${open ? '' : 'disabled'}>Travel</button>
+                ${camp ? `<button class="btn btn-sm btn-ghost" data-camp="${id}">To the camp</button>` : ''}</div></div>`;
+        }).join('');
+        const body = modal('🗿 The Waystone', `<p class="w-note">The old stone hums. It carries you past the four gates into <b>the Far Reaches</b>, where everything is harder: monsters are built for that zone's own gear, its best ore needs the last zone's pickaxe, and each boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, wake a ward, and beat its guardian to break it.</p>
+            <div style="display:flex;flex-direction:column;gap:8px">${cards}</div>`, { wide: true });
+        on(body, '[data-go]', (d) => { closeModal(); WHW.actions.travel(d.go, false); });
+        on(body, '[data-camp]', (d) => { closeModal(); WHW.actions.travel(d.camp, true); });
+    }
     function openMap() {
         const g = game(), s = g.state;
         const zones = D.ZONE_ORDER.map(id => {
             const z = D.ZONES[id], open = !!s.unlocked.zones[id];
             const boss = s.bosses[z.boss];
-            return `<div class="w-card${open ? '' : ' is-locked'}"><div class="w-zone-card"><img src="${z.bg}" alt=""><div><div class="w-card-name">${open ? '' : '🔒 '}${esc(z.name)}</div>
-                <div class="w-card-sub">Tier ${z.tier} · ${boss && boss.kills ? '✅ ' + esc(D.BOSSES[z.boss].name) + ' defeated' : esc(D.BOSSES[z.boss].name) + ' awaits'}${s.unlocked.camps[id] ? ' · camp found' : ''}</div>
+            const seal = z.wards ? ' · wards ' + W.wardsBroken(s, id) + '/' + z.wards : '';
+            return `<div class="w-card${open ? '' : ' is-locked'}"><div class="w-zone-card"><img src="${z.bg}" alt=""><div><div class="w-card-name">${open ? '' : '🔒 '}${esc(z.name)}${z.via ? ' <span class="muted">(Waystone)</span>' : ''}</div>
+                <div class="w-card-sub">Tier ${z.tier} · ${boss && boss.kills ? '✅ ' + esc(D.BOSSES[z.boss].name) + ' defeated' : esc(D.BOSSES[z.boss].name) + ' awaits'}${seal}${s.unlocked.camps[id] ? ' · camp found' : ''}</div>
                 <div class="w-card-stats">${Object.keys(z.nodes).map(n => `<span>${esc(D.NODES[n].name)}</span>`).join('')}</div></div></div></div>`;
         }).join('');
         const body = modal('Map', `<div class="w-row" style="align-items:flex-start;gap:16px"><canvas id="bigMap" width="320" height="320" style="border-radius:12px;border:1px solid var(--border-strong);image-rendering:pixelated;max-width:100%"></canvas>
             <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">${zones}</div></div>
-            <p class="w-note">Every zone is reached through Wildgate Town's gates. Each boss drops the sigil that opens the next gate. Find a zone's camp once to travel straight to it.</p>`, { wide: true });
+            <p class="w-note">The first four zones are reached through Wildgate Town's gates; the Far Reaches beyond Frostveil through the Waystone south of the plaza. Each boss opens the next zone. In the Far Reaches, a boss's lair stays sealed until its zone's ward stones are broken. Find a zone's camp once to travel straight to it.</p>`, { wide: true });
         WHW.drawMinimap && WHW.drawMinimap(body.querySelector('#bigMap'), true);
     }
 
@@ -1084,6 +1113,10 @@
             <p>Rubies are the money of the Wilds: earn them from monsters, ruby veins, bosses and the Trader, and spend them on crafting fees and supplies. You can also send treasures home: <b>lootboxes</b> crafted at the Rune Altar, plus <b>gems</b> and <b>Golden What Happened</b> from bosses, elites, ruby veins and the Trader's weekly exchange. They arrive the next time you open the game. Rubies can come the other way too: trade Golden What Happened in the game's Divine menu, or redeem a rubies code in its Settings.</p>
             <h3>Online</h3>
             <p>Other players in the same zone appear live (🌐 at the top shows how many). Press <kbd>Enter</kbd> to chat or send an emote. <b>Outside town, players can fight each other</b> with the same swings, shields and parries; you're protected for a few seconds after arriving. A player knocked out by another drops part of what they carry: the winner gets first pick, then anyone can grab it. Bosses are shared: everyone in the arena fights the same one, and everyone who did enough damage gets the reward. Monsters are your own. You can play offline from the 🌐 menu.</p>
+            <h3>The Arena</h3>
+            <p>The round building north-east of the plaza. Nothing is ever lost there. Step into <b>the Pit</b> to fight anyone else in it, or press <kbd>E</kbd> next to another player in the lobby to challenge them to a <b>duel</b> (best of three, rated, optionally for a ruby stake: the winner takes the pot), or your party against theirs in a <b>2v2 or 3v3</b>. Varro, the Arena Master, runs the queue, the ranking and a shop paid in <b>Glory</b>, which every fight earns. Through the gate on the left, the <b>Proving Grounds</b>: co-op waves of monsters that get harder with every player who joins.</p>
+            <h3>The Far Reaches</h3>
+            <p>Beat Frozen WH and the <b>Waystone</b> south of the plaza wakes: it carries you to four more zones, Saltspray Coast, Stormspire Heights, the Cinder Capital and the Skyreach Isles. They are built to take longer: monsters there are tuned for that zone's own gear (tiers 6 to 9), each zone's best ore needs the previous zone's pickaxe, bars are alloys that need monster parts, and every boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, press <kbd>E</kbd> at a ward to wake it, and beat its guardian; the key is only used up when you win. Watch your footing: tide flats slow you, lightning strikes on the heights (never at the camp), and on the isles the wind can blow you off an edge (a dash can carry you over a narrow gap).</p>
             <h3>Danger</h3>
             <p>Watch for <b style="color:#ff6b7a">red shapes</b>: that's where an attack is about to land. Dash out of them. If you're knocked out, part of what you've carried since leaving town drops where you fell; go back and pick it up. Rubies and gear are never lost. Rival adventurers roam each zone and fight with the same weapons you do.</p>
         </div>`, { wide: true });
@@ -1133,5 +1166,5 @@
     WHW.toast = toast;
     WHW.hint = hint;
     WHW.banner = banner;
-    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
+    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openWaystone, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
 })();

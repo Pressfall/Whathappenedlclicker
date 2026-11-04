@@ -27,3 +27,20 @@
 @media (prefers-reduced-motion: no-preference) {
     .guide-step { transition: color 200ms ease; }
 }
+
+/* How close the current step is (core/guide.js plan().progress) */
+.guide-bar-wrap { margin-top: 8px; }
+.guide-bar-wrap[hidden] { display: none; }
+.guide-bar { height: 8px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.guide-bar-fill { display: block; height: 100%; width: 0; border-radius: inherit; background: var(--gold); }
+.guide-bar.is-ready .guide-bar-fill { background: var(--primary); }
+.guide-bar-text { margin: 6px 0 0; font-size: 13px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: no-preference) {
+    .guide-bar-fill { transition: width 300ms ease; }
+}
+
+/* The one-time "keep your progress safe" reminder, in the page flow under the guide (never covers the game) */
+.save-reminder { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; border-color: rgba(47, 208, 122, 0.35); }
+.save-reminder[hidden] { display: none; }
+.save-reminder-text { margin: 0; flex: 1 1 260px; font-size: 14px; line-height: 1.45; color: var(--text); }
+.save-reminder-actions { display: flex; align-items: center; gap: 8px; }

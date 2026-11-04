@@ -208,6 +208,7 @@
         const z = D.ZONES[g.zoneId], s = g.state, t = now();
         g.actors = []; g.respawns = [];
         if (z.interior) return; // nothing lives inside the Hall of Gods
+        if (z.gen === 'arena' || z.gen === 'trials') return; // players only (the Proving Grounds' waves come from world-waves.js)
         if (g.zoneId === 'town') {
             const d = A.makeMonster('dummy', g.map.dummy.x, g.map.dummy.y);
             g.actors.push(d);
@@ -219,7 +220,8 @@
             if (until > t) g.respawns.push({ spawn: i, elite: true, at: E.time + (until - t) / 1000 });
             else spawnElite(i);
         });
-        if (E.time >= (g.bossDeadUntil[g.zoneId] || 0)) g.actors.push(A.makeBoss(z.boss, g.map.boss.x, g.map.boss.y));
+        // a sealed lair (the Far Reaches) keeps its boss asleep until every ward is broken
+        if (W.lairOpen(s, g.zoneId) && E.time >= (g.bossDeadUntil[g.zoneId] || 0)) g.actors.push(A.makeBoss(z.boss, g.map.boss.x, g.map.boss.y));
         const rv = s.rivals[g.zoneId];
         if (!rv || rv.respawnAt <= t) g.actors.push(A.makeRival(g.zoneId, g.map.rival.x, g.map.rival.y));
         else g.rivalAt = E.time + (rv.respawnAt - t) / 1000;
@@ -231,6 +233,8 @@
         g.map = mapFor(zoneId);
         WHW.ui.setPrompt(null); // "press E" for something in the zone you left
         if (zoneId === 'hall' && s.secrets.hallDoor) G.openSecret(g.map);
+        if (g.map.lair && W.lairOpen(s, zoneId)) G.openLair(g.map);
+        g.wardFight = null;
         g.inTown = zoneId === 'town';
         E.setMap(g.map);
         const t = now();
@@ -241,6 +245,9 @@
         const p = g.player;
         let pos = opts.pos;
         if (!pos && g.inTown && from === 'hall') pos = { x: g.map.hall.door.x, y: g.map.hall.door.y + 30 };
+        if (!pos && g.inTown && D.ZONES[from] && D.ZONES[from].via === 'waystone') pos = { x: g.map.waystone.x, y: g.map.waystone.y + 52 };
+        if (!pos && g.inTown && from === 'arena') pos = { x: g.map.arena.door.x, y: g.map.arena.door.y + 30 };
+        if (!pos && zoneId === 'arena' && from === 'trials') pos = { x: g.map.trialsGate.x + 50, y: g.map.trialsGate.y };
         if (!pos && g.inTown) {
             const portal = g.map.portals.find(pt => pt.to === from);
             if (portal) pos = { x: portal.x + (portal.side === 'w' ? 56 : portal.side === 'e' ? -56 : 0), y: portal.y + (portal.side === 'n' ? 56 : portal.side === 's' ? -56 : 0) };
@@ -257,7 +264,9 @@
         }
         s.zone = zoneId;
         // a few seconds where other players can't hurt you, so nobody camps the gate
-        p.protectedUntil = zoneId === 'town' ? 0 : E.time + O.PVP.protectSec;
+        p.protectedUntil = O.pvpRule(zoneId) === 'off' ? 0 : E.time + O.PVP.protectSec;
+        if (WHW.arena) WHW.arena.zoneEntered(from, zoneId);
+        if (WHW.waves) WHW.waves.zoneEntered(from, zoneId);
         if (WHW.online) WHW.online.zoneChanged(zoneId);
         const z = D.ZONES[zoneId];
         WHW.ui.setZone(z.name, z.sub || (z.safe ? 'Safe' : 'Tier ' + z.tier + ' zone'));
@@ -392,11 +401,11 @@
             if (wait > 0) { WHW.hint('Your next potion is ready in ' + Math.ceil(wait) + 's.'); return; }
             const missing = p.maxHp - p.hp;
             if (missing < 1) { WHW.toast('You are already at full health.'); return; }
-            const order = missing >= 90 ? ['potion_big', 'potion_max', 'potion_small'] : ['potion_small', 'potion_big', 'potion_max'];
+            const order = missing >= W.potionHeal('potion_small', p.maxHp) * 2 ? ['potion_big', 'potion_max', 'potion_small'] : ['potion_small', 'potion_big', 'potion_max'];
             const id = order.find(k => s.cons[k] > 0);
             if (!id) { WHW.toast('No potions. Brew them at the Rune Altar or buy them from the Trader.', 'bad'); return; }
             s.cons[id]--;
-            p.hp = Math.min(p.maxHp, p.hp + D.CONSUMABLES_BY_ID[id].heal);
+            p.hp = Math.min(p.maxHp, p.hp + W.potionHeal(id, p.maxHp));
             const cd = D.CONSUMABLES_BY_ID[id].cd || 1;
             g.potionCd = E.time + cd;
             g.potionCdLen = cd;
@@ -494,6 +503,26 @@
             WHW.toast(god.icon + ' ' + god.name + ' rises to level ' + r.level + '. Its blessing reaches your game: ' + Gods.describe(id, r.level, g.state.gods) + '.', 'gold');
             WHW.sfx('boss'); save(); WHW.ui.refresh();
         },
+        // Wake ward stone i of this zone: its guardian and a few of the zone's monsters come for you. The Ward Key is only
+        // spent when the guardian falls (onGuardianKilled); dying or leaving keeps it.
+        wakeWard(i) {
+            const s = g.state, z = D.ZONES[g.zoneId], w = (g.map.wards || [])[i];
+            if (!w) return;
+            if (g.wardFight) { WHW.toast('A guardian is already awake. Beat it first.', 'bad'); return; }
+            const r = W.wardState(s, g.zoneId, i);
+            if (!r.ok) { WHW.toast(r.reason === 'key' ? 'The stone wants a ' + D.MATERIALS_BY_ID[r.key].name + '. Make one at the Rune Altar in town.' : r.reason === 'broken' ? 'This ward is already broken.' : "Can't do that.", 'bad'); return; }
+            const gm = A.makeMonster(z.elite, w.x, w.y + 80, { hpMult: D.WARD.hpMult, dmgMult: D.WARD.dmgMult, name: 'Ward Guardian', guardian: { zone: g.zoneId, i } });
+            gm.aggro = true; E.collideTiles(gm); g.actors.push(gm);
+            for (let k = 0; k < D.WARD.adds; k++) {
+                const ang = Math.PI / 2 + (k - (D.WARD.adds - 1) / 2) * 0.9;
+                const m = A.makeMonster(weightedPick(z.spawns), w.x + Math.cos(ang) * 120, w.y + Math.sin(ang) * 120, { summoned: true });
+                m.aggro = true; E.collideTiles(m); g.actors.push(m);
+            }
+            g.wardFight = { i, zone: g.zoneId, uid: gm.id };
+            E.burst(w.x, w.y - 20, '#9fdcff', 40, 200, { life: 0.9 }); E.addShake(8);
+            WHW.sfx('boss');
+            WHW.banner('The ward wakes', 'Beat its guardian to break the seal');
+        },
         travel(zoneId, atCamp) {
             if (zoneId !== 'town' && !g.state.unlocked.zones[zoneId]) { WHW.toast('That gate is still locked.', 'bad'); return; }
             enterZone(zoneId, { atCamp });
@@ -517,9 +546,13 @@
     // ---------------- events from the actors ----------------
     WHW.onPlayerDeath = function () {
         const p = g.player;
-        const drop = W.die(g.state, g.zoneId, Math.round(p.x), Math.round(p.y), now());
-        // knocked out by another player: what dropped becomes their loot (anyone can grab it after a few seconds)
+        // knocked out by another player: tell them (their win counts, even if I carry nothing)
         const killer = WHW.online && WHW.online.pvpKiller();
+        if (killer) WHW.online.send(killer.uid, 'ko', '', g.zoneId);
+        // the Arena and the Proving Grounds: nothing is lost, and nobody goes back to town
+        if (g.zoneId === 'arena' && WHW.arena) { g.lastPvp = null; WHW.arena.knockedOut(killer); WHW.sfx('hurt'); E.burst(p.x, p.y, '#ff6b7a', 24, 160, { life: 0.8 }); save(); return; }
+        if (D.ZONES[g.zoneId].coop && WHW.waves) { WHW.waves.knockedOut(); WHW.sfx('hurt'); E.burst(p.x, p.y, '#ff6b7a', 24, 160, { life: 0.8 }); save(); return; }
+        const drop = W.die(g.state, g.zoneId, Math.round(p.x), Math.round(p.y), now());
         if (killer) {
             g.state.stats.pvpLosses = (g.state.stats.pvpLosses || 0) + 1;
             if (g.state.grave && WHW.online.dropLoot(g.state.grave.mats, killer)) g.state.grave = null;
@@ -537,6 +570,48 @@
             WHW.banner('Wildgate Town', 'You wake up by the plaza');
         }), 700);
     };
+    // A ward's guardian fell: the ward breaks for good, and with the last one the lair opens
+    WHW.onGuardianKilled = function (t) {
+        const gd = t.guardian;
+        if (!gd || gd.zone !== g.zoneId) return;
+        g.wardFight = null;
+        const r = W.breakWard(g.state, gd.zone, gd.i);
+        if (!r.ok) return;
+        const w = g.map.wards[gd.i], z = D.ZONES[g.zoneId];
+        E.burst(w.x, w.y - 20, '#9fdcff', 50, 240, { life: 1 }); E.addShake(10);
+        WHW.sfx('boss');
+        if (r.lairOpen) {
+            G.openLair(g.map); E.setMap(g.map); E.buildNodeGrid(g.nodes);
+            if (!g.actors.some(a => a.kind === 'boss' && !a.dead)) g.actors.push(A.makeBoss(z.boss, g.map.boss.x, g.map.boss.y));
+            WHW.banner('The lair is open', D.BOSSES[z.boss].name + ' is waiting for you');
+        } else WHW.banner('A ward breaks', r.broken + ' of ' + r.of + ' wards broken');
+        save();
+    };
+    // The zone's weather: lightning on Stormspire Heights (never near the camp), gusts on the Skyreach Isles
+    function zoneWeather(dt) {
+        const z = D.ZONES[g.zoneId], p = g.player;
+        if (!z || g.inTown || p.dead) return;
+        const safe = g.map.camp && dist(p, g.map.camp) < 260;
+        if (z.lightning) {
+            const L = z.lightning;
+            g.boltT = (g.boltT === undefined ? 5 : g.boltT) - dt;
+            if (g.boltT <= 0) {
+                g.boltT = L.every[0] + Math.random() * (L.every[1] - L.every[0]);
+                if (!safe) {
+                    const ang = Math.random() * Math.PI * 2, rr = Math.random() * 90;
+                    g.hazards.push({ t: 0, kind: 'circle', x: p.x + (p.vx || 0) * 0.5 + Math.cos(ang) * rr, y: p.y + (p.vy || 0) * 0.5 + Math.sin(ang) * rr, r: L.r, windup: L.windup, dmg: p.maxHp * L.dmg, stun: L.stun, bolt: true });
+                }
+            }
+        }
+        if (z.gusts) {
+            const G2 = z.gusts;
+            g.gustT = (g.gustT === undefined ? 6 : g.gustT) - dt;
+            if (g.gustT <= 0) {
+                g.gustT = G2.every[0] + Math.random() * (G2.every[1] - G2.every[0]);
+                if (!safe) { g.hazards.push({ t: 0, kind: 'push', ang: Math.random() * Math.PI * 2, warn: G2.warn, time: G2.time, force: G2.force }); WHW.toast('🌬️ The wind is picking up!'); }
+            }
+        }
+    }
     WHW.onBossWake = (b) => { WHW.banner(b.def.name, 'Watch the red shapes and dash!'); };
     WHW.onBossReset = () => WHW.toast('You left the arena. The boss recovered.', 'bad');
     WHW.onBossKilled = function (b, r) {
@@ -569,6 +644,8 @@
         }
         if (prompt) { /* talking comes first */ } else if (g.inTown) {
             if (map.hall && dist(p, map.hall.door) < 52) { prompt = '<kbd>E</kbd>🏛️ Enter the Hall of Gods'; if (press) enterZone('hall'); }
+            if (!prompt && map.waystone && dist(p, map.waystone) < 62) { prompt = '<kbd>E</kbd>🗿 The Waystone' + (farOpen() ? '' : ' (asleep)'); if (press) WHW.ui.openWaystone(); }
+            if (!prompt && map.arena && dist(p, map.arena.door) < 56) { prompt = '<kbd>E</kbd>🏟️ Enter the Arena'; if (press) enterZone('arena'); }
             if (!prompt) for (const st of map.stations) {
                 if (dist(p, st.door) < 52) { prompt = `<kbd>E</kbd>${esc(D.STATIONS[st.id].icon + ' ' + D.STATIONS[st.id].name)}`; if (press) WHW.ui.openStation(st.id); break; }
             }
@@ -580,6 +657,21 @@
                     break;
                 }
             }
+        } else if (map.pit) {
+            // the Arena: the lobby is safe; challenge someone there, or step into the Pit
+            if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Back to town'; if (press) enterZone('town'); }
+            else if (dist(p, map.trialsGate) < 64) { prompt = '<kbd>E</kbd>⚔️ The Proving Grounds: co-op waves'; if (press) enterZone('trials'); }
+            else if (dist(p, map.board) < 64) { prompt = '<kbd>E</kbd>🏆 The ranking board'; if (press) WHW.arena.openMenu('rank'); }
+            else if (WHW.arena && WHW.arena.inLobby(p) && !WHW.arena.match && WHW.online) {
+                let best = null, bd = 70;
+                for (const r of WHW.online.here()) { const d = dist(p, r); if (d < bd && !r.dead) { bd = d; best = r; } }
+                if (best) { prompt = `<kbd>E</kbd>⚔️ ${esc(best.info.n)}: challenge, or invite to your party`; if (press) WHW.arena.openPlayer(best); }
+            }
+            if (!prompt && WHW.arena && !WHW.arena.match && dist(p, map.pit) < map.pit.r) prompt = '🩸 The Pit: anyone in here can fight you';
+        } else if (map.floor) {
+            // the Proving Grounds
+            if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Back to the Arena'; if (press) enterZone('arena'); }
+            else if (WHW.waves && dist(p, map.ready) < map.ready.r + 20) { const w = WHW.waves.promptText(); prompt = w.text; if (press && w.can) WHW.waves.start(); }
         } else if (map.statues) {
             for (const st of map.statues) {
                 const id = statueGod(st), god = Gods.GODS[id];
@@ -592,7 +684,17 @@
             if (!prompt && map.secret && !map.secret.open && dist(p, map.secret.at) < 72) { prompt = '<kbd>E</kbd>Read the words carved in the wall'; if (press) WHW.ui.openCarving(); }
             if (!prompt && map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Leave the Hall'; if (press) enterZone('town'); }
         } else {
-            if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Return to town'; if (press) enterZone('town'); }
+            for (const w of map.wards || []) {
+                if (dist(p, w) >= 64) continue;
+                const z = D.ZONES[g.zoneId], key = D.MATERIALS_BY_ID[z.wardKey];
+                if (W.wardBroken(s, g.zoneId, w.i)) prompt = '✔ A broken ward stone';
+                else if (g.wardFight) prompt = 'The ward is awake: beat its guardian!';
+                else if (!W.count(s, z.wardKey)) prompt = '🔒 Ward stone: it wants a ' + esc(key.name) + ' (Rune Altar)';
+                else { prompt = '<kbd>E</kbd>Wake the ward stone (your ' + esc(key.name) + ' is spent if you win)'; if (press) WHW.actions.wakeWard(w.i); }
+                break;
+            }
+            if (!prompt && map.lair && !map.lair.open && dist(p, map.lair.at) < 96) prompt = '🔒 Sealed: ' + W.wardsBroken(s, g.zoneId) + ' of ' + W.wardCount(g.zoneId) + ' wards broken';
+            if (prompt) { /* the wards and the seal */ } else if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Return to town'; if (press) enterZone('town'); }
             else if (map.camp && dist(p, map.camp) < 80) {
                 if (!s.unlocked.camps[g.zoneId]) { s.unlocked.camps[g.zoneId] = true; WHW.toast('Camp found! You can now travel straight here from town.', 'gold'); save(); }
                 prompt = '<kbd>E</kbd>Camp: return to town';
@@ -646,6 +748,10 @@
             if (!quiet) { WHW.toast('📜 "' + a.quest.title + '" is done: go back to ' + D.NPCS[a.npc].name + '.', 'gold'); WHW.sfx('craft'); }
         }
     }
+    // is another player one who can hurt me here? (drawn in red)
+    function hostileTo(r) { const rule = O.pvpRule(g.zoneId); return rule === 'open' || (rule === 'arena' && !!WHW.arena && !!r.info && WHW.arena.canHit(r)); }
+    // is any zone past the Waystone open? (it wakes when Frozen WH falls)
+    function farOpen() { return D.ZONE_ORDER.some(z => D.ZONES[z].via === 'waystone' && g.state.unlocked.zones[z]); }
     // which god a statue in the Hall is: the hidden one says so, the others by their place
     function statueGod(st) { return st.god || Gods.HALL_GODS[st.slot]; }
     // what floats over a quest giver's head
@@ -660,6 +766,9 @@
         const p = g.player;
         if (!p || !g.map) return;
         if (WHW.online) WHW.online.update(dt);
+        // the arena's matches and the Proving Grounds' waves go on while you are knocked out
+        if (WHW.arena) WHW.arena.update(dt);
+        if (WHW.waves) WHW.waves.update(dt);
         if (p.dead) { A.updateProjectiles(dt); return; }
         A.updatePlayer(p, dt);
         if (p.dead) return;
@@ -692,11 +801,18 @@
             });
         }
         if (g.rivalAt && E.time >= g.rivalAt && dist(p, g.map.rival) > 500) { g.rivalAt = 0; g.actors.push(A.makeRival(g.zoneId, g.map.rival.x, g.map.rival.y)); }
-        // each zone's boss comes back on its own timer (bossDeadUntil[zone]), away from the player
+        // each zone's boss comes back on its own timer (bossDeadUntil[zone]), wherever the player is: it used to wait until you
+        // walked away from the arena, so anyone farming the boss on the spot never saw it again. It wakes as soon as you are
+        // in its arena, so a boss that comes back while you wait there is told apart by a short pause before its first attack.
         const bossBack = g.bossDeadUntil[g.zoneId] || 0;
-        if (g.map.boss && bossBack && E.time >= bossBack && !g.actors.some(a => a.kind === 'boss') && dist(p, g.map.boss) > g.map.boss.r + 300) {
-            g.actors.push(A.makeBoss(D.ZONES[g.zoneId].boss, g.map.boss.x, g.map.boss.y)); g.bossDeadUntil[g.zoneId] = 0;
+        if (g.map.boss && bossBack && E.time >= bossBack && !g.actors.some(a => a.kind === 'boss' && !a.dead)) {
+            const nb = A.makeBoss(D.ZONES[g.zoneId].boss, g.map.boss.x, g.map.boss.y);
+            nb.nextAtk = E.time + 3;
+            g.actors = g.actors.filter(a => a.kind !== 'boss');
+            g.actors.push(nb); g.bossDeadUntil[g.zoneId] = 0;
+            if (dist(p, g.map.boss) < g.map.boss.r + 300) WHW.toast(nb.def.name + ' has returned!');
         }
+        zoneWeather(dt);
         for (const n of g.nodes) if (n.shake > 0) n.shake -= dt;
         if (g.map.braziers && E.perf !== 'low') for (const b of g.map.braziers) if (Math.random() < dt * 3) E.burst(b.x + (Math.random() - 0.5) * 10, b.y - 30, b.cold ? '#7fe8ff' : '#ffb347', 1, 30, { angle: -Math.PI / 2, spread: 0.6, life: 1.1, grav: -40, size: 2 });
         interactions(dt);
@@ -728,6 +844,9 @@
             if (st.id === 'forge') { const f = 0.6 + Math.sin(E.time * 9) * 0.2; ctx.fillStyle = `rgba(255,140,40,${f})`; ctx.beginPath(); ctx.arc(st.x + 18, st.y + st.h - 16, 7, 0, Math.PI * 2); ctx.fill(); }
         }
         if (map.hall && inView(map.hall.x + map.hall.w / 2, map.hall.y + map.hall.h / 2, map.hall.w)) drawHallOutside(ctx, map.hall);
+        if (map.arena && inView(map.arena.x + map.arena.w / 2, map.arena.y + map.arena.h / 2, map.arena.w)) drawArenaOutside(ctx, map.arena);
+        if (map.pit) drawArenaInside(ctx, map);
+        if (map.floor) drawTrials(ctx, map);
         if (map.runes) for (const r of map.runes) {
             if (!inView(r.x, r.y, 40)) continue;
             const a = 0.16 + Math.sin(E.time * 1.3 + r.y * 0.01) * 0.08;
@@ -768,12 +887,89 @@
             const x = map.exit.x, y = map.exit.y;
             ctx.fillStyle = 'rgba(120,255,160,0.22)'; ctx.beginPath(); ctx.arc(x, y, 28 + Math.sin(E.time * 3) * 2, 0, Math.PI * 2); ctx.fill();
             ctx.strokeStyle = '#7dffb0'; ctx.lineWidth = 3; ctx.stroke();
-            E.label(ctx, 'To town', x, y - 36, { font: '800 12px Inter, sans-serif', fill: '#fff', stroke: 'rgba(0,0,0,0.75)' });
+            E.label(ctx, map.exit.to === 'arena' ? 'To the Arena' : 'To town', x, y - 36, { font: '800 12px Inter, sans-serif', fill: '#fff', stroke: 'rgba(0,0,0,0.75)' });
+        }
+        if (map.waystone && inView(map.waystone.x, map.waystone.y, 80)) drawWaystone(ctx, map.waystone, farOpen());
+        for (const w of map.wards || []) if (inView(w.x, w.y, 80)) drawWard(ctx, w, W.wardBroken(g.state, g.zoneId, w.i), g.wardFight && g.wardFight.i === w.i);
+        if (map.lair && !map.lair.open && inView(map.lair.at.x, map.lair.at.y, 200)) {
+            for (const [tx, ty] of map.lair.tiles) {
+                const a = 0.35 + Math.sin(E.time * 3 + tx + ty) * 0.15;
+                ctx.fillStyle = `rgba(120,200,255,${a})`; ctx.fillRect(tx * TILE + 2, ty * TILE + 2, TILE - 4, TILE - 4);
+            }
+            E.label(ctx, '🔒 Sealed by ' + W.wardCount(g.zoneId) + ' wards', map.lair.at.x, map.lair.at.y + 36, { font: '800 12px Inter, sans-serif', fill: '#cfe9ff', stroke: 'rgba(0,0,0,0.75)' });
         }
         if (map.boss && inView(map.boss.x, map.boss.y, map.boss.r + 40)) {
             ctx.strokeStyle = 'rgba(255,90,100,0.25)'; ctx.lineWidth = 4; ctx.setLineDash([12, 10]);
             ctx.beginPath(); ctx.arc(map.boss.x, map.boss.y, map.boss.r, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
         }
+    }
+    // The Arena from outside: a round sandstone colosseum with arches and banners
+    function drawArenaOutside(ctx, a) {
+        const x = a.x, y = a.y, w = a.w, h = a.h;
+        ctx.fillStyle = '#7a6142'; ctx.fillRect(x - 4, y + h * 0.25, w + 8, h * 0.75);
+        ctx.fillStyle = '#a3875c'; ctx.beginPath(); ctx.ellipse(x + w / 2, y + h * 0.3, w / 2 + 8, h * 0.32, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#8c7350'; ctx.beginPath(); ctx.ellipse(x + w / 2, y + h * 0.3, w / 2 - 10, h * 0.2, 0, 0, Math.PI * 2); ctx.fill();
+        for (let i = 0; i < 6; i++) {
+            const ax = x + 18 + i * (w - 36) / 5;
+            ctx.fillStyle = '#3a2a1c'; ctx.beginPath(); ctx.moveTo(ax - 9, y + h - 6); ctx.lineTo(ax - 9, y + h * 0.62); ctx.arc(ax, y + h * 0.62, 9, Math.PI, 0); ctx.lineTo(ax + 9, y + h - 6); ctx.closePath(); ctx.fill();
+        }
+        for (const bx of [x + 10, x + w - 10]) { ctx.fillStyle = '#5a3d22'; ctx.fillRect(bx - 1, y - 18, 3, 30); ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.moveTo(bx + 2, y - 18); ctx.lineTo(bx + 18 + Math.sin(E.time * 3) * 2, y - 12); ctx.lineTo(bx + 2, y - 6); ctx.fill(); }
+        E.label(ctx, 'The Arena', x + w / 2, y - 26, { font: '800 13px Inter, sans-serif', fill: '#ffe7a3', stroke: 'rgba(0,0,0,0.8)' });
+    }
+    function drawArenaInside(ctx, map) {
+        const pit = map.pit;
+        if (inView(pit.x, pit.y, pit.r)) {
+            ctx.strokeStyle = 'rgba(255,90,90,0.35)'; ctx.lineWidth = 4; ctx.setLineDash([14, 10]);
+            ctx.beginPath(); ctx.arc(pit.x, pit.y, pit.r - 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+            E.label(ctx, 'THE PIT', pit.x, pit.y - 10, { font: '900 22px Inter, sans-serif', fill: 'rgba(90,40,20,0.35)' });
+        }
+        for (const ring of map.rings) if (inView(ring.x, ring.y, ring.r + 40)) E.label(ctx, 'Ring ' + (ring.i + 1), ring.x, ring.y - ring.r - 46, { font: '800 12px Inter, sans-serif', fill: '#ffe7a3', stroke: 'rgba(0,0,0,0.7)' });
+        const b = map.board;
+        if (inView(b.x, b.y, 60)) {
+            ctx.fillStyle = '#5a3d22'; ctx.fillRect(b.x - 2, b.y - 6, 4, 22); ctx.fillStyle = '#d8c79a'; ctx.fillRect(b.x - 22, b.y - 34, 44, 30);
+            ctx.fillStyle = '#7a1020'; for (let i = 0; i < 3; i++) ctx.fillRect(b.x - 16, b.y - 28 + i * 8, 32 - i * 8, 3);
+            E.label(ctx, '🏆 Ranking', b.x, b.y - 44, { font: '800 12px Inter, sans-serif', fill: '#fff3c4', stroke: 'rgba(0,0,0,0.7)' });
+        }
+        const t = map.trialsGate;
+        if (inView(t.x, t.y, 60)) {
+            ctx.fillStyle = 'rgba(255,160,60,' + (0.22 + Math.sin(E.time * 3) * 0.06) + ')'; ctx.beginPath(); ctx.arc(t.x, t.y, 28, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 3; ctx.stroke();
+            E.label(ctx, 'Proving Grounds', t.x, t.y - 38, { font: '800 12px Inter, sans-serif', fill: '#fff', stroke: 'rgba(0,0,0,0.75)' });
+        }
+    }
+    function drawTrials(ctx, map) {
+        const r = map.ready;
+        ctx.strokeStyle = 'rgba(255,200,80,' + (0.45 + Math.sin(E.time * 3) * 0.15) + ')'; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2); ctx.stroke();
+        E.label(ctx, 'Ready circle', r.x, r.y - r.r - 10, { font: '800 12px Inter, sans-serif', fill: '#ffe7a3', stroke: 'rgba(0,0,0,0.7)' });
+        for (const gt of map.gates) { ctx.fillStyle = 'rgba(255,90,60,0.25)'; ctx.beginPath(); ctx.arc(gt.x, gt.y, 22, 0, Math.PI * 2); ctx.fill(); }
+    }
+    // The Waystone: a standing stone in a ring of flagstones; its runes glow once the Far Reaches are open
+    function drawWaystone(ctx, w, awake) {
+        const x = w.x, y = w.y;
+        if (awake) { const gl = ctx.createRadialGradient(x, y - 20, 4, x, y - 20, 70); gl.addColorStop(0, 'rgba(90,200,255,0.35)'); gl.addColorStop(1, 'rgba(90,200,255,0)'); ctx.fillStyle = gl; ctx.fillRect(x - 70, y - 90, 140, 140); }
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 12, 20, 7, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#6f7480'; ctx.beginPath(); ctx.moveTo(x - 14, y + 12); ctx.lineTo(x - 11, y - 34); ctx.lineTo(x, y - 46); ctx.lineTo(x + 11, y - 34); ctx.lineTo(x + 14, y + 12); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fillRect(x - 11, y - 34, 5, 44);
+        const glow = awake ? 0.6 + Math.sin(E.time * 2.5) * 0.3 : 0.18;
+        ctx.strokeStyle = `rgba(110,210,255,${glow})`; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(x - 5, y - 28); ctx.lineTo(x + 5, y - 18); ctx.lineTo(x - 5, y - 8); ctx.moveTo(x + 4, y - 32); ctx.lineTo(x + 4, y - 24); ctx.stroke();
+        E.label(ctx, awake ? 'Waystone' : 'Waystone (asleep)', x, y - 58, { font: '800 12px Inter, sans-serif', fill: awake ? '#bfe9ff' : '#c9ccd6', stroke: 'rgba(0,0,0,0.75)' });
+    }
+    // A ward stone of a sealed lair: humming blue while it holds, cracked and dark once broken
+    function drawWard(ctx, w, broken, awake) {
+        const x = w.x, y = w.y;
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 12, 18, 6, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = broken ? '#3b3e48' : '#4b5266';
+        ctx.beginPath(); ctx.moveTo(x - 12, y + 12); ctx.lineTo(x - 8, y - 36); ctx.lineTo(x + 8, y - 36); ctx.lineTo(x + 12, y + 12); ctx.closePath(); ctx.fill();
+        if (broken) {
+            ctx.strokeStyle = 'rgba(0,0,0,0.6)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x - 6, y - 30); ctx.lineTo(x + 2, y - 14); ctx.lineTo(x - 3, y); ctx.stroke();
+        } else {
+            const a = (awake ? 0.8 : 0.45) + Math.sin(E.time * (awake ? 9 : 3)) * 0.2;
+            ctx.fillStyle = `rgba(120,200,255,${a})`; ctx.beginPath(); ctx.arc(x, y - 18, 6, 0, Math.PI * 2); ctx.fill();
+            if (E.perf !== 'low' && Math.random() < 0.15) E.burst(x, y - 30, '#9fdcff', 1, 30, { angle: -Math.PI / 2, spread: 0.5, life: 0.8, grav: -30, size: 2 });
+        }
+        E.label(ctx, broken ? 'Broken ward' : 'Ward stone', x, y - 48, { font: '700 11px Inter, sans-serif', fill: broken ? '#9aa0a8' : '#cfe9ff', stroke: 'rgba(0,0,0,0.75)' });
     }
     // The Hall of Gods from outside: a dark temple with columns, a gold-trimmed pediment and a black open door
     function drawHallOutside(ctx, h) {
@@ -821,7 +1017,7 @@
         items.sort((x, y) => x.y - y.y);
         const it = W.findGear(g.state, p.weaponUid), b = W.baseOf(it);
         for (const o of items) {
-            if (o.rp) { A.drawRemote(ctx, o.rp, g.zoneId !== 'town'); continue; }
+            if (o.rp) { A.drawRemote(ctx, o.rp, hostileTo(o.rp)); continue; }
             if (o.npc) { A.drawNpc(ctx, o.npc, D.NPCS[o.npc.id], npcMark(o.npc.id)); continue; }
             if (o.statue) { const id = statueGod(o.statue); if (id) A.drawStatue(ctx, o.statue, Gods.GODS[id], g.state.gods[id] || 0); continue; }
             if (o.altar) { A.drawAltar(ctx, o.altar, D.HIDDEN_SHOP[o.altar.id], !!g.state.secrets[o.altar.id]); continue; }
@@ -931,17 +1127,20 @@
             const want = E.fpsCap || 60;
             ctx.font = '700 12px Inter, system-ui, sans-serif'; ctx.textAlign = 'left'; ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,0.75)';
             ctx.fillStyle = E.fps >= want * 0.9 ? '#7dffb0' : E.fps >= want * 0.6 ? '#ffe14d' : '#ff6b7a';
-            const fy = E.h - (debug ? 80 : 12);
+            const fy = E.h - (debug ? 96 : 12);
             ctx.strokeText(E.fps + ' fps', 12, fy); ctx.fillText(E.fps + ' fps', 12, fy);
         }
         noticeSlow();
         if (debug) {
             const P = w ? D.WEAPON_CLASSES[w.cls] : null;
-            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(10, E.h - 70, 260, 58);
+            ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(10, E.h - 86, 330, 74);
             ctx.fillStyle = '#fff'; ctx.font = '12px monospace'; ctx.textAlign = 'left';
             if (w && P) ctx.fillText(`ω ${w.omega.toFixed(1)}  tip v ${Math.round(Math.abs(w.omega) * (P.len || 0))}  vMin ${P.vMin || '-'}`, 16, E.h - 52);
             ctx.fillText(`actors ${g.actors.length}  fps-steps ${E.frames}`, 16, E.h - 36);
             ctx.fillText(`stam ${p.stam.val.toFixed(0)}  combo ${p.combo.combo || 0}`, 16, E.h - 20);
+            // online position updates (owner check on the database's download use; see world-online.js netRate)
+            const nr = WHW.online && WHW.online.db && WHW.online.net.rate;
+            ctx.fillText(nr ? `net out ${nr.outPerSec.toFixed(1)}/s in ${nr.inPerSec.toFixed(1)}/s  ~${(nr.inBytesPerSec / 1024).toFixed(2)} KB/s down (${(nr.inBytesPerSec * 3.6 / 1024).toFixed(1)} MB/h)` : 'net: offline', 16, E.h - 68);
         }
     };
     // Running well under the frame-rate target for a while (while playing, not behind a menu): say once where the
@@ -971,12 +1170,15 @@
         const dot = (x, y, col, r = 3) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(ox + x / TILE * s, oy + y / TILE * s, r, 0, Math.PI * 2); ctx.fill(); };
         if (m.exit) dot(m.exit.x, m.exit.y, '#7dffb0', 3);
         if (m.camp) dot(m.camp.x, m.camp.y, g.state.unlocked.camps[g.zoneId] ? '#ffd24d' : 'rgba(255,210,77,0.4)', 3);
-        if (m.boss) dot(m.boss.x, m.boss.y, '#ff5b6b', 4);
+        if (m.boss) dot(m.boss.x, m.boss.y, m.lair && !m.lair.open ? '#7fc8ff' : '#ff5b6b', 4);
+        for (const w of m.wards || []) dot(w.x, w.y, W.wardBroken(g.state, g.zoneId, w.i) ? '#5a6070' : '#7fc8ff', 3);
+        if (m.waystone) dot(m.waystone.x, m.waystone.y, '#7fc8ff', 3);
         for (const pt of m.portals) dot(pt.x, pt.y, g.state.unlocked.zones[pt.to] ? '#7dffb0' : '#ff8a95', 3);
         for (const st of m.stations) dot(st.door.x, st.door.y, D.STATIONS[st.id].color, 3);
         if (g.state.grave && g.state.grave.zone === g.zoneId) dot(g.state.grave.x, g.state.grave.y, '#ffc83d', 4);
         if (big) for (const a of g.actors) if (!a.dead && (a.elite || a.kind === 'rival')) dot(a.x, a.y, a.kind === 'rival' ? '#ff9a3d' : '#ffe14d', 2.5);
-        if (WHW.online) for (const rp of WHW.online.drawables()) dot(rp.x, rp.y, g.zoneId === 'town' ? '#9ad7ff' : '#ff6b7a', big ? 3 : 2.5);
+        if (WHW.online) for (const rp of WHW.online.drawables()) dot(rp.x, rp.y, hostileTo(rp) ? '#ff6b7a' : '#9ad7ff', big ? 3 : 2.5);
+        if (m.arena) dot(m.arena.door.x, m.arena.door.y, '#ffb347', 3);
         dot(g.player.x, g.player.y, '#ffffff', big ? 4 : 3);
     };
 
@@ -1074,7 +1276,8 @@
             online: () => {
                 const on = WHW.online;
                 return { status: on.status, error: on.error, uid: on.uid, zone: on.zone, host: on.isHost, boss: on.boss && { hp: on.boss.hp, max: on.boss.max, killedAt: on.boss.killedAt },
-                    players: on.here().map(r => ({ uid: r.uid, name: r.info.n, x: Math.round(r.x), y: Math.round(r.y), hp: r.hp, shield: r.shield.up, bubble: r.bubble && r.bubble.m })), loot: [...on.loot.keys()] };
+                    players: on.here().map(r => ({ uid: r.uid, name: r.info.n, x: Math.round(r.x), y: Math.round(r.y), hp: r.hp, shield: r.shield.up, bubble: r.bubble && r.bubble.m })), loot: [...on.loot.keys()],
+                    net: on.net.rate };
             },
         };
         if (localHost) {

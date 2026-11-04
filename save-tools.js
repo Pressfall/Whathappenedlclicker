@@ -64,6 +64,7 @@
             try { if (typeof saveGame === 'function') saveGame(); } catch (e) {}
             const out = getEngine().exportProgress();
             download(out.filename, out.text);
+            try { localStorage.setItem('whathappened_save_reminder', 'done'); } catch (e) {} // a backup exists: no need to remind (guide.js)
             status(`Downloaded ${out.filename}: ${summaryText(out.summary)}. Keep it somewhere safe.`, 'ok');
         } catch (e) { status(e && e.message ? e.message : 'The save file could not be created.', 'error'); }
     }

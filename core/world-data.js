@@ -52,6 +52,38 @@
         { id: 'wolf_pelt', name: 'Wolf Pelt', color: '#d7dde6', icon: '🐺', sell: 15, kind: 'part' },
         { id: 'wraith_essence', name: 'Wraith Essence', color: '#b8a9ff', icon: '👻', sell: 22, kind: 'part' },
         { id: 'star_fragment', name: 'Star Fragment', color: '#fff3a8', icon: '⭐', sell: 120, kind: 'part' },
+        // The Far Reaches (reached by the Waystone). Each zone: wood, two raws, an ore, two monster parts and the elite's part,
+        // which Ward Keys need. Their ores need the previous zone's pickaxe.
+        // Saltspray Coast
+        { id: 'driftwood_log', name: 'Driftwood', color: '#b9a582', icon: '🪵', sell: 14, kind: 'raw' },
+        { id: 'coral', name: 'Coral', color: '#ff7f87', icon: '🪸', sell: 18, kind: 'raw' },
+        { id: 'pearl', name: 'Pearl', color: '#f4f0ff', icon: '⚪', sell: 60, kind: 'raw' },
+        { id: 'sea_salt', name: 'Sea Salt', color: '#e8f1f2', icon: '🧂', sell: 10, kind: 'raw' },
+        { id: 'orichalcum_ore', name: 'Orichalcum Ore', color: '#4fe0c0', icon: '🟢', sell: 55, kind: 'raw' },
+        { id: 'crawler_shell', name: 'Crawler Shell', color: '#c4734f', icon: '🦀', sell: 24, kind: 'part' },
+        { id: 'siren_scale', name: 'Siren Scale', color: '#62d2e8', icon: '🧜', sell: 30, kind: 'part' },
+        { id: 'tide_essence', name: 'Tide Essence', color: '#3fa9f5', icon: '🌊', sell: 45, kind: 'part' },
+        // Stormspire Heights
+        { id: 'thunderwood_log', name: 'Thunderwood Log', color: '#6d6a88', icon: '🪵', sell: 22, kind: 'raw' },
+        { id: 'storm_glass', name: 'Storm Glass', color: '#c7d4ff', icon: '🔹', sell: 30, kind: 'raw' },
+        { id: 'adamant_ore', name: 'Adamant Ore', color: '#9aa8ff', icon: '🔷', sell: 80, kind: 'raw' },
+        { id: 'ram_horn', name: 'Ram Horn', color: '#d8c6a0', icon: '🐏', sell: 36, kind: 'part' },
+        { id: 'volt_core', name: 'Volt Core', color: '#ffe66b', icon: '⚡', sell: 45, kind: 'part' },
+        { id: 'roc_feather', name: 'Roc Feather', color: '#a7b4d8', icon: '🪶', sell: 65, kind: 'part' },
+        // The Cinder Capital
+        { id: 'charred_log', name: 'Charred Timber', color: '#4a3a34', icon: '🪵', sell: 32, kind: 'raw' },
+        { id: 'ash_stone', name: 'Ash Stone', color: '#7d7570', icon: '🪨', sell: 40, kind: 'raw' },
+        { id: 'soulsteel_ore', name: 'Soulsteel Ore', color: '#ff5f7a', icon: '🔴', sell: 115, kind: 'raw' },
+        { id: 'ghoul_fang', name: 'Ghoul Fang', color: '#d9d2b8', icon: '🦷', sell: 50, kind: 'part' },
+        { id: 'knight_crest', name: 'Knight\'s Crest', color: '#c9a34a', icon: '🔰', sell: 60, kind: 'part' },
+        { id: 'cinder_heart', name: 'Cinder Heart', color: '#ff7b3a', icon: '❤️‍🔥', sell: 95, kind: 'part' },
+        // Skyreach Isles
+        { id: 'skywood_log', name: 'Skywood Log', color: '#cfe7ff', icon: '🪵', sell: 45, kind: 'raw' },
+        { id: 'celestite', name: 'Celestite', color: '#a8e6ff', icon: '💎', sell: 60, kind: 'raw' },
+        { id: 'starmetal_ore', name: 'Starmetal Ore', color: '#ffe98a', icon: '🌟', sell: 165, kind: 'raw' },
+        { id: 'cloud_silk', name: 'Cloud Silk', color: '#f2f6ff', icon: '☁️', sell: 55, kind: 'part' },
+        { id: 'seraph_feather', name: 'Seraph Feather', color: '#fff6d0', icon: '🕊️', sell: 85, kind: 'part' },
+        { id: 'aether_core', name: 'Aether Core', color: '#b48bff', icon: '🔮', sell: 140, kind: 'part' },
         // processed (instant recipes)
         { id: 'copper_bar', name: 'Copper Bar', color: '#e08a50', icon: '🟧', sell: 6, kind: 'bar' },
         { id: 'iron_bar', name: 'Iron Bar', color: '#c8c3bb', icon: '⬜', sell: 13, kind: 'bar' },
@@ -64,11 +96,28 @@
         { id: 'frostpine_plank', name: 'Frostpine Plank', color: '#93b7c9', icon: '🟦', sell: 18, kind: 'plank' },
         { id: 'leather', name: 'Leather', color: '#9a6a44', icon: '🟤', sell: 8, kind: 'part' },
         { id: 'string', name: 'Bowstring', color: '#e9e2c8', icon: '🧵', sell: 4, kind: 'part' },
+        { id: 'driftwood_plank', name: 'Driftwood Plank', color: '#c9b690', icon: '🟫', sell: 30, kind: 'plank' },
+        { id: 'thunderwood_plank', name: 'Thunderwood Plank', color: '#7c7899', icon: '🟪', sell: 48, kind: 'plank' },
+        { id: 'charred_plank', name: 'Charred Plank', color: '#5a4740', icon: '🟫', sell: 70, kind: 'plank' },
+        { id: 'skywood_plank', name: 'Skywood Plank', color: '#dcedff', icon: '⬜', sell: 100, kind: 'plank' },
+        { id: 'orichalcum_bar', name: 'Orichalcum Bar', color: '#4fe0c0', icon: '🟩', sell: 220, kind: 'bar' },
+        { id: 'adamant_bar', name: 'Adamant Bar', color: '#9aa8ff', icon: '🟦', sell: 330, kind: 'bar' },
+        { id: 'soulsteel_bar', name: 'Soulsteel Bar', color: '#ff5f7a', icon: '🟥', sell: 490, kind: 'bar' },
+        { id: 'starmetal_bar', name: 'Starmetal Bar', color: '#ffe98a', icon: '🟨', sell: 700, kind: 'bar' },
         // boss keys: open the next zone's gate (never sold, never dropped on death)
         { id: 'sigil_greenwood', name: 'Verdant Sigil', color: '#5fd068', icon: '🍃', sell: 0, kind: 'key' },
         { id: 'sigil_mines', name: 'Gilded Sigil', color: '#ffcf4a', icon: '⚜️', sell: 0, kind: 'key' },
         { id: 'sigil_ember', name: 'Inferno Sigil', color: '#ff6a2b', icon: '🔥', sell: 0, kind: 'key' },
         { id: 'sigil_frost', name: 'Frozen Sigil', color: '#8fe3ff', icon: '❄️', sell: 0, kind: 'key' },
+        { id: 'sigil_coast', name: 'Tidal Sigil', color: '#3fa9f5', icon: '🐚', sell: 0, kind: 'key' },
+        { id: 'sigil_storm', name: 'Storm Sigil', color: '#c7d4ff', icon: '🌩️', sell: 0, kind: 'key' },
+        { id: 'sigil_ruins', name: 'Ashen Sigil', color: '#ff5f7a', icon: '🕯️', sell: 0, kind: 'key' },
+        { id: 'sigil_sky', name: 'Celestial Sigil', color: '#ffe98a', icon: '✨', sell: 0, kind: 'key' },
+        // Ward Keys (Rune Altar): each wakes one ward stone in its zone, and is spent only when the ward breaks
+        { id: 'key_coast', name: 'Tide Key', color: '#3fa9f5', icon: '🗝️', sell: 0, kind: 'key' },
+        { id: 'key_storm', name: 'Storm Key', color: '#c7d4ff', icon: '🗝️', sell: 0, kind: 'key' },
+        { id: 'key_ruins', name: 'Ash Key', color: '#ff7b3a', icon: '🗝️', sell: 0, kind: 'key' },
+        { id: 'key_sky', name: 'Star Key', color: '#ffe98a', icon: '🗝️', sell: 0, kind: 'key' },
         // boss trophies: each boss's own drops. They sell well; the Hall of Gods asks for the common one of each boss.
         { id: 'heartwood_seed', name: 'Heartwood Seed', color: '#7fd36b', icon: '🌰', sell: 160, kind: 'trophy' },
         { id: 'verdant_crown', name: 'Verdant Crown', color: '#4fd27a', icon: '👑', sell: 1200, kind: 'trophy' },
@@ -78,6 +127,14 @@
         { id: 'phoenix_feather', name: 'Phoenix Feather', color: '#ff9a3d', icon: '🪶', sell: 4000, kind: 'trophy' },
         { id: 'frozen_tear', name: 'Frozen Tear', color: '#bfefff', icon: '💧', sell: 900, kind: 'trophy' },
         { id: 'crown_of_winter', name: 'Crown of Winter', color: '#e8f7ff', icon: '👑', sell: 7000, kind: 'trophy' },
+        { id: 'abyssal_pearl', name: 'Abyssal Pearl', color: '#5a7dff', icon: '🫧', sell: 1400, kind: 'trophy' },
+        { id: 'trident_of_tides', name: 'Trident of the Tides', color: '#3fa9f5', icon: '🔱', sell: 10000, kind: 'trophy' },
+        { id: 'thunder_heart', name: 'Thunder Heart', color: '#ffe66b', icon: '💛', sell: 2000, kind: 'trophy' },
+        { id: 'eye_of_the_storm', name: 'Eye of the Storm', color: '#c7d4ff', icon: '🌀', sell: 14000, kind: 'trophy' },
+        { id: 'void_ember', name: 'Void Ember', color: '#b07dff', icon: '🔥', sell: 2800, kind: 'trophy' },
+        { id: 'crown_of_ash', name: 'Crown of Ash', color: '#7d7570', icon: '👑', sell: 20000, kind: 'trophy' },
+        { id: 'vrill_eye', name: 'Eye of Vrill', color: '#3dffb4', icon: '👁️', sell: 4000, kind: 'trophy' },
+        { id: 'halo_of_vrill', name: 'Halo of Vrill', color: '#ffe98a', icon: '😇', sell: 30000, kind: 'trophy' },
         // Frozen WH's rarest drop, for the hidden god and the hidden room: can't be sold, never lost on death
         { id: 'hidden_shard', name: 'Shard of the Hidden', color: '#3dffb4', icon: '🌑', sell: 0, kind: 'key' },
     ];
@@ -86,8 +143,9 @@
     // consumables (kept in state.cons)
     const CONSUMABLES = [
         // cd: seconds before any potion can be drunk again (one cooldown for all of them; stronger ones set a longer one)
-        { id: 'potion_small', name: 'Small Potion', icon: '🧪', heal: 40, cd: 6, color: '#ff6b8a' },
-        { id: 'potion_big', name: 'Big Potion', icon: '⚗️', heal: 110, cd: 10, color: '#ff3d6e' },
+        // heal: health given back, or healPct of your max health when that is more (so potions still matter in the Far Reaches)
+        { id: 'potion_small', name: 'Small Potion', icon: '🧪', heal: 40, healPct: 0.15, cd: 6, color: '#ff6b8a' },
+        { id: 'potion_big', name: 'Big Potion', icon: '⚗️', heal: 110, healPct: 0.35, cd: 10, color: '#ff3d6e' },
         { id: 'potion_max', name: 'Max Potion', icon: '💖', heal: 9999, cd: 20, color: '#ff9fe6' },
         { id: 'arrow', name: 'Arrow', icon: '➶', color: '#e9e2c8' },
     ];
@@ -175,13 +233,30 @@
         { tier: 3, name: 'Silver', color: '#eef3f8', bar: 'silver_bar', plank: 'ashwood_plank', extra: 'golem_core', fee: 150, swordDmg: 30, armor: 50, hp: 80, alt: { axe: 'obsidian', pickaxe: 'obsidian' } },
         { tier: 4, name: 'Ember', color: '#ff7b3a', bar: 'ember_bar', plank: 'ashwood_plank', extra: 'magma_shell', fee: 350, swordDmg: 46, armor: 75, hp: 120, burn: true },
         { tier: 5, name: 'Mithril', color: '#b3d1ff', bar: 'mithril_bar', plank: 'frostpine_plank', extra: 'wolf_pelt', fee: 800, swordDmg: 70, armor: 110, hp: 180, chill: true },
+        // the Far Reaches: steeper. qty multiplies every count in a recipe (rounded up), and the bars are alloys
+        { tier: 6, name: 'Orichalcum', color: '#4fe0c0', bar: 'orichalcum_bar', plank: 'driftwood_plank', extra: 'crawler_shell', fee: 1800, swordDmg: 105, armor: 160, hp: 260, qty: 1.5 },
+        { tier: 7, name: 'Adamant', color: '#9aa8ff', bar: 'adamant_bar', plank: 'thunderwood_plank', extra: 'ram_horn', fee: 4000, swordDmg: 152, armor: 230, hp: 370, qty: 1.5 },
+        { tier: 8, name: 'Soulsteel', color: '#ff5f7a', bar: 'soulsteel_bar', plank: 'charred_plank', extra: 'knight_crest', fee: 9000, swordDmg: 220, armor: 320, hp: 520, qty: 2, burn: true },
+        { tier: 9, name: 'Starmetal', color: '#ffe98a', bar: 'starmetal_bar', plank: 'skywood_plank', extra: 'seraph_feather', fee: 20000, swordDmg: 315, armor: 440, hp: 720, qty: 2, chill: true },
     ];
+    const MAX_TIER = TIERS.length - 1;
     // armor split between the three pieces; boots also add move speed
     const ARMOR_SPLIT = { helmet: 0.3, chest: 0.5, boots: 0.2 };
-    const BOOTS_SPEED = [0, 0.05, 0.07, 0.1, 0.12, 0.15];
+    const BOOTS_SPEED = [0, 0.05, 0.07, 0.1, 0.12, 0.15, 0.17, 0.19, 0.21, 0.23];
+    // every count times a tier's qty, rounded up
+    function scaled(inputs, qty) {
+        if (!qty || qty === 1) return inputs;
+        const out = {};
+        for (const k in inputs) out[k] = Math.ceil(inputs[k] * qty);
+        return out;
+    }
 
     // station: forge | workbench | altar. Each recipe: inputs {mat: n}.
     function gearRecipe(cls, t) {
+        const r = gearRecipeBase(cls, t);
+        return r && { station: r.station, in: scaled(r.in, TIERS[t].qty) };
+    }
+    function gearRecipeBase(cls, t) {
         const T = TIERS[t];
         const extraFor = (n) => (t >= 2 ? { [T.extra]: n } : {});
         switch (cls) {
@@ -221,19 +296,19 @@
     const STAFF_MAGIC = {
         // one target, hard
         fire: { name: 'Fire', icon: '🔥', color: '#ff7b3a', users: ['mystic'], focus: 'Single target',
-            mat: [null, { coal: 3 }, { coal: 4 }, { sulfur: 3 }, { imp_horn: 2 }, { imp_horn: 3 }],
+            mat: [null, { coal: 3 }, { coal: 4 }, { sulfur: 3 }, { imp_horn: 2 }, { imp_horn: 3 }, { sea_salt: 4 }, { ram_horn: 2 }, { cinder_heart: 1 }, { aether_core: 1 }],
             charge: { min: 0.2, full: 1.25 }, over: { kind: 'burn', dps: 4, grow: 6, linger: 2.5 },
             thrust: { kind: 'bolt', look: 'fireball', name: 'Fireball', dmg: 2.1, speed: 560, life: 0.9, r: 7, kb: 260, burn: true, mana: 10 },
             swing: { kind: 'wave', name: 'Flame Wave', dmg: 0.5, speed: 380, life: 0.5, band: 16, arcMin: 0.9, arcMax: 1.6, kb: 200, burn: true, mana: 14 } },
         // groups: a bolt that arcs from enemy to enemy, and a wide, far-reaching wave
         lightning: { name: 'Lightning', icon: '⚡', color: '#ffe66b', users: ['mystic'], focus: 'Area',
-            mat: [null, { copper_ore: 3 }, { copper_bar: 2 }, { gold_bar: 2 }, { obsidian: 3 }, { gold_bar: 3 }],
+            mat: [null, { copper_ore: 3 }, { copper_bar: 2 }, { gold_bar: 2 }, { obsidian: 3 }, { gold_bar: 3 }, { siren_scale: 2 }, { volt_core: 3 }, { knight_crest: 2 }, { celestite: 3 }],
             charge: { min: 0.2, full: 1.25 }, over: { kind: 'shock', stun: 0.3, grow: 0.5, max: 1.6 },
             thrust: { kind: 'bolt', look: 'spark', name: 'Arc Bolt', dmg: 1.3, speed: 760, life: 0.6, r: 6, kb: 120, chain: { jumps: 4, range: 150, falloff: 0.8 }, mana: 14 },
             swing: { kind: 'wave', look: 'jagged', name: 'Thunderclap', dmg: 1.0, speed: 520, life: 0.5, band: 22, arcMin: 1.6, arcMax: 3.0, kb: 240, mana: 16 } },
         // some of both, and keeps them slow
         frost: { name: 'Frost', icon: '❄️', color: '#8fe3ff', users: ['mystic'], focus: 'Single target and area, slows',
-            mat: [null, { slime_gel: 3 }, { bone: 3 }, { bone: 4 }, { frost_crystal: 2 }, { wraith_essence: 2 }],
+            mat: [null, { slime_gel: 3 }, { bone: 3 }, { bone: 4 }, { frost_crystal: 2 }, { wraith_essence: 2 }, { pearl: 1 }, { storm_glass: 3 }, { ghoul_fang: 3 }, { cloud_silk: 3 }],
             charge: { min: 0.2, full: 1.25 }, over: { kind: 'chill', slow: 0.35, grow: 0.15, max: 0.75, linger: 3 },
             frost: { stacks: 3, keep: 4, slow: 3 },
             thrust: { kind: 'bolt', look: 'shard', name: 'Ice Lance', dmg: 1.9, speed: 640, life: 0.8, r: 6, kb: 200, pierce: 1, frost: true, mana: 11 },
@@ -248,8 +323,12 @@
         { block: 0.68, arc: 110, stab: 1.45 },
         { block: 0.74, arc: 115, stab: 1.7 },
         { block: 0.8, arc: 120, stab: 2.0 },
+        { block: 0.84, arc: 125, stab: 2.3 },
+        { block: 0.87, arc: 130, stab: 2.6 },
+        { block: 0.89, arc: 135, stab: 2.9 },
+        { block: 0.91, arc: 140, stab: 3.2 },
     ];
-    const WOOD_NAMES = ['', 'Oak', 'Oak', 'Ashwood', 'Ashwood', 'Frostpine'];
+    const WOOD_NAMES = ['', 'Oak', 'Oak', 'Ashwood', 'Ashwood', 'Frostpine', 'Driftwood', 'Thunderwood', 'Charred', 'Skywood'];
     // base: { id, name, slot ('weapon' | 'helmet' | 'chest' | 'boots' | 'ring'), cls, tier, dmg, armor, hp, speed, tool, recipe }
     const GEAR = [];
     for (const T of TIERS) {
@@ -273,7 +352,7 @@
             GEAR.push({
                 id: mid + 'staff_' + t, name: WOOD_NAMES[t] + ' ' + SM.name + ' Staff', slot: 'weapon', cls: 'staff', magic: mid, tier: t,
                 dmg: Math.round(T.swordDmg * WEAPON_CLASSES.staff.dmg * 10) / 10, tool: 0, burn: false, chill: false,
-                recipe: { station: 'altar', in: Object.assign({ [T.plank]: 2, [T.bar]: 1 }, t >= 2 ? { [T.extra]: 1 } : {}, SM.mat[t]) },
+                recipe: { station: 'altar', in: scaled(Object.assign({ [T.plank]: 2, [T.bar]: 1 }, t >= 2 ? { [T.extra]: 1 } : {}, SM.mat[t]), T.qty) },
             });
         }
         GEAR.push(Object.assign({ id: 'shield_' + t, name: t === 0 ? 'Old Buckler' : T.name + ' Shield', slot: 'offhand', cls: 'shield', tier: t, armor: 0, hp: 0,
@@ -296,6 +375,10 @@
         { id: 'ring_ruby', name: 'Ruby Ring', tier: 3, rubies: 0.2, desc: '+20% rubies', recipe: { station: 'altar', in: { gold_bar: 2, ruby_cluster: 1 } } },
         { id: 'ring_ember', name: 'Ember Signet', tier: 4, fireResist: 0.5, desc: 'Halves lava and fire damage', recipe: { station: 'altar', in: { ember_bar: 2, imp_horn: 3 } } },
         { id: 'ring_frost', name: 'Frost Signet', tier: 5, stamRegen: 0.3, desc: '+30% stamina regen', recipe: { station: 'altar', in: { mithril_bar: 1, frost_crystal: 2, wraith_essence: 2 } } },
+        { id: 'ring_pearl', name: 'Pearl Ring', tier: 6, rubies: 0.3, desc: '+30% rubies', recipe: { station: 'altar', in: { orichalcum_bar: 2, pearl: 3 } } },
+        { id: 'ring_storm', name: 'Storm Band', tier: 7, hp: 60, stamRegen: 0.2, desc: '+60 max HP, +20% stamina regen', recipe: { station: 'altar', in: { adamant_bar: 2, volt_core: 3 } } },
+        { id: 'ring_soul', name: 'Soulsteel Signet', tier: 8, hp: 90, fireResist: 0.4, desc: '+90 max HP, 40% less fire and lava damage', recipe: { station: 'altar', in: { soulsteel_bar: 2, cinder_heart: 1, ghoul_fang: 3 } } },
+        { id: 'ring_star', name: 'Star Ring', tier: 9, hp: 120, luck: 0.2, desc: '+120 max HP, +20% drop luck', recipe: { station: 'altar', in: { starmetal_bar: 2, aether_core: 1, seraph_feather: 3 } } },
     ];
     for (const r of RINGS) GEAR.push(Object.assign({ slot: 'ring', cls: 'ring', armor: 0, hp: r.hp || 0 }, r));
     for (const g of GEAR) if (g.recipe) g.recipe.fee = TIERS[g.tier].fee || 0;
@@ -312,9 +395,18 @@
         { id: 'gold_bar', station: 'forge', in: { gold_ore: 2, coal: 1 }, out: { gold_bar: 1 } },
         { id: 'ember_bar', station: 'forge', in: { ember_ore: 2, sulfur: 1 }, out: { ember_bar: 1 } },
         { id: 'mithril_bar', station: 'forge', in: { mithril_ore: 3, frost_crystal: 1 }, out: { mithril_bar: 1 } },
+        // the Far Reaches' alloys: an ore, a raw from the same zone and a monster part, two bars at a time
+        { id: 'orichalcum_bar', station: 'forge', in: { orichalcum_ore: 6, sea_salt: 2, coral: 1 }, out: { orichalcum_bar: 2 } },
+        { id: 'adamant_bar', station: 'forge', in: { adamant_ore: 6, storm_glass: 2, volt_core: 1 }, out: { adamant_bar: 2 } },
+        { id: 'soulsteel_bar', station: 'forge', in: { soulsteel_ore: 6, ash_stone: 2, ghoul_fang: 1 }, out: { soulsteel_bar: 2 } },
+        { id: 'starmetal_bar', station: 'forge', in: { starmetal_ore: 6, celestite: 2, cloud_silk: 1 }, out: { starmetal_bar: 2 } },
         { id: 'oak_plank', station: 'workbench', in: { oak_log: 2 }, out: { oak_plank: 1 } },
         { id: 'ashwood_plank', station: 'workbench', in: { ashwood_log: 2 }, out: { ashwood_plank: 1 } },
         { id: 'frostpine_plank', station: 'workbench', in: { frostpine_log: 2 }, out: { frostpine_plank: 1 } },
+        { id: 'driftwood_plank', station: 'workbench', in: { driftwood_log: 2 }, out: { driftwood_plank: 1 } },
+        { id: 'thunderwood_plank', station: 'workbench', in: { thunderwood_log: 2 }, out: { thunderwood_plank: 1 } },
+        { id: 'charred_plank', station: 'workbench', in: { charred_log: 2 }, out: { charred_plank: 1 } },
+        { id: 'skywood_plank', station: 'workbench', in: { skywood_log: 2 }, out: { skywood_plank: 1 } },
         { id: 'leather', station: 'workbench', in: { boar_hide: 2, fiber: 1 }, out: { leather: 1 } },
         { id: 'leather_pelt', station: 'workbench', in: { wolf_pelt: 1, fiber: 1 }, out: { leather: 2 } },
         { id: 'string', station: 'workbench', in: { fiber: 3 }, out: { string: 1 } },
@@ -322,6 +414,12 @@
         { id: 'potion_small', station: 'altar', in: { herb: 2, slime_gel: 1 }, out: { potion_small: 1 } },
         { id: 'potion_big', station: 'altar', in: { herb: 3, bat_wing: 1, sulfur: 1 }, out: { potion_big: 1 } },
         { id: 'potion_max', station: 'altar', in: { herb: 3, wraith_essence: 1, frost_crystal: 1 }, out: { potion_max: 1 } },
+        { id: 'potion_max_sea', station: 'altar', in: { herb: 3, pearl: 1, siren_scale: 1 }, out: { potion_max: 2 } },
+        // Ward Keys: two of the zone elite's parts and the zone's own materials
+        { id: 'key_coast', station: 'altar', in: { tide_essence: 2, coral: 6, pearl: 1 }, out: { key_coast: 1 } },
+        { id: 'key_storm', station: 'altar', in: { roc_feather: 2, storm_glass: 6, volt_core: 2 }, out: { key_storm: 1 } },
+        { id: 'key_ruins', station: 'altar', in: { cinder_heart: 2, ash_stone: 6, knight_crest: 2 }, out: { key_ruins: 1 } },
+        { id: 'key_sky', station: 'altar', in: { aether_core: 2, celestite: 6, seraph_feather: 2 }, out: { key_sky: 1 } },
     ];
     const BASIC_BY_ID = Object.fromEntries(BASIC_RECIPES.map(r => [r.id, r]));
 
@@ -371,6 +469,21 @@
         tree_frost: { name: 'Frostpine', tool: 'axe', tier: 3, work: 9, r: 16, solid: true, drops: [['frostpine_log', 2, 3, 1]], respawn: 120, color: '#5f8fa3', trunk: '#3d4f5a' },
         frost_crystal: { name: 'Frost Crystal', tool: 'pickaxe', tier: 4, work: 10, r: 14, solid: true, drops: [['frost_crystal', 1, 2, 1], ['star_fragment', 1, 1, 0.02]], respawn: 200, color: '#8fe3ff' },
         mithril: { name: 'Mithril Ore', tool: 'pickaxe', tier: 5, work: 12, r: 15, solid: true, drops: [['mithril_ore', 2, 3, 1]], respawn: 300, color: '#a9c8ff' },
+        // the Far Reaches: harder work, smaller yields, long respawns (all saved). Zone t's ore needs the previous zone's pickaxe.
+        tree_drift: { name: 'Driftwood', tool: 'axe', tier: 5, work: 11, r: 16, solid: true, drops: [['driftwood_log', 1, 2, 1]], respawn: 360, color: '#9c8a68', trunk: '#6b5a42' },
+        coral: { name: 'Coral Reef', tool: 'pickaxe', tier: 5, work: 12, r: 15, solid: true, drops: [['coral', 1, 2, 1], ['pearl', 1, 1, 0.06]], respawn: 420, color: '#ff7f87' },
+        oyster: { name: 'Oyster Bed', tool: 'hand', tier: 0, work: 1.4, r: 11, drops: [['sea_salt', 1, 2, 1], ['pearl', 1, 1, 0.15]], respawn: 420, color: '#d8d2c4' },
+        orichalcum: { name: 'Orichalcum Ore', tool: 'pickaxe', tier: 6, work: 15, r: 15, solid: true, drops: [['orichalcum_ore', 1, 2, 1]], respawn: 600, color: '#4fe0c0' },
+        tree_thunder: { name: 'Thunderwood', tool: 'axe', tier: 6, work: 13, r: 16, solid: true, drops: [['thunderwood_log', 1, 2, 1]], respawn: 420, color: '#4b4866', trunk: '#2e2b40' },
+        storm_glass: { name: 'Storm Glass', tool: 'pickaxe', tier: 6, work: 14, r: 14, solid: true, drops: [['storm_glass', 1, 2, 1]], respawn: 480, color: '#c7d4ff' },
+        adamant: { name: 'Adamant Ore', tool: 'pickaxe', tier: 7, work: 17, r: 15, solid: true, drops: [['adamant_ore', 1, 2, 1]], respawn: 720, color: '#9aa8ff' },
+        tree_char: { name: 'Charred Tree', tool: 'axe', tier: 7, work: 15, r: 16, solid: true, drops: [['charred_log', 1, 2, 1]], respawn: 480, color: '#3a2e2a', trunk: '#1f1815' },
+        rubble: { name: 'Ash Rubble', tool: 'pickaxe', tier: 7, work: 15, r: 15, solid: true, drops: [['ash_stone', 1, 2, 1], ['bone', 1, 2, 0.3]], respawn: 520, color: '#7d7570' },
+        soulsteel: { name: 'Soulsteel Ore', tool: 'pickaxe', tier: 8, work: 19, r: 15, solid: true, drops: [['soulsteel_ore', 1, 2, 1]], respawn: 800, color: '#ff5f7a' },
+        tree_sky: { name: 'Skywood', tool: 'axe', tier: 8, work: 17, r: 16, solid: true, drops: [['skywood_log', 1, 2, 1]], respawn: 540, color: '#bcd8f5', trunk: '#8aa3bf' },
+        cloud_puff: { name: 'Cloud Tuft', tool: 'hand', tier: 0, work: 1.6, r: 11, drops: [['cloud_silk', 1, 1, 1]], respawn: 480, color: '#f2f6ff' },
+        celestite: { name: 'Celestite', tool: 'pickaxe', tier: 8, work: 18, r: 14, solid: true, drops: [['celestite', 1, 2, 1], ['star_fragment', 1, 1, 0.03]], respawn: 600, color: '#a8e6ff' },
+        starmetal: { name: 'Starmetal Ore', tool: 'pickaxe', tier: 9, work: 21, r: 15, solid: true, drops: [['starmetal_ore', 1, 2, 1]], respawn: 900, color: '#ffe98a' },
     };
     const SAVED_RESPAWN_SEC = 150; // node timers this long or longer are saved, so reloading can't farm them
 
@@ -396,7 +509,34 @@
         wolf: { name: 'Ice Wolf', hp: 200, dmg: 28, speed: 165, r: 15, color: '#d7dde6', move: 'flank', group: 3, attacks: [{ type: 'lunge', range: 120, windup: 0.35, active: 0.25, cooldown: 1.3, speed: 480 }], rubies: [12, 20], drops: [['wolf_pelt', 1, 1, 0.55]] },
         wraith: { name: 'Frost Wraith', hp: 260, dmg: 24, speed: 95, r: 15, color: '#b8a9ff', move: 'erratic', resist: 0.5, resistBy: [3, 5], drain: 25, attacks: [{ type: 'nova', range: 90, windup: 0.7, active: 0.15, cooldown: 2.2, radius: 95, chill: true }], rubies: [14, 22], drops: [['wraith_essence', 1, 1, 0.5]] },
         yeti: { name: 'Yeti', hp: 600, dmg: 40, speed: 80, r: 24, armor: 30, color: '#eef3f8', move: 'chase', attacks: [{ type: 'slam', range: 80, windup: 0.85, active: 0.15, cooldown: 2.0, radius: 90 }, { type: 'shoot', range: 300, windup: 0.7, active: 0.1, cooldown: 3.5, speed: 280, pr: 11, chill: true }], rubies: [20, 35], drops: [['wolf_pelt', 1, 2, 0.6], ['frost_crystal', 1, 1, 0.3]] },
-        frost_giant: { name: 'Frost Giant', elite: true, hp: 2400, dmg: 46, speed: 65, r: 30, armor: 50, color: '#8fe3ff', move: 'chase', attacks: [{ type: 'slam', range: 95, windup: 0.9, active: 0.15, cooldown: 2.0, radius: 110, chill: true }, { type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 4.0, count: 7, gap: 42, radius: 22 }], rubies: [80, 120], drops: [['frost_crystal', 2, 3, 1], ['mithril_ore', 2, 3, 1], ['star_fragment', 1, 1, 0.15]] },
+        frost_giant: { name: 'Frost Giant', elite: true, hp: 2400, dmg: 46, speed: 65, r: 30, armor: 50, color: '#8fe3ff', move: 'chase', attacks: [{ type: 'slam', range: 95, windup: 0.9, active: 0.15, cooldown: 2.0, radius: 110, chill: true }, { type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 4.0, count: 7, gap: 42, radius: 22, chill: true }], rubies: [80, 120], drops: [['frost_crystal', 2, 3, 1], ['mithril_ore', 2, 3, 1], ['star_fragment', 1, 1, 0.15]] },
+
+        // ---- the Far Reaches: sized for that zone's own gear (tier = zone tier + 1); one tier behind, they are a wall.
+        // stun: a hit stuns you for that long. pull: a shot that hits drags you toward the shooter (px/s, for a moment).
+        // Saltspray Coast
+        crawler: { name: 'Reef Crawler', hp: 600, dmg: 75, speed: 75, r: 18, armor: 60, shell: 0.3, color: '#c4734f', move: 'chase', attacks: [{ type: 'arc', range: 58, windup: 0.55, active: 0.12, cooldown: 1.4, arc: 1.6, reach: 66 }], rubies: [30, 50], drops: [['crawler_shell', 1, 1, 0.5], ['coral', 1, 2, 0.3]] },
+        drowned: { name: 'Drowned Sailor', hp: 670, dmg: 66, speed: 95, r: 14, color: '#6f8f86', move: 'chase', group: 2, attacks: [{ type: 'arc', range: 52, windup: 0.5, active: 0.12, cooldown: 1.3, arc: 1.75, reach: 58 }, { type: 'lunge', range: 140, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 420 }], rubies: [28, 45], drops: [['sea_salt', 1, 2, 0.5], ['bone', 1, 2, 0.4], ['pearl', 1, 1, 0.04]] },
+        siren: { name: 'Siren', hp: 500, dmg: 60, speed: 100, r: 13, color: '#62d2e8', move: 'kite', keep: [160, 250], attacks: [{ type: 'shoot', range: 320, windup: 0.5, active: 0.1, cooldown: 2.0, speed: 300, pr: 8, pull: 260 }], rubies: [32, 52], drops: [['siren_scale', 1, 1, 0.45], ['pearl', 1, 1, 0.05]] },
+        gull: { name: 'Storm Gull', hp: 280, dmg: 48, speed: 170, r: 10, color: '#e8eef2', move: 'erratic', group: 3, attacks: [{ type: 'lunge', range: 150, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 450 }], rubies: [15, 25], drops: [['sea_salt', 1, 1, 0.3], ['fiber', 1, 2, 0.3]] },
+        tidecaller: { name: 'Tidecaller', elite: true, hp: 4500, dmg: 110, speed: 70, r: 26, armor: 50, color: '#3fa9f5', move: 'chase', attacks: [{ type: 'slam', range: 90, windup: 0.85, active: 0.15, cooldown: 2.0, radius: 105 }, { type: 'ring', range: 280, windup: 0.8, active: 0.1, cooldown: 4.0, count: 12, speed: 230, pr: 9, pull: 120 }, { type: 'charge', range: 260, windup: 0.7, active: 0.6, cooldown: 4.5, speed: 400, stunOnWall: 1.5 }], rubies: [140, 220], drops: [['tide_essence', 1, 1, 0.55], ['coral', 2, 3, 1], ['pearl', 1, 1, 0.25], ['crawler_shell', 1, 2, 0.6]] },
+        // Stormspire Heights
+        hawk: { name: 'Thunder Hawk', hp: 460, dmg: 90, speed: 175, r: 12, color: '#a7b4d8', move: 'erratic', attacks: [{ type: 'lunge', range: 160, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 480 }], rubies: [40, 70], drops: [['storm_glass', 1, 1, 0.25], ['fiber', 1, 2, 0.4]] },
+        ram: { name: 'Storm Ram', hp: 900, dmg: 125, speed: 105, r: 17, armor: 60, color: '#d8c6a0', move: 'chase', attacks: [{ type: 'charge', range: 240, windup: 0.6, active: 0.55, cooldown: 2.4, speed: 470, stunOnWall: 1.5 }, { type: 'arc', range: 56, windup: 0.5, active: 0.12, cooldown: 1.5, arc: 1.4, reach: 62 }], rubies: [55, 90], drops: [['ram_horn', 1, 1, 0.5], ['boar_hide', 1, 2, 0.4]] },
+        wisp: { name: 'Static Wisp', hp: 620, dmg: 95, speed: 115, r: 12, color: '#ffe66b', move: 'kite', keep: [170, 260], attacks: [{ type: 'shoot', range: 330, windup: 0.45, active: 0.1, cooldown: 1.9, speed: 340, pr: 7, stun: 0.5 }], rubies: [50, 85], drops: [['volt_core', 1, 1, 0.35]] },
+        sentinel: { name: 'Stone Sentinel', hp: 840, dmg: 130, speed: 55, r: 22, armor: 110, color: '#8a8f9c', move: 'chase', attacks: [{ type: 'slam', range: 75, windup: 1.0, active: 0.15, cooldown: 2.2, radius: 80 }, { type: 'ring', range: 260, windup: 0.8, active: 0.1, cooldown: 4.5, count: 8, speed: 220, pr: 7, stun: 0.3 }], rubies: [60, 100], drops: [['volt_core', 1, 1, 0.4], ['storm_glass', 1, 2, 0.5], ['adamant_ore', 1, 1, 0.15]] },
+        roc: { name: 'Tempest Roc', elite: true, hp: 7000, dmg: 175, speed: 90, r: 26, armor: 40, color: '#c7d4ff', move: 'chase', attacks: [{ type: 'charge', range: 280, windup: 0.7, active: 0.6, cooldown: 3.5, speed: 500, stunOnWall: 1.5 }, { type: 'nova', range: 110, windup: 0.8, active: 0.15, cooldown: 3.0, radius: 120, stun: 0.6 }, { type: 'ring', range: 300, windup: 0.8, active: 0.1, cooldown: 4.5, count: 10, speed: 260, pr: 8 }], rubies: [220, 340], drops: [['roc_feather', 1, 1, 0.55], ['storm_glass', 2, 3, 1], ['volt_core', 1, 2, 0.6], ['adamant_ore', 1, 2, 0.5]] },
+        // The Cinder Capital
+        ghoul: { name: 'Ash Ghoul', hp: 1080, dmg: 160, speed: 110, r: 14, color: '#9a9088', move: 'chase', group: 3, drain: 30, attacks: [{ type: 'arc', range: 52, windup: 0.45, active: 0.12, cooldown: 1.2, arc: 1.7, reach: 58 }, { type: 'lunge', range: 130, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 440 }], rubies: [70, 120], drops: [['ghoul_fang', 1, 1, 0.45], ['bone', 1, 2, 0.4]] },
+        knight: { name: 'Cinder Knight', hp: 1200, dmg: 200, speed: 85, r: 17, armor: 100, shell: 0.25, color: '#c9a34a', move: 'chase', attacks: [{ type: 'arc', range: 60, windup: 0.6, active: 0.12, cooldown: 1.5, arc: 1.6, reach: 66, burn: true }, { type: 'charge', range: 220, windup: 0.7, active: 0.5, cooldown: 4.0, speed: 420, stunOnWall: 1.2 }], rubies: [90, 150], drops: [['knight_crest', 1, 1, 0.4], ['soulsteel_ore', 1, 1, 0.12], ['ash_stone', 1, 1, 0.3]] },
+        rat: { name: 'Plague Rat', hp: 380, dmg: 110, speed: 160, r: 9, color: '#6b5a4f', move: 'erratic', group: 5, attacks: [{ type: 'lunge', range: 120, windup: 0.3, active: 0.25, cooldown: 1.3, speed: 420 }], rubies: [25, 45], drops: [['bone', 1, 1, 0.3], ['charred_log', 1, 1, 0.2]] },
+        witch: { name: 'Pyre Witch', hp: 900, dmg: 170, speed: 105, r: 13, color: '#ff7b3a', move: 'kite', keep: [160, 250], blink: 5, burn: true, attacks: [{ type: 'shoot', range: 330, windup: 0.5, active: 0.1, cooldown: 1.7, speed: 320, pr: 8, burn: true }], rubies: [85, 140], drops: [['ash_stone', 1, 2, 0.4], ['ghoul_fang', 1, 1, 0.2], ['herb', 1, 2, 0.4]] },
+        colossus: { name: 'Ashen Colossus', elite: true, hp: 8000, dmg: 290, speed: 65, r: 30, armor: 80, color: '#7d7570', move: 'chase', burn: true, attacks: [{ type: 'slam', range: 95, windup: 0.9, active: 0.15, cooldown: 2.0, radius: 110, burn: true }, { type: 'cone', range: 170, windup: 0.8, active: 0.8, cooldown: 4.0, arc: 0.9, reach: 180, burn: true }, { type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 5.0, count: 7, gap: 42, radius: 22, burn: true }], rubies: [330, 500], drops: [['cinder_heart', 1, 1, 0.55], ['soulsteel_ore', 1, 2, 0.6], ['knight_crest', 1, 1, 0.5], ['ash_stone', 2, 3, 1]] },
+        // Skyreach Isles
+        serpent: { name: 'Sky Serpent', hp: 1680, dmg: 280, speed: 175, r: 15, color: '#7fd4ff', move: 'flank', group: 2, attacks: [{ type: 'lunge', range: 130, windup: 0.35, active: 0.25, cooldown: 1.3, speed: 500 }], rubies: [110, 180], drops: [['cloud_silk', 1, 1, 0.35]] },
+        cloud_golem: { name: 'Cloud Golem', hp: 1440, dmg: 330, speed: 60, r: 23, armor: 120, color: '#e8eef8', move: 'chase', attacks: [{ type: 'slam', range: 80, windup: 0.95, active: 0.15, cooldown: 2.2, radius: 90 }, { type: 'ring', range: 260, windup: 0.8, active: 0.1, cooldown: 4.5, count: 10, speed: 230, pr: 8 }], rubies: [140, 220], drops: [['celestite', 1, 2, 0.5], ['starmetal_ore', 1, 1, 0.12], ['cloud_silk', 1, 1, 0.3]] },
+        seraph: { name: 'Seraph', hp: 1200, dmg: 270, speed: 110, r: 14, color: '#fff6d0', move: 'kite', keep: [180, 270], attacks: [{ type: 'shoot', range: 340, windup: 0.45, active: 0.1, cooldown: 1.8, speed: 360, pr: 8 }, { type: 'ring', range: 220, windup: 0.7, active: 0.1, cooldown: 5.0, count: 8, speed: 240, pr: 7 }], rubies: [130, 210], drops: [['seraph_feather', 1, 1, 0.45]] },
+        harpy: { name: 'Harpy', hp: 780, dmg: 230, speed: 165, r: 12, color: '#c58bff', move: 'erratic', group: 3, attacks: [{ type: 'lunge', range: 150, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 470 }], rubies: [70, 120], drops: [['cloud_silk', 1, 1, 0.3], ['seraph_feather', 1, 1, 0.1]] },
+        warden: { name: 'Celestial Warden', elite: true, hp: 10000, dmg: 480, speed: 70, r: 30, armor: 100, color: '#ffe98a', move: 'chase', attacks: [{ type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 4.0, count: 7, gap: 42, radius: 22 }, { type: 'ring', range: 300, windup: 0.8, active: 0.1, cooldown: 4.5, count: 12, speed: 250, pr: 9 }, { type: 'charge', range: 280, windup: 0.7, active: 0.6, cooldown: 4.0, speed: 460, stunOnWall: 1.5 }], rubies: [450, 700], drops: [['aether_core', 1, 1, 0.55], ['celestite', 2, 3, 1], ['starmetal_ore', 1, 2, 0.6], ['seraph_feather', 1, 2, 0.5]] },
         // the Forge's practice target (never spawns in zones)
         dummy: { name: 'Training Dummy', hp: 999999, dmg: 0, speed: 0, r: 16, color: '#c49a6c', move: 'still', attacks: [], rubies: [0, 0], drops: [], dummy: true },
     };
@@ -449,6 +589,51 @@
             sigil: 'sigil_frost', rubiesFirst: 1500, rubies: [300, 450], gems: [2, 3], golden: 0.15, mythicWeekly: true,
             drops: [['mithril_ore', 4, 6, 1], ['frost_crystal', 3, 5, 1], ['wolf_pelt', 2, 3, 1], ['star_fragment', 1, 2, 1], ['frozen_tear', 1, 1, 0.35], ['crown_of_winter', 1, 1, 0.04], ['hidden_shard', 1, 1, 0.1, 'fixed']],
         },
+        // ---- the Far Reaches: each lair is sealed until its zone's wards are broken (ZONES[z].wards)
+        // tide: a wide wave; whirlpool: drags you in, then bursts; lightning: strikes that stun; gust: shoves you away;
+        // orbs: slow homing orbs that burst; starfall: strikes anywhere in the arena
+        tidal: {
+            name: 'Tidal WH', zone: 'coast', face: 'mainimage/thumbs/silverwh.webp', hp: 26000, dmg: 105, r: 46, speed: 70, armor: 60, color: '#3fa9f5',
+            phases: [
+                ['tide', 'ring', 'charge'],
+                ['tide', 'whirlpool', 'ring', 'summon'],
+                ['tide', 'whirlpool', 'ring', 'charge', 'summon'],
+            ],
+            summon: 'drowned',
+            sigil: 'sigil_coast', rubiesFirst: 2500, rubies: [500, 700], gems: [2, 3], golden: 0.15,
+            drops: [['orichalcum_ore', 4, 6, 1], ['coral', 3, 5, 1], ['pearl', 1, 2, 0.6], ['tide_essence', 1, 2, 0.8], ['abyssal_pearl', 1, 1, 0.35], ['trident_of_tides', 1, 1, 0.04]],
+        },
+        tempest: {
+            name: 'Storm WH', zone: 'storm', face: 'mainimage/thumbs/platinumwh.webp', hp: 36000, dmg: 170, r: 46, speed: 75, armor: 80, color: '#c7d4ff',
+            phases: [
+                ['lightning', 'ring', 'charge'],
+                ['lightning', 'gust', 'ring', 'clone'],
+                ['lightning', 'gust', 'ring', 'charge', 'clone'],
+            ],
+            sigil: 'sigil_storm', rubiesFirst: 3500, rubies: [700, 1000], gems: [2, 3], golden: 0.15,
+            drops: [['adamant_ore', 4, 6, 1], ['storm_glass', 3, 5, 1], ['volt_core', 2, 3, 1], ['roc_feather', 1, 2, 0.8], ['thunder_heart', 1, 1, 0.35], ['eye_of_the_storm', 1, 1, 0.04]],
+        },
+        void_wh: {
+            name: 'Void WH', zone: 'ruins', face: 'mainimage/thumbs/voidWH.webp', hp: 46000, dmg: 280, r: 46, speed: 70, armor: 100, color: '#b07dff',
+            phases: [
+                ['meteors', 'breath', 'orbs'],
+                ['meteors', 'orbs', 'summon', 'breath'],
+                ['meteors', 'orbs', 'summon', 'clone', 'breath'],
+            ],
+            summon: 'ghoul', burn: true,
+            sigil: 'sigil_ruins', rubiesFirst: 5000, rubies: [1000, 1400], gems: [2, 3], golden: 0.15,
+            drops: [['soulsteel_ore', 4, 6, 1], ['ash_stone', 3, 5, 1], ['knight_crest', 2, 3, 1], ['cinder_heart', 1, 2, 0.8], ['void_ember', 1, 1, 0.35], ['crown_of_ash', 1, 1, 0.04]],
+        },
+        vrill: {
+            name: 'Vrill WH', zone: 'sky', face: 'mainimage/thumbs/whvrill.webp', hp: 62000, dmg: 470, r: 48, speed: 80, armor: 120, color: '#3dffb4',
+            phases: [
+                ['spikes', 'ring', 'gust'],
+                ['starfall', 'spikes', 'whirlpool', 'ring', 'clone'],
+                ['starfall', 'spikes', 'whirlpool', 'gust', 'ring', 'clone', 'charge'],
+            ],
+            sigil: 'sigil_sky', rubiesFirst: 7000, rubies: [1400, 2000], gems: [2, 3], golden: 0.15,
+            drops: [['starmetal_ore', 4, 6, 1], ['celestite', 3, 5, 1], ['seraph_feather', 2, 3, 1], ['aether_core', 1, 2, 0.8], ['vrill_eye', 1, 1, 0.35], ['halo_of_vrill', 1, 1, 0.04]],
+        },
     };
 
     // ---------------- rivals: AI adventurers who fight with the player's own weapon rules ----------------
@@ -464,15 +649,25 @@
         mines: { rival: 'hacker', tier: 2, hp: 300, sweepHz: 1.7, react: 0.38, dodge: 0.18, rubies: 60 },
         ember: { rival: 'bread', tier: 3, hp: 620, sweepHz: 2.0, react: 0.3, dodge: 0.25, rubies: 120 },
         frost: { rival: 'lightning', tier: 4, hp: 1100, sweepHz: 2.3, react: 0.24, dodge: 0.32, rubies: 220 },
+        // in the Far Reaches they come back harder, with a name to match (title) and that zone's gear
+        coast: { rival: 'hacker', title: 'the Castaway', tier: 6, hp: 1900, sweepHz: 2.5, react: 0.22, dodge: 0.34, rubies: 380 },
+        storm: { rival: 'lightning', title: 'Stormborn', tier: 7, hp: 3000, sweepHz: 2.7, react: 0.2, dodge: 0.36, rubies: 600 },
+        ruins: { rival: 'bread', title: 'the Charred', tier: 8, hp: 4600, sweepHz: 2.9, react: 0.18, dodge: 0.38, rubies: 900 },
+        sky: { rival: 'chad', title: 'Ascendant', tier: 9, hp: 6800, sweepHz: 3.1, react: 0.16, dodge: 0.4, rubies: 1300 },
     };
     const RIVAL_RESPAWN_SEC = 420;
     const RIVAL_WEAPON_DROP = 0.15;
 
     // ---------------- zones ----------------
-    // gen: town | meadow | cave | wastes | tundra. w/h in tiles. nodes: { type: count }. spawns: [[monster, weight]].
-    // gate: material needed to enter. dmgMult/hpMult/rubyMult: scaling per zone.
+    // gen: town | meadow | cave | wastes | tundra | coast | peaks | city | isles. w/h in tiles. nodes: { type: count }.
+    // spawns: [[monster, weight]]. gate: the sigil of the boss that opens it (the boss kill itself opens it).
+    // dmgMult/hpMult/rubyMult: scaling per zone.
+    // The Far Reaches (via: 'waystone') are reached by the Waystone in town, not a gate. Their boss lair is sealed by
+    // `wards` ward stones: each is woken with the zone's Ward Key (wardKey) and broken by beating its guardian.
+    // Hazards: lightning (strikes near you: every [min, max] s, r px, windup s, dmg as a share of max health, stun s),
+    // gusts (a push every [min, max] s, after warn s, for time s at force px/s), voidFall (share of max health lost in a fall).
     const ZONES = {
-        town: { id: 'town', name: 'Wildgate Town', gen: 'town', w: 46, h: 34, safe: true, bg: 'bgimages/thumbs/stonghengebg.webp',
+        town: { id: 'town', name: 'Wildgate Town', gen: 'town', w: 56, h: 40, safe: true, bg: 'bgimages/thumbs/stonghengebg.webp',
             palette: { floor: '#5b6b4f', floor2: '#55654a', path: '#9c8d72', wall: '#3c4a35', plaza: '#a49a86', water: '#2c6f9e' } },
         greenwood: { id: 'greenwood', name: 'Greenwood', gen: 'meadow', w: 96, h: 96, tier: 1, gate: null, bg: 'bgimages/thumbs/grassyfieldbg.webp',
             palette: { floor: '#4f8a3c', floor2: '#477f36', path: '#8a7a55', wall: '#23502a', water: '#2f78b8', hazard: null },
@@ -494,13 +689,47 @@
             nodes: { tree_frost: 44, frost_crystal: 26, mithril: 22, rock: 14, herb: 16, silver: 10 },
             spawns: [['wolf', 3], ['wraith', 3], ['yeti', 1]], density: 30, elite: 'frost_giant', elites: 2, boss: 'frozen',
             hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        coast: { id: 'coast', name: 'Saltspray Coast', gen: 'coast', w: 112, h: 112, tier: 5, via: 'waystone', gate: 'sigil_frost', bg: 'bgimages/thumbs/oceanviewbg.webp',
+            palette: { floor: '#cdb98c', floor2: '#c3ae80', path: '#9c8661', wall: '#59656c', water: '#1d6a99', shallow: '#4fa3bd', hazard: null },
+            nodes: { tree_drift: 36, coral: 24, oyster: 26, orichalcum: 20, rock: 14, herb: 16 },
+            spawns: [['crawler', 3], ['drowned', 3], ['siren', 2], ['gull', 2]], density: 36, elite: 'tidecaller', elites: 3, boss: 'tidal',
+            wards: 3, wardKey: 'key_coast', hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        storm: { id: 'storm', name: 'Stormspire Heights', gen: 'peaks', w: 116, h: 116, tier: 6, via: 'waystone', gate: 'sigil_coast', bg: 'bgimages/thumbs/stormbg.webp',
+            lightning: { every: [7, 12], r: 54, windup: 1.1, dmg: 0.3, stun: 0.4 },
+            palette: { floor: '#5d6470', floor2: '#565c68', path: '#7a7f8a', wall: '#2c3038', water: '#2f4f6e', hazard: null },
+            nodes: { tree_thunder: 34, storm_glass: 24, adamant: 20, rock: 18, herb: 16 },
+            spawns: [['hawk', 3], ['ram', 3], ['wisp', 2], ['sentinel', 2]], density: 36, elite: 'roc', elites: 3, boss: 'tempest',
+            wards: 3, wardKey: 'key_storm', hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        ruins: { id: 'ruins', name: 'The Cinder Capital', gen: 'city', w: 120, h: 120, tier: 7, via: 'waystone', gate: 'sigil_storm', lavaDps: 18, dark: 260, bg: 'bgimages/thumbs/burningcitybg.webp',
+            palette: { floor: '#4a4241', floor2: '#433b3a', path: '#6b5f58', wall: '#241d1c', water: null, hazard: '#ff6a2b' },
+            nodes: { tree_char: 30, rubble: 26, soulsteel: 20, herb: 14, coal: 12 },
+            spawns: [['ghoul', 3], ['knight', 3], ['rat', 2], ['witch', 2]], density: 38, elite: 'colossus', elites: 3, boss: 'void_wh',
+            wards: 4, wardKey: 'key_ruins', hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        sky: { id: 'sky', name: 'Skyreach Isles', gen: 'isles', w: 124, h: 124, tier: 8, via: 'waystone', gate: 'sigil_ruins', bg: 'bgimages/thumbs/cloudtreefield.webp',
+            voidFall: 0.2, gusts: { every: [9, 14], warn: 1, time: 1.2, force: 260 },
+            palette: { floor: '#b9d39a', floor2: '#aac78b', path: '#e2d6b0', wall: '#7b8fa6', water: null, void: '#141a33', hazard: null },
+            nodes: { tree_sky: 30, celestite: 24, cloud_puff: 24, starmetal: 20, herb: 16 },
+            spawns: [['serpent', 3], ['cloud_golem', 3], ['seraph', 2], ['harpy', 2]], density: 38, elite: 'warden', elites: 3, boss: 'vrill',
+            wards: 4, wardKey: 'key_sky', hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        // The Arena, a building in town (world-gen.js buildArena): a safe lobby, the Pit (anyone in it fights anyone) and four
+        // sealed rings for duels and team battles (core/world-arena.js). pvp: 'arena' means only those count. Online, not interior.
+        arena: { id: 'arena', name: 'The Arena', gen: 'arena', w: 64, h: 54, pvp: 'arena', sub: 'Duels, teams and the Pit', banner: 'Fight other players for glory',
+            bg: 'bgimages/thumbs/stonghengebg.webp',
+            palette: { floor: '#b89a6a', floor2: '#ae9061', path: '#8c7350', wall: '#4a3a2a', plaza: '#9c8460', water: '#2c6f9e' } },
+        // The Proving Grounds, through a gate in the Arena: co-op waves of monsters, harder with every player who joins
+        // (core/world-waves.js). Nobody can hurt another player here.
+        trials: { id: 'trials', name: 'Proving Grounds', gen: 'trials', w: 46, h: 46, pvp: 'off', coop: true, sub: 'Co-op waves', banner: 'Hold the ring, alone or together',
+            bg: 'bgimages/thumbs/stonghengebg.webp',
+            palette: { floor: '#6d6152', floor2: '#665a4c', path: '#8c7350', wall: '#2f2820', plaza: '#7d6f5c' } },
         // inside the Hall of Gods, a building in town (world-gen.js buildHall). interior: entered by its door, no monsters, and
         // nobody else online in there. dark: how far the player's own light reaches; the braziers light the rest.
         hall: { id: 'hall', name: 'Hall of Gods', gen: 'hall', w: 26, h: 56, safe: true, interior: true, dark: 170,
             sub: 'Sacred ground', banner: 'Something old is watching you',
             palette: { floor: '#16131d', floor2: '#1a1622', path: '#2b1a24', wall: '#0b090f', plaza: '#2b1a24' } },
     };
-    const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost'];
+    const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost', 'coast', 'storm', 'ruins', 'sky'];
+    // a ward guardian: the zone's elite, this much tougher, with adds from the zone around it
+    const WARD = { hpMult: 1.6, dmgMult: 1.2, adds: 3 };
     const MONSTER_RESPAWN_SEC = 35;
     const ELITE_RESPAWN_SEC = 300;
 
@@ -523,19 +752,19 @@
     const NPCS = {
         brannoc: { name: 'Captain Brannoc', role: 'Warden of Wildgate', face: 'mainimage/thumbs/WHboss.webp', color: '#b5483a', spot: [-7, -3],
             greet: 'Monsters at every gate and only one of me. You look like you can swing a blade.',
-            chain: ['brannoc_slimes', 'brannoc_boars', 'brannoc_elite', 'brannoc_skeletons', 'brannoc_hounds', 'brannoc_wolves'],
+            chain: ['brannoc_slimes', 'brannoc_boars', 'brannoc_elite', 'brannoc_skeletons', 'brannoc_hounds', 'brannoc_wolves', 'brannoc_sirens', 'brannoc_knights'],
             daily: ['daily_cull', 'daily_elite', 'daily_rival'] },
         marla: { name: 'Old Marla', role: 'Prospector', face: 'mainimage/thumbs/mobilemanskin.webp', color: '#8d6e4a', spot: [-7, 4],
             greet: 'Forty years I dug these hills. My back says no more, so you dig and I pay.',
-            chain: ['marla_trees', 'marla_copper', 'marla_mines', 'marla_shiny', 'marla_obsidian', 'marla_star'],
+            chain: ['marla_trees', 'marla_copper', 'marla_mines', 'marla_shiny', 'marla_obsidian', 'marla_star', 'marla_pearls', 'marla_starmetal'],
             daily: ['daily_harvest', 'daily_herbs', 'daily_timber'] },
         hilde: { name: 'Hilde', role: 'Master Smith', face: 'mainimage/thumbs/platinumwh.webp', color: '#7c8a99', spot: [8, 4],
             greet: 'Anyone can hit metal. Hitting it right is the trick. Show me what your hands can do.',
-            chain: ['hilde_first', 'hilde_fine', 'hilde_crate', 'hilde_master', 'hilde_ember', 'hilde_legend'],
+            chain: ['hilde_first', 'hilde_fine', 'hilde_crate', 'hilde_master', 'hilde_ember', 'hilde_legend', 'hilde_adamant', 'hilde_starmetal'],
             daily: ['daily_iron', 'daily_craft', 'daily_strings'] },
         vey: { name: 'Sister Vey', role: 'Keeper of the Hall of Gods', face: 'mainimage/thumbs/voidWH.webp', color: '#5b3f8c', spot: [-2, -8],
             greet: 'The old gods sleep in the Hall behind me. Feed them, and they will remember you.',
-            chain: ['vey_hall', 'vey_offering', 'vey_overgrown', 'vey_gilded', 'vey_inferno', 'vey_frozen'],
+            chain: ['vey_hall', 'vey_offering', 'vey_overgrown', 'vey_gilded', 'vey_inferno', 'vey_frozen', 'vey_tidal', 'vey_tempest', 'vey_void', 'vey_vrill'],
             daily: ['daily_boss', 'daily_purge'],
             rumor: 'On quiet nights I hear something behind the far wall of the Hall. Not one of our gods. Something older, waiting for the right word.' },
         // at the camps out in the wilds
@@ -555,6 +784,27 @@
             greet: 'Cold enough to freeze your thoughts. Keep moving and keep your sword warm.',
             chain: ['hrolf_wraiths', 'hrolf_pelts', 'hrolf_giant'], daily: ['hrolf_daily'],
             rumor: 'When Frozen WH falls, sometimes a black shard falls with it. One time in ten, maybe. It hums when you carry it near the Hall of Gods.' },
+        // at the camps in the Far Reaches
+        mara: { name: 'Captain Mara', role: 'Shipwrecked Captain', zone: 'coast', face: 'mainimage/thumbs/casinoDeal.webp', color: '#3fa9f5', spot: [3, -1],
+            greet: 'Lost my ship, my crew and my hat to that thing in the tide. The hat I miss the most.',
+            chain: ['mara_crawlers', 'mara_salt', 'mara_ward', 'mara_tidecaller', 'mara_seals'], daily: ['mara_daily'],
+            rumor: 'The lair out on the point is sealed by three old stones. Each one wants a key, and each one has something guarding it.' },
+        odo: { name: 'Odo', role: 'Storm Hermit', zone: 'storm', face: 'mainimage/thumbs/divinespirit.webp', color: '#c7d4ff', spot: [3, -1],
+            greet: 'Stay near the camp when the sky turns. Out there the lightning picks you, not the other way round.',
+            chain: ['odo_rams', 'odo_glass', 'odo_ward', 'odo_roc', 'odo_seals'], daily: ['odo_daily'],
+            rumor: 'Storm WH sleeps behind three wards. Wake a ward and you wake its keeper. Bring something better than Mithril.' },
+        teodric: { name: 'Teodric', role: 'Last Watchman, Brannoc\'s brother', zone: 'ruins', face: 'mainimage/thumbs/WHboss.webp', color: '#c9a34a', spot: [3, -1],
+            greet: 'My brother keeps the town. I kept the capital. You can see how that went.',
+            chain: ['teo_ghouls', 'teo_crests', 'teo_ward', 'teo_colossus', 'teo_seals'], daily: ['teo_daily'],
+            rumor: 'Four wards hold the old palace shut. Whatever burned the city is still inside, and it is not on fire. It is the fire.' },
+        ilya: { name: 'Ilya', role: 'Star-Reader', zone: 'sky', face: 'mainimage/thumbs/divinecollector.webp', color: '#ffe98a', spot: [3, -1],
+            greet: 'Mind the edges. The sky here has no floor, and the wind has no manners.',
+            chain: ['ilya_harpies', 'ilya_silk', 'ilya_ward', 'ilya_warden', 'ilya_seals'], daily: ['ilya_daily'],
+            rumor: 'They say Vrill WH was here before the islands. Four wards keep it in its garden, and every one of them is cracking.' },
+        // the Arena Master, in the Arena's lobby (spot: tiles from the lobby's centre)
+        varro: { name: 'Varro', role: 'Arena Master', zone: 'arena', face: 'mainimage/thumbs/divineassassin.webp', color: '#d4a24a', spot: [0, -2], arena: true,
+            greet: 'Blood on the sand pays in glory. Fight in the Pit, challenge someone to a duel, or hold the Proving Grounds with friends.',
+            chain: ['varro_trial', 'varro_proving', 'varro_hold'], daily: ['varro_daily'] },
         // inside the Hall of Gods, near the far end: no quests, only riddles
         pilgrim: { name: 'Hooded Pilgrim', role: 'Keeps watch by the far wall', zone: 'hall', hooded: true, face: 'mainimage/thumbs/whblackandwhite.webp', color: '#2b2433', spot: [16, 21],
             greet: '...', chain: [], daily: [],
@@ -576,6 +826,8 @@
         brannoc_skeletons: { title: 'Bones in the Dark', text: 'The old miners never left Stonepeak. Put eight of them back to rest.', goal: { kind: 'kill', monster: 'skeleton', n: 8 }, need: { zone: 'mines' }, rubies: 450 },
         brannoc_hounds: { title: 'Hounds of Ash', text: 'Ash Hounds hunt in pairs out in the Ember Wastes. Break up the pack.', goal: { kind: 'kill', monster: 'hound', n: 6 }, need: { zone: 'ember' }, rubies: 850, cons: { potion_big: 2 } },
         brannoc_wolves: { title: 'Ice and Teeth', text: 'Frostveil wolves came right up to the south gate last night. Take the fight to them.', goal: { kind: 'kill', monster: 'wolf', n: 6 }, need: { zone: 'frost' }, rubies: 1500 },
+        brannoc_sirens: { title: 'Songs from the Sea', text: 'Travellers come back from the coast humming and walk into the pond. Silence eight of those sirens.', goal: { kind: 'kill', monster: 'siren', n: 8 }, need: { zone: 'coast' }, rubies: 2600 },
+        brannoc_knights: { title: 'The Burning Guard', text: 'The capital\'s old guard still walks its streets, armor glowing. Put eight of them down. Hit them from behind.', goal: { kind: 'kill', monster: 'knight', n: 8 }, need: { zone: 'ruins' }, rubies: 6000 },
         // Old Marla: gathering
         marla_trees: { title: 'Firewood', text: 'Chop me some trees, would you? Any trees. My stove is cold.', goal: { kind: 'harvest', tool: 'axe', n: 5 }, rubies: 50 },
         marla_copper: { title: 'Copper and Coal', text: 'Bring me copper ore and coal. I still know a thing or two about smelting.', goal: { kind: 'deliver', mats: { copper_ore: 6, coal: 4 } }, rubies: 130 },
@@ -583,6 +835,8 @@
         marla_shiny: { title: 'Shiny Things', text: 'Silver and gold from deep in the mines. I want to hold some again.', goal: { kind: 'deliver', mats: { silver_ore: 4, gold_ore: 4 } }, need: { zone: 'mines' }, rubies: 550 },
         marla_obsidian: { title: 'Glass from Fire', text: 'Obsidian and sulfur from the Ember Wastes. Do not ask what for.', goal: { kind: 'deliver', mats: { obsidian: 5, sulfur: 4 } }, need: { zone: 'ember' }, rubies: 950 },
         marla_star: { title: 'A Fallen Star', text: 'They say stars fall on Frostveil and freeze inside the crystals. Find me one.', goal: { kind: 'deliver', mats: { star_fragment: 1, frost_crystal: 4 } }, need: { zone: 'frost' }, rubies: 2000 },
+        marla_pearls: { title: 'Pearls and Green Metal', text: 'Pearls from the coast, and that green ore that glows in the surf. I want to see it before I die.', goal: { kind: 'deliver', mats: { pearl: 3, orichalcum_ore: 10 } }, need: { zone: 'coast' }, rubies: 3200 },
+        marla_starmetal: { title: 'Metal from the Sky', text: 'Starmetal. The real thing, from the isles. Bring me some and I will finally retire. Again.', goal: { kind: 'deliver', mats: { starmetal_ore: 8, celestite: 6 } }, need: { zone: 'sky' }, rubies: 9000 },
         // Hilde: crafting
         hilde_first: { title: 'First Forging', text: 'Make a piece of gear at the Forge or the Workbench. Any piece will do. Let me see how you work.', goal: { kind: 'craft', n: 1 }, rubies: 80 },
         hilde_fine: { title: 'Fine Work', text: 'Now make it properly: a piece of Fine quality or better.', goal: { kind: 'craft', minScore: 55, n: 1 }, rubies: 160 },
@@ -590,13 +844,19 @@
         hilde_master: { title: 'Masterwork', text: 'A Masterwork piece: ninety or better at the station. No shortcuts.', goal: { kind: 'craft', minScore: 90, n: 1 }, rubies: 650 },
         hilde_ember: { title: 'Ember Steel', text: 'Bring me Ember Bars. I want to try something new on my anvil.', goal: { kind: 'deliver', mats: { ember_bar: 4 } }, need: { zone: 'ember' }, rubies: 900 },
         hilde_legend: { title: 'Legendary', text: 'Only a handful of smiths ever made a Legendary piece. Be one of them.', goal: { kind: 'craft', minScore: 98, n: 1 }, rubies: 2200 },
+        hilde_adamant: { title: 'Adamant', text: 'Adamant does not bend for anyone. Forge me a piece of it, any piece, and show me it bent for you.', goal: { kind: 'craft', tier: 7, n: 1 }, need: { zone: 'storm' }, rubies: 5000 },
+        hilde_starmetal: { title: 'The Last Metal', text: 'Starmetal is the end of the road for a smith. Make something from it, and you can teach me.', goal: { kind: 'craft', tier: 9, n: 1 }, need: { zone: 'sky' }, rubies: 12000 },
         // Sister Vey: the gods and the bosses
         vey_hall: { title: 'The Hall of Gods', text: 'Step inside the Hall behind me. Let the gods see your face.', goal: { kind: 'visit', zone: 'hall' }, rubies: 50 },
         vey_offering: { title: 'A First Offering', text: 'Raise any statue in the Hall by one level. The gods answer offerings, not prayers.', goal: { kind: 'god', n: 1 }, rubies: 200 },
         vey_overgrown: { title: 'The Overgrown', text: "The thing at the heart of Greenwood was a god's gardener once. Put it to rest.", goal: { kind: 'boss', boss: 'overgrown', n: 1 }, rubies: 400 },
         vey_gilded: { title: 'The Golden Guardian', text: 'The Gilded Golem guards the deep mine. Its heart beats with stolen gold.', goal: { kind: 'boss', boss: 'gilded', n: 1 }, need: { zone: 'mines' }, rubies: 800 },
         vey_inferno: { title: 'Trial by Fire', text: 'Inferno WH burns in the Wastes. The gods want that fire brought low.', goal: { kind: 'boss', boss: 'inferno', n: 1 }, need: { zone: 'ember' }, rubies: 1500 },
-        vey_frozen: { title: 'The Frozen Throne', text: 'Last of all, Frozen WH. When it falls, something in the Hall will stir.', goal: { kind: 'boss', boss: 'frozen', n: 1 }, need: { zone: 'frost' }, rubies: 3000 },
+        vey_frozen: { title: 'The Frozen Throne', text: 'Frozen WH sits on its throne of ice. When it falls, something in the Hall will stir, and the Waystone with it.', goal: { kind: 'boss', boss: 'frozen', n: 1 }, need: { zone: 'frost' }, rubies: 3000 },
+        vey_tidal: { title: 'Beyond the Waystone', text: 'The Waystone woke when Frozen WH fell. Past it, Tidal WH drowns the coast. Break its wards and its pride.', goal: { kind: 'boss', boss: 'tidal', n: 1 }, need: { zone: 'coast' }, rubies: 4500 },
+        vey_tempest: { title: 'Calm the Storm', text: 'Storm WH holds the heights. The gods hate thunder they did not make.', goal: { kind: 'boss', boss: 'tempest', n: 1 }, need: { zone: 'storm' }, rubies: 6500 },
+        vey_void: { title: 'The Fire That Burned a City', text: 'Void WH burned the old capital and sat down in the ashes. Stand it up again, then put it down for good.', goal: { kind: 'boss', boss: 'void_wh', n: 1 }, need: { zone: 'ruins' }, rubies: 9000 },
+        vey_vrill: { title: 'Older Than the Gods', text: 'Vrill WH was old when our gods were young. The isles are its garden. Show it who tends them now.', goal: { kind: 'boss', boss: 'vrill', n: 1 }, need: { zone: 'sky' }, rubies: 14000 },
         // daily quests
         daily_cull: { title: 'Cull the Wilds', text: 'Fifteen monsters, any zone. Keep the roads safe today.', goal: { kind: 'kill', n: 15 }, rubies: 90, daily: true },
         daily_elite: { title: 'Elite Hunt', text: 'Bring down one elite beast today.', goal: { kind: 'kill', elite: true, n: 1 }, rubies: 150, daily: true },
@@ -607,7 +867,7 @@
         daily_iron: { title: 'Iron for the Guard', text: 'Five iron bars. The guard needs new swords.', goal: { kind: 'deliver', mats: { iron_bar: 5 } }, need: { zone: 'mines' }, rubies: 120, daily: true },
         daily_craft: { title: 'Practice', text: 'Craft two pieces of gear today. Practice keeps the hands honest.', goal: { kind: 'craft', n: 2 }, rubies: 110, daily: true },
         daily_strings: { title: 'Bowstrings', text: 'Four bowstrings for the archers on the wall.', goal: { kind: 'deliver', mats: { string: 4 } }, rubies: 60, daily: true },
-        daily_boss: { title: 'A Trial a Day', text: 'Beat any of the four great bosses today.', goal: { kind: 'boss', n: 1 }, rubies: 250, daily: true },
+        daily_boss: { title: 'A Trial a Day', text: 'Beat any of the great bosses today.', goal: { kind: 'boss', n: 1 }, rubies: 250, daily: true },
         daily_purge: { title: 'Purge', text: 'Twenty-five monsters in any zone. The gods like a tidy world.', goal: { kind: 'kill', n: 25 }, rubies: 110, daily: true },
         // Fenna, in Greenwood
         fenna_sprites: { title: 'Thorny Neighbours', text: 'The thorn sprites have been shooting at my traps. Six of them, please.', goal: { kind: 'kill', monster: 'sprite', n: 6 }, rubies: 90 },
@@ -629,6 +889,39 @@
         hrolf_pelts: { title: 'A Warm Coat', text: 'Six wolf pelts. Do not ask how many coats I have.', goal: { kind: 'deliver', mats: { wolf_pelt: 6 } }, need: { zone: 'frost' }, rubies: 1250 },
         hrolf_giant: { title: 'The Frost Giant', text: 'The giant walks the ridge every night. One night, it should not walk back.', goal: { kind: 'kill', elite: true, zone: 'frost', n: 1 }, need: { zone: 'frost' }, rubies: 1900 },
         hrolf_daily: { title: 'Hold the Line', text: 'Fifteen monsters in Frostveil today.', goal: { kind: 'kill', zone: 'frost', n: 15 }, need: { zone: 'frost' }, rubies: 100, daily: true },
+        // Varro, the Arena Master (wave goals count waves cleared in the Proving Grounds)
+        varro_trial: { title: 'First Blood on the Sand', text: 'Go through the gate to the Proving Grounds and clear three waves. Bring friends if you have them.', goal: { kind: 'wave', n: 3 }, rubies: 300 },
+        varro_proving: { title: 'Proving Yourself', text: 'Ten more waves. The crowd is starting to learn your name.', goal: { kind: 'wave', n: 10 }, rubies: 900, cons: { potion_big: 2 } },
+        varro_hold: { title: 'Hold the Ring', text: 'Twenty waves. After that, the only fights left are against other fighters.', goal: { kind: 'wave', n: 20 }, rubies: 2000 },
+        varro_daily: { title: 'Daily Bout', text: 'Five waves in the Proving Grounds today. Keep your arm loose.', goal: { kind: 'wave', n: 5 }, rubies: 90, daily: true },
+        // Captain Mara, on Saltspray Coast. ward goals count the zone's broken wards, so they can't be missed
+        mara_crawlers: { title: 'Shell Game', text: 'Reef crawlers are picking my ship apart for scrap. Eight of them. Their fronts are armored: hit them from the side.', goal: { kind: 'kill', monster: 'crawler', n: 8 }, need: { zone: 'coast' }, rubies: 2200 },
+        mara_salt: { title: 'Salt and Coral', text: 'Salt for the wounds, coral for the smith. Orichalcum will not bind without both.', goal: { kind: 'deliver', mats: { sea_salt: 10, coral: 8 } }, need: { zone: 'coast' }, rubies: 2800 },
+        mara_ward: { title: 'The First Stone', text: 'Make a Tide Key at the Rune Altar and wake one of the ward stones. Whatever comes out, beat it.', goal: { kind: 'ward', zone: 'coast', n: 1 }, need: { zone: 'coast' }, rubies: 3500 },
+        mara_tidecaller: { title: 'The Tidecallers', text: 'Two tidecallers lead the drowned. Sink them both.', goal: { kind: 'kill', elite: true, zone: 'coast', n: 2 }, need: { zone: 'coast' }, rubies: 4200 },
+        mara_seals: { title: 'Open the Point', text: 'Break all three wards. Then the lair is open, and so is my revenge.', goal: { kind: 'ward', zone: 'coast', n: 3 }, need: { zone: 'coast' }, rubies: 5200 },
+        mara_daily: { title: 'Beachcombing', text: 'Fifteen monsters along the coast today. Keep the tide line clear.', goal: { kind: 'kill', zone: 'coast', n: 15 }, need: { zone: 'coast' }, rubies: 140, daily: true },
+        // Odo, on Stormspire Heights
+        odo_rams: { title: 'Rams on the Ridge', text: 'The storm rams charge anything on the ridges. Eight, and step aside when they come.', goal: { kind: 'kill', monster: 'ram', n: 8 }, need: { zone: 'storm' }, rubies: 3000 },
+        odo_glass: { title: 'Bottled Lightning', text: 'Storm glass and volt cores. Adamant needs a spark to hold together.', goal: { kind: 'deliver', mats: { storm_glass: 10, volt_core: 4 } }, need: { zone: 'storm' }, rubies: 3800 },
+        odo_ward: { title: 'Wake a Ward', text: 'A Storm Key at the Rune Altar, then one of the three wards. Its keeper will not be pleased.', goal: { kind: 'ward', zone: 'storm', n: 1 }, need: { zone: 'storm' }, rubies: 4800 },
+        odo_roc: { title: 'Clip Their Wings', text: 'Two tempest rocs ride the storm. Bring them down.', goal: { kind: 'kill', elite: true, zone: 'storm', n: 2 }, need: { zone: 'storm' }, rubies: 5800 },
+        odo_seals: { title: 'Into the Eye', text: 'All three wards broken. Then the eye of the storm is open to you.', goal: { kind: 'ward', zone: 'storm', n: 3 }, need: { zone: 'storm' }, rubies: 7000 },
+        odo_daily: { title: 'Weather the Storm', text: 'Fifteen monsters on the heights today.', goal: { kind: 'kill', zone: 'storm', n: 15 }, need: { zone: 'storm' }, rubies: 160, daily: true },
+        // Teodric, in the Cinder Capital
+        teo_ghouls: { title: 'The Hungry Dead', text: 'Ash ghouls come in threes and leave nothing. Twelve of them.', goal: { kind: 'kill', monster: 'ghoul', n: 12 }, need: { zone: 'ruins' }, rubies: 4200 },
+        teo_crests: { title: 'Their Old Crests', text: 'The knights\' crests and ash stone from the rubble. Soulsteel remembers what it was made from.', goal: { kind: 'deliver', mats: { knight_crest: 6, ash_stone: 8 } }, need: { zone: 'ruins' }, rubies: 5200 },
+        teo_ward: { title: 'Two of Four', text: 'Ash Keys from the Rune Altar. Wake two of the palace wards and beat what guards them.', goal: { kind: 'ward', zone: 'ruins', n: 2 }, need: { zone: 'ruins' }, rubies: 6500 },
+        teo_colossus: { title: 'The Colossi', text: 'Two ashen colossi walk the avenues. They were statues of our kings once.', goal: { kind: 'kill', elite: true, zone: 'ruins', n: 2 }, need: { zone: 'ruins' }, rubies: 8000 },
+        teo_seals: { title: 'The Palace Gates', text: 'All four wards. Then the palace, and whatever sits on the throne.', goal: { kind: 'ward', zone: 'ruins', n: 4 }, need: { zone: 'ruins' }, rubies: 9500 },
+        teo_daily: { title: 'Night Watch', text: 'Fifteen monsters in the capital today. Someone has to walk the walls.', goal: { kind: 'kill', zone: 'ruins', n: 15 }, need: { zone: 'ruins' }, rubies: 180, daily: true },
+        // Ilya, on Skyreach Isles
+        ilya_harpies: { title: 'Thieves of the Air', text: 'Harpies steal my charts. Twelve of them, and do not follow them over the edge.', goal: { kind: 'kill', monster: 'harpy', n: 12 }, need: { zone: 'sky' }, rubies: 5500 },
+        ilya_silk: { title: 'Silk and Stone', text: 'Cloud silk and celestite: starmetal is made from the sky and the ground at once.', goal: { kind: 'deliver', mats: { cloud_silk: 8, celestite: 8 } }, need: { zone: 'sky' }, rubies: 7000 },
+        ilya_ward: { title: 'Two Wards', text: 'Star Keys from the Rune Altar. Two of the garden\'s wards, and their wardens with them.', goal: { kind: 'ward', zone: 'sky', n: 2 }, need: { zone: 'sky' }, rubies: 8500 },
+        ilya_warden: { title: 'Celestial Wardens', text: 'Two of the great wardens drift between the isles. Ground them.', goal: { kind: 'kill', elite: true, zone: 'sky', n: 2 }, need: { zone: 'sky' }, rubies: 10000 },
+        ilya_seals: { title: 'The Garden Gate', text: 'All four wards. Then Vrill WH, at the heart of its garden.', goal: { kind: 'ward', zone: 'sky', n: 4 }, need: { zone: 'sky' }, rubies: 12000 },
+        ilya_daily: { title: 'Read the Sky', text: 'Fifteen monsters on the isles today.', goal: { kind: 'kill', zone: 'sky', n: 15 }, need: { zone: 'sky' }, rubies: 200, daily: true },
     };
     for (const id of NPC_ORDER) NPCS[id].zone = NPCS[id].zone || 'town';
     for (const id in QUESTS) QUESTS[id].id = id;
@@ -907,6 +1200,6 @@
         QUALITY, AFFIXES, TIERS, GEAR, GEAR_BY_ID, STAFF_MAGIC, STAFF_OVER, STAFF_MANA_MIN, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
-        ELITE_RESPAWN_SEC, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
+        ELITE_RESPAWN_SEC, WARD, MAX_TIER, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
     };
 }));
