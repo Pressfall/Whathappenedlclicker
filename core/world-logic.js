@@ -8,9 +8,9 @@
  * and in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'));
-    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves);
-}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves) {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'));
+    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour);
+}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour) {
     'use strict';
 
     const WORLD_VERSION = 1;
@@ -132,6 +132,7 @@
         s.seals = {};
         if (isObj(raw.seals)) for (const z in raw.seals) { const n = wardCount(z), v = int(raw.seals[z], (1 << n) - 1); if (n && v) s.seals[z] = v; }
         s.arena = Arena.cleanArena(raw.arena);
+        s.arena.tours = Tour.cleanTours(raw.arena && raw.arena.tours);
         // a match was still on when this save was last written (the page closed or reloaded mid-match): that is a forfeit,
         // so leaving can't dodge a loss. The stake was already paid.
         if (s.arena.live) { s.arena.rating = Arena.clampRating(s.arena.rating + s.arena.live.delta); s.arena.l++; s.arena.live = null; }
@@ -374,9 +375,9 @@
     function gearCount(s) { return s.gear.length; }
     function addGear(s, baseId, score, aff, now) {
         const base = D.GEAR_BY_ID[baseId];
-        if (!base || s.gear.length >= D.RULES.maxGear) return null;
+        if (!base || (s.lent ? s.lent.gear : s.gear).length >= D.RULES.maxGear) return null;
         const it = { uid: s.nextUid++, base: baseId, score: int(score, 100), aff: (aff || []).filter(a => D.AFFIXES[a]), at: now || 0 };
-        s.gear.push(it);
+        (s.lent ? s.lent.gear : s.gear).push(it); // made during a tournament duel with a lent kit: it is yours, kept aside with your gear
         return it;
     }
     function findGear(s, uid) { return s.gear.find(g => g.uid === uid) || null; }
@@ -678,7 +679,7 @@
             if (zone.boss && D.BOSSES[zone.boss]) {
                 const b = D.BOSSES[zone.boss], c = chanceIn(b.drops);
                 if (c) add({ kind: 'boss', name: b.name, zone: z, chance: c });
-                if (b.sigil === id) add({ kind: 'boss', name: b.name, zone: z, chance: 1, first: true }); // its sigil, the first time it falls
+                if (b.sigil === id) add({ kind: 'boss', name: b.name, zone: z, chance: 1, first: !b.sigilEvery }); // its sigil: the first time it falls, or every time (sigilEvery)
             }
         }
         for (const r of D.BASIC_RECIPES) if (r.out[id]) add({ kind: 'craft', name: D.STATIONS[r.station].name, station: r.station, inputs: r.in, n: r.out[id] });
@@ -722,7 +723,8 @@
         questEvent(s, { kind: 'boss', boss: bossId });
         const ps = playerStats(s);
         const mats = rollLoot(b.drops, rng, ps.luck);
-        if (b.sigil && !count(s, b.sigil)) mats[b.sigil] = 1;
+        // a sigil is given once (one is enough to open the way), except where the boss says every kill drops one (sigilEvery)
+        if (b.sigil && (b.sigilEvery || !count(s, b.sigil))) mats[b.sigil] = 1;
         giveAll(s, mats, false);
         let rubies = addRubies(s, firstToday ? b.rubiesFirst : rollRubies(b.rubies, rng, 1 + ps.rubies));
         let gems = 0, golden = 0, mythic = false;
@@ -832,6 +834,83 @@
     function setTitle(s, title) {
         if (title && !Arena.titlesOf(s.arena).includes(title)) return false;
         s.arena.title = title || '';
+        return true;
+    }
+
+    // ---------------- tournaments (core/world-tour.js) ----------------
+    // Signing up: the fee is paid now, and noted, so it comes back if the tournament is called off
+    function tourJoin(s, tour, now) {
+        const a = s.arena;
+        if (a.tours[tour.id]) return { ok: false, reason: 'joined' };
+        if (Tour.status(tour, now) !== 'open') return { ok: false, reason: 'closed' };
+        if (s.rubies < tour.fee) return { ok: false, reason: 'rubies' };
+        s.rubies -= tour.fee;
+        a.tours[tour.id] = { fee: tour.fee, st: 'in', t: now, paid: 0, place: 0 };
+        return { ok: true };
+    }
+    // Withdrawing before it starts: the fee back. Returns the rubies given back.
+    function tourLeave(s, tid) {
+        const r = s.arena.tours[tid];
+        if (!r || r.st !== 'in') return 0;
+        s.rubies += r.fee;
+        delete s.arena.tours[tid];
+        return r.fee;
+    }
+    // A tournament this player signed up for, as the database has it now (tour: sanitized, or null when it is gone). Gives the
+    // fee back when it was called off (or the player didn't make the bracket), and pays their prize once every place is
+    // decided for good, once. -> { kind: 'off' | 'cut' | 'gone' | 'started' | 'paid', rubies, place } or null (nothing new)
+    function tourSeen(s, tour, tid, uid, now) {
+        const a = s.arena, r = a.tours[tid];
+        if (!r || r.st === 'done') return null;
+        const refund = (kind) => { s.rubies += r.fee; delete a.tours[tid]; return { kind, rubies: r.fee, place: 0 }; };
+        // gone before it started (the host took it down): the fee back; gone later (deleted after keepDays): nothing known
+        if (!tour) { if (r.st === 'in') return refund('off'); delete a.tours[tid]; return { kind: 'gone', rubies: 0, place: 0 }; }
+        const st = Tour.status(tour, now);
+        if (st === 'off') return refund('off');
+        if (st === 'open' || st === 'starting') return null;
+        if (!tour.seeds.includes(uid)) return refund('cut');
+        if (r.st === 'in') { r.st = 'run'; a.tourPlayed++; if (st === 'run') return { kind: 'started', rubies: 0, place: 0 }; }
+        if (st !== 'done') return null;
+        const br = Tour.bracket(tour, now), pay = Tour.payouts(tour, br)[uid] || 0, place = Tour.placeOf(br, uid);
+        r.st = 'done'; r.paid = pay; r.place = place;
+        s.rubies += pay; // the pot: rubies that were already the players', like a wager's
+        a.tourPrize += pay;
+        if (place === 1) a.tourWins++;
+        return { kind: 'paid', rubies: pay, place };
+    }
+    function tourPrune(s, now) { for (const tid in s.arena.tours) { const r = s.arena.tours[tid]; if (r.st === 'done' && Tour.expired(r.t, now)) delete s.arena.tours[tid]; } }
+
+    // A tournament with gear locked to a tier: for its duels every player fights with the same kit. Their own kinds of weapons
+    // (the hotbar's, at that tier), that tier's helmet, chest, boots and shield, all Common with no affixes, and no ring. Their
+    // own gear is put aside (serialize still saves it, never the kit) until returnKit. Classes and perks stay their own.
+    function kitWeapon(b, tier) {
+        const id = b.cls === 'staff' ? b.magic + 'staff_' + tier : b.cls + '_' + tier;
+        return D.GEAR_BY_ID[id] ? id : null;
+    }
+    function lendKit(s, tier) {
+        if (s.lent) return false;
+        const t = int(tier, D.MAX_TIER);
+        if (t < 1) return false;
+        const real = { gear: s.gear, equip: s.equip, hotbar: s.hotbar, sel: s.sel };
+        const gear = [], score = Tour.TOUR.kitScore;
+        let n = 0;
+        const make = (id, uid) => { gear.push({ uid, base: id, score, aff: [], at: 0 }); return uid; };
+        // the hotbar keeps its slots (and its weapons' ids, so the selection holds); the rest get ids no real gear has
+        const hotbar = real.hotbar.map(u => { const it = findGear(s, u), b = baseOf(it), id = b && kitWeapon(b, t); return id ? make(id, u) : null; });
+        if (!hotbar.some(Boolean)) hotbar[0] = make('sword_' + t, -(++n));
+        const equip = { helmet: null, chest: null, boots: null, ring: null, offhand: null };
+        for (const slot of ['helmet', 'chest', 'boots']) equip[slot] = make(slot + '_' + t, -(++n));
+        equip.offhand = make('shield_' + t, -(++n));
+        Object.defineProperty(s, 'lent', { value: real, enumerable: false, configurable: true, writable: true });
+        s.gear = gear; s.equip = equip; s.hotbar = hotbar;
+        if (!s.hotbar[s.sel]) s.sel = s.hotbar.findIndex(Boolean);
+        return true;
+    }
+    function returnKit(s) {
+        const r = s.lent;
+        if (!r) return false;
+        s.gear = r.gear; s.equip = r.equip; s.hotbar = r.hotbar; s.sel = r.sel;
+        delete s.lent;
         return true;
     }
 
@@ -1190,12 +1269,14 @@
         s.savedAt = now;
         pruneNodes(s, now);
         Bridge.prune(s, ack, now);
-        return JSON.stringify(s);
+        // during a tournament duel with a lent kit (lendKit), the save keeps the player's own gear, never the kit
+        return JSON.stringify(s.lent ? Object.assign({}, s, s.lent) : s);
     }
 
     return {
         WORLD_VERSION, SLOTS, dayKey, weekKey, freshState, migrate, validate,
         count, has, missing, take, give, giveAll, bank, addRubies,
+        tourJoin, tourLeave, tourSeen, tourPrune, lendKit, returnKit,
         qualityOf, qualityMult, rollAffixes, addGear, findGear, baseOf, gearStats, gearName, gearCount, playerStats, materialSources,
         equip, unequip, isEquipped, salvage, toolPower,
         recipeFor, craftBasic, canCraft, beginCraft, beginReforge, abortCraft, finishCraft, boxTierShift, boxAllowanceLeft,

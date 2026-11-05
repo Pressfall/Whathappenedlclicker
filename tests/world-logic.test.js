@@ -247,6 +247,18 @@ test('bosses: the first kill of the day pays the most, drops the sigil once, and
     assert.equal(W.bossLoot(f, 'frozen', rngOf(0.5), NOW + DAY, 0).mythic, false, 'one Mythic Vault a week');
 });
 
+test('bosses: Frozen WH drops its Frozen Sigil every time it falls; the other bosses only the first', () => {
+    const s = W.freshState(NOW);
+    for (let k = 1; k <= 4; k++) {
+        const r = W.bossLoot(s, 'frozen', rngOf(0.99), NOW + k * 1000, 0); // (nothing lucky: only what always drops)
+        assert.equal(r.mats.sigil_frost, 1, 'kill ' + k + ' drops one');
+        assert.equal(W.count(s, 'sigil_frost'), k, 'and they stack');
+    }
+    for (const [id, b] of Object.entries(D.BOSSES)) if (id !== 'frozen') assert.ok(!b.sigilEvery, id + ' keeps one-sigil');
+    assert.deepEqual(W.materialSources('sigil_frost'), [{ kind: 'boss', name: 'Frozen WH', zone: 'frost', chance: 1, first: false }]);
+    assert.equal(W.sell(s, 'sigil_frost', 1), 0, 'still not for sale');
+});
+
 test('death drops 30% of each carried stack (rounded down) where you fell; it can be picked up once', () => {
     const s = W.freshState(NOW);
     W.giveAll(s, { iron_ore: 10, coal: 3, fiber: 1 }, false);

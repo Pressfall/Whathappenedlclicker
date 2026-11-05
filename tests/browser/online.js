@@ -124,7 +124,7 @@ async function main() {
         // ---- PvP in Greenwood ----
         for (const p of [a, b]) await p.evalJs('WHWorldDebug.travel("greenwood")');
         await sleep(600);
-        const place = (dx) => `(() => { const g = WHW.game; g.actors.forEach(x => { if (x.kind !== 'boss') x.dead = true; }); const c = g.map.camp; WHWorldDebug.teleport(c.x + ${dx}, c.y + 80); g.player.protectedUntil = 0; g.player.maxHp = 300; g.player.hp = 300; })()`;
+        const place = (dx) => `(() => { const g = WHW.game; g.actors.forEach(x => { if (x.kind !== 'boss') x.dead = true; }); const c = g.map.camp; WHWorldDebug.teleport(c.x + ${dx}, c.y + 300); /* (outside the camp's ring: nobody can be hurt inside it) */ g.player.protectedUntil = 0; g.player.maxHp = 300; g.player.hp = 300; })()`;
         await a.evalJs(place(-25)); await b.evalJs(place(25));
         await a.waitFor('WHWorldDebug.online().players.length === 1 && Math.abs(WHWorldDebug.online().players[0].x - WHW.game.player.x) < 80', 8000);
         const pp = await a.evalJs('(() => { const p = WHW.game.player; return WHW.engine.worldToScreen(p.x, p.y); })()');
@@ -225,6 +225,41 @@ async function main() {
         await sleep(2000);
         check('both players who helped get the boss reward', await a.evalJs('WHW.game.state.stats.bossKills') === 1 && await b.evalJs('WHW.game.state.stats.bossKills') === 1);
 
+        // ---- shared monsters: the same ones, kills and damage shared, fights followed ----
+        for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("town"); return true; })()');
+        await sleep(500);
+        for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("greenwood"); const g = WHW.game; g.player.maxHp = 1e6; g.player.hp = 1e6; g.player.protectedUntil = 0; WHWorldDebug.teleport(g.map.entry.x, g.map.entry.y); return true; })()');
+        await a.waitFor('WHW.online.here().length === 1', 8000);
+        await sleep(2000);
+        const mobs = (p) => p.evalJs('WHW.game.actors.filter(x => x.sid && !x.dead).map(x => x.sid + ":" + x.type).sort().join(",")');
+        const mobsA = await mobs(a), mobsB = await mobs(b);
+        check('monsters: both pages have the same monsters in the same places', mobsA.length > 100 && mobsA === mobsB, { a: mobsA.slice(0, 120), b: mobsB.slice(0, 120) });
+        const pick = await a.evalJs('(() => { const ms = WHW.game.actors.filter(x => x.sid && !x.dead && !x.elite && !x.aggro); return ms.slice(0, 3).map(x => x.sid); })()');
+        const [k1, k2, k3] = pick;
+        // a kill: gone from the other page too, and only the one who fought it is paid
+        const kills0 = [await a.evalJs('WHW.game.state.stats.kills'), await b.evalJs('WHW.game.state.stats.kills')];
+        await a.evalJs(`(() => { const m = WHW.game.actors.find(x => x.sid === "${k1}"); WHW.actors.damage(m, 1e9, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return true; })()`);
+        check('monsters: a kill falls on the other page too', await b.waitFor(`!WHW.game.actors.some(x => x.sid === "${k1}" && !x.dead)`, 6000));
+        await sleep(300);
+        check('monsters: the one who fought it is paid, the other is not', await a.evalJs('WHW.game.state.stats.kills') === kills0[0] + 1 && await b.evalJs('WHW.game.state.stats.kills') === kills0[1]);
+        // damage adds up: each deals 120 to a monster with 200 health
+        await a.evalJs(`(() => { const m = WHW.game.actors.find(x => x.sid === "${k2}"); m.maxHp = m.hp = 200; WHW.actors.damage(m, 120, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return true; })()`);
+        await b.evalJs(`(() => { const m = WHW.game.actors.find(x => x.sid === "${k2}"); m.maxHp = m.hp = 200; WHW.actors.damage(m, 120, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return true; })()`);
+        check('monsters: two players\' damage adds up, and both are paid when it falls', await a.waitFor(`!WHW.game.actors.some(x => x.sid === "${k2}" && !x.dead)`, 6000) && await b.waitFor(`!WHW.game.actors.some(x => x.sid === "${k2}" && !x.dead)`, 6000)
+            && await a.evalJs('WHW.game.state.stats.kills') === kills0[0] + 2 && await b.evalJs('WHW.game.state.stats.kills') === kills0[1] + 1,
+            { a: await a.evalJs('WHW.game.state.stats.kills'), b: await b.evalJs('WHW.game.state.stats.kills'), kills0 });
+        // a monster one player woke is where they have it for the other
+        await a.evalJs(`(() => { const g = WHW.game, m = g.actors.find(x => x.sid === "${k3}"); m.aggro = true; WHWorldDebug.teleport(m.x + 60, m.y); return true; })()`);
+        check('monsters: the one a player woke is followed on the other page', await b.waitFor(`(() => { const m = WHW.game.actors.find(x => x.sid === "${k3}"); return !!m && m.follow === true; })()`, 6000));
+        await sleep(1200);
+        const near = await b.evalJs(`(() => { const m = WHW.game.actors.find(x => x.sid === "${k3}"); return { x: m.x, y: m.y }; })()`), at = await a.evalJs(`(() => { const m = WHW.game.actors.find(x => x.sid === "${k3}"); return { x: m.x, y: m.y }; })()`);
+        check('monsters: and it is in about the same place', Math.hypot(near.x - at.x, near.y - at.y) < 90, { near, at });
+        const rate = await a.evalJs('WHWorldDebug.online().net');
+        check('monsters: a fight stays cheap for the database', !rate || rate.outBytesPerSec < 1500, rate);
+        // when its player lets go, the follower's copy carries on by itself
+        await a.evalJs(`(() => { const g = WHW.game, m = g.actors.find(x => x.sid === "${k3}"); m.dead = true; g.actors.forEach(x => { if (x.kind !== 'boss') x.dead = true; }); return true; })()`); // (the entry has monsters of its own that wake)
+        check('monsters: with nobody fighting, nothing is sent', await a.waitFor('!WHW.mobs.sentAny', 4000));
+
         // ---- the Arena: a duel, a wager, the Pit ----
         for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("arena"); const g = WHW.game; g.player.maxHp = 300; g.player.hp = 300; return true; })()');
         await sleep(800);
@@ -294,6 +329,71 @@ async function main() {
         }
         check('waves: clearing it pays both players', await a.waitFor('WHW.game.state.arena.waveBest >= 1', 8000) && await b.waitFor('WHW.game.state.arena.waveBest >= 1', 8000),
             { a: await a.evalJs('WHW.waves.run && WHW.waves.run.st'), b: await b.evalJs('WHW.waves.run && WHW.waves.run.st') });
+
+        // ---- the leaderboards ----
+        const board = (p, kind) => p.evalJs(`new Promise(r => WHW.online.readBoard("${kind}", t => r(Object.keys(t || {}).sort().join(","))))`);
+        const uids = [await a.evalJs('WHW.online.uid'), await b.evalJs('WHW.online.uid')].sort().join(',');
+        check('boards: both players are on the rating board', await board(a, 'top') === uids, await board(a, 'top'));
+        await b.waitFor(`new Promise(r => WHW.online.readBoard("waves", t => r(Object.keys(t || {}).length === 2)))`, 5000);
+        check('boards: both players are on the waves board, with their best wave', await board(b, 'waves') === uids &&
+            await a.evalJs('new Promise(r => WHW.online.readBoard("waves", t => r(WHWorldArena.wavesList(t)[0].w >= 1)))'), await board(b, 'waves'));
+
+        // ---- a party: in any zone, its own chat, no hurting each other ----
+        for (const p of [a, b]) await p.evalJs('WHWorldDebug.travel("greenwood")');
+        await sleep(600);
+        await a.evalJs(place(-25)); await b.evalJs(place(25));
+        await a.waitFor('WHW.online.here().length === 1 && !!WHW.online.here()[0].info', 8000);
+        await a.evalJs('WHW.party.invitePlayer(WHW.online.here()[0])');
+        check('party: the invitation arrives', await b.waitFor('!!WHW.party.invite && !document.getElementById("partyInvite").hidden', 8000));
+        await b.evalJs('WHW.party.answer(true)');
+        check('party: both are in it', await a.waitFor('WHW.party.members.size === 2', 6000) && await b.waitFor('WHW.party.members.size === 2', 6000) &&
+            await a.evalJs('WHW.party.id') === await b.evalJs('WHW.party.id'));
+        check('party: it shows in the corner, with the other member', await a.waitFor('!document.getElementById("partyHud").hidden && document.getElementById("partyHud").textContent.includes("Bobby")', 4000));
+        check('party: a member is no target', await a.evalJs('WHW.online.targets().length') === 0 && await b.evalJs('WHW.online.targets().length') === 0);
+        await b.evalJs('window.__got = []; WHW.game.player.hp = 300; WHW.game.player.protectedUntil = 0');
+        await a.evalJs('WHW.online.hitRemote(WHW.online.here()[0], { kind: "melee", dmg: 40, ang: 0, perfect: false })');
+        check("party: a member's hit is refused by the one hit", await b.waitFor('window.__got.includes("melee party")', 4000) && await b.evalJs('WHW.game.player.hp') === 300, await b.evalJs('window.__got'));
+        await a.evalJs('WHW.engine.time += 5; WHW.party.say("meet me at the camp")');
+        check('party: its chat reaches the other member', await b.waitFor('WHW.online.log.some(l => l.ch === "party" && l.m === "meet me at the camp")', 5000));
+        await b.evalJs('WHWorldDebug.travel("town")');
+        check('party: it works across zones (where each member is)', await a.waitFor('[...WHW.party.members].some(([u, m]) => u !== WHW.online.uid && m.z === "town")', 6000));
+        await b.evalJs('WHW.engine.time += 5; WHW.party.say("in town now")');
+        check('party: and its chat too', await a.waitFor('WHW.online.log.some(l => l.ch === "party" && l.m === "in town now")', 5000));
+
+        // ---- a tournament: entry fees, a locked-tier kit, the winner takes the pot ----
+        for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("arena"); const g = WHW.game; g.state.rubies = 1000; return true; })()');
+        await sleep(800);
+        await a.evalJs('WHWorldDebug.teleport(WHW.game.map.entry.x - 30, WHW.game.map.entry.y)'); await b.evalJs('WHWorldDebug.teleport(WHW.game.map.entry.x + 30, WHW.game.map.entry.y)');
+        await a.waitFor('WHW.online.here().length === 1 && !!WHW.online.here()[0].info', 8000);
+        const ownA = await a.evalJs('JSON.stringify(WHW.game.state.gear)');
+        await a.evalJs('WHW.tour.create({ n: "Test Cup", fee: 100, size: 4, p2: 0, p3: 0, g: 3, start: 2 }, true)');
+        check('tournament: opened, and the host paid their fee', await a.waitFor('WHW.tour.mine.size === 1 && WHW.game.state.rubies === 900', 5000));
+        const tid = await a.evalJs('[...WHW.tour.mine.keys()][0]');
+        // the other player finds it in the Arena Master's list and signs up
+        await b.evalJs('WHW.arena.openMenu("tour")');
+        check('tournament: it is listed for the other player', await b.waitFor(`WHW.tour.all.has("${tid}") && !!document.querySelector('[data-tjoin="${tid}"]')`, 6000));
+        await b.evalJs(`document.querySelector('[data-tjoin="${tid}"]').click(); WHW.ui.closeModal(); true`);
+        check('tournament: the other player signs up and pays', await b.waitFor('WHW.game.state.rubies === 900 && !!WHW.game.state.arena.tours["' + tid + '"]', 5000));
+        await a.waitFor(`WHW.tour.mine.get("${tid}") && WHW.tour.mine.get("${tid}").entries.length === 2`, 5000);
+        await a.evalJs(`WHW.tour.start(WHW.tour.mine.get("${tid}"))`);
+        check('tournament: it starts, and the duel begins on its own', await a.waitFor('!!WHW.arena.match && !!WHW.arena.match.tour', 12000) && await b.waitFor('!!WHW.arena.match && !!WHW.arena.match.tour', 8000));
+        check('tournament: locked to tier 3, both fight with the same kit', await a.evalJs('(() => { const s = WHW.game.state; return !!s.lent && WHWorld.findGear(s, s.hotbar[s.sel]).base.endsWith("_3") && s.equip.ring === null; })()') &&
+            await b.evalJs('(() => { const s = WHW.game.state; return !!s.lent && WHWorld.findGear(s, s.hotbar[s.sel]).base.endsWith("_3"); })()') &&
+            await a.evalJs('WHW.game.pstats.maxHp') === await b.evalJs('WHW.game.pstats.maxHp'));
+        check('tournament: a party member on the other side can be fought', await a.waitFor('!!WHW.arena.match && WHW.arena.match.state === "live" && WHW.online.targets().length === 1', 15000));
+        await koRound();
+        await koRound();
+        check('tournament: the duel ends, and each page says how it went', await a.waitFor('!WHW.arena.match || !!WHW.arena.match.result', 10000) &&
+            await a.waitFor(`(() => { const t = WHW.tour.mine.get("${tid}"); return !!t && Object.keys(t.res).length === 2; })()`, 8000));
+        await a.waitFor('!WHW.arena.match', 6000);
+        const rubiesA = await a.evalJs('WHW.game.state.rubies'); // (a duel's own first-wins-of-the-day rubies are paid already)
+        check('tournament: the kit goes back, and the save never held it', await a.waitFor('!WHW.game.state.lent', 5000) && await a.evalJs('JSON.stringify(WHW.game.state.gear)') === ownA &&
+            await a.evalJs('JSON.parse(localStorage.getItem("whathappened_world")).gear.length') === JSON.parse(ownA).length);
+        check('tournament: once settled, the winner gets the whole pot', await a.waitFor('WHW.game.state.rubies === ' + (rubiesA + 200), 30000) && await b.evalJs('WHW.game.state.rubies') === 900,
+            { a: await a.evalJs('WHW.game.state.rubies'), b: await b.evalJs('WHW.game.state.rubies'), ta: await a.evalJs('WHW.game.state.arena.tours') });
+        check('tournament: and it counts as a tournament win', await a.evalJs('WHW.game.state.arena.tourWins') === 1 && await b.waitFor('WHW.game.state.arena.tourPlayed === 1', 5000));
+        await a.evalJs('WHW.party.leave()');
+        check('party: leaving it', await b.waitFor('WHW.party.members.size === 1', 5000));
 
         const errs = a.errors().concat(b.errors());
         check('no uncaught page errors', errs.length === 0, errs);

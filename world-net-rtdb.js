@@ -53,15 +53,25 @@ async function connect() {
     let offset = 0;
     onValue(ref(database, '.info/serverTimeOffset'), (s) => { offset = Number(s.val()) || 0; });
     const r = (p) => ref(database, p);
+    // a write or a listener the database's rules refused (rules not published since an update): tell the page, once per path
+    // shape, so it can say so instead of failing quietly
+    const told = new Set();
+    const denied = (p, e) => {
+        console.warn('wilds online:', (e && e.code) || e, p);
+        if (e && /permission/i.test(String(e.code || e.message)) && !told.has(p.replace(/\/[^/]*$/, ''))) {
+            told.add(p.replace(/\/[^/]*$/, ''));
+            window.dispatchEvent(new CustomEvent('whnet-denied', { detail: { path: p } }));
+        }
+    };
     const fix = (obj) => { const out = {}; for (const k in obj) out[k] = isInc(obj[k]) ? increment(obj[k]['.inc']) : obj[k]; return out; };
     const db = {
         kind: 'rtdb', uid: user.uid,
         serverNow: () => Date.now() + offset,
         INC: (n) => ({ '.inc': n }),
-        set: (p, v) => set(r(p), v).catch((e) => console.warn('wilds online:', e.code || e)),
-        update: (p, v) => update(r(p), fix(v)).catch((e) => console.warn('wilds online:', e.code || e)),
+        set: (p, v) => set(r(p), v).catch((e) => denied(p, e)),
+        update: (p, v) => update(r(p), fix(v)).catch((e) => denied(p, e)),
         remove: (p) => remove(r(p)).catch(() => {}),
-        push: (p, v) => { const k = push(r(p)); return set(k, v).then(() => k.key).catch(() => null); },
+        push: (p, v) => { const k = push(r(p)); return set(k, v).then(() => k.key).catch((e) => { denied(p, e); return null; }); },
         // remove and return, atomically: only one player can pick up a loot bag
         take(p) {
             let got = null;
@@ -70,12 +80,13 @@ async function connect() {
         },
         onChild(p, cbs) {
             const offs = [];
-            if (cbs.add) offs.push(onChildAdded(r(p), (s) => cbs.add(s.key, s.val())));
-            if (cbs.change) offs.push(onChildChanged(r(p), (s) => cbs.change(s.key, s.val())));
-            if (cbs.remove) offs.push(onChildRemoved(r(p), (s) => cbs.remove(s.key, s.val())));
+            const bad = (e) => denied(p, e);
+            if (cbs.add) offs.push(onChildAdded(r(p), (s) => cbs.add(s.key, s.val()), bad));
+            if (cbs.change) offs.push(onChildChanged(r(p), (s) => cbs.change(s.key, s.val()), bad));
+            if (cbs.remove) offs.push(onChildRemoved(r(p), (s) => cbs.remove(s.key, s.val()), bad));
             return () => offs.forEach((off) => off());
         },
-        onValue(p, cb) { return onValue(r(p), (s) => cb(s.val())); },
+        onValue(p, cb) { return onValue(r(p), (s) => cb(s.val()), (e) => denied(p, e)); },
         onDisconnectRemove: (p) => onDisconnect(r(p)).remove().catch(() => {}),
         cancelOnDisconnect: (p) => onDisconnect(r(p)).cancel().catch(() => {}),
         onStatus(cb) { return onValue(r('.info/connected'), (s) => cb(s.val() === true)); },

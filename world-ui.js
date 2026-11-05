@@ -63,6 +63,7 @@
         if (k === 'i' || ev.key === 'Tab') { ev.preventDefault(); openBag(); return true; }
         if (k === 'm') { openMap(); return true; }
         if (k === 'k') { openSkills(); return true; }
+        if (k === 'p' && WHW.party) { WHW.party.openMenu(); return true; }
         const ab = D.ABILITY_KEYS.findIndex(key => key.toLowerCase() === k);
         if (ab >= 0) { WHW.actions.castAbility(ab); return true; }
         if (k === 'z') { WHW.actions.usePotion(); return true; }
@@ -107,16 +108,20 @@
                 : '<p class="muted">Nobody else in this zone right now.</p>';
             html += '<div class="w-section"><h3>Here with you (' + here.length + ')</h3>' + list + '</div>';
             const CS = window.WHChatSafety, safe = CS.isOn(localStorage);
-            const log = on.log.length ? on.log.map(l => '<div class="' + (l.mine ? 'mine' : '') + '"><b>' + esc(l.name) + ':</b> ' + esc(CS.display(l.m, safe)) +
+            const log = on.log.length ? on.log.map(l => '<div class="' + (l.mine ? 'mine' : '') + (l.ch === 'party' ? ' is-party' : '') + '">' + (l.ch === 'party' ? '<i>[Party]</i> ' : '') + '<b>' + esc(l.name) + ':</b> ' + esc(CS.display(l.m, safe)) +
                 (l.n > 1 ? ' <span class="muted">×' + l.n + '</span>' : '') + '</div>').join('')
                 : '<span class="muted">Press Enter in the game to say something.</span>';
-            html += '<div class="w-section"><h3>Chat</h3><div class="w-log" id="onLog">' + log + '</div></div>';
+            html += '<div class="w-section"><h3>Chat</h3><div class="w-log" id="onLog">' + log + '</div><p class="muted" style="margin:6px 0 0">Start a line with /p to say it to your party only.</p></div>';
+            html += '<div class="w-card-actions"><button class="btn btn-sm btn-ghost" id="onParty">👥 Party</button><button class="btn btn-sm btn-ghost" id="onBoards">🏆 Leaderboards</button><button class="btn btn-sm btn-ghost" id="onTours">🏆 Tournaments</button></div>';
         }
         html += '<label class="w-setting"><span>Play online<small>See and meet other players. Turn off to play alone.</small></span><input type="checkbox" id="onToggle" ' + (S.online ? 'checked' : '') + '></label>' +
             '<label class="w-setting"><span>Swear filter<small>Hides rude words in chat. On unless you turn it off; the same setting as the game\'s chat.</small></span><input type="checkbox" id="onSafe" ' + (window.WHChatSafety.isOn(localStorage) ? 'checked' : '') + '></label>';
         body.innerHTML = html;
         const retry = body.querySelector('#onRetry');
         if (retry) retry.addEventListener('click', () => { on.stop(); WHW.settings.online = true; WHW.saveSettings(); on.start(); renderOnline(); });
+        const ob = body.querySelector('#onBoards'); if (ob) ob.addEventListener('click', () => WHW.arena.openMenu('rank'));
+        const ot = body.querySelector('#onTours'); if (ot) ot.addEventListener('click', () => WHW.arena.openMenu('tour'));
+        const op = body.querySelector('#onParty'); if (op) op.addEventListener('click', () => WHW.party.openMenu());
         const logEl = body.querySelector('#onLog');
         if (logEl) logEl.scrollTop = logEl.scrollHeight;
         body.querySelector('#onNameSave').addEventListener('click', () => {
@@ -140,11 +145,23 @@
         bar.dataset.local = local ? '1' : '';
         $('emotes').hidden = local;
         $('chatInput').placeholder = local ? 'Say something out loud (Enter to say it, Esc to close)' : 'Say something (Enter to send, Esc to close)';
+        chatChannel(local);
         bar.hidden = false;
         $('chatInput').value = '';
         $('chatInput').focus();
     }
     function closeChat() { $('chatBar').hidden = true; try { $('chatInput').blur(); } catch (e) {} }
+    // the chat bar's channel: the zone (said out loud) or my party (world-party.js), when I have one
+    function chatChannel(local) {
+        const P = WHW.party, b = $('chatChan');
+        if (!b) return;
+        const can = !local && !!P && !!P.id;
+        if (!can && P) P.chan = 'zone';
+        b.hidden = !can;
+        b.textContent = P && P.chan === 'party' ? '👥 Party' : '💬 Zone';
+        b.setAttribute('aria-pressed', P && P.chan === 'party' ? 'true' : 'false');
+        $('chatInput').placeholder = local ? 'Say something out loud (Enter to say it, Esc to close)' : P && P.chan === 'party' ? 'Say something to your party (Enter to send, Esc to close)' : 'Say something (Enter to send, Esc to close; /p for your party)';
+    }
     function bindChat() {
         const bar = $('chatBar');
         if (!bar || bar.dataset.bound) return;
@@ -153,12 +170,22 @@
         bar.addEventListener('submit', (ev) => {
             ev.preventDefault();
             const v = $('chatInput').value;
-            if (v.trim()) { if (bar.dataset.local) WHW.actions.speak(v); else WHW.online.say(v, false); }
+            if (v.trim()) {
+                const toParty = /^\/p\s+/i.exec(v);
+                if (bar.dataset.local) WHW.actions.speak(v);
+                else if (toParty && WHW.party) WHW.party.say(v.slice(toParty[0].length));
+                else if (WHW.party && WHW.party.chan === 'party' && WHW.party.id) WHW.party.say(v);
+                else WHW.online.say(v, false);
+            }
             closeChat();
         });
         $('chatInput').addEventListener('keydown', (ev) => { if (ev.key === 'Escape') { ev.preventDefault(); closeChat(); } });
         bar.querySelectorAll('[data-emote]').forEach(b => b.addEventListener('click', () => { WHW.online.say(b.dataset.emote, true); closeChat(); }));
         $('btnChat').addEventListener('click', () => (bar.hidden ? openChat() : closeChat()));
+        const ch = $('chatChan');
+        if (ch) ch.addEventListener('click', () => { const P = WHW.party; if (P) P.chan = P.chan === 'party' ? 'zone' : 'party'; chatChannel(false); $('chatInput').focus(); });
+        const bp = $('btnParty');
+        if (bp) bp.addEventListener('click', () => WHW.party && WHW.party.openMenu());
         $('btnOnline').addEventListener('click', openOnline);
     }
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindChat); else bindChat();
@@ -1112,7 +1139,7 @@
             <h3>Rubies and your game</h3>
             <p>Rubies are the money of the Wilds: earn them from monsters, ruby veins, bosses and the Trader, and spend them on crafting fees and supplies. You can also send treasures home: <b>lootboxes</b> crafted at the Rune Altar, plus <b>gems</b> and <b>Golden What Happened</b> from bosses, elites, ruby veins and the Trader's weekly exchange. They arrive the next time you open the game. Rubies can come the other way too: trade Golden What Happened in the game's Divine menu, or redeem a rubies code in its Settings.</p>
             <h3>Online</h3>
-            <p>Other players in the same zone appear live (🌐 at the top shows how many). Press <kbd>Enter</kbd> to chat or send an emote. <b>Outside town, players can fight each other</b> with the same swings, shields and parries; you're protected for a few seconds after arriving. A player knocked out by another drops part of what they carry: the winner gets first pick, then anyone can grab it. Bosses are shared: everyone in the arena fights the same one, and everyone who did enough damage gets the reward. Monsters are your own. You can play offline from the 🌐 menu.</p>
+            <p>Other players in the same zone appear live (🌐 at the top shows how many). Press <kbd>Enter</kbd> to chat or send an emote. <b>Outside town, players can fight each other</b> with the same swings, shields and parries; you're protected for a few seconds after arriving. A player knocked out by another drops part of what they carry: the winner gets first pick, then anyone can grab it. Bosses are shared: everyone in the arena fights the same one, and everyone who did enough damage gets the reward. Other monsters are shared too: the same ones in the same places, a kill falls for everyone, damage adds up, and whoever fought one gets its loot. Each zone's camp (the dashed ring) is safe ground: monsters ignore you and nobody can hurt you there, until you hit something from inside it. <b>Parties</b>: walk up to another player and press <kbd>E</kbd> to invite them (up to 4). Party members can't hurt each other, see where each other are (top left), and have their own chat: start a line with <kbd>/p</kbd>, or press <kbd>P</kbd>. In the Arena you can open or join <b>tournaments</b> (a knockout of duels: the entry fees are the prize, and the host can lock everyone's gear to one tier), and see the <b>leaderboards</b> for the highest rating and the highest wave. You can play offline from the 🌐 menu.</p>
             <h3>The Arena</h3>
             <p>The round building north-east of the plaza. Nothing is ever lost there. Step into <b>the Pit</b> to fight anyone else in it, or press <kbd>E</kbd> next to another player in the lobby to challenge them to a <b>duel</b> (best of three, rated, optionally for a ruby stake: the winner takes the pot), or your party against theirs in a <b>2v2 or 3v3</b>. Varro, the Arena Master, runs the queue, the ranking and a shop paid in <b>Glory</b>, which every fight earns. Through the gate on the left, the <b>Proving Grounds</b>: co-op waves of monsters that get harder with every player who joins.</p>
             <h3>The Far Reaches</h3>

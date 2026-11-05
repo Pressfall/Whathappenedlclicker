@@ -33,7 +33,7 @@ test blocks ad, analytics, Firestore and Auth hosts, so it never touches product
 |---|---|
 | `index.html`, `main.js` | the game page and most game logic |
 | `core/` | logic that needs no page, tested on its own: `calc.js` (prices, bulk buying, prestige awards, offline earnings), `save.js` (versions, migrations, validation, what a prestige keeps), `progress.js` (cloud sync rules, backups, export/import), `guide.js`, `consent.js`, `clan-buffs.js` |
-| `world.html`, `world*.js`, `world.css` | The Wilds: the top-down adventure (menu > The Wilds). Its rules are pure and tested in `core/world-*.js`: `world-data.js` (every table: zones, monsters, gear, recipes, caps), `world-logic.js` (the save, crafting, loot, death, trader, quests, statues), `world-combat.js` (mouse-driven weapon physics), `world-craft-score.js` (minigame scoring), `world-gen.js` (seeded maps), `world-bridge.js` (rewards to the main game, and rubies back), `world-gods.js` (the Hall of Gods statues, the hidden one too: costs, and the blessings main.js applies to the clicker; also loaded by index.html), `world-online.js` (PvP checks, loot bags, chat, shared bosses), `world-arena.js` (the Arena: who may hit whom there, duels and team battles run on every page from the same signed messages, Elo ratings, wagers, Glory, the queue, the leaderboard), `world-waves.js` (the Proving Grounds' co-op waves: the same wave on every page, harder with more players), `world-net-tree.js` (the local relay's data). The page scripts: `world-engine.js` (loop, input, map), `world-actors.js` (player, monsters, bosses, rivals), `world-craft.js` (minigames), `world-ui.js` (HUD and menus), `world-online.js` (playing together), `world-arena.js` (the Arena's matches, Pit, menus), `world-waves.js` (running or following a co-op wave), `world-net-rtdb.js` / `world-net-dev.js` (Firebase Realtime Database, or the local relay in `server.js`), `world.js` (wiring). Add `?whdebug` to the URL for a tuning overlay and test hooks. `tests/world-pace.test.js` keeps the Far Reaches (the four zones past the Waystone) slower than the first four: it works out kit costs, hits to kill and damage taken from the tables, so check it after any balance change there |
+| `world.html`, `world*.js`, `world.css` | The Wilds: the top-down adventure (menu > The Wilds). Its rules are pure and tested in `core/world-*.js`: `world-data.js` (every table: zones, monsters, gear, recipes, caps), `world-logic.js` (the save, crafting, loot, death, trader, quests, statues), `world-combat.js` (mouse-driven weapon physics), `world-craft-score.js` (minigame scoring), `world-gen.js` (seeded maps), `world-bridge.js` (rewards to the main game, and rubies back), `world-gods.js` (the Hall of Gods statues, the hidden one too: costs, and the blessings main.js applies to the clicker; also loaded by index.html), `world-online.js` (PvP checks, loot bags, chat, shared bosses), `world-arena.js` (the Arena: who may hit whom there, duels and team battles run on every page from the same signed messages, Elo ratings, wagers, Glory, the queue, the leaderboard), `world-waves.js` (the Proving Grounds' co-op waves: the same wave on every page, harder with more players), `world-mobs.js` (shared monsters: the same kinds everywhere, kills, damage and fights), `world-party.js` (parties: members, tickets, their chat), `world-tour.js` (tournaments: the knockout bracket every page works out from the same record, walkovers and disputes, prize splits), `world-net-tree.js` (the local relay's data). The page scripts: `world-engine.js` (loop, input, map), `world-actors.js` (player, monsters, bosses, rivals), `world-craft.js` (minigames), `world-ui.js` (HUD and menus), `world-online.js` (playing together), `world-arena.js` (the Arena's matches, Pit, menus), `world-waves.js` (running or following a co-op wave), `world-mobs.js` (sharing the zone's monsters), `world-party.js` (parties in every zone, the party chat and HUD), `world-tour.js` (opening, joining and playing tournaments, their menus), `world-net-rtdb.js` / `world-net-dev.js` (Firebase Realtime Database, or the local relay in `server.js`), `world.js` (wiring). Add `?whdebug` to the URL for a tuning overlay and test hooks. `tests/world-pace.test.js` keeps the Far Reaches (the four zones past the Waystone) slower than the first four: it works out kit costs, hits to kill and damage taken from the tables, so check it after any balance change there |
 | `cloud.js`, `account.html/js` | Firebase sign-in and the cloud-save screens; the sync rules themselves are in `core/progress.js`. Both the game (`index.html`) and the Wilds (`world.html`) keep the signed-in account up to date, and the Wilds' save, play time and rubies count as progress there |
 | `guide.js`, `save-tools.js`, `consent.css` | first-run guide card, Settings > Save backup, the ad notice |
 | `how-to-play.html`, `wilds-guide.html`, `upgrades-followers-gems.html`, `faq.html`, `about.html`, `pages.css` | the help and info pages linked from the game's footer: static, no scripts (readable with JavaScript off), no ads. `tests/info-pages.test.js` checks their tables against the game data, so update them when prices or packs change |
@@ -76,11 +76,14 @@ Until that is done the Wilds still works; the 🌐 button just says online play 
 small stand-in for the database (in `server.js`), so online play can be tried with two browsers (or a normal and a private window)
 without touching Firebase. Add `?whnet=rtdb` to the URL to use the real database locally, or `?whnet=off` to play offline.
 
-**After an update that changes `database.rules.json`, publish it again** (step 2). The Far Reaches, the Arena and the Proving Grounds
+**After an update that changes `database.rules.json`, publish it again** (step 2). Parties added `wilds/v1/party` (members,
+tickets, the party chat); tournaments added `wilds/v1/arena/tour`, and the Proving Grounds' leaderboard `wilds/v1/arena/waves`:
+without them there are no parties or tournaments online, and only the rating board. Shared monsters added `k` (when a monster fell) and `m` (the monsters a
+player is fighting) to every wild zone. The Far Reaches, the Arena and the Proving Grounds
 added zones (`coast`, `storm`, `ruins`, `sky`, `arena`, `trials`), new player fields (rating, title, class, match, queue, party, best
 wave), messages between players (`d`: invitations and knockouts), the co-op waves' shared run (`w`) and the Arena's leaderboard
 (`wilds/v1/arena/top`). With the old rules those zones simply have no online play: everything else, and the Proving Grounds alone,
-still works.
+still works; without the `k` and `m` rules every player simply has their own monsters, as before.
 
 Cost: each player sends a short position line and receives the same from everyone else in their zone, so downloads grow with
 the square of the players in a zone. Sends are throttled (`RATE` and `sendDue` in `core/world-online.js`): about 2.5 a second
@@ -94,6 +97,18 @@ player there downloads an estimated 3.5-4 KB/s while a full wave is on (worked o
 15-minute run with 4 players is then about 10 MB, so 10 GB is roughly 900 such runs a month. Past either limit the database refuses players instead of billing; the 🌐 menu
 then says the Wilds is full (try `WH_NET_MAX=1 npm start` to see it locally). `world.html?whdebug` shows the update rates and an
 estimated download rate in the bottom-left overlay.
+
+**Shared monsters are cheap**: every page builds the zone's monsters itself (same places and kinds, from the zone's seed), so no
+monster positions travel while nobody fights. What is sent: a kill is one number (`k/<id>`), and a player fighting sends only the
+monsters they are fighting, three times a second, about 30 characters each (`RATE` in `core/world-mobs.js`, at most 6 monsters,
+at most 320 characters). Estimate, worked out from the report size and not measured: about 0.3-0.5 KB/s to each other player in the
+zone while someone is fighting, and nothing while you are alone in a zone or nobody fights. It stacks on top of the position
+traffic above, which is still the bulk of it.
+
+**Parties, tournaments and the boards are small too.** A party member writes one short record when they change zone, and each
+party chat line once (the last 30 are kept). A tournament is one record of a few KB at most (16 players and their results), read
+while you are in it or have the Tournaments tab open; the leaderboards are read once when opened, and each player writes their own
+row after a match or a new best wave.
 
 ## Firebase rules
 

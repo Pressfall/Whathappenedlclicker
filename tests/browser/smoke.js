@@ -423,6 +423,40 @@ async function main() {
         await sleep(150);
         check('quests: accepting it puts it in the tracker', await evalJs('WHWorld.activeQuests(WHWorldDebug.state()).length === 1 && !document.getElementById("questTracker").hidden && /Slime Season/.test(document.getElementById("questTracker").textContent)'));
         await evalJs('WHW.ui.closeModal()');
+        await evalJs('WHW.ui.closeModal()');
+        // Burning Stick and Ice Beam work in town, so they can be tried on the training dummy
+        const townFx = await evalJs(`(() => { const W = WHWorld, g = WHW.game, p = g.player, s = g.state, dm = g.map.dummy;
+            s.classes.unlocked.mystic = true; W.setClass(s, 'mystic'); g.pstats = W.playerStats(s);
+            s.skills.learned.burning_stick = true; s.skills.learned.ice_beam = true; W.equipAbility(s, 'burning_stick', 0); W.equipAbility(s, 'ice_beam', 1);
+            const it = W.addGear(s, 'firestaff_1', 60, [], Date.now()), i = s.hotbar.indexOf(null) >= 0 ? s.hotbar.indexOf(null) : 4;
+            s.hotbar[i] = it.uid; WHW.actions.selectSlot(i);
+            p.x = dm.x - 130; p.y = dm.y; WHW.engine.snapCamera(); p.hp = p.maxHp; p.abCharges = {}; p.stam.val = 100; p.mana.val = 100; p.facing = 0;
+            return { slot: i, lit: WHW.actors.castAbility(0) && !!p.ignite }; })()`);
+        await mouseTo(0, 170); await sleep(700);
+        const townBurn = await evalJs('(() => { const p = WHW.game.player; return { burning: !!p.ignite, mana: p.mana.val, hp: p.hp === p.maxHp }; })()');
+        check('town: Burning Stick keeps burning (and eats mana) so it can be tried on the dummy', townFx.lit && townBurn.burning && townBurn.mana < 100 && townBurn.hp, { townFx, townBurn });
+        const beam = await evalJs(`(() => { const g = WHW.game, p = g.player, d = g.actors.find(a => a.kind === 'dummy'); p.ignite = null; p.abCharges = {}; p.mana.val = 100; p.stunUntil = 0;
+            window.__aim = WHW.engine.aimPoint; WHW.engine.aimPoint = () => ({ x: p.x + 170, y: p.y }); // (town is small: the camera stops at its edge, so the cursor is not where it was)
+            const before = d.dmgLog.length; return { cast: WHW.actors.castAbility(1), on: !!p.beam, before }; })()`);
+        await sleep(900);
+        const beamAfter = await evalJs(`(() => { const g = WHW.game, p = g.player, d = g.actors.find(a => a.kind === 'dummy'); return { on: !!p.beam, hits: d.dmgLog.length }; })()`);
+        check('town: Ice Beam holds and hurts the training dummy', beam.cast && beam.on && beamAfter.on && beamAfter.hits > beam.before, { beam, beamAfter });
+        await evalJs(`(() => { const W = WHWorld, g = WHW.game, s = g.state, p = g.player; p.beam = null; p.ignite = null; p.abCharges = {}; WHW.engine.aimPoint = window.__aim; s.hotbar[${townFx.slot}] = null; WHW.actions.selectSlot(0); W.setClass(s, 'warrior'); g.pstats = W.playerStats(s); return true; })()`);
+        // a camp is safe ground: monsters ignore you, nothing hurts you, and hitting something from it lifts that for a moment
+        await evalJs('WHWorldDebug.travel("greenwood"); WHW.game.actors.forEach(a => { a.dead = true; })');
+        const camp = await evalJs(`(() => { const g = WHW.game, A = WHW.actors, p = g.player, c = g.map.camp, D = WHWorldData;
+            p.x = c.x; p.y = c.y + 20; p.iframes = 0; p.protectedUntil = 0; p.hp = p.maxHp; p.dead = false; p.campLockUntil = 0;
+            const m = A.makeMonster('slime', c.x + 120, c.y); m.speed = 0; g.actors.push(m);
+            const safe = A.playerSafe(), hurt = A.hurtPlayer(50, {});
+            return { safe, hurt, id: m.id, r: D.CAMP.r }; })()`);
+        await sleep(1200);
+        const asleep = await evalJs(`(() => { const m = WHW.game.actors.find(a => a.id === ${JSON.stringify(camp.id)}); return { aggro: m.aggro, hp: WHW.game.player.hp === WHW.game.player.maxHp }; })()`);
+        check('camps: standing in a camp nothing hurts you and monsters ignore you', camp.safe && camp.hurt === 0 && !asleep.aggro && asleep.hp, { camp, asleep });
+        const lock = await evalJs(`(() => { const g = WHW.game, A = WHW.actors, p = g.player, m = g.actors.find(a => a.id === ${JSON.stringify(camp.id)});
+            A.damage(m, 1, { from: p }); const lifted = !A.playerSafe(); const hurt = (p.iframes = 0, A.hurtPlayer(5, {}));
+            p.campLockUntil = 0; p.x = g.map.camp.x; p.y = g.map.camp.y + WHWorldData.CAMP.r + 60; p.iframes = 0; const out = A.playerSafe();
+            return { lifted, hurt, out }; })()`);
+        check('camps: hitting something from the camp lifts its protection, and outside the ring you are fair game', lock.lifted && lock.hurt > 0 && !lock.out, lock);
         if (SCRATCH) {
             await evalJs('(() => { const h = WHW.game.map.hall; WHWorldDebug.teleport(h.door.x, h.door.y + 90); return true; })()');
             await sleep(500);

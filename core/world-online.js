@@ -257,9 +257,10 @@
     function playerStun(sec) { return Math.min(PVP.stunMax, sec * PVP.stunMult); }
 
     // A hit someone sent us. Returns { ok: true, dmg } with the damage to take (PvP strength), or { ok: false, reason }.
-    // ctx: { zone, attacker: unpacked position, me: { x, y, protected }, now (s), lastAt (s, this attacker's last weapon hit),
+    // ctx: { zone, attacker: unpacked position, me: { x, y, protected, safe (in a camp) }, now (s), lastAt (s, this attacker's last weapon hit),
     // weapon (the weapon the attacker shows), abRate (abilities, see validateAbility), arenaOk (in the arena: may they hit me
-    // there, from core/world-arena.js hitAllowed), cls (the attacker's class, when their page shows it) }
+    // there, from core/world-arena.js hitAllowed), cls (the attacker's class, when their page shows it), mate (they are in my
+    // party, core/world-party.js: party members can't hurt each other, except as foes in an arena match) }
     function validateHit(hit, ctx) {
         if (!isObj(hit)) return { ok: false, reason: 'shape' };
         const rule = pvpRule(ctx.zone);
@@ -270,6 +271,8 @@
         const a = ctx.attacker;
         if (!a || (a.fl & FLAGS.dead)) return { ok: false, reason: 'attacker' };
         if (kind !== 'parry' && ctx.me.protected) return { ok: false, reason: 'protected' };
+        if (ctx.me.safe) return { ok: false, reason: 'camp' }; // standing in a zone's camp (D.CAMP): nobody can hurt you there
+        if (ctx.mate) return { ok: false, reason: 'party' }; // a member of my party (an arena match's foes are never this)
         if (kind === 'ab') return validateAbility(hit, ctx);
         const b = D.GEAR_BY_ID[hit.w];
         if (kind !== 'parry' && (!b || b.slot !== 'weapon')) return { ok: false, reason: 'weapon' };

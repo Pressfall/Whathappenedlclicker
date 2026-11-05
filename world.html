@@ -34,6 +34,7 @@
                 <button class="w-online" id="btnOnline" title="Online" aria-label="Online play">🌐 <b id="onlineCount">…</b></button>
                 <button class="w-icon-btn" id="btnBag" title="Bag and gear (I)" aria-label="Bag and gear">🎒</button>
                 <button class="w-icon-btn" id="btnSkills" title="Classes and skills (K)" aria-label="Classes and skills">⚔️</button>
+                <button class="w-icon-btn" id="btnParty" title="Party (P)" aria-label="Party">👥</button>
                 <button class="w-icon-btn" id="btnMap" title="Map (M)" aria-label="Map">🗺️</button>
                 <button class="w-icon-btn" id="btnHelp" title="How to play" aria-label="How to play">❔</button>
                 <button class="w-icon-btn" id="btnSettings" title="Settings" aria-label="Settings">⚙️</button>
@@ -53,7 +54,8 @@
             </div>
             <div class="w-prompt" id="prompt" hidden></div>
             <form class="w-chat" id="chatBar" hidden autocomplete="off">
-                <input id="chatInput" maxlength="60" placeholder="Say something (Enter to send, Esc to close)" aria-label="Chat message">
+                <div class="w-row"><button type="button" class="btn btn-sm btn-ghost" id="chatChan" hidden title="Who hears it: the zone, or only your party">💬 Zone</button>
+                <input id="chatInput" maxlength="63" placeholder="Say something (Enter to send, Esc to close)" aria-label="Chat message"></div>
                 <div class="w-emotes" id="emotes"></div>
             </form>
             <button class="w-icon-btn w-chat-btn" id="btnChat" title="Chat (Enter)" aria-label="Chat">💬</button>
@@ -106,12 +108,15 @@
         <script src="achievements-data.js"></script>
         <script src="core/world-arena.js"></script>
         <script src="core/world-waves.js"></script>
+        <script src="core/world-mobs.js"></script>
+        <script src="core/world-tour.js"></script>
         <script src="core/world-logic.js"></script>
         <script src="core/world-combat.js"></script>
         <script src="core/world-craft-score.js"></script>
         <script src="core/world-gen.js"></script>
         <script src="core/chat-safety.js"></script>
         <script src="core/world-online.js"></script>
+        <script src="core/world-party.js"></script>
         <script src="core/world-net-tree.js"></script>
         <script src="world-net-dev.js"></script>
         <script src="world-engine.js"></script>
@@ -120,7 +125,10 @@
         <script src="world-ui.js"></script>
         <script src="world-online.js"></script>
         <script src="world-arena.js"></script>
+        <script src="world-party.js"></script>
+        <script src="world-tour.js"></script>
         <script src="world-waves.js"></script>
+        <script src="world-mobs.js"></script>
         <script src="world.js"></script>
         <!-- Accounts and cloud saves (cloud.js): while signed in, the Wilds save to the account like the game does, and load
              newer progress from the account when they open. Drives #cloudBtn. -->

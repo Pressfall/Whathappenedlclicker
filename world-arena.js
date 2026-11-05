@@ -29,8 +29,6 @@
         pending: null,   // an invitation I sent: { ask, yes: Set, at }
         invite: null,    // an invitation I got: { ask, at }
         accepted: null,  // an invitation I said yes to, waiting for 'go': { ask, at }
-        party: null,     // { id, leader }; its members are everyone whose info shows the same pt
-        partyInvite: null,
         queue: '',       // 'duel' | 't2' | 't3' while waiting in the queue
         pitUpAt: 0, prepared: 0, missing: {}, queueT: 0, endAt: 0,
     };
@@ -42,18 +40,19 @@
     function meAsPlayer() { return { u: me(), n: net().name(), r: myRating() }; }
     function asPlayer(r) { return { u: r.uid, n: r.info.n, r: r.info.r || R.elo.start }; }
     function busy() { return !!(AR.match || AR.pending || AR.accepted); }
-    function partyMembers() {
-        if (!AR.party) return [meAsPlayer()];
-        return [meAsPlayer()].concat(remotes().filter(r => r.info.pt === AR.party.id).map(asPlayer)).slice(0, 3);
-    }
+    // my party (world-party.js) as a team: me and its members here in the Arena
+    function partyMembers() { return [meAsPlayer()].concat(WHW.party ? WHW.party.here().map(asPlayer) : []); }
     function partyOf(r) { return r.info.pt ? [asPlayer(r)].concat(remotes().filter(x => x.uid !== r.uid && x.info.pt === r.info.pt).map(asPlayer)) : [asPlayer(r)]; }
     function sendAll(list, m, id, x) { for (const p of list) if (p.u !== me()) net().send(p.u, m, id, x); }
 
-    // what the arena adds to my info: the match I'm in (id:ring), the queue I'm in, my party
+    // what the arena adds to my info: the match I'm in (id:ring), the queue I'm in (my party is world-party.js's)
     AR.infoExtra = function () {
         const m = AR.match && !AR.match.result ? AR.match : AR.pending ? AR.pending.ask : AR.accepted ? AR.accepted.ask : null;
-        return { am: m ? m.id + ':' + m.ring : '', aq: busy() ? '' : AR.queue, pt: AR.party ? AR.party.id : '' };
+        return { am: m ? m.id + ':' + m.ring : '', aq: busy() ? '' : AR.queue };
     };
+    AR.busy = busy;
+    // a foe in my match right now (a party member on the other team can be hit like anyone else there)
+    AR.matchFoe = function (uid) { const m = AR.match; if (!m || m.result) return false; const t = Ar.teamOf(m, uid); return !!t && t !== m.team; };
 
     // ---------------- who may hit whom (core hitAllowed, from either side) ----------------
     AR.canHit = function (r) {
@@ -70,6 +69,7 @@
     AR.challenge = function (r, mode, stake) {
         if (!online()) { WHW.toast('Matches need online play (the 🌐 menu).', 'bad'); return; }
         if (busy()) { WHW.toast('You are already in a match or waiting on one.', 'bad'); return; }
+        if (WHW.tour && WHW.tour.due()) { WHW.toast('Your tournament duel is up: play that first.', 'bad'); return; }
         if (r.info.am) { WHW.toast(r.info.n + ' is busy with another match.', 'bad'); return; }
         const size = Ar.MODES[mode].size;
         const a = mode === 'duel' ? [meAsPlayer()] : partyMembers(), b = mode === 'duel' ? [asPlayer(r)] : partyOf(r);
@@ -78,6 +78,13 @@
         if (!Ar.canStake(game().state.rubies, stake)) { WHW.toast('You can\'t cover that stake.', 'bad'); return; }
         sendAsk({ id: newId(), mode, stake, ring: freeRing(), t0: 0, cap: me(), a, b });
         WHW.toast(`Challenge sent to ${b.map(p => p.n).join(', ')}${stake ? ` for ${fmt(stake)} rubies each` : ''}.`);
+    };
+    // A tournament's duel (world-tour.js): the better seed invites the other, with the pairing's tag; no stake (the entry
+    // fees are the prize)
+    AR.tourChallenge = function (r, tag) {
+        if (!online() || busy() || r.info.am) return false;
+        sendAsk({ id: newId(), mode: 'duel', stake: 0, ring: freeRing(), t0: 0, cap: me(), a: [meAsPlayer()], b: [asPlayer(r)], tour: tag });
+        return true;
     };
     function freeRing() {
         const used = new Set(remotes().map(r => r.info.am).filter(Boolean).map(a => Number(a.split(':')[1])));
@@ -111,27 +118,6 @@
         net().send(inv.ask.cap, 'yes', inv.ask.id, '');
         net().infoKey = '';
     };
-    // the party: invite someone (they say yes or no), or leave it
-    AR.inviteToParty = function (r) {
-        if (!online()) return;
-        if (!AR.party) AR.party = { id: newId(), leader: me() };
-        if (partyMembers().length >= 3) { WHW.toast('A party has at most 3 players.', 'bad'); return; }
-        net().send(r.uid, 'party', AR.party.id, net().name());
-        net().infoKey = '';
-        WHW.toast('Party invitation sent to ' + r.info.n + '.');
-    };
-    AR.leaveParty = function () { AR.party = null; AR.queue = ''; net().infoKey = ''; WHW.ui.refresh(); };
-    AR.answerParty = function (yes) {
-        const pi = AR.partyInvite;
-        AR.partyInvite = null;
-        renderInvite();
-        if (!pi) return;
-        if (!yes) { net().send(pi.from, 'pno', pi.id, ''); return; }
-        AR.party = { id: pi.id, leader: pi.from };
-        net().send(pi.from, 'pyes', pi.id, '');
-        net().infoKey = '';
-        WHW.toast('You joined ' + pi.name + "'s party.", 'gold');
-    };
     AR.setQueue = function (mode) {
         if (mode && !online()) { WHW.toast('The queue needs online play (the 🌐 menu).', 'bad'); return; }
         if (mode && mode !== 'duel' && partyMembers().length > Ar.MODES[mode].size) { WHW.toast('Your party is too big for that.', 'bad'); return; }
@@ -150,6 +136,14 @@
                 const ask = Ar.unpackAsk(msg.id, msg.x);
                 if (!ask || ask.cap !== msg.from || !Ar.teamOf({ teams: { a: ask.a, b: ask.b } }, me())) return;
                 if (busy()) { net().send(msg.from, 'busy', ask.id, ''); return; }
+                // a tournament's duel (world-tour.js): accepted at once if it is the pairing I am due to play, refused otherwise
+                if (ask.tour) {
+                    if (WHW.tour && WHW.tour.expects(ask)) { AR.invite = { ask, at: E.time }; AR.respond(true); }
+                    else net().send(msg.from, 'no', ask.id, '');
+                    return;
+                }
+                // my tournament duel is due: other matches wait
+                if (WHW.tour && WHW.tour.due()) { net().send(msg.from, 'busy', ask.id, ''); return; }
                 // queued for exactly this, with no stake: accept at once
                 if (AR.queue && AR.queue === ask.mode && !ask.stake) { AR.invite = { ask, at: E.time }; AR.respond(true); return; }
                 AR.invite = { ask, at: E.time };
@@ -187,12 +181,6 @@
             case 'down': case 'quit':
                 if (AR.match && AR.match.id === msg.id) Ar.reduce(AR.match, { type: msg.m, uid: msg.from, round: Number(msg.x), t: msg.t });
                 return;
-            case 'party':
-                if (!AR.party && !busy()) { AR.partyInvite = { from: msg.from, id: msg.id, name: String(msg.x).slice(0, 16), at: E.time }; renderInvite(); }
-                else net().send(msg.from, 'pno', msg.id, '');
-                return;
-            case 'pyes': { const r = remoteOf(msg.from); WHW.toast((r ? r.info.n : 'Someone') + ' joined your party.', 'gold'); return; }
-            case 'pno': { const r = remoteOf(msg.from); WHW.toast((r ? r.info.n : 'Someone') + " can't join your party."); if (AR.party && partyMembers().length <= 1 && AR.party.leader === me()) AR.party = null; return; }
         }
     };
     // Someone I knocked out in the Pit told me so
@@ -211,12 +199,15 @@
         if (!m.team) return;
         if (!W.arenaEscrow(s, m)) { sendAll(ask.a.concat(ask.b), 'quit', ask.id, ''); WHW.toast("You couldn't cover the stake, so you forfeit.", 'bad'); return; }
         AR.match = m; AR.queue = ''; AR.prepared = 0; AR.missing = {}; AR.invite = null; AR.accepted = null; AR.pending = null;
+        // a tournament that locks gear to a tier: everyone fights this duel with the same kit (core/world-logic.js lendKit)
+        const tg = m.tour && WHW.tour ? WHW.tour.tagOf(m.tour) : null;
+        if (tg && tg.g && W.lendKit(s, tg.g)) WHW.refreshPlayer();
         net().infoKey = '';
         if (WHW.ui.isOpen()) WHW.ui.closeModal();
         renderInvite();
         WHW.save();
         const vs = (m.team === 'a' ? m.teams.b : m.teams.a).map(p => p.n).join(', ');
-        WHW.banner(Ar.MODES[m.mode].name + ' vs ' + vs, (m.stake ? fmt(m.stake) + ' rubies each · ' : '') + 'Best of three');
+        WHW.banner((tg ? WHW.tour.duelName(tg) : Ar.MODES[m.mode].name) + ' vs ' + vs, (m.stake ? fmt(m.stake) + ' rubies each · ' : '') + 'Best of three' + (tg && tg.g ? ' · everyone has a ' + D.TIERS[tg.g].name + ' kit' : ''));
         prepareRound();
     }
     // the start of every round: everyone back on their feet, at their team's side of the ring
@@ -258,6 +249,8 @@
         const m = AR.match, g = game(), s = g.state;
         const r = W.arenaResult(s, m, sNow());
         if (online()) net().writeTop(Ar.topRecord(net().name(), s.arena, sNow()));
+        giveBackKit();
+        if (m.tour && WHW.tour) WHW.tour.duelOver(m, r);
         const head = r.won ? '🏆 Victory!' : r.draw ? 'A draw' : 'Defeat';
         const bits = [(r.ratingDelta >= 0 ? '+' : '') + r.ratingDelta + ' rating (' + s.arena.rating + ', ' + Ar.rankFor(s.arena.rating).name + ')'];
         if (r.glory) bits.push('+' + r.glory + ' Glory');
@@ -269,22 +262,26 @@
         AR.endAt = E.time + 3;
         WHW.save();
     }
+    // the gear a tournament lent for a duel goes back, and your own comes back
+    function giveBackKit() { if (W.returnKit(game().state)) WHW.refreshPlayer(); }
     // Leaving the arena (or going offline) in a match: that is a forfeit, and a loss
     AR.leaving = function () {
         const m = AR.match;
         if (AR.pending) cancelPending();
         if (AR.invite) { if (net() && net().db) net().send(AR.invite.ask.cap, 'no', AR.invite.ask.id, ''); AR.invite = null; }
         if (AR.accepted && net() && net().db) net().send(AR.accepted.ask.cap, 'no', AR.accepted.ask.id, '');
-        AR.accepted = null; AR.queue = ''; AR.party = null; AR.partyInvite = null;
+        AR.accepted = null; AR.queue = '';
         renderInvite();
         if (!m) return;
         AR.match = null;
         if (!m.result) {
             if (net() && net().db) sendAll(Ar.members(m).map(u => ({ u })), 'quit', m.id, '');
             m.result = m.team === 'a' ? 'b' : 'a';
-            W.arenaResult(game().state, m, sNow());
+            const r = W.arenaResult(game().state, m, sNow());
+            if (m.tour && WHW.tour) WHW.tour.duelOver(m, r);
             WHW.toast('You left the match: it counts as a loss.', 'bad');
         }
+        giveBackKit();
         game().player.dead = false;
         WHW.save();
     };
@@ -298,7 +295,6 @@
         // up again in the Pit
         if (AR.pitUpAt && E.time >= AR.pitUpAt) { AR.pitUpAt = 0; const gt = g.map.pitGate; revive(gt.x, gt.y); p.protectedUntil = E.time + 2; }
         if (AR.invite && E.time - AR.invite.at > R.inviteSec) AR.respond(false);
-        if (AR.partyInvite && E.time - AR.partyInvite.at > R.inviteSec) AR.answerParty(false);
         if (AR.pending && E.time - AR.pending.at > R.inviteSec) cancelPending('No answer in time.');
         if (AR.accepted && E.time - AR.accepted.at > R.inviteSec + 8) { AR.accepted = null; net().infoKey = ''; }
         const m = AR.match;
@@ -332,7 +328,7 @@
         AR.queueT -= dt;
         if (AR.queue && !busy() && online() && AR.queueT <= 0) {
             AR.queueT = 3;
-            const q = [{ uid: me(), n: net().name(), r: myRating(), aq: AR.queue, pt: AR.party ? AR.party.id : '' }]
+            const q = [{ uid: me(), n: net().name(), r: myRating(), aq: AR.queue, pt: (WHW.party && WHW.party.id) || '' }]
                 .concat(remotes().filter(r => r.info.aq && !r.info.am).map(r => ({ uid: r.uid, n: r.info.n, r: r.info.r || R.elo.start, aq: r.info.aq, pt: r.info.pt })));
             const mine = Ar.pickMatches(q).find(x => x.a.concat(x.b).some(p => p.u === me()));
             if (mine && mine.a.concat(mine.b).map(p => p.u).sort()[0] === me()) sendAsk({ id: newId(), mode: mine.mode, stake: 0, ring: freeRing(), t0: 0, cap: me(), a: mine.a, b: mine.b });
@@ -371,26 +367,21 @@
     }
     function renderInvite() {
         const e = el('arenaInvite', 'w-arena-invite');
-        const inv = AR.invite, pi = AR.partyInvite;
-        if (!inv && !pi) { e.hidden = true; e.innerHTML = ''; return; }
+        const inv = AR.invite;
+        if (!inv) { e.hidden = true; e.innerHTML = ''; return; }
         e.hidden = false;
-        if (inv) {
+        {
             const ask = inv.ask, mine = ask.a.some(p => p.u === me()) ? 'a' : 'b', foes = ask[mine === 'a' ? 'b' : 'a'], cap = remoteOf(ask.cap);
             e.innerHTML = `<div class="w-card-name">⚔️ ${esc(cap ? cap.info.n : 'Someone')} challenges you</div>
                 <div class="w-card-sub">${esc(Ar.MODES[ask.mode].name)} against ${foes.map(p => esc(p.n) + ' (' + p.r + ')').join(', ')}${ask.stake ? ` · <b>${fmt(ask.stake)} rubies each</b>, winner takes the pot` : ' · no stake'}</div>
                 <div class="w-card-actions"><button class="btn btn-sm btn-gold" id="arYes">Accept</button><button class="btn btn-sm btn-ghost" id="arNo">Decline</button></div>`;
             e.querySelector('#arYes').addEventListener('click', () => AR.respond(true));
             e.querySelector('#arNo').addEventListener('click', () => AR.respond(false));
-        } else {
-            e.innerHTML = `<div class="w-card-name">🤝 ${esc(pi.name)} invites you to their party</div><div class="w-card-sub">Parties fight team battles together.</div>
-                <div class="w-card-actions"><button class="btn btn-sm btn-gold" id="arPYes">Join</button><button class="btn btn-sm btn-ghost" id="arPNo">No thanks</button></div>`;
-            e.querySelector('#arPYes').addEventListener('click', () => AR.answerParty(true));
-            e.querySelector('#arPNo').addEventListener('click', () => AR.answerParty(false));
         }
     }
 
     // ---------------- menus ----------------
-    let tab = 'play';
+    let tab = 'play', board = 'top';
     AR.openMenu = function (which) {
         if (which) tab = which;
         WHW.ui.modal('🏟️ The Arena', '', { wide: true, render: renderMenu });
@@ -398,7 +389,7 @@
     };
     function renderMenu() {
         const g = game(), s = g.state, a = s.arena, body = document.getElementById('wModalBody');
-        const rank = Ar.rankFor(a.rating), tabsHtml = ['play', 'rank', 'shop', 'record'].map(t => `<button class="w-tab${t === tab ? ' is-on' : ''}" data-artab="${t}">${{ play: 'Play', rank: 'Ranking', shop: 'Glory shop', record: 'Your record' }[t]}</button>`).join('');
+        const rank = Ar.rankFor(a.rating), tabsHtml = ['play', 'tour', 'rank', 'shop', 'record'].map(t => `<button class="w-tab${t === tab ? ' is-on' : ''}" data-artab="${t}">${{ play: 'Play', tour: 'Tournaments', rank: 'Leaderboards', shop: 'Glory shop', record: 'Your record' }[t]}</button>`).join('');
         let html = `<div class="w-tabs">${tabsHtml}</div>
             <div class="w-arena-me"><span style="color:${rank.color}">● ${esc(rank.name)}</span> · rating <b>${a.rating}</b> · <b>${fmt(a.glory)}</b> Glory${a.title ? ' · title: <b>' + esc(a.title) + '</b>' : ''}</div>`;
         if (tab === 'play') {
@@ -407,9 +398,12 @@
                 <p class="w-note"><b>Duels and team battles</b> (best of three rounds, rated): walk up to another player in the lobby and press <kbd>E</kbd> to challenge them, optionally for a ruby stake (the winner takes the pot), or wait in the queue below. For a 2v2 or 3v3, make a party first (<kbd>E</kbd> near a player, then <i>Invite to party</i>).</p>
                 <p class="w-note"><b>The Proving Grounds</b> (the gate on the left): co-op waves of monsters, harder with every player who joins.</p>
                 <div class="w-section"><h3>The queue</h3>${online() ? `<div class="w-row">${Object.keys(Ar.MODES).map(m => `<button class="btn btn-sm ${AR.queue === m ? 'btn-gold' : 'btn-primary'}" data-arq="${m}">${AR.queue === m ? '✓ ' : ''}${esc(Ar.MODES[m].name)}</button>`).join('')}${AR.queue ? '<button class="btn btn-sm btn-ghost" data-arq="">Leave the queue</button>' : ''}</div>` : '<p class="muted">Matches need online play: turn it on in the 🌐 menu.</p>'}</div>
-                <div class="w-section"><h3>Your party</h3><p>${party.map(p => esc(p.n)).join(', ')}${AR.party ? ' <button class="btn btn-sm btn-ghost" data-arleave>Leave the party</button>' : ' <span class="muted">(just you)</span>'}</p></div>`;
+                <div class="w-section"><h3>Your party here</h3><p>${party.map(p => esc(p.n)).join(', ')}${WHW.party && WHW.party.id ? ' <button class="btn btn-sm btn-ghost" data-arleave>Leave the party</button>' : ' <span class="muted">(just you: invite someone with <kbd>E</kbd>)</span>'}</p></div>`;
+        } else if (tab === 'tour') {
+            html += '<div id="arTour"></div>';
         } else if (tab === 'rank') {
-            html += '<div id="arTop"><p class="muted">Loading…</p></div><p class="muted">Ratings are reported by each player\'s own game, so this board is for fun, like the game\'s leaderboard.</p>';
+            html += `<div class="w-row">${[['top', '⚔️ Highest rating'], ['waves', '🌊 Highest wave']].map(([k, l]) => `<button class="btn btn-sm ${board === k ? 'btn-gold' : 'btn-ghost'}" data-arboard="${k}">${l}</button>`).join('')}</div>
+                <div id="arTop"><p class="muted">Loading…</p></div><p class="muted">${board === 'top' ? 'Ratings come from duels and team battles (Elo).' : 'The furthest wave reached in the Proving Grounds, with how many players were in that run.'} Each player's own game reports it, so these boards are for fun, like the game's leaderboard.</p>`;
         } else if (tab === 'shop') {
             html += `<div class="w-grid">${Ar.SHOP.map(it => {
                 const owned = it.title && a.titles[it.title], week = it.weekly && a.coffer === W.weekKey(Date.now());
@@ -418,14 +412,16 @@
             }).join('')}</div>`;
         } else {
             const titles = Ar.titlesOf(a);
-            html += `<div class="w-card-stats"><span>Wins ${a.w}</span><span>Losses ${a.l}</span><span>Draws ${a.d}</span><span>Team wins ${a.teamW}</span><span>Pit knockouts ${a.pitKO}</span><span>Best wave ${a.waveBest}</span><span>Best rating ${a.peak}</span><span>Wagers won ${a.wagerWins} (${a.wagerNet >= 0 ? '+' : ''}${fmt(a.wagerNet)} rubies)</span></div>
+            html += `<div class="w-card-stats"><span>Tournaments ${a.tourPlayed}</span><span>Tournament wins ${a.tourWins}</span><span>Prize rubies ${fmt(a.tourPrize)}</span><span>Wins ${a.w}</span><span>Losses ${a.l}</span><span>Draws ${a.d}</span><span>Team wins ${a.teamW}</span><span>Pit knockouts ${a.pitKO}</span><span>Best wave ${a.waveBest}</span><span>Best rating ${a.peak}</span><span>Wagers won ${a.wagerWins} (${a.wagerNet >= 0 ? '+' : ''}${fmt(a.wagerNet)} rubies)</span></div>
                 <div class="w-section"><h3>Title</h3><select id="arTitle"><option value="">None</option>${titles.map(t => `<option ${t === a.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
                 <p class="muted">Shown under your name to other players. Rank titles come with your best rating; others from the Glory shop.</p></div>`;
         }
         body.innerHTML = html;
         body.querySelectorAll('[data-artab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.artab; renderMenu(); }));
+        body.querySelectorAll('[data-arboard]').forEach(b => b.addEventListener('click', () => { board = b.dataset.arboard; renderMenu(); }));
+        if (tab === 'tour' && WHW.tour) WHW.tour.renderTab(body.querySelector('#arTour'));
         body.querySelectorAll('[data-arq]').forEach(b => b.addEventListener('click', () => AR.setQueue(b.dataset.arq)));
-        const lp = body.querySelector('[data-arleave]'); if (lp) lp.addEventListener('click', () => AR.leaveParty());
+        const lp = body.querySelector('[data-arleave]'); if (lp) lp.addEventListener('click', () => { WHW.party.leave(); renderMenu(); });
         body.querySelectorAll('[data-arbuy]').forEach(b => b.addEventListener('click', () => {
             const r = W.arenaBuy(s, b.dataset.arbuy, Date.now(), g.ack);
             if (!r.ok) WHW.toast({ glory: 'Not enough Glory.', week: 'Already bought this week.', allowance: "This week's lootbox allowance is used up.", owned: 'You have it already.' }[r.reason] || "Can't do that.", 'bad');
@@ -436,11 +432,18 @@
         if (tab === 'rank') {
             const box = body.querySelector('#arTop');
             if (!net() || !net().db) box.innerHTML = '<p class="muted">The board needs online play.</p>';
-            else net().readTop((tree) => {
-                if (!box.isConnected) return;
-                const list = Ar.topList(tree, 20);
-                box.innerHTML = list.length ? `<ol class="w-arena-top">${list.map(r => `<li><b>${esc(r.n)}</b>${r.ti ? ' <span class="muted">' + esc(r.ti) + '</span>' : ''} <span style="color:${Ar.rankFor(r.r).color}">${r.r}</span> <span class="muted">${r.w}W ${r.l}L</span></li>`).join('')}</ol>` : '<p class="muted">Nobody has fought yet. Be the first.</p>';
-            });
+            else {
+                const kind = board;
+                net().readBoard(kind, (tree) => {
+                    if (!box.isConnected || kind !== board) return;
+                    const waves = kind === 'waves', list = waves ? Ar.wavesList(tree, 20) : Ar.topList(tree, 20), place = Ar.placeOn(tree, me(), kind);
+                    const mine = (r) => (r.uid === me() ? ' class="is-me"' : '');
+                    const row = waves ? (r) => `<li${mine(r)}><b>${esc(r.n)}</b>${r.ti ? ' <span class="muted">' + esc(r.ti) + '</span>' : ''} wave <b>${r.w}</b> <span class="muted">${r.p === 1 ? 'alone' : 'with ' + r.p + ' players'}</span></li>`
+                        : (r) => `<li${mine(r)}><b>${esc(r.n)}</b>${r.ti ? ' <span class="muted">' + esc(r.ti) + '</span>' : ''} <span style="color:${Ar.rankFor(r.r).color}">${r.r}</span> <span class="muted">${esc(Ar.rankFor(r.r).name)} · ${r.w}W ${r.l}L</span></li>`;
+                    const you = place ? `<p>You are <b>#${place}</b>.</p>` : `<p class="muted">You aren't on this board yet: ${waves ? 'clear a wave in the Proving Grounds' : 'finish a duel or team battle'}.</p>`;
+                    box.innerHTML = (list.length ? `<ol class="w-arena-top">${list.map(row).join('')}</ol>` : `<p class="muted">${waves ? 'Nobody has cleared a wave yet' : 'Nobody has fought yet'}. Be the first.</p>`) + you;
+                });
+            }
         }
     }
     // Another player in the lobby: challenge them, or invite them to your party
@@ -453,11 +456,11 @@
             <div class="w-section"><h3>Challenge</h3><label>Stake (rubies each, the winner takes the pot): <select id="arStake">${stakes.map(x => `<option value="${x}">${x ? fmt(x) : 'No stake'}</option>`).join('')}</select></label>
             <div class="w-card-actions"><button class="btn btn-primary" id="arDuel">Challenge to a duel</button>
             ${teamMode ? `<button class="btn btn-primary" id="arTeam">Challenge their party (${Ar.MODES[teamMode].name})</button>` : `<span class="muted">Team battles: a party of 2 or 3 on each side.</span>`}</div></div>
-            <div class="w-section"><h3>Party</h3>${AR.party && r.info.pt === AR.party.id ? '<p class="muted">Already in your party.</p>' : '<button class="btn btn-ghost" id="arParty">Invite to your party</button>'}</div>`);
+            <div class="w-section"><h3>Party</h3>${WHW.party && WHW.party.isMate(r.uid) ? '<p class="muted">Already in your party.</p>' : '<button class="btn btn-ghost" id="arParty">Invite to your party</button>'}</div>`);
         const stake = () => Number(body.querySelector('#arStake').value) || 0;
         body.querySelector('#arDuel').addEventListener('click', () => { WHW.ui.closeModal(); AR.challenge(r, 'duel', stake()); });
         const tb = body.querySelector('#arTeam'); if (tb) tb.addEventListener('click', () => { WHW.ui.closeModal(); AR.challenge(r, teamMode, stake()); });
-        const pb = body.querySelector('#arParty'); if (pb) pb.addEventListener('click', () => { WHW.ui.closeModal(); AR.inviteToParty(r); });
+        const pb = body.querySelector('#arParty'); if (pb) pb.addEventListener('click', () => { WHW.ui.closeModal(); WHW.party.invitePlayer(r); });
     };
     // the lobby: the strip along the bottom of the arena where nobody can be hurt
     AR.inLobby = function (p) { const l = game().map.lobby; return !!l && p.y >= l.y0 && p.y <= l.y1; };

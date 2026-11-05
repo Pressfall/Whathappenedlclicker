@@ -55,6 +55,7 @@
     const UID_RE = /^[A-Za-z0-9_-]{4,64}$/;
     const NAME_RE = /^[A-Za-z0-9 _.\-]{1,16}$/;
     const MID_RE = /^[A-Za-z0-9]{4,24}$/;
+    const TOUR_TAG_RE = /^[A-Za-z0-9]{8,12}~\d{1,2}~\d$/;
     const int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
     const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
@@ -86,9 +87,9 @@
     function teamOf(m, uid) { return m.teams.a.some(p => p.u === uid) ? 'a' : m.teams.b.some(p => p.u === uid) ? 'b' : null; }
     function members(m) { return m.teams.a.concat(m.teams.b).map(p => p.u); }
     // A match as every page sees it, from the invitation. ask: { id, mode, stake, ring, t0 (when round 1 starts),
-    // cap (the captain's uid), a: [{ u, n, r }], b: [...] }. me: this page's uid.
+    // cap (the captain's uid), a: [{ u, n, r }], b: [...], tour (a tournament duel's tag, or '') }. me: this page's uid.
     function newMatch(ask, me) {
-        const m = { id: ask.id, mode: ask.mode, stake: ask.stake, ring: ask.ring, cap: ask.cap, teams: { a: ask.a.slice(), b: ask.b.slice() },
+        const m = { id: ask.id, mode: ask.mode, stake: ask.stake, ring: ask.ring, cap: ask.cap, tour: ask.tour || '', teams: { a: ask.a.slice(), b: ask.b.slice() },
             me, team: null, round: 1, wins: { a: 0, b: 0 }, played: 0, state: 'countdown', liveAt: ask.t0, down: {}, gone: {}, result: null, history: [] };
         m.team = teamOf(m, me);
         return m;
@@ -161,12 +162,15 @@
     // The invitation's payload (d/{uid}/*.x): mode|stake|ring|t0|cap|a team|b team, a team being uid~name~rating, ...
     function packAsk(ask) {
         const team = (list) => list.map(p => p.u + '~' + p.n + '~' + clampRating(p.r)).join(',');
-        return [ask.mode, ask.stake, ask.ring, Math.round(ask.t0), ask.cap, team(ask.a), team(ask.b)].join('|');
+        return [ask.mode, ask.stake, ask.ring, Math.round(ask.t0), ask.cap, team(ask.a), team(ask.b)].concat(ask.tour ? [ask.tour] : []).join('|');
     }
     function unpackAsk(id, x) {
         if (!MID_RE.test(String(id || '')) || typeof x !== 'string' || x.length > 400) return null;
         const f = x.split('|');
-        if (f.length !== 7 || !MODES[f[0]]) return null;
+        if ((f.length !== 7 && f.length !== 8) || !MODES[f[0]]) return null;
+        // an 8th field: a tournament's duel (core/world-tour.js tag: tid~slot~gear tier), never staked
+        const tour = f.length === 8 && TOUR_TAG_RE.test(f[7]) ? f[7] : '';
+        if (f.length === 8 && (!tour || f[0] !== 'duel' || Number(f[1]) !== 0)) return null;
         const size = MODES[f[0]].size;
         const team = (str) => {
             const list = String(str).split(',').map(s => s.split('~')).filter(p => p.length === 3 && UID_RE.test(p[0]) && NAME_RE.test(p[1]))
@@ -177,7 +181,7 @@
         if (!a || !b || !RULES.stakes.includes(stake) || !Number.isFinite(t0) || !UID_RE.test(f[4])) return null;
         const all = a.concat(b).map(p => p.u);
         if (new Set(all).size !== all.length || !all.includes(f[4])) return null;
-        return { id, mode: f[0], stake, ring, t0, cap: f[4], a, b };
+        return Object.assign({ id, mode: f[0], stake, ring, t0, cap: f[4], a, b }, tour ? { tour } : {});
     }
     // a message as it arrives: { from, m (kind), id, x, t }, or null
     const KINDS = ['ask', 'yes', 'no', 'busy', 'cancel', 'go', 'down', 'quit', 'party', 'pyes', 'pno', 'pleave', 'ko'];
@@ -221,12 +225,13 @@
     function freshArena() {
         return { glory: 0, gloryTotal: 0, rating: RULES.elo.start, peak: RULES.elo.start, w: 0, l: 0, d: 0, teamW: 0, teamL: 0,
             pitKO: 0, pitDown: 0, waveBest: 0, wagerWins: 0, wagerNet: 0, titles: {}, title: '', coffer: '',
+            tourWins: 0, tourPlayed: 0, tourPrize: 0, tours: {}, // tournaments: s.arena.tours is cleaned by core/world-logic.js migrate (core/world-tour.js)
             day: { key: '', match: 0, pit: 0, waves: 0, rubyWins: 0, vs: {} }, live: null };
     }
     function cleanArena(raw) {
         const a = freshArena();
         if (!isObj(raw)) return a;
-        for (const k of ['glory', 'gloryTotal', 'w', 'l', 'd', 'teamW', 'teamL', 'pitKO', 'pitDown', 'waveBest', 'wagerWins']) a[k] = int(raw[k], 0, 1e9);
+        for (const k of ['glory', 'gloryTotal', 'w', 'l', 'd', 'teamW', 'teamL', 'pitKO', 'pitDown', 'waveBest', 'wagerWins', 'tourWins', 'tourPlayed', 'tourPrize']) a[k] = int(raw[k], 0, 1e9);
         a.wagerNet = int(raw.wagerNet, -1e9, 1e9);
         a.rating = clampRating(raw.rating === undefined ? RULES.elo.start : raw.rating);
         a.peak = Math.max(a.rating, clampRating(raw.peak === undefined ? a.rating : raw.peak));
@@ -265,7 +270,27 @@
         return out.sort((a, b) => b.r - a.r || b.w - a.w || (a.uid < b.uid ? -1 : 1)).slice(0, n);
     }
 
+    // wilds/v1/arena/waves/{uid}: { n, w (best wave), p (players in that run), ti, t }, the Proving Grounds' board, each player
+    // writing their own when they reach a new best (self-reported, like the rating board)
+    function wavesRecord(name, a, players, now) { return { n: String(name || 'Player').slice(0, 16), w: int(a.waveBest, 0, 9999), p: int(players, 1, 8), ti: String(a.title || '').slice(0, 24), t: Math.round(now) }; }
+    function sanitizeWaves(raw) {
+        if (!isObj(raw) || typeof raw.n !== 'string' || !NAME_RE.test(raw.n)) return null;
+        const w = int(raw.w, 0, 9999);
+        return w > 0 ? { n: raw.n, w, p: int(raw.p, 1, 8), ti: typeof raw.ti === 'string' ? raw.ti.slice(0, 24) : '', t: Number(raw.t) || 0 } : null;
+    }
+    // the best n by wave (reached first breaks a tie: an earlier record ranks higher)
+    function wavesList(tree, n = 20) {
+        const out = [];
+        if (isObj(tree)) for (const uid in tree) { const r = sanitizeWaves(tree[uid]); if (r && UID_RE.test(uid)) out.push(Object.assign({ uid }, r)); }
+        return out.sort((a, b) => b.w - a.w || a.t - b.t || (a.uid < b.uid ? -1 : 1)).slice(0, n);
+    }
+    // a player's place on a full board (1 = top), or 0 when they aren't on it
+    function placeOn(tree, uid, kind) {
+        const list = kind === 'waves' ? wavesList(tree, Infinity) : topList(tree, Infinity);
+        return list.findIndex(r => r.uid === uid) + 1;
+    }
+
     return { MODES, RULES, GLORY, RANKS, SHOP, SHOP_BY_ID, inCircle, hitAllowed, clampRating, expected, elo, teamRating, rankFor,
         teamOf, members, newMatch, reduce, outcome, vsKey, canStake, packAsk, unpackAsk, cleanMsg, KINDS, matchmaker, pickMatches,
-        freshArena, cleanArena, titlesOf, refreshDay, giveGlory, topRecord, sanitizeTop, topList };
+        freshArena, cleanArena, titlesOf, refreshDay, giveGlory, topRecord, sanitizeTop, topList, wavesRecord, sanitizeWaves, wavesList, placeOn };
 }));

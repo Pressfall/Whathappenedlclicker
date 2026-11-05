@@ -9,14 +9,16 @@
  *   validateHit) and takes it with its own shield and armor. Abilities hit players too: the hit names the ability, and the
  *   player hit applies its effects from the game's own table. Each player's last cast rides along with their position, so
  *   everyone sees it. A player knocked out by another drops part of what they carry as a loot bag; the winner gets first pick.
- * - Chat: a short line or an emote shown above the speaker.
+ * - Chat: a short line or an emote shown above the speaker. A party (world-party.js) has its own chat, in any zone, and its
+ *   members can't hurt each other.
  * - Shared bosses: one health bar for everyone in the arena. One page (the host: lowest id in the arena) runs the boss and
  *   shares where it is and what it does; the others replay that. Everyone who did enough damage gets the reward.
  * - The Arena: PvP only in the Pit and in matches (core/world-arena.js); messages between players (invitations, knockouts)
  *   travel like hits, in d/{uid}. A knocked-out player tells whoever knocked them out ('ko'), so wins count without loot.
  * - The Proving Grounds: one shared run of co-op waves (w), run by one page like a boss (world-waves.js).
  * Data layout under wilds/v1/zones/{zone}: p/{uid} position, i/{uid} look and chat, h/{uid}/{id} hits for that player,
- * d/{uid}/{id} messages for that player, l/{id} loot bags, b the boss, w the waves run. Leaderboard: wilds/v1/arena/top.
+ * d/{uid}/{id} messages for that player, l/{id} loot bags, b the boss, w the waves run. Leaderboards: wilds/v1/arena/top and
+ * wilds/v1/arena/waves; tournaments: wilds/v1/arena/tour (world-tour.js); parties: wilds/v1/party (world-party.js).
  * Rules: database.rules.json.
  */
 (function () {
@@ -118,10 +120,22 @@
     ON.stop = function () {
         clearTimeout(ON.fullTimer);
         leave();
+        if (WHW.party) WHW.party.offline();
+        if (WHW.tour) WHW.tour.offline();
         if (ON.db) ON.db.close();
         ON.db = null; ON.uid = null; ON.connectedOnce = false;
         setStatus('off');
     };
+    // The database refused something the game needs (its rules are older than this version of the game): say so once, so the
+    // reason is not a mystery. Everything else keeps working.
+    let deniedTold = false;
+    window.addEventListener('whnet-denied', (ev) => {
+        if (deniedTold || !WHW.toast) return;
+        deniedTold = true;
+        const path = String((ev.detail && ev.detail.path) || '');
+        const what = /\/party\//.test(path) ? 'parties' : /\/arena\/(tour|waves|top)/.test(path) ? 'tournaments and leaderboards' : /\/d\//.test(path) ? 'invitations' : /\/zones\/(arena|trials)/.test(path) ? 'the Arena' : 'some online features';
+        WHW.toast('The online database refused ' + what + ': its rules are out of date. The owner of the game needs to publish database.rules.json again (Firebase console > Realtime Database > Rules).', 'bad');
+    });
     ON.zoneChanged = function (zone) { ON.wantZone = zone; if (ON.db) join(zone); };
     // a hidden page stops sending; after a while it leaves so others don't see a statue
     ON.visibility = function (hidden) {
@@ -145,7 +159,7 @@
         ON.zone = zone;
         ON.wantZone = zone;
         const me = ON.uid;
-        for (const p of ['p/' + me, 'i/' + me, 'h/' + me, 'd/' + me]) db.onDisconnectRemove(Z(p));
+        for (const p of ['p/' + me, 'i/' + me, 'h/' + me, 'd/' + me, 'm/' + me]) db.onDisconnectRemove(Z(p));
         db.remove(Z('h/' + me)); // hits sent while we were away
         db.remove(Z('d/' + me));
         ON.lastSent = ''; ON.lastPos = null; ON.infoKey = ''; ON.sendT = 0;
@@ -157,15 +171,19 @@
         ON.subs.push(db.onChild(Z('l'), { add: onLoot, change: onLoot, remove: (k) => ON.loot.delete(k) }));
         const zd = D.ZONES[zone] || {};
         if (zd.boss) ON.subs.push(db.onValue(Z('b'), onBoss));
+        if (zd.spawns && !zd.interior && !zd.coop && WHW.mobs) WHW.mobs.join(db, Z, ON.subs); // the zone's monsters, shared
         if (zd.coop && WHW.waves) ON.subs.push(db.onValue(Z('w'), (v) => WHW.waves.onRun(v)));
+        if (WHW.party) WHW.party.online(zone); // my party (it isn't the zone's): back in it, and where I am now
+        if (WHW.tour) WHW.tour.online();
     }
     function leave() {
         if (WHW.arena && ON.zone) WHW.arena.leaving(ON.zone);
         ON.subs.forEach((u) => { try { u(); } catch (e) {} });
         ON.subs = [];
         if (ON.db && ON.zone) {
-            for (const p of ['p/' + ON.uid, 'i/' + ON.uid, 'h/' + ON.uid, 'd/' + ON.uid]) { ON.db.remove(Z(p)); ON.db.cancelOnDisconnect(Z(p)); }
+            for (const p of ['p/' + ON.uid, 'i/' + ON.uid, 'h/' + ON.uid, 'd/' + ON.uid, 'm/' + ON.uid]) { ON.db.remove(Z(p)); ON.db.cancelOnDisconnect(Z(p)); }
         }
+        if (WHW.mobs) WHW.mobs.reset();
         ON.remotes.clear(); ON.parked.clear(); ON.loot.clear();
         ON.boss = null; ON.bossPending = 0; ON.bossGen = ''; ON.isHost = false; ON.hostUid = null; ON.followSeq = -1;
         ON.zone = null;
@@ -282,7 +300,7 @@
     }
     function sendInfo(force) {
         if (!ON.db || !ON.zone) return;
-        const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {});
+        const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {}, WHW.party ? WHW.party.infoExtra() : {});
         const key = JSON.stringify(info);
         if (!force && key === ON.infoKey) return;
         ON.infoKey = key;
@@ -329,16 +347,22 @@
         if (ON.infoT <= 0) { ON.infoT = 0.5; sendInfo(false); }
         lootTick();
         if (D.ZONES[ON.zone] && D.ZONES[ON.zone].boss) bossTick(dt);
+        if (WHW.party) WHW.party.update();
         ON.chipT -= dt;
         if (ON.chipT <= 0) { ON.chipT = 0.5; if (WHW.ui.setOnline) WHW.ui.setOnline(); }
     };
     ON.here = function () { return [...ON.remotes.values()].filter(r => !r.stale && r.info); };
-    // other players my weapons can hit right now (in the arena: only a match's foes, or others in the Pit with me)
+    // someone who just hit me from inside a camp has given up its shelter (their page lifts it too), so I may hit back
+    function fought(r) { const l = game().lastPvp; return !!l && l.uid === r.uid && E.time - l.at < D.CAMP.lockSec; }
+    // a party member I can't hurt (nor they me): any but a foe in an arena match
+    ON.mate = function (uid) { return !!WHW.party && WHW.party.isMate(uid) && !(WHW.arena && WHW.arena.matchFoe(uid)); };
+    // other players my weapons can hit right now (in the arena: only a match's foes, or others in the Pit with me; never my
+    // party's members)
     ON.targets = function () {
         const rule = O.pvpRule(ON.zone);
         if (!ON.db || !ON.zone || rule === 'off' || ON.status !== 'online') return [];
         const out = [];
-        for (const r of ON.remotes.values()) if (!r.stale && !r.dead && !r.protected && r.info && (rule !== 'arena' || (WHW.arena && WHW.arena.canHit(r)))) out.push(r);
+        for (const r of ON.remotes.values()) if (!r.stale && !r.dead && !r.protected && r.info && (!A.inCamp(r.x, r.y) || fought(r)) && !ON.mate(r.uid) && (rule !== 'arena' || (WHW.arena && WHW.arena.canHit(r)))) out.push(r);
         return out;
     };
     // a message for another player (an invitation, a knockout...): d/{uid}, read only by them
@@ -351,6 +375,7 @@
         const msg = Ar.cleanMsg(raw);
         if (!msg || ON.db.serverNow() - msg.t > 30000) return;
         if (msg.m === 'ko') { onKO(msg); return; }
+        if (WHW.party && (msg.m === 'party' || msg.m === 'pyes' || msg.m === 'pno')) { WHW.party.onMessage(msg); return; }
         if (WHW.arena) WHW.arena.onMessage(msg);
     }
     // someone I hit told me I knocked them out: the win counts even when they carried nothing
@@ -373,13 +398,17 @@
         WHW.sfx('boss');
         WHW.save();
     }
-    // the leaderboard (Arena): everyone's record, read once; and mine, written after a match
-    ON.readTop = function (cb) {
-        if (!ON.db) { cb(null); return; }
+    // the leaderboards (Arena): 'top' (rating) and 'waves' (the Proving Grounds' best waves). Everyone's records, read once;
+    // and mine, written when it changes (after a match; at a new best wave)
+    const BOARDS = { top: TOP_PATH, waves: 'wilds/v1/arena/waves' };
+    ON.readBoard = function (kind, cb) {
+        if (!ON.db || !BOARDS[kind]) { cb(null); return; }
         let off = null, done = false;
-        off = ON.db.onValue(TOP_PATH, (v) => { if (done) return; done = true; cb(v || {}); setTimeout(() => off && off(), 0); });
+        off = ON.db.onValue(BOARDS[kind], (v) => { if (done) return; done = true; cb(v || {}); setTimeout(() => off && off(), 0); });
     };
-    ON.writeTop = function (rec) { if (ON.db) ON.db.set(TOP_PATH + '/' + ON.uid, rec); };
+    ON.writeBoard = function (kind, rec) { if (ON.db && BOARDS[kind]) ON.db.set(BOARDS[kind] + '/' + ON.uid, rec); };
+    ON.readTop = (cb) => ON.readBoard('top', cb);
+    ON.writeTop = (rec) => ON.writeBoard('top', rec);
 
     // ---------------- PvP ----------------
     ON.hitRemote = function (r, h) {
@@ -388,6 +417,7 @@
         const w = h.w || (it && it.base);
         if (!w || !ON.db) return;
         p.protectedUntil = 0; // attacking ends your own arrival protection
+        if (A.inCamp(p.x, p.y)) p.campLockUntil = E.time + D.CAMP.lockSec; // ...and the camp's
         ON.hitAt[r.uid] = E.time;
         sendPos(true); // where I am now, ahead of the hit (the player hit checks its reach from my last position)
         const hit = O.makeHit(w, h.kind, h.dmg, h.ang, h.perfect);
@@ -407,8 +437,8 @@
         const last = r && r.buf.length ? r.buf[r.buf.length - 1] : null;
         const rateKey = raw.from + '|' + raw.w;
         const arenaOk = O.pvpRule(ON.zone) === 'arena' && !!last && !!WHW.arena && WHW.arena.hitFrom(raw.from, last, r);
-        const v = O.validateHit(raw, { zone: ON.zone, attacker: last, me: { x: p.x, y: p.y, protected: p.protectedUntil > E.time }, now: E.time, lastAt: ON.lastHitAt[raw.from],
-            weapon: r && r.info ? r.info.w : null, abRate: ON.abRate[rateKey], arenaOk, cls: r && r.info ? r.info.cl : '' });
+        const v = O.validateHit(raw, { zone: ON.zone, attacker: last, me: { x: p.x, y: p.y, protected: p.protectedUntil > E.time, safe: A.playerSafe() }, now: E.time, lastAt: ON.lastHitAt[raw.from],
+            weapon: r && r.info ? r.info.w : null, abRate: ON.abRate[rateKey], arenaOk, cls: r && r.info ? r.info.cl : '', mate: ON.mate(raw.from) });
         if (!v.ok) return;
         if (raw.k === 'ab') { ON.abRate[rateKey] = v.rate; takeAbility(raw, v, r, last); return; }
         if (raw.k === 'parry') {
@@ -499,14 +529,17 @@
     }
 
     // ---------------- chat ----------------
-    function logLine(name, m, mine) {
+    // ch: 'zone' (said out loud, to the zone) or 'party' (world-party.js)
+    function logLine(name, m, mine, ch) {
+        ch = ch === 'party' ? 'party' : 'zone';
         // the same line again from the same player: one line with a count
         const last = ON.log[ON.log.length - 1];
-        if (last && last.name === name && last.mine === mine && CS.norm(last.m) === CS.norm(m)) { last.n = (last.n || 1) + 1; last.at = Date.now(); }
-        else ON.log.push({ name, m, mine, at: Date.now(), n: 1 });
+        if (last && last.name === name && last.mine === mine && last.ch === ch && CS.norm(last.m) === CS.norm(m)) { last.n = (last.n || 1) + 1; last.at = Date.now(); }
+        else ON.log.push({ name, m, mine, ch, at: Date.now(), n: 1 });
         if (ON.log.length > O.CHAT.logMax) ON.log.shift();
         if (WHW.ui.chatLogChanged) WHW.ui.chatLogChanged();
     }
+    ON.logLine = logLine;
     ON.say = function (text, emote) {
         if (!ON.db || !ON.zone) { WHW.toast('Chat works when you are online.'); return false; }
         if (E.time - ON.sayAt < O.CHAT.gapSec) return false;

@@ -6,7 +6,7 @@
  */
 (function () {
     'use strict';
-    const D = window.WHWorldData, W = window.WHWorld, C = window.WHWorldCombat, G = window.WHWorldGen, Bridge = window.WHWorldBridge, O = window.WHWorldOnline, Gods = window.WHWorldGods, Skins = window.WHSkins;
+    const D = window.WHWorldData, W = window.WHWorld, C = window.WHWorldCombat, G = window.WHWorldGen, Bridge = window.WHWorldBridge, O = window.WHWorldOnline, Gods = window.WHWorldGods, Skins = window.WHSkins, Mb = window.WHWorldMobs;
     const WHW = window.WHW;
     const E = WHW.engine, A = WHW.actors;
     const KEY = Bridge.WORLD_KEY;
@@ -186,13 +186,20 @@
         for (const [id, w] of list) { x -= w; if (x < 0) return id; }
         return list[0][0];
     }
-    function spawnAt(i) {
+    // A spawn point's monsters (only: one member of its pack, when it is that one coming back). With others in the zone every
+    // page makes the same kind (world-mobs.js); a pack that is partly alive stays one kind.
+    function spawnAt(i, only) {
         const sp = g.map.spawns[i];
         if (!sp) return;
-        const type = weightedPick(D.ZONES[g.zoneId].spawns);
+        const mates = g.actors.find(a => !a.dead && a.spawn === i && !a.elite && a.sid);
+        const first = only === undefined ? 0 : only;
+        const type = mates ? mates.type : (WHW.mobs && WHW.mobs.kindFor(g.zoneId, i, first)) || weightedPick(D.ZONES[g.zoneId].spawns);
         const n = D.MONSTERS[type].group || 1;
-        for (let k = 0; k < n; k++) {
-            const m = A.makeMonster(type, sp.x + (k - (n - 1) / 2) * 30, sp.y + (k % 2) * 20, { spawn: i, flank: n > 1 ? k - (n - 1) / 2 : 0 });
+        for (let k = 0; k < Math.max(n, first + 1); k++) {
+            if (only !== undefined && k !== only) continue;
+            const sid = Mb.sid(i, k);
+            if (g.actors.some(a => !a.dead && a.sid === sid)) continue;
+            const m = A.makeMonster(type, sp.x + (k - (n - 1) / 2) * 30, sp.y + (k % 2) * 20, { spawn: i, member: k, sid, gen: WHW.mobs ? WHW.mobs.genOf(sid) : 0, flank: n > 1 ? k - (n - 1) / 2 : 0 });
             E.collideTiles(m);
             g.actors.push(m);
         }
@@ -200,7 +207,9 @@
     function spawnElite(i) {
         const z = D.ZONES[g.zoneId], ep = g.map.elites[i];
         if (!ep) return;
-        const m = A.makeMonster(z.elite, ep.x, ep.y, { spawn: i });
+        const sid = Mb.sid(i, 0, true);
+        if (g.actors.some(a => !a.dead && a.sid === sid)) return;
+        const m = A.makeMonster(z.elite, ep.x, ep.y, { spawn: i, sid, gen: WHW.mobs ? WHW.mobs.genOf(sid) : 0 });
         E.collideTiles(m);
         g.actors.push(m);
     }
@@ -290,6 +299,7 @@
         WHW.ui.renderHotbar();
     }
 
+    WHW.refreshPlayer = refreshPlayer;
     // loot popping out of something: floating text plus toasts for treasure that goes home
     WHW.showLoot = function (x, y, loot) {
         let dy = 0;
@@ -661,7 +671,7 @@
             // the Arena: the lobby is safe; challenge someone there, or step into the Pit
             if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Back to town'; if (press) enterZone('town'); }
             else if (dist(p, map.trialsGate) < 64) { prompt = '<kbd>E</kbd>⚔️ The Proving Grounds: co-op waves'; if (press) enterZone('trials'); }
-            else if (dist(p, map.board) < 64) { prompt = '<kbd>E</kbd>🏆 The ranking board'; if (press) WHW.arena.openMenu('rank'); }
+            else if (dist(p, map.board) < 64) { prompt = '<kbd>E</kbd>🏆 Leaderboards and tournaments'; if (press) WHW.arena.openMenu('tour'); }
             else if (WHW.arena && WHW.arena.inLobby(p) && !WHW.arena.match && WHW.online) {
                 let best = null, bd = 70;
                 for (const r of WHW.online.here()) { const d = dist(p, r); if (d < bd && !r.dead) { bd = d; best = r; } }
@@ -718,6 +728,12 @@
                 } else { g.harvestT = 0; g.harvestNode = null; }
             } else { g.harvestNode = null; g.harvestT = 0; }
         }
+        // another player close by (anywhere but the Arena, whose lobby has its own card): invite them to your party
+        if (!prompt && WHW.party && WHW.online && !map.pit) {
+            let best = null, bd = 60;
+            for (const r of WHW.online.here()) { const d = dist(p, r); if (d < bd) { bd = d; best = r; } }
+            if (best) { prompt = `<kbd>E</kbd>👤 ${esc(best.info.n)}${WHW.party.isMate(best.uid) ? ' (your party)' : ': invite to your party'}`; if (press) WHW.party.openPlayer(best); }
+        }
         WHW.ui.setPrompt(prompt);
     }
     function separate(list) {
@@ -749,7 +765,12 @@
         }
     }
     // is another player one who can hurt me here? (drawn in red)
-    function hostileTo(r) { const rule = O.pvpRule(g.zoneId); return rule === 'open' || (rule === 'arena' && !!WHW.arena && !!r.info && WHW.arena.canHit(r)); }
+    function hostileTo(r) {
+        if (WHW.online && WHW.online.mate(r.uid)) return false; // my party
+        const rule = O.pvpRule(g.zoneId);
+        return rule === 'open' || (rule === 'arena' && !!WHW.arena && !!r.info && WHW.arena.canHit(r));
+    }
+    const isMate = (r) => !!WHW.party && WHW.party.isMate(r.uid);
     // is any zone past the Waystone open? (it wakes when Frozen WH falls)
     function farOpen() { return D.ZONE_ORDER.some(z => D.ZONES[z].via === 'waystone' && g.state.unlocked.zones[z]); }
     // which god a statue in the Hall is: the hidden one says so, the others by their place
@@ -769,6 +790,8 @@
         // the arena's matches and the Proving Grounds' waves go on while you are knocked out
         if (WHW.arena) WHW.arena.update(dt);
         if (WHW.waves) WHW.waves.update(dt);
+        if (WHW.mobs) WHW.mobs.update(dt);
+        if (WHW.tour) WHW.tour.update(dt);
         if (p.dead) { A.updateProjectiles(dt); return; }
         A.updatePlayer(p, dt);
         if (p.dead) return;
@@ -796,7 +819,7 @@
                 if (E.time < r.at) return true;
                 const pt = r.elite ? g.map.elites[r.spawn] : g.map.spawns[r.spawn];
                 if (!pt || dist(p, pt) < 500) { r.at = E.time + 5; return true; }
-                if (r.elite) spawnElite(r.spawn); else spawnAt(r.spawn);
+                if (r.elite) spawnElite(r.spawn); else spawnAt(r.spawn, r.member);
                 return false;
             });
         }
@@ -877,7 +900,11 @@
             ctx.restore();
         }
         if (map.camp && inView(map.camp.x, map.camp.y, 60)) {
-            const c = map.camp;
+            const c = map.camp, lit = A.playerSafe();
+            // the safe ground: a soft ring around the camp (brighter while you stand in it)
+            ctx.save(); ctx.setLineDash([8, 10]); ctx.lineWidth = 2; ctx.strokeStyle = lit ? 'rgba(255,214,120,0.75)' : 'rgba(255,214,120,0.28)';
+            ctx.fillStyle = lit ? 'rgba(255,200,90,0.07)' : 'rgba(255,200,90,0.03)';
+            ctx.beginPath(); ctx.arc(c.x, c.y, D.CAMP.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.restore();
             ctx.fillStyle = '#8a6a4a'; ctx.beginPath(); ctx.moveTo(c.x - 34, c.y - 4); ctx.lineTo(c.x - 16, c.y - 34); ctx.lineTo(c.x + 2, c.y - 4); ctx.closePath(); ctx.fill();
             const f = 0.7 + Math.sin(E.time * 10) * 0.2;
             ctx.fillStyle = `rgba(255,150,40,${f})`; ctx.beginPath(); ctx.arc(c.x + 22, c.y - 8, 7, 0, Math.PI * 2); ctx.fill();
@@ -1017,7 +1044,7 @@
         items.sort((x, y) => x.y - y.y);
         const it = W.findGear(g.state, p.weaponUid), b = W.baseOf(it);
         for (const o of items) {
-            if (o.rp) { A.drawRemote(ctx, o.rp, hostileTo(o.rp)); continue; }
+            if (o.rp) { A.drawRemote(ctx, o.rp, hostileTo(o.rp), isMate(o.rp)); continue; }
             if (o.npc) { A.drawNpc(ctx, o.npc, D.NPCS[o.npc.id], npcMark(o.npc.id)); continue; }
             if (o.statue) { const id = statueGod(o.statue); if (id) A.drawStatue(ctx, o.statue, Gods.GODS[id], g.state.gods[id] || 0); continue; }
             if (o.altar) { A.drawAltar(ctx, o.altar, D.HIDDEN_SHOP[o.altar.id], !!g.state.secrets[o.altar.id]); continue; }
@@ -1177,7 +1204,7 @@
         for (const st of m.stations) dot(st.door.x, st.door.y, D.STATIONS[st.id].color, 3);
         if (g.state.grave && g.state.grave.zone === g.zoneId) dot(g.state.grave.x, g.state.grave.y, '#ffc83d', 4);
         if (big) for (const a of g.actors) if (!a.dead && (a.elite || a.kind === 'rival')) dot(a.x, a.y, a.kind === 'rival' ? '#ff9a3d' : '#ffe14d', 2.5);
-        if (WHW.online) for (const rp of WHW.online.drawables()) dot(rp.x, rp.y, hostileTo(rp) ? '#ff6b7a' : '#9ad7ff', big ? 3 : 2.5);
+        if (WHW.online) for (const rp of WHW.online.drawables()) dot(rp.x, rp.y, isMate(rp) ? '#7dffb0' : hostileTo(rp) ? '#ff6b7a' : '#9ad7ff', big ? 3 : 2.5);
         if (m.arena) dot(m.arena.door.x, m.arena.door.y, '#ffb347', 3);
         dot(g.player.x, g.player.y, '#ffffff', big ? 4 : 3);
     };

@@ -330,3 +330,11 @@ test('database.rules.json is valid and covers every place the game writes', () =
     // every zone players meet in (inside a building, like the Hall of Gods, nobody is online)
     for (const z of Object.keys(D.ZONES).filter(id => !D.ZONES[id].interior)) assert.ok(new RegExp(zone['.validate'].match(/\/(.*)\//)[1]).test(z), 'zone ' + z + ' allowed');
 });
+
+test('nobody can hurt a player standing in a camp, and the camp is a sensible size', () => {
+    const hit = O.makeHit('sword_1', 'melee', 20, 0, false);
+    assert.equal(O.validateHit(hit, ctx({ me: { x: 140, y: 100, protected: false, safe: true } })).reason, 'camp');
+    assert.equal(O.validateHit(O.makeHit('firestaff_2', 'spell', 30, 0, false), ctx({ me: { x: 140, y: 100, protected: false, safe: true } })).reason, 'camp');
+    assert.equal(O.validateHit(hit, ctx({ me: { x: 140, y: 100, protected: false, safe: false } })).ok, true, 'outside the camp as ever');
+    assert.ok(D.CAMP.r >= 100 && D.CAMP.r <= 200 && D.CAMP.lockSec >= 3, 'a small ring, and attacking from it lifts it for a while');
+});

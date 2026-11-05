@@ -403,3 +403,34 @@ button.w-load:hover { border-color: var(--border-strong); }
 .w-arena-top { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 4px; }
 .w-waves-hud { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); padding: 8px 16px; border-radius: 14px; background: rgba(15, 18, 27, 0.88); border: 1px solid var(--border-strong); font: 700 13px var(--font); color: var(--text); text-align: center; }
 .w-waves-hud b { color: var(--gold); font-size: 18px; }
+
+/* ---------------- parties (world-party.js) ---------------- */
+.w-party { align-self: flex-start; display: flex; flex-direction: column; gap: 3px; max-width: 100%; padding: 6px 10px; border-radius: 10px; background: rgba(15, 18, 27, 0.72); border: 1px solid rgba(125, 255, 176, 0.35); color: var(--text); font: 12px var(--font); text-align: left; cursor: pointer; pointer-events: auto; }
+.w-party[hidden] { display: none; }
+.w-party div { display: flex; justify-content: space-between; gap: 10px; }
+.w-party b { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #8dffb8; }
+.w-party span { color: var(--text-dim); white-space: nowrap; }
+.w-party .is-here span { color: #8dffb8; }
+.w-party-head { font-weight: 800; color: #8dffb8; }
+.w-party-invite { top: 330px; border-color: #7dffb0; }
+.w-toast--party { border-color: rgba(125, 255, 176, 0.6); color: #c9ffdc; }
+.w-log .is-party i { color: #8dffb8; font-style: normal; font-weight: 700; }
+.w-chat .w-row { display: flex; gap: 6px; align-items: center; }
+.w-chat .w-row input { flex: 1; }
+#chatChan[hidden] { display: none; }
+
+/* ---------------- tournaments and leaderboards (world-tour.js, world-arena.js) ---------------- */
+.w-tour-hud { position: absolute; top: 58px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 2px; padding: 6px 14px; border-radius: 12px; background: rgba(15, 18, 27, 0.85); border: 1px solid var(--gold); font-size: 12px; text-align: center; }
+.w-tour-hud[hidden] { display: none; }
+.w-tour-form { display: flex; flex-direction: column; gap: 8px; }
+.w-tour-form label { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; }
+.w-tour-form input:not([type="checkbox"]), .w-tour-form select { flex: 1; max-width: 62%; }
+.w-tour-bracket { display: flex; gap: 10px; overflow-x: auto; padding: 4px 0 8px; }
+.w-tour-col { display: flex; flex-direction: column; justify-content: space-around; gap: 8px; min-width: 130px; }
+.w-tour-col h4 { margin: 0; font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.w-tour-slot { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border-strong); font-size: 13px; }
+.w-tour-slot.is-live { border-color: var(--gold); }
+.w-tour-slot .is-win { color: var(--gold); font-weight: 700; }
+.w-tour-slot .is-out { color: var(--text-dim); text-decoration: line-through; }
+.w-tour-slot small { color: var(--text-dim); font-size: 11px; }
+.w-arena-top .is-me { color: var(--gold); }

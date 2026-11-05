@@ -586,7 +586,7 @@
                 ['spikes', 'ring', 'summon', 'charge', 'slam'],
             ],
             aura: { radius: 140, slow: 0.35 }, summon: 'wolf', emberStrips: true,
-            sigil: 'sigil_frost', rubiesFirst: 1500, rubies: [300, 450], gems: [2, 3], golden: 0.15, mythicWeekly: true,
+            sigil: 'sigil_frost', sigilEvery: true, rubiesFirst: 1500, rubies: [300, 450], gems: [2, 3], golden: 0.15, mythicWeekly: true,
             drops: [['mithril_ore', 4, 6, 1], ['frost_crystal', 3, 5, 1], ['wolf_pelt', 2, 3, 1], ['star_fragment', 1, 2, 1], ['frozen_tear', 1, 1, 0.35], ['crown_of_winter', 1, 1, 0.04], ['hidden_shard', 1, 1, 0.1, 'fixed']],
         },
         // ---- the Far Reaches: each lair is sealed until its zone's wards are broken (ZONES[z].wards)
@@ -646,7 +646,7 @@
     // per zone: which rival roams there and how tough
     const RIVAL_TIERS = {
         greenwood: { rival: 'chad', tier: 1, hp: 140, sweepHz: 1.4, react: 0.45, dodge: 0.1, rubies: 30 },
-        mines: { rival: 'hacker', tier: 2, hp: 300, sweepHz: 1.7, react: 0.38, dodge: 0.18, rubies: 60 },
+        mines: { rival: 'hacker', tier: 2, hp: 300, sweepHz: 1.7, react: 0.55, dodge: 0.18, rubies: 60, aimErr: 0.45, lead: 0.35 },
         ember: { rival: 'bread', tier: 3, hp: 620, sweepHz: 2.0, react: 0.3, dodge: 0.25, rubies: 120 },
         frost: { rival: 'lightning', tier: 4, hp: 1100, sweepHz: 2.3, react: 0.24, dodge: 0.32, rubies: 220 },
         // in the Far Reaches they come back harder, with a name to match (title) and that zone's gear
@@ -730,6 +730,9 @@
     const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost', 'coast', 'storm', 'ruins', 'sky'];
     // a ward guardian: the zone's elite, this much tougher, with adds from the zone around it
     const WARD = { hpMult: 1.6, dmgMult: 1.2, adds: 3 };
+    // A zone's camp is safe ground: within r px of it nothing hurts you (monsters, rivals, hazards, other players) and
+    // monsters lose interest. Dealing damage from inside lifts it for lockSec seconds, so the camp is no place to snipe from.
+    const CAMP = { r: 150, lockSec: 5 };
     const MONSTER_RESPAWN_SEC = 35;
     const ELITE_RESPAWN_SEC = 300;
 
@@ -1200,6 +1203,6 @@
         QUALITY, AFFIXES, TIERS, GEAR, GEAR_BY_ID, STAFF_MAGIC, STAFF_OVER, STAFF_MANA_MIN, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
-        ELITE_RESPAWN_SEC, WARD, MAX_TIER, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
+        ELITE_RESPAWN_SEC, WARD, CAMP, MAX_TIER, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
     };
 }));

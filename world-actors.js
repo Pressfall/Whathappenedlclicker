@@ -33,7 +33,7 @@
         p.shield = Object.assign(C.newWeapon('shield', Math.PI / 2), { up: false, raisedAt: -9, brokenUntil: 0 });
         return p;
     };
-    // opts: spawn, eliteSpawn, flank, summoned; hpMult / dmgMult on top of the zone's; name; guardian ({ zone, i }: a ward's
+    // opts: spawn, member (which of its pack), sid and gen (its id for other players, see core/world-mobs.js), eliteSpawn, flank, summoned; hpMult / dmgMult on top of the zone's; name; guardian ({ zone, i }: a ward's
     // guardian); champion (a crowned one)
     A.makeMonster = function (type, x, y, opts = {}) {
         const def = D.MONSTERS[type];
@@ -41,7 +41,7 @@
         const m = base('monster', 'monster', x, y, def.r);
         const hm = (z.hpMult || 1) * (opts.hpMult || 1), dm = (z.dmgMult || 1) * (opts.dmgMult || 1);
         Object.assign(m, { type, def, name: opts.name || def.name, hp: def.hp * hm, maxHp: def.hp * hm, dmg: def.dmg * dm, guardian: opts.guardian || null, champion: !!opts.champion,
-            armor: def.armor || 0, baseArmor: def.armor || 0, speed: def.speed, elite: !!def.elite, home: { x, y }, aggro: false, spawn: opts.spawn, eliteSpawn: opts.eliteSpawn,
+            armor: def.armor || 0, baseArmor: def.armor || 0, speed: def.speed, elite: !!def.elite, home: { x, y }, aggro: false, spawn: opts.spawn, member: opts.member, sid: opts.sid, gen: opts.gen || 0, eliteSpawn: opts.eliteSpawn,
             cds: def.attacks.map(() => 0), hopT: rnd(), wanderT: rnd() * 3, wander: null, flank: opts.flank || 0, summoned: !!opts.summoned, mass: def.r / 14 });
         if (def.dummy) Object.assign(m, { kind: 'dummy', hp: def.hp, maxHp: def.hp, solid: true, mass: 99, lastDmg: 0, dmgLog: [] });
         return m;
@@ -77,9 +77,13 @@
     A.solidsNear = solidsNear;
 
     // ---------------- damage ----------------
+    // A zone's camp is safe ground (D.CAMP): standing in it nothing hurts you and monsters lose interest, until you
+    // deal damage from inside (then not for D.CAMP.lockSec seconds)
+    A.inCamp = function (x, y) { const c = game().map.camp; return !!c && !game().inTown && Math.hypot(x - c.x, y - c.y) <= D.CAMP.r; };
+    A.playerSafe = function () { const p = game().player; return !!p && !(p.campLockUntil > E.time) && A.inCamp(p.x, p.y); };
     A.hurtPlayer = function (dmg, opts = {}) {
         const g = game(), p = g.player;
-        if (p.dead || p.iframes > 0 || g.inTown) return 0;
+        if (p.dead || p.iframes > 0 || g.inTown || A.playerSafe()) return 0;
         const st = g.pstats;
         // Riposte: a hit from someone, inside the guard window, does nothing, and whoever threw it is disarmed. opts.remote:
         // the other player behind a PvP hit (world-online.js)
@@ -179,6 +183,8 @@
         t.hp -= dmg;
         t.flash = 0.12;
         t.lastHit = E.time;
+        if (info.from === pl && t.kind !== 'dummy' && A.inCamp(pl.x, pl.y)) pl.campLockUntil = E.time + D.CAMP.lockSec;
+        if (t.sid && WHW.mobs) WHW.mobs.damaged(t, dmg);
         if (t.kind === 'monster' || t.kind === 'rival') t.aggro = true;
         if ((t.kind === 'boss') && !t.active) t.active = true;
         if (info.kb) {
@@ -215,13 +221,14 @@
         // the Proving Grounds pay per wave, not per monster (so they are no way round the zones' own drops)
         if (t.wave) { WHW.waves.killed(t); WHW.sfx('kill'); return; }
         if (t.kind === 'monster') {
-            const loot = W.monsterLoot(g.state, t.type, Math.random, at, { ack: g.ack, zone: g.zoneId });
-            WHW.showLoot(t.x, t.y, loot);
+            // with others in the zone a monster is shared (world-mobs.js): the loot is for whoever fought it
+            const mobs = t.sid ? WHW.mobs : null, paid = !mobs || mobs.paysOut(t, by);
+            if (paid) WHW.showLoot(t.x, t.y, W.monsterLoot(g.state, t.type, Math.random, at, { ack: g.ack, zone: g.zoneId }));
             if (t.guardian) WHW.onGuardianKilled && WHW.onGuardianKilled(t);
             if (!t.summoned && t.spawn !== undefined) {
-                const sec = t.elite ? D.ELITE_RESPAWN_SEC : D.MONSTER_RESPAWN_SEC;
-                g.respawns.push({ spawn: t.spawn, elite: t.elite, at: E.time + sec });
-                if (t.elite) W.noteNode(g.state, 'elite:' + g.zoneId + ':' + t.spawn, sec, at);
+                const sec = mobs ? mobs.killed(t, by) : (t.elite ? D.ELITE_RESPAWN_SEC : D.MONSTER_RESPAWN_SEC);
+                g.respawns.push({ spawn: t.spawn, member: t.member, elite: t.elite, at: E.time + sec });
+                if (t.elite && paid) W.noteNode(g.state, 'elite:' + g.zoneId + ':' + t.spawn, D.ELITE_RESPAWN_SEC, at);
             }
             WHW.sfx('kill');
         } else if (t.kind === 'rival') {
@@ -633,7 +640,8 @@
         const ig = p.ignite;
         if (!ig) return 0;
         const g = game(), a = D.ABILITIES[ig.id];
-        if (g.inTown || p.dead) { extinguish(p); return 0; }
+        // in town the fire is safe to try on the dummy: it only eats mana, and goes out when the mana is gone
+        if (p.dead || (g.inTown && p.mana.val <= 0.5)) { extinguish(p); return 0; }
         const t = E.time - ig.at;
         if (ig.emptyAt === null && p.mana.val <= 0.5) { ig.emptyAt = t; E.floatText(p.x, p.y - 30, 'BURNING YOU!', '#ff6b3a', 14, 1); }
         const d = C.igniteDrain(a, t, ig.emptyAt);
@@ -643,6 +651,7 @@
         }
         if (ig.emptyAt === null) return d.mana * g.pstats.abilityStam;
         p.mana.val = 0; p.mana.idle = 0;
+        if (g.inTown) return 0;
         p.hp -= d.hp * (1 - g.pstats.fireResist) * dt;
         p.lastHurt = E.time;
         if (p.hp <= 0 && !p.dead) {
@@ -658,7 +667,7 @@
         const bm = p.beam;
         if (!bm) return 0;
         const g = game(), a = D.ABILITIES[bm.id], t = E.time - bm.at;
-        if (g.inTown || p.dead || p.stunUntil > E.time || t >= a.maxTime || (p.mana.val <= 0 && t > 0.1)) { endBeam(p); return 0; }
+        if (p.dead || p.stunUntil > E.time || t >= a.maxTime || (p.mana.val <= 0 && t > 0.1)) { endBeam(p); return 0; }
         const aim = E.aimPoint(p.x, p.y);
         if (aim && Math.hypot(aim.x - p.x, aim.y - p.y) > 8) {
             const err = C.wrap(angTo(p, aim) - bm.ang);
@@ -1475,8 +1484,9 @@
         const slow = (E.time < m.status.chillUntil ? 0.6 : 1) * (E.tileAt(m.x, m.y) === G.T.SHALLOW ? SHALLOW_SPEED : 1);
         // aggro and leash
         const aggroR = m.elite ? 340 : 280;
-        if (!p.dead && !g.inTown && d < aggroR) m.aggro = true;
-        if (m.aggro && !m.wave && (p.dead || Math.hypot(m.x - m.home.x, m.y - m.home.y) > 700 || d > 600)) { m.aggro = false; m.atk = null; m.returning = true; }
+        const safe = A.playerSafe();
+        if (!p.dead && !g.inTown && !safe && d < aggroR) m.aggro = true;
+        if (m.aggro && !m.wave && (p.dead || safe || Math.hypot(m.x - m.home.x, m.y - m.home.y) > 700 || d > 600)) { m.aggro = false; m.atk = null; m.returning = true; }
         if (m.returning) {
             const hd = Math.hypot(m.home.x - m.x, m.home.y - m.y);
             if (hd < 12) { m.returning = false; m.hp = m.maxHp; }
@@ -1706,8 +1716,9 @@
         ai.iframes = Math.max(0, ai.iframes - dt);
         if (r.kbx || r.kby) { E.move(r, r.kbx * dt, r.kby * dt, solidsNear(r.x, r.y, 60)); const kd = Math.exp(-9 * dt); r.kbx *= kd; r.kby *= kd; }
         const d = dist(r, p);
-        if (!p.dead && !g.inTown && d < 360) r.aggro = true;
-        if (r.aggro && (p.dead || d > 700)) { r.aggro = false; r.hp = Math.min(r.maxHp, r.hp + r.maxHp * 0.5); }
+        const safe = A.playerSafe();
+        if (!p.dead && !g.inTown && !safe && d < 360) r.aggro = true;
+        if (r.aggro && (p.dead || safe || d > 700)) { r.aggro = false; r.hp = Math.min(r.maxHp, r.hp + r.maxHp * 0.5); }
         const P = D.WEAPON_CLASSES[r.cls];
         const w = r.weapon;
         // reaction delay: the rival aims at where the player was a moment ago
@@ -1752,8 +1763,8 @@
             if (attacking) { ai.drawing = true; w.draw = Math.min(1, w.draw + dt / 0.6); }
             else if (ai.drawing) {
                 ai.drawing = false;
-                const lead = d / 800;
-                const a = Math.atan2(p.y + p.vy * lead - r.y, p.x + p.vx * lead - r.x) + (rnd() - 0.5) * 0.08;
+                const lead = d / 800 * (rt.lead === undefined ? 1 : rt.lead); // (the first zones' archers aim loosely: aimErr, lead)
+                const a = Math.atan2(p.y + p.vy * lead - r.y, p.x + p.vx * lead - r.x) + (rnd() - 0.5) * (rt.aimErr || 0.08);
                 g.projectiles.push({ kind: 'arrow', team: 'rival', x: r.x, y: r.y, vx: Math.cos(a) * 800, vy: Math.sin(a) * 800, r: 4, life: 0.9, dmg: r.dmg * (0.4 + 0.6 * w.draw), owner: r.id, hit: new Set() });
                 w.draw = 0;
                 WHW.sfx('bow');
@@ -2115,7 +2126,7 @@
         ctx.restore();
     };
     // Another player (world-online.js): same look as the player, from what their page shares
-    A.drawRemote = function (ctx, rp, hostile) {
+    A.drawRemote = function (ctx, rp, hostile, mate) {
         const info = rp.info || {};
         const tc = (t) => (t ? tierColor(t) : null);
         shadow(ctx, rp.x, rp.y, rp.r);
@@ -2134,7 +2145,7 @@
         const sb = D.GEAR_BY_ID[info.sh];
         if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false);
         ctx.globalAlpha = 1;
-        E.label(ctx, info.n || 'Adventurer', rp.x, rp.y - rp.r - 16, { font: '700 11px Inter, sans-serif', fill: hostile ? '#ffb3bb' : '#e6f0ff', stroke: 'rgba(0,0,0,0.75)' });
+        E.label(ctx, (mate ? '👥 ' : '') + (info.n || 'Adventurer'), rp.x, rp.y - rp.r - 16, { font: '700 11px Inter, sans-serif', fill: hostile ? '#ffb3bb' : mate ? '#8dffb8' : '#e6f0ff', stroke: 'rgba(0,0,0,0.75)' });
         const w = 40, x = rp.x - w / 2, y = rp.y - rp.r - 12;
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 1, y - 1, w + 2, 5);
         ctx.fillStyle = hostile ? '#ff5b6b' : '#5fd068'; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, rp.hp / rp.maxHp)), 3);

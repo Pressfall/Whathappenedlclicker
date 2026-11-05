@@ -86,6 +86,8 @@
                 const got = W.waveCleared(s, w, sNow());
                 WHW.banner('Wave ' + w + ' cleared!', '+' + fmt(got.rubies) + ' rubies' + (got.glory ? ', +' + got.glory + ' Glory' : '') + (got.milestone ? ' · a milestone!' : ''));
                 if (got.best && w >= 5) WHW.toast('New best wave: ' + w + '!', 'gold');
+                // the Proving Grounds' leaderboard (world-arena.js Leaderboards tab)
+                if (got.best && net() && net().db) net().writeBoard('waves', window.WHWorldArena.wavesRecord(net().name(), s.arena, r.n || 1, sNow()));
                 WHW.save();
             } else WHW.banner('Wave ' + w + ' cleared!', 'Next wave soon');
             if (p.dead) up(0.5);
