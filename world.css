@@ -55,6 +55,49 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-online.is-online { border-color: rgba(95, 208, 104, 0.6); }
 .w-online.is-error { border-color: rgba(255, 91, 107, 0.7); }
 .w-online:hover { background: var(--surface-3); }
+/* Renown (core/renown.js): the HUD chip and its panel */
+.w-renown { position: relative; display: flex; align-items: center; gap: 5px; height: 36px; padding: 0 11px; border-radius: 999px; border: 1px solid rgba(255, 200, 61, 0.55); background: rgba(46, 32, 6, 0.85); color: #fff4d6; font: 700 13px var(--font); cursor: pointer; }
+.w-renown b { font-variant-numeric: tabular-nums; }
+.w-renown:hover { background: rgba(80, 56, 10, 0.92); }
+.w-renown.has-claim::after { content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 0 2px var(--bg); }
+.w-rn-level { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.w-rn-big { font-family: var(--font-display); font-size: 40px; line-height: 1; color: var(--gold); min-width: 2.2ch; text-align: center; }
+.w-rn-bar { height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.w-rn-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
+.w-rn-split { display: flex; height: 8px; margin-top: 10px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.w-rn-split i { display: block; height: 100%; }
+.w-rn-split .is-game { background: var(--blue); }
+.w-rn-split .is-wilds { background: var(--primary); }
+.w-rn-key { display: flex; justify-content: space-between; margin-top: 4px; font-size: 12px; color: var(--text-dim); }
+.w-rn-ms { display: grid; grid-template-columns: 44px 1fr 1fr; gap: 10px; align-items: center; padding: 8px 10px; margin-bottom: 6px; border-radius: 8px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12.5px; opacity: 0.6; }
+.w-rn-ms.is-reached { opacity: 1; border-color: rgba(255, 200, 61, 0.35); }
+.w-rn-ms > b { font-family: var(--font-display); font-weight: 400; font-size: 18px; color: var(--gold); text-align: center; }
+.w-rn-ms small { display: block; font-size: 10.5px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.w-rn-ms .w-rn-done { color: var(--primary); font-weight: 700; }
+.w-rn-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.w-rn-src { list-style: none; margin: 0; padding: 0; font-size: 12.5px; }
+.w-rn-src li { margin-bottom: 7px; }
+.w-rn-src li > div:first-child { display: flex; justify-content: space-between; gap: 8px; }
+.w-rn-src .w-rn-bar { height: 5px; margin: 3px 0 2px; }
+.w-rn-src .muted { font-size: 11.5px; }
+/* hero guilds (core/world-guilds.js): the Guildmaster's table */
+.w-guild-crest { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; border: 2px solid var(--gc, #c9a34a); background: rgba(0, 0, 0, 0.35); font-size: 18px; box-shadow: 0 0 10px color-mix(in srgb, var(--gc, #c9a34a) 45%, transparent); }
+.w-guild-card { border-color: color-mix(in srgb, var(--gc, #c9a34a) 45%, transparent); }
+.w-guild-card.is-sold { opacity: 0.55; }
+.w-guild-mine { border: 1px solid rgba(255, 200, 61, 0.45); }
+.w-guild-mine .w-quest-title { display: flex; align-items: center; gap: 8px; }
+.w-guild-owned { display: flex; flex-wrap: wrap; gap: 8px; }
+.w-guild-owned > span { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px 4px 4px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); font-size: 12.5px; }
+.w-guild-owned .w-guild-crest { width: 26px; height: 26px; flex-basis: 26px; font-size: 14px; }
+.w-guild-chest { border-color: rgba(255, 200, 61, 0.6); box-shadow: 0 0 14px rgba(255, 200, 61, 0.2); }
+/* the WH Depot: the crew from the game */
+.w-crew { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.w-crew-card { display: flex; gap: 10px; align-items: center; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--border); }
+.w-crew-card.is-here { border-color: rgba(95, 208, 104, 0.5); }
+.w-crew-card img { width: 44px; height: 44px; flex: 0 0 44px; border-radius: 50%; object-fit: cover; border: 2px solid var(--border-strong); background: #fff; }
+.w-crew-card img.is-unknown { filter: brightness(0) invert(0.25); }
+.w-crew-card .w-card-sub { font-size: 11.5px; }
+@media (max-width: 600px) { .w-rn-cols { grid-template-columns: 1fr; } .w-rn-ms { grid-template-columns: 36px 1fr; } }
 .w-chat { position: absolute; left: 12px; bottom: 80px; width: min(420px, calc(100vw - 24px)); display: flex; flex-direction: column; gap: 6px; padding: 8px; border-radius: 12px; background: rgba(15, 18, 27, 0.9); border: 1px solid var(--border-strong); box-sizing: border-box; }
 .w-chat input { width: 100%; box-sizing: border-box; -webkit-user-select: text; user-select: text; }
 .w-emotes { display: flex; gap: 4px; flex-wrap: wrap; }
@@ -66,7 +109,7 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-log .mine b { color: var(--gold); }
 .w-players { display: flex; flex-direction: column; gap: 4px; }
 .w-players span { display: flex; justify-content: space-between; padding: 5px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
-.w-minimap { position: absolute; top: 58px; right: 12px; width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--border-strong); background: rgba(0, 0, 0, 0.5); image-rendering: pixelated; }
+.w-minimap { position: absolute; top: 58px; right: 12px; width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--border-strong); background: rgba(0, 0, 0, 0.5); image-rendering: pixelated; cursor: zoom-in; }
 
 .w-boss { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: min(520px, 54vw); text-align: center; }
 .w-boss-name { font-family: var(--font-display); font-size: 15px; text-shadow: 0 2px 4px #000; margin-bottom: 4px; }
@@ -80,6 +123,9 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-slot.is-sel { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.35); }
 .w-slot .k { position: absolute; top: 2px; left: 4px; font-size: 10px; font-weight: 800; color: var(--text-dim); }
 .w-slot .n { position: absolute; bottom: 1px; right: 4px; font-size: 11px; font-weight: 800; text-shadow: 0 1px 2px #000; }
+/* potions left in an arena match, the Pit or a wave run (D.RULES.potionsPerMatch) */
+.w-slot .lim { position: absolute; top: 1px; right: 3px; padding: 0 3px; border-radius: 6px; background: rgba(255, 200, 61, 0.9); color: #2a1600; font-size: 10px; font-weight: 800; line-height: 1.3; }
+.w-slot.is-out .lim { background: rgba(255, 91, 107, 0.95); color: #fff; }
 .w-slot .q { position: absolute; inset: auto 6px 3px 6px; height: 3px; border-radius: 3px; }
 .w-slot--cons { width: 44px; font-size: 20px; }
 .w-staff-ico { width: 1.15em; height: 1.15em; display: inline-block; vertical-align: middle; }
@@ -377,6 +423,9 @@ button.w-load:hover { border-color: var(--border-strong); }
     /* room for the account button: tighter spacing, and How to play is in Settings here */
     .w-hud-tr { gap: 4px; right: 8px; }
     .w-hud-tr #btnHelp { display: none; }
+    /* the Renown chip needs the room: tapping the minimap opens the map here */
+    .w-hud-tr #btnMap { display: none; }
+    .w-renown { height: 32px; padding: 0 8px; }
     .w-back { padding: 6px 10px; }
     .w-back span { display: none; }
     .w-rubies { padding: 4px 9px; gap: 5px; font-size: 14px; }

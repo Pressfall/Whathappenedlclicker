@@ -31,6 +31,8 @@
             </div>
             <div class="w-hud-tr">
                 <div class="w-rubies" title="Rubies: the currency of the Wilds"><span class="w-ruby" aria-hidden="true"></span><b id="rubyCount">0</b><span class="sr-only"> rubies</span></div>
+                <!-- Renown: one rank for the game and the Wilds together (core/renown.js) -->
+                <button class="w-renown" id="btnRenown" title="Renown: one rank for the game and the Wilds together" aria-label="Renown">⭐ <b id="renownCount">0</b></button>
                 <button class="w-online" id="btnOnline" title="Online" aria-label="Online play">🌐 <b id="onlineCount">…</b></button>
                 <button class="w-icon-btn" id="btnBag" title="Bag and gear (I)" aria-label="Bag and gear">🎒</button>
                 <button class="w-icon-btn" id="btnSkills" title="Classes and skills (K)" aria-label="Classes and skills">⚔️</button>
@@ -41,7 +43,7 @@
                 <!-- your account (cloud.js keeps the icon and tooltip current: saved, saving, or a save to choose) -->
                 <a class="w-icon-btn w-cloud" id="cloudBtn" href="account.html" title="Sign in to save your progress and play on any device" aria-label="Save to account">☁️</a>
             </div>
-            <canvas id="minimap" class="w-minimap" width="150" height="150" aria-hidden="true"></canvas>
+            <canvas id="minimap" class="w-minimap" width="150" height="150" role="button" tabindex="-1" aria-label="Open the map (M)" title="Open the map (M)"></canvas>
             <div class="w-boss" id="bossBar" hidden>
                 <div class="w-boss-name" id="bossName"></div>
                 <div class="w-boss-bar"><i id="bossFill"></i></div>
@@ -101,9 +103,12 @@
         </div>
 
         <script src="core/progress.js"></script>
+        <script src="core/world-crew.js"></script>
         <script src="core/world-data.js"></script>
         <script src="core/world-bridge.js"></script>
         <script src="core/world-gods.js"></script>
+        <script src="core/renown.js"></script>
+        <script src="core/world-guilds.js"></script>
         <script src="core/skins.js"></script>
         <script src="achievements-data.js"></script>
         <script src="core/world-arena.js"></script>

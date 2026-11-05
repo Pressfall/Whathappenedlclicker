@@ -21,7 +21,22 @@
     // items.js BOXES, by tier
     const BOX_NAMES = ['Wooden Crate', 'Iron Chest', 'Golden Chest', 'Diamond Chest', 'Mythic Vault'];
     // the most one entry may carry (the world's own caps are far lower; this only bounds a damaged or edited save)
-    const LIMITS = { gems: 50, golden: 3, box: 20 };
+    const LIMITS = { gems: 50, golden: 3, box: 20, item: 20, pack: 10 };
+    // items.js consumables the Wilds may send (crew quests, Renown milestones): timed boosts and saved-up time only. Gem
+    // Pouch, Gem Geode and Golden Ticket are left out on purpose: gems and Golden from the Wilds only ever come through
+    // CAPS (core/world-data.js). Anything else in an entry's items is dropped.
+    const ITEMS = { energyDrink: 'Energy Drink', spareBattery: 'Spare Battery', pocketWatch: 'Pocket Watch', loadedDice: 'Loaded Dice',
+        overclockChip: 'Overclock Chip', hourglass: 'Hourglass', frenzyPotion: 'Frenzy Potion', timeMachine: 'Time Machine', singularity: 'Singularity' };
+    const ITEM_PLURALS = { spareBattery: 'Spare Batteries', pocketWatch: 'Pocket Watches', loadedDice: 'Loaded Dice', hourglass: 'Hourglasses', singularity: 'Singularities' };
+    const isItem = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(ITEMS, id);
+    // follower packs (followers-data.js PACKS) bought with Glory in the Arena: they wait on the game's Followers page, to
+    // be opened free
+    const PACKS = { sack: 'Scrappy Sack', clicker: 'Clicker Crate', idler: 'Idler Crate', oddity: 'Oddity Crate', royal: 'Royal Chest', celestial: 'Celestial Relic' };
+    const PACK_PLURALS = { royal: 'Royal Chests', celestial: 'Celestial Relics' };
+    const isPack = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(PACKS, id);
+    // the reward fields that are { id: n } maps: which ids they may hold, and how many of one an entry carries
+    const MAPS = { items: { names: ITEMS, plurals: ITEM_PLURALS, limit: LIMITS.item }, packs: { names: PACKS, plurals: PACK_PLURALS, limit: LIMITS.pack } };
+    const MAP_KINDS = Object.keys(MAPS);
     const MAX_OUTBOX = 300;
     // Things bought in the Wilds that are partly paid in the game: an outbox entry { buy: id } says one was bought there (its
     // rubies and materials already paid); main.js takes these gems and Golden and adds the item, as soon as you have them.
@@ -31,6 +46,15 @@
     const count = (v, max) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
     function readJSON(store, key) { try { return JSON.parse(store.getItem(key) || 'null'); } catch (e) { return null; } }
 
+    // { id: n } with only the ids a map kind allows and whole amounts up to max; {} when there are none
+    function cleanMap(kind, raw, max) {
+        const out = {}, names = MAPS[kind].names;
+        if (!raw || typeof raw !== 'object') return out;
+        for (const id in raw) { if (!Object.prototype.hasOwnProperty.call(names, id)) continue; const n = count(raw[id], max); if (n) out[id] = n; }
+        return out;
+    }
+    function cleanItems(raw, max) { return cleanMap('items', raw, max); }
+    const hasItems = (items) => !!items && Object.keys(items).some(id => items[id] > 0);
     // A reward entry with every amount a whole number within LIMITS, or null when it has no valid sequence number
     function clampEntry(e) {
         if (!e || typeof e !== 'object') return null;
@@ -39,9 +63,11 @@
         const boxes = BOX_NAMES.map((_, i) => count(Array.isArray(e.boxes) ? e.boxes[i] : 0, LIMITS.box));
         const out = { seq, gems: count(e.gems, LIMITS.gems), golden: count(e.golden, LIMITS.golden), boxes, src: typeof e.src === 'string' ? e.src.slice(0, 40) : '', at: Number(e.at) || 0 };
         if (isBuy(e.buy)) out.buy = e.buy;
+        // only entries that carry items or packs have those fields, so every other entry looks the same as before
+        for (const k of MAP_KINDS) { const m = cleanMap(k, e[k], MAPS[k].limit); if (hasItems(m)) out[k] = m; }
         return out;
     }
-    function isEmpty(r) { return !r || (!r.buy && !r.gems && !r.golden && !(r.boxes || []).some(n => n > 0)); }
+    function isEmpty(r) { return !r || (!r.buy && !r.gems && !r.golden && !(r.boxes || []).some(n => n > 0) && !MAP_KINDS.some(k => hasItems(r[k]))); }
 
     function readAck(store) { try { return count(store.getItem(ACK_KEY), Number.MAX_SAFE_INTEGER); } catch (e) { return 0; } }
     function writeAck(store, seq) {
@@ -55,12 +81,13 @@
         const w = readJSON(store, WORLD_KEY);
         const list = (w && Array.isArray(w.outbox)) ? w.outbox : [];
         const entries = list.map(clampEntry).filter(e => e && e.seq > ack).sort((a, b) => a.seq - b.seq);
-        const totals = { gems: 0, golden: 0, boxes: BOX_NAMES.map(() => 0), buys: [] };
+        const totals = { gems: 0, golden: 0, boxes: BOX_NAMES.map(() => 0), buys: [], items: {}, packs: {} };
         let lastSeq = ack;
         for (const e of entries) {
             totals.gems += e.gems; totals.golden += e.golden;
             if (e.buy) totals.buys.push(e.buy);
             e.boxes.forEach((n, i) => { totals.boxes[i] += n; });
+            for (const k of MAP_KINDS) for (const id in e[k] || {}) totals[k][id] = (totals[k][id] || 0) + e[k][id];
             lastSeq = Math.max(lastSeq, e.seq);
         }
         return { entries, totals, lastSeq, ack };
@@ -68,7 +95,9 @@
 
     const BIG = Number.MAX_SAFE_INTEGER;
     function amounts(r) {
-        return { gems: count(r.gems, BIG), golden: count(r.golden, BIG), boxes: BOX_NAMES.map((_, i) => count(Array.isArray(r.boxes) ? r.boxes[i] : 0, BIG)) };
+        const out = { gems: count(r.gems, BIG), golden: count(r.golden, BIG), boxes: BOX_NAMES.map((_, i) => count(Array.isArray(r.boxes) ? r.boxes[i] : 0, BIG)) };
+        for (const k of MAP_KINDS) out[k] = cleanMap(k, r[k], BIG);
+        return out;
     }
 
     // World side: queue a reward. Mutates state (outSeq, outbox, overflow). A reward bigger than one entry may carry is
@@ -94,14 +123,20 @@
                 const o = state.overflow || (state.overflow = { gems: 0, golden: 0, boxes: BOX_NAMES.map(() => 0) });
                 o.gems += r.gems; o.golden += r.golden;
                 r.boxes.forEach((n, i) => { o.boxes[i] = (o.boxes[i] || 0) + n; });
+                for (const k of MAP_KINDS) if (hasItems(r[k])) { o[k] = o[k] || {}; for (const id in r[k]) if (r[k][id]) o[k][id] = (o[k][id] || 0) + r[k][id]; }
                 break;
             }
             const part = { gems: Math.min(r.gems, LIMITS.gems), golden: Math.min(r.golden, LIMITS.golden), boxes: r.boxes.map(n => Math.min(n, LIMITS.box)) };
+            for (const k of MAP_KINDS) {
+                part[k] = {};
+                for (const id in r[k]) { const n = Math.min(r[k][id], MAPS[k].limit); if (n) { part[k][id] = n; r[k][id] -= n; } }
+            }
             r.gems -= part.gems; r.golden -= part.golden;
             r.boxes = r.boxes.map((n, i) => n - part.boxes[i]);
             const seq = Math.max(count(state.outSeq, BIG), count(ack, BIG)) + 1;
             state.outSeq = seq;
             const e = { seq, gems: part.gems, golden: part.golden, boxes: part.boxes, src, at: Number(now) || 0 };
+            for (const k of MAP_KINDS) if (hasItems(part[k])) e[k] = part[k];
             state.outbox.push(e);
             if (!first) first = e;
         }
@@ -221,12 +256,16 @@
         if (t.gems) parts.push('+' + plural(t.gems, 'gem'));
         if (t.golden) parts.push('+' + t.golden + ' Golden What Happened');
         (t.boxes || []).forEach((n, i) => { if (n) parts.push(plural(n, BOX_NAMES[i])); });
+        for (const k of MAP_KINDS) for (const id in t[k] || {}) {
+            if (Object.prototype.hasOwnProperty.call(MAPS[k].names, id) && t[k][id] > 0) parts.push(plural(t[k][id], MAPS[k].names[id], MAPS[k].plurals[id]));
+        }
         if (!parts.length) return '';
         const last = parts.pop();
-        return 'From the Wilds: ' + (parts.length ? parts.join(', ') + ' and ' + last : last);
+        const packs = Object.keys(t.packs || {}).some(id => isPack(id) && t.packs[id] > 0);
+        return 'From the Wilds: ' + (parts.length ? parts.join(', ') + ' and ' + last : last) + (packs ? ' (open the packs free on your Followers page)' : '');
     }
 
-    return { WORLD_KEY, ACK_KEY, BOX_NAMES, LIMITS, MAX_OUTBOX, BUYS, clampEntry, isEmpty, readAck, writeAck, pending, push, prune, describe, mainBalance,
+    return { WORLD_KEY, ACK_KEY, BOX_NAMES, LIMITS, MAX_OUTBOX, BUYS, ITEMS, isItem, cleanItems, PACKS, isPack, MAP_KINDS, cleanMap, clampEntry, isEmpty, readAck, writeAck, pending, push, prune, describe, mainBalance,
         INBOX_KEY, GOLDEN_RUBIES, MAX_RUBIES, MAX_INBOX, clampInEntry, readInAck, sendRubies, inbox, rubiesWaiting,
         GOLDEN_TRADES_KEY, GOLDEN_TRADE_WEEKLY, weekKey, goldenTradeLeft, noteGoldenTrade, unnoteGoldenTrade, nextWeekAt };
 }));

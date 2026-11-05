@@ -36,7 +36,7 @@ test('pending lists entries above the ack, oldest first, with totals', () => {
     const store = memStore({ [WORLD_KEY]: JSON.stringify(w), [ACK_KEY]: '1' });
     const p = Bridge.pending(store);
     assert.deepEqual(p.entries.map(e => e.seq), [2, 3]);
-    assert.deepEqual(p.totals, { gems: 3, golden: 1, boxes: [1, 2, 0, 0, 0], buys: [] });
+    assert.deepEqual(p.totals, { gems: 3, golden: 1, boxes: [1, 2, 0, 0, 0], buys: [], items: {}, packs: {} });
     assert.equal(p.lastSeq, 3);
     assert.equal(Bridge.pending(store, 3).entries.length, 0, 'minAck hides what this page already applied');
 });

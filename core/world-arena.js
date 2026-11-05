@@ -41,10 +41,24 @@
     ];
     // the Arena Master's shop, paid in Glory. title: shown under your name to other players. coffer: once a week, a
     // lootbox for the game, counted in the week's lootbox allowance like a crafted one (so the caps still hold).
+    // rubies: for the Wilds. gems / golden: sent to the game, and still inside the Wilds' daily caps (core/world-data.js
+    // CAPS), like the Trader's exchange. pack: a follower pack (followers-data.js PACKS) to open free on the game's
+    // Followers page. guild: a Guild Chest, one hero guild at random (core/world-guilds.js). perWeek: how many a week.
     const SHOP = [
         { id: 'potion_big', name: '2 Big Potions', glory: 60, give: { potion_big: 2 } },
         { id: 'potion_max', name: 'Max Potion', glory: 90, give: { potion_max: 1 } },
         { id: 'arrows', name: '40 Arrows', glory: 40, give: { arrow: 40 } },
+        { id: 'rubies_s', name: '♦ 2,000 rubies', glory: 200, rubies: 2000 },
+        { id: 'rubies_l', name: '♦ 12,000 rubies', glory: 1000, rubies: 12000 },
+        { id: 'gems', name: '3 gems for your game', glory: 600, gems: 3, perWeek: 2 },
+        { id: 'golden', name: '1 Golden What Happened for your game', glory: 2500, golden: 1, perWeek: 1 },
+        { id: 'pack_sack', name: 'Scrappy Sack (follower pack)', glory: 400, pack: 'sack', perWeek: 3 },
+        { id: 'pack_clicker', name: 'Clicker Crate (follower pack)', glory: 1500, pack: 'clicker', perWeek: 1 },
+        { id: 'pack_idler', name: 'Idler Crate (follower pack)', glory: 1500, pack: 'idler', perWeek: 1 },
+        { id: 'pack_oddity', name: 'Oddity Crate (follower pack)', glory: 1800, pack: 'oddity', perWeek: 1 },
+        { id: 'pack_royal', name: 'Royal Chest (follower pack)', glory: 3500, pack: 'royal', perWeek: 1 },
+        { id: 'pack_celestial', name: 'Celestial Relic (follower pack)', glory: 8000, pack: 'celestial', perWeek: 1 },
+        { id: 'guild_chest', name: 'Guild Chest (a random hero guild)', glory: 15000, guild: true },
         { id: 'title_brawler', name: 'Title: Brawler', glory: 100, title: 'Brawler' },
         { id: 'title_gladiator', name: 'Title: Gladiator', glory: 400, title: 'Gladiator' },
         { id: 'title_warlord', name: 'Title: Warlord', glory: 1200, title: 'Warlord' },
@@ -225,6 +239,7 @@
     function freshArena() {
         return { glory: 0, gloryTotal: 0, rating: RULES.elo.start, peak: RULES.elo.start, w: 0, l: 0, d: 0, teamW: 0, teamL: 0,
             pitKO: 0, pitDown: 0, waveBest: 0, wagerWins: 0, wagerNet: 0, titles: {}, title: '', coffer: '',
+            bought: { week: '', n: {} }, // this week's count of each Glory shop item that has a weekly limit (perWeek)
             tourWins: 0, tourPlayed: 0, tourPrize: 0, tours: {}, // tournaments: s.arena.tours is cleaned by core/world-logic.js migrate (core/world-tour.js)
             day: { key: '', match: 0, pit: 0, waves: 0, rubyWins: 0, vs: {} }, live: null };
     }
@@ -238,6 +253,9 @@
         if (isObj(raw.titles)) for (const t in raw.titles) if (raw.titles[t] && SHOP.some(x => x.title === t)) a.titles[t] = true;
         a.title = typeof raw.title === 'string' && titlesOf(a).includes(raw.title) ? raw.title : '';
         a.coffer = typeof raw.coffer === 'string' ? raw.coffer.slice(0, 12) : '';
+        const b = isObj(raw.bought) ? raw.bought : {};
+        a.bought = { week: typeof b.week === 'string' ? b.week.slice(0, 12) : '', n: {} };
+        if (isObj(b.n)) for (const k in b.n) if (SHOP_BY_ID[k] && SHOP_BY_ID[k].perWeek) { const v = int(b.n[k], 0, 1e6); if (v) a.bought.n[k] = v; }
         const d = isObj(raw.day) ? raw.day : {};
         a.day = { key: typeof d.key === 'string' ? d.key.slice(0, 12) : '', match: int(d.match, 0, 1e6), pit: int(d.pit, 0, 1e6), waves: int(d.waves, 0, 1e6), rubyWins: int(d.rubyWins, 0, 1e6), vs: {} };
         if (isObj(d.vs)) for (const k of Object.keys(d.vs).slice(0, 50)) if (k.length <= 200) a.day.vs[k] = int(d.vs[k], 0, 1e6);

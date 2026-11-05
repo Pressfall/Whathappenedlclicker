@@ -1,0 +1,132 @@
+/* Renown (renown-panel.js) and the crew tags on the upgrade buttons (main.js renderCrewTags). index.html only. */
+
+/* ---- the top-bar chip ---- */
+.renown-chip {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 40px;
+    padding: 0 12px 0 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 200, 61, 0.5);
+    background: linear-gradient(180deg, rgba(92, 64, 12, 0.92), rgba(38, 24, 6, 0.94));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    color: #fff4d6;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.renown-chip:hover { transform: translateY(-1px); border-color: var(--gold); }
+.renown-ico { font-size: 18px; line-height: 1; }
+.renown-chip-level { font-size: 15px; min-width: 1ch; }
+.renown-chip.has-claim::after {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    background: var(--primary);
+    box-shadow: 0 0 0 2px var(--bg);
+}
+
+/* ---- the panel ---- */
+.rn-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(4, 5, 9, 0.66);
+}
+.rn-overlay[hidden] { display: none; }
+.rn-panel {
+    width: min(760px, 100%);
+    max-height: calc(100vh - 32px);
+    display: flex;
+    flex-direction: column;
+    background: var(--surface-solid);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+.rn-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.rn-head h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 20px; color: var(--gold); }
+.rn-body { padding: 16px 18px 18px; overflow-y: auto; }
+.rn-body h4 { margin: 18px 0 8px; font-size: 14px; letter-spacing: 0.02em; color: var(--text); }
+.rn-lead, .rn-note { margin: 10px 0; font-size: 13px; color: var(--text-dim); line-height: 1.45; }
+
+.rn-level { display: flex; align-items: center; gap: 14px; }
+.rn-big { font-family: var(--font-display); font-size: 44px; line-height: 1; color: var(--gold); min-width: 2.2ch; text-align: center; }
+.rn-level-info { flex: 1 1 auto; min-width: 0; }
+.rn-bar, .rn-mini { height: 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.rn-bar i, .rn-mini i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--gold-deep), var(--gold)); }
+.rn-mini { height: 5px; margin: 4px 0 3px; }
+.rn-sub { margin-top: 6px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+.rn-split { display: flex; height: 8px; border-radius: 999px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.rn-split i { display: block; height: 100%; }
+.rn-split-game { background: var(--blue); }
+.rn-split-wilds { background: var(--primary); }
+.rn-split-key { display: flex; justify-content: space-between; margin-top: 5px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.rn-boost { margin-top: 12px; padding: 9px 12px; border-radius: var(--radius-sm); background: rgba(255, 200, 61, 0.08); border: 1px solid rgba(255, 200, 61, 0.22); font-size: 13px; }
+
+.rn-ms-list { display: flex; flex-direction: column; gap: 6px; }
+.rn-claimall { display: flex; justify-content: flex-end; margin-bottom: 2px; }
+.rn-ms { display: grid; grid-template-columns: 44px 1fr 1fr; gap: 10px; align-items: center; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); opacity: 0.6; font-size: 12.5px; }
+.rn-ms.is-reached { opacity: 1; border-color: rgba(255, 200, 61, 0.35); }
+.rn-ms-lv { font-family: var(--font-display); font-size: 18px; color: var(--gold); text-align: center; }
+.rn-ms-half { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.rn-ms-where { font-size: 11px; font-weight: 700; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.04em; }
+.rn-done { color: var(--primary); font-weight: 700; }
+.rn-elsewhere { color: var(--text-dim); font-style: italic; }
+.rn-lock { opacity: 0.6; }
+
+.rn-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.rn-src, .rn-crew { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.rn-src li { font-size: 12.5px; }
+.rn-src-top { display: flex; justify-content: space-between; gap: 8px; }
+.rn-src-top b { font-variant-numeric: tabular-nums; color: var(--text-dim); font-weight: 600; }
+.rn-src li.is-full .rn-mini i { background: var(--primary); }
+.rn-hint { font-size: 11.5px; color: var(--text-faint); }
+
+.rn-crew { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.rn-crew li { display: flex; gap: 10px; align-items: center; padding: 7px 9px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.rn-crew li.is-here { border-color: rgba(47, 208, 122, 0.4); }
+.rn-crew img { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; background: #fff; flex: 0 0 auto; }
+.rn-crew img.rn-unknown { filter: brightness(0) invert(0.25); }
+.rn-crew-name { font-weight: 700; font-size: 13px; }
+.rn-crew-status { font-size: 12px; color: var(--text-dim); }
+.rn-crew-here { color: var(--primary); }
+.rn-actions { margin-top: 18px; display: flex; justify-content: flex-end; }
+
+@media (max-width: 620px) {
+    .rn-cols { grid-template-columns: 1fr; }
+    .rn-ms { grid-template-columns: 36px 1fr; }
+    .rn-ms-half:last-child { grid-column: 2; }
+}
+
+/* ---- the crew tag on an upgrade button: in Wildgate, on the way, or asked for by a quest there ---- */
+.crew-tag {
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    z-index: 1;
+    padding: 1px 5px;
+    border-radius: 999px;
+    background: rgba(8, 10, 16, 0.86);
+    border: 1px solid rgba(47, 208, 122, 0.6);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1.4;
+    color: #d9ffe9;
+    white-space: nowrap;
+    cursor: help;
+}
+.crew-tag[hidden] { display: none; }
+.crew-tag--away { border-color: rgba(255, 255, 255, 0.2); color: var(--text-faint); }
+.crew-tag--ask { border-color: rgba(255, 200, 61, 0.75); color: #ffe7a8; }

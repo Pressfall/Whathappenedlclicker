@@ -135,6 +135,9 @@
         for (let x = 1; x < m.w - 1; x++) { set(m, x, cy, T.PATH); set(m, x, cy + 1, T.PATH); }
         for (let y = 1; y < m.h - 1; y++) { set(m, cx, y, T.PATH); set(m, cx + 1, y, T.PATH); }
         for (let y = cy - 5; y <= cy + 5; y++) for (let x = cx - 8; x <= cx + 8; x++) set(m, x, y, T.PLAZA);
+        // the WH Depot's yard, south-east of the plaza beside the south road: the crew from the game stand here
+        // (core/world-crew.js spots), in front of the Depot's door
+        for (let y = cy + 11; y <= cy + 17; y++) for (let x = cx + 2; x <= cx + 12; x++) set(m, x, y, T.PLAZA);
         // a little pond, out west by the trees
         disc(m, 5, cy - 7, 2.6, T.WATER);
         // buildings: { id, x, y, w, h } in tiles; the door is the middle of the bottom edge
@@ -144,6 +147,7 @@
             { id: 'altar', x: cx + 11, y: cy + 5, w: 7, h: 5 },
             { id: 'trader', x: cx + 4, y: cy - 12, w: 6, h: 4 },
             { id: 'board', x: cx + 10, y: cy - 5, w: 3, h: 2 },
+            { id: 'depot', x: cx + 3, y: cy + 7, w: 7, h: 4 },
         ];
         const stations = [];
         for (const b of B) {

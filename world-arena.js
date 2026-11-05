@@ -405,10 +405,15 @@
             html += `<div class="w-row">${[['top', '⚔️ Highest rating'], ['waves', '🌊 Highest wave']].map(([k, l]) => `<button class="btn btn-sm ${board === k ? 'btn-gold' : 'btn-ghost'}" data-arboard="${k}">${l}</button>`).join('')}</div>
                 <div id="arTop"><p class="muted">Loading…</p></div><p class="muted">${board === 'top' ? 'Ratings come from duels and team battles (Elo).' : 'The furthest wave reached in the Proving Grounds, with how many players were in that run.'} Each player's own game reports it, so these boards are for fun, like the game's leaderboard.</p>`;
         } else if (tab === 'shop') {
+            const nowT = Date.now();
+            html += `<p class="w-note">You have <b>${fmt(a.glory)} Glory</b>. Gems and Golden bought here go to your game and count toward the Wilds' daily limit (${D.CAPS.gemsPerDay} gems, ${D.CAPS.goldenPerDay} Golden a day). Follower packs wait on the game's Followers page, to open free. A Guild Chest holds one hero guild at random (see the Guildmaster by the Rune Altar).</p>`;
             html += `<div class="w-grid">${Ar.SHOP.map(it => {
-                const owned = it.title && a.titles[it.title], week = it.weekly && a.coffer === W.weekKey(Date.now());
-                return `<div class="w-card"><div class="w-card-name">${esc(it.name)}</div><div class="w-card-sub">${fmt(it.glory)} Glory${it.weekly ? ' · once a week, counts toward your lootbox allowance' : ''}</div>
-                    <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-arbuy="${it.id}" ${owned || week || a.glory < it.glory ? 'disabled' : ''}>${owned ? 'Owned' : week ? 'Bought this week' : 'Buy'}</button></div></div>`;
+                const owned = it.title && a.titles[it.title], week = (it.weekly && a.coffer === W.weekKey(nowT)) || W.arenaWeekLeft(s, it.id, nowT) <= 0;
+                const left = it.perWeek ? W.arenaWeekLeft(s, it.id, nowT) : null;
+                const cap = (it.gems && W.gemsLeftToday(s, nowT) < it.gems) || (it.golden && W.goldenLeftToday(s, nowT) < it.golden);
+                const sub = fmt(it.glory) + ' Glory' + (it.weekly ? ' · once a week, counts toward your lootbox allowance' : '') + (left !== null ? ' · ' + left + ' of ' + it.perWeek + ' left this week' : '');
+                return `<div class="w-card${it.guild ? ' w-guild-chest' : ''}"><div class="w-card-name">${esc(it.name)}</div><div class="w-card-sub">${esc(sub)}</div>
+                    <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-arbuy="${it.id}" ${owned || week || cap || a.glory < it.glory ? 'disabled' : ''}>${owned ? 'Owned' : week ? 'Bought this week' : cap ? "Today's limit reached" : 'Buy'}</button></div></div>`;
             }).join('')}</div>`;
         } else {
             const titles = Ar.titlesOf(a);
@@ -423,9 +428,17 @@
         body.querySelectorAll('[data-arq]').forEach(b => b.addEventListener('click', () => AR.setQueue(b.dataset.arq)));
         const lp = body.querySelector('[data-arleave]'); if (lp) lp.addEventListener('click', () => { WHW.party.leave(); renderMenu(); });
         body.querySelectorAll('[data-arbuy]').forEach(b => b.addEventListener('click', () => {
-            const r = W.arenaBuy(s, b.dataset.arbuy, Date.now(), g.ack);
-            if (!r.ok) WHW.toast({ glory: 'Not enough Glory.', week: 'Already bought this week.', allowance: "This week's lootbox allowance is used up.", owned: 'You have it already.' }[r.reason] || "Can't do that.", 'bad');
-            else { WHW.toast('Bought: ' + r.item.name + '.', 'gold'); WHW.save(); net() && (net().infoKey = ''); }
+            const r = W.arenaBuy(s, b.dataset.arbuy, Date.now(), g.ack, Math.random);
+            if (!r.ok) WHW.toast({ glory: 'Not enough Glory.', week: 'Already bought this week.', allowance: "This week's lootbox allowance is used up.", owned: 'You have it already.', cap: "Today's limit from the Wilds is reached." }[r.reason] || "Can't do that.", 'bad');
+            else {
+                const G = window.WHGuilds, gd = r.guild && G.BY_UP[r.guild];
+                WHW.toast(gd ? gd.crest + ' The chest holds the ' + gd.name + '! ' + gd.hero + ' earns +' + Math.round(G.PER_GUILD * 100 * r.owned) + '% in your game.'
+                    : r.item.pack ? 'Bought: ' + r.item.name + '. Open it free on the Followers page in your game.'
+                    : r.item.gems || r.item.golden ? 'Bought: ' + r.item.name + '. It arrives the next time you open the game.'
+                    : 'Bought: ' + r.item.name + '.', 'gold');
+                WHW.sfx(gd ? 'gem' : 'craft');
+                WHW.save(); net() && (net().infoKey = '');
+            }
             renderMenu();
         }));
         const ts = body.querySelector('#arTitle'); if (ts) ts.addEventListener('change', () => { W.setTitle(s, ts.value); WHW.save(); if (net()) net().infoKey = ''; renderMenu(); });

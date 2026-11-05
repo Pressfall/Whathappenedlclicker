@@ -128,17 +128,6 @@ async function main() {
         await sleep(300);
         const shot2 = await send('Page.captureScreenshot', { format: 'png' });
         if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-settings.png'), Buffer.from(shot2.result.data, 'base64'));
-        // Ko-fi row in Help & privacy: shown, opens in a new tab, with its help text
-        await evalJs('document.getElementById("settingsMenu").classList.contains("open") || toggleSettingsMenu()');
-        await waitFor('document.getElementById("settingsMenu").classList.contains("open") && document.getElementById("settingsMenu").getBoundingClientRect().right > 100', 10000);
-        await sleep(500);
-        const kofi = await evalJs(`(() => { const a = [...document.querySelectorAll('#settingsMenu a')].find(x => /ko-fi\.com/.test(x.href)); if (!a) return null;
-            a.scrollIntoView({ block: 'center' }); const r = a.getBoundingClientRect();
-            return { visible: r.width > 50 && r.height > 10 && getComputedStyle(a).visibility !== 'hidden', target: a.target, text: a.textContent.trim(), help: a.nextElementSibling && a.nextElementSibling.textContent }; })()`);
-        check('Settings: Ko-fi row visible with its help text', kofi && kofi.visible && kofi.target === '_blank' && /Support the game/.test(kofi.text) && /Firebase bill/.test(kofi.help || ''), kofi);
-        await sleep(300);
-        if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, 'shot-settings-kofi.png'), Buffer.from(s.result.data, 'base64')); }
-        await evalJs('document.getElementById("settingsMenu").classList.contains("open") && toggleSettingsMenu()');
 
         // ---- 4. Accept ----
         await evalJs('document.querySelector("#whConsent [data-consent=granted]").click()');
@@ -201,7 +190,7 @@ async function main() {
         check('save reminder does not come back after a reload', await evalJs('document.getElementById("saveReminder").hidden'));
 
         // ---- 7b. help pages: readable with JavaScript off, on a computer and a phone, and they load nothing from Google ads ----
-        check('game footer links the help pages, then Ko-fi', /^how-to-play\.html,wilds-guide\.html,upgrades-followers-gems\.html,faq\.html,about\.html,privacy\.html,https:\/\/ko-fi\.com\/\w+$/.test(
+        check('game footer links the help pages', /^how-to-play\.html,wilds-guide\.html,upgrades-followers-gems\.html,faq\.html,about\.html,privacy\.html$/.test(
             await evalJs('[...document.querySelectorAll(".site-footer a")].map(a => a.getAttribute("href")).join()')));
         await send('Emulation.setScriptExecutionDisabled', { value: true });
         for (const [w, h, label] of [[1280, 1400, 'desktop'], [390, 844, 'phone']]) {
@@ -237,6 +226,29 @@ async function main() {
                 hooks: typeof window.saveGame === 'function' && typeof window.freezeSavesForReload === 'function' && typeof window.notify === 'function' }; })()`);
         check('wilds: connected to accounts (the ☁️ button, signed out here)', acct.sync && acct.loaded && acct.btn && acct.hooks, acct);
         check('wilds: saving for the account writes the Wilds save now', await evalJs('(() => { const s = WHWorldDebug.state(); s.stats.kills += 7; const want = s.stats.kills; window.saveGame(); return JSON.parse(localStorage.getItem("whathappened_world")).stats.kills === want; })()'));
+        await evalJs('WHW.ui.closeModal()');
+        // the crew from the game: Jonathan and the Somalian Pirate have come to Wildgate (their upgrades' best levels, which
+        // the game writes), the Grape God has not
+        await evalJs('localStorage.setItem("whathappened_upgrade_best", JSON.stringify({ 2: 30, 6: 3, 11: 12 })); WHW.refreshClickerView(); WHWorldDebug.travel("town"); true');
+        await sleep(400);
+        const crew = await evalJs(`(() => ({ here: WHWorldDebug.crewHere(), depot: WHW.game.map.stations.some(s => s.id === 'depot'), renown: document.getElementById('renownCount').textContent, lv: WHWorldDebug.clickerView().renown }))()`);
+        check('wilds: the crew from the game stand at the WH Depot once they have arrived', crew.depot && crew.here.includes('pirate') && crew.here.includes('jonathan') && !crew.here.includes('grape'), crew);
+        check('wilds: the Renown chip shows the shared rank', crew.renown === String(crew.lv), crew);
+        await evalJs('WHW.ui.openStation("depot")');
+        check('wilds: the Depot lists who has come and who is on the way', /2 of 8/.test(await evalJs('document.getElementById("wModalBody").textContent')) && /Grape God reaches level 25/.test(await evalJs('document.getElementById("wModalBody").textContent')));
+        await evalJs('WHW.ui.openNpc("pirate")');
+        check('wilds: the Somalian Pirate gives a quest and runs a stall', await evalJs('!!document.querySelector("#wModalBody [data-qaccept]") && !!document.querySelector("#wModalBody [data-crewsvc=shop]")'));
+        await evalJs('document.querySelector("#wModalBody [data-crewsvc=shop]").click()');
+        check('wilds: his stall opens', /left today/.test(await evalJs('document.getElementById("wModalBody").textContent')));
+        await evalJs('WHW.ui.openRenown()');
+        const rn = await evalJs('document.getElementById("wModalBody").textContent');
+        check('wilds: the Renown panel counts both games', /From the game/.test(rn) && /From the Wilds/.test(rn) && /Milestones/.test(rn), rn.slice(0, 200));
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-wilds-renown.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+        // hero guilds: the Guildmaster by the Rune Altar shows his six charters
+        await evalJs('WHW.ui.openNpc("guildmaster")');
+        const gm = await evalJs('({ text: document.getElementById("wModalBody").textContent, cards: document.querySelectorAll("#wModalBody .w-guild-card").length, here: WHW.game.map.npcs.some(n => n.id === "guildmaster") })');
+        check('wilds: the Guildmaster stands in town with six guild charters', gm.here && gm.cards === 6 && /On the table now/.test(gm.text), { cards: gm.cards, here: gm.here });
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-wilds-guilds.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
         await evalJs('WHW.ui.closeModal()');
         const key = (type) => send('Input.dispatchKeyEvent', { type, key: 'd', code: 'KeyD', text: type === 'keyDown' ? 'd' : undefined, windowsVirtualKeyCode: 68 });
         const x0 = await evalJs('WHWorldDebug.player().x');
@@ -381,9 +393,12 @@ async function main() {
             const out = { first: kill() }; g.bossDeadUntil[g.zoneId] = WHW.engine.time + 1; window.__bossPaid = () => paid; return out; })()`);
         await sleep(2500);
         const boss2b = await evalJs(`(() => { const g = WHW.game, b = g.actors.find(a => a.kind === 'boss' && !a.dead); const near = Math.hypot(g.player.x - g.map.boss.x, g.player.y - g.map.boss.y) < g.map.boss.r + 300;
-            return { back: !!b, near, again: b ? (WHWorldDebug.teleport(g.map.boss.x - 60, g.map.boss.y), WHW.actors.damage(b, 1e7, { from: g.player, kbAngle: 0, kb: 0, s: 1 }), true) : false, paid: window.__bossPaid() }; })()`);
-        await sleep(300);
-        check('wilds: a boss returns while you wait in its arena, and its drops are paid again', boss2.first && boss2b.back && boss2b.near && boss2b.again && (await evalJs('window.__bossPaid()')) === 2, { boss2, boss2b });
+            const net = WHW.online ? { status: WHW.online.status, shared: !!(b && WHW.online.bossShared(b)) } : null;
+            return { back: !!b, near, net, again: b ? (WHWorldDebug.teleport(g.map.boss.x - 60, g.map.boss.y), WHW.actors.damage(b, 1e7, { from: g.player, kbAngle: 0, kb: 0, s: 1 }), true) : false, paid: window.__bossPaid() }; })()`);
+        // online (the local relay), a returning boss can be a shared one: then the last hit goes round the relay before it
+        // pays, so wait for the payout instead of a fixed moment
+        const paidAgain = await waitFor('window.__bossPaid() === 2', 15000);
+        check('wilds: a boss returns while you wait in its arena, and its drops are paid again', boss2.first && boss2b.back && boss2b.near && boss2b.again && paidAgain, { boss2, boss2b, paid: await evalJs('window.__bossPaid()') });
         await evalJs('(() => { const g = WHW.game; g.bossDeadUntil[g.zoneId] = 0; g.actors = g.actors.filter(a => a.kind !== "boss"); WHWorldDebug.teleport(window.__pos0.x, window.__pos0.y); WHW.engine.snapCamera(); return true; })()'); await sleep(300); // the camera follows the player: the cursor aims through it
         // the Rogue: the Grappling Hook pulls you to a monster and stuns it, and holds two charges
         const hook = await evalJs(`(() => { const W = WHWorld, g = WHW.game, p = g.player, s = g.state, T = WHW.engine.time, d = g.actors.find(a => a.id === ${JSON.stringify(dummy)});
@@ -415,7 +430,7 @@ async function main() {
         // quests: a quest giver in town offers one, it shows in the tracker
         await evalJs('WHWorldDebug.travel("town")');
         await sleep(400);
-        check('town: the Hall of Gods and four quest givers are there', await evalJs('!!WHW.game.map.hall && WHW.game.map.npcs.length === 4'));
+        check('town: the Hall of Gods and four quest givers are there', await evalJs('!!WHW.game.map.hall && WHW.game.map.npcs.filter(n => !WHWorldData.NPCS[n.id].crew && !WHWorldData.NPCS[n.id].guild).length === 4'));
         await evalJs('WHW.ui.openNpc("brannoc")');
         await sleep(150);
         check('quests: Captain Brannoc offers his first quest', await evalJs('/Slime Season/.test(document.getElementById("wModalBody").textContent) && !!document.querySelector("[data-qaccept]")'));
@@ -712,6 +727,11 @@ async function main() {
         await evalJs('checkDataAchievements(true)');
         check('achievements: unlocking the Auto Clicker unlocks Hands Off', (await evalJs('localStorage.getItem("ach_w_hands_off")')) === '1');
         await evalJs('setAutoTarget(null)');
+        // Renown and the crew, seen from the game
+        check('renown: the ⭐ chip in the top bar opens its panel, with the crew', await evalJs('(() => { document.getElementById("renownChip").click(); const ok = !document.getElementById("renownPanel").hidden && /Your crew in Wildgate/.test(document.getElementById("rnBody").textContent) && /In Wildgate/.test(document.getElementById("rnBody").textContent); return ok; })()'));
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-renown.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+        await evalJs('WHRenownPanel.close()');
+        check('crew: the Somalian Pirate\'s upgrade shows he is in Wildgate', await evalJs('(() => { _crewTagKey = ""; renderCrewTags(); const t = document.querySelector("#upgrade2 .crew-tag"); return !!t && !t.hidden && t.textContent === "🏕️"; })()'));
         await navigate(`http://localhost:${PORT}/achievements.html`, 'typeof WHA === "object" && document.querySelectorAll(".ach").length > 20');
         const revealed = await evalJs(`(() => { const c = [...document.querySelectorAll('.ach.done')].find(x => /Hands Off/.test(x.textContent)); return c ? { name: c.querySelector('.name').textContent.replace('NEW', '').trim(), desc: c.querySelector('.desc').textContent, title: c.querySelector('.t').textContent, hiddenLeft: document.querySelectorAll('.ach.is-hidden').length, equip: !!c.querySelector('[data-equip]') } : null; })()`);
         check('achievements: once unlocked it shows its name, description and title', revealed && revealed.name === 'Hands Off' && /Auto Clicker/.test(revealed.desc) && revealed.title === 'Hands-Free' && revealed.hiddenLeft === 0 && revealed.equip, revealed);

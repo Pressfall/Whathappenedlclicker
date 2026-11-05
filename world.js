@@ -7,6 +7,8 @@
 (function () {
     'use strict';
     const D = window.WHWorldData, W = window.WHWorld, C = window.WHWorldCombat, G = window.WHWorldGen, Bridge = window.WHWorldBridge, O = window.WHWorldOnline, Gods = window.WHWorldGods, Skins = window.WHSkins, Mb = window.WHWorldMobs;
+    const Crew = window.WHCrew, Ren = window.WHRenown;
+    const WHWorldGuilds = () => window.WHGuilds;
     const WHW = window.WHW;
     const E = WHW.engine, A = WHW.actors;
     const KEY = Bridge.WORLD_KEY;
@@ -23,7 +25,10 @@
     // or '0.5'; fpsCap: 30, 60 or 0 (the screen's own rate); showFps: a frame counter in the corner
     WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false },
         (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) { return {}; } })());
-    WHW.saveSettings = () => { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(WHW.settings)); } catch (e) {} };
+    WHW.saveSettings = () => {
+        try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(WHW.settings)); } catch (e) {}
+        if (WHW.jukebox) WHW.jukebox.sync(); // the volume may have changed
+    };
     // The detail level 'auto' stands for: the clicker's Performance setting (Settings in the game)
     WHW.gamePerformance = () => { const v = E.readSetting('whathappened_performance', 'high'); return ['high', 'medium', 'low'].includes(v) ? v : 'high'; };
     WHW.applyGraphics = () => {
@@ -153,6 +158,77 @@
     window.freezeSavesForReload = stopSaving;
     window.notify = (msg) => WHW.toast(msg);
 
+    // ---------------- what you did in the game: the crew and Renown ----------------
+    // The game's progress as the Wilds sees it (core/world-crew.js readView: best upgrade levels, prestiges...), with Renown
+    // (core/renown.js, from both saves) on top. The Wilds only reads those keys. Crew members who have just reached
+    // Wildgate are greeted once (the tab that plays notes it in the save).
+    function refreshClickerView(quiet) {
+        if (!g.state || !Crew) return;
+        let renown = 0;
+        try { if (Ren && window.WHA) renown = Ren.rank(window.WHA.snapshot()).level; } catch (e) { renown = 0; }
+        W.setClickerView(Crew.readView(localStorage, renown));
+        if (!g.canSave || !window._saveLoaded) return;
+        const came = W.greetCrew(g.state).map(id => D.NPCS[id].name);
+        if (!came.length) return;
+        save();
+        if (quiet) return;
+        if (came.length === 1) WHW.toast('🏕️ ' + came[0] + ' has come from the game to Wildgate! Find them at the WH Depot, south-east of the plaza.', 'gold');
+        else WHW.toast('🏕️ Your crew from the game has come to Wildgate: ' + came.join(', ') + '. Find them at the WH Depot, south-east of the plaza.', 'gold');
+    }
+    WHW.refreshClickerView = refreshClickerView;
+    // the game's tab writes some of these keys on every click: look again at most once a second
+    let viewTimer = 0;
+    function refreshViewSoon() {
+        if (viewTimer || !g.state) return;
+        viewTimer = setTimeout(() => { viewTimer = 0; refreshClickerView(); WHW.ui.refresh(); }, 1000);
+    }
+    // a crew member stands in town only once they have arrived
+    const visibleNpc = (n) => !D.NPCS[n.id].crew || W.crewHere(n.id);
+
+    // ---------------- which fight limits potions (D.RULES.potionsPerMatch) ----------------
+    // an arena match (duels, team battles, tournament duels), a stay in the Pit (a new one each time you step in or get
+    // back up), or a run of the Proving Grounds' waves; null anywhere else
+    function inPit() { const p = g.player; return g.zoneId === 'arena' && !!g.map && !!g.map.pit && !!p && !p.dead && dist(p, g.map.pit) < g.map.pit.r; }
+    function potionLimitKey() {
+        const AR = WHW.arena, WV = WHW.waves;
+        if (AR && AR.match && !AR.match.result) return 'match:' + AR.match.id;
+        if (g.zoneId === 'trials' && WV && WV.run && WV.run.st !== 'over') return 'waves:' + WV.run.gen;
+        if (inPit()) return 'pit:' + (g.pitStay || 0);
+        return null;
+    }
+    WHW.potionsLeft = () => { const k = potionLimitKey(); return k ? W.potionsLeft(g.potionLimit, k) : null; };
+    function trackPit() {
+        const now = inPit();
+        if (now && !g.wasInPit) g.pitStay = (g.pitStay || 0) + 1;
+        g.wasInPit = now;
+    }
+
+    // ---------------- the Phonk Man's jukebox: the game's own music, in Wildgate ----------------
+    // Plays the tracks the game says you own (core/world-crew.js MUSIC); the choice is a device setting (settings.jukebox)
+    let jukeEl = null;
+    function jukeVolume() {
+        const ms = mainSave();
+        const v = typeof ms.musicVolume === 'number' ? ms.musicVolume : Number(ms.musicVolume) || 0.5;
+        return ms.musicMuted === true || ms.musicMuted === 'true' ? 0 : Math.max(0, Math.min(1, v)) * WHW.settings.volume;
+    }
+    function jukeSync() {
+        const id = WHW.settings.jukebox, t = id && Crew.ownedMusic(mainSave()).find(x => x.id === id);
+        const on = !!t && g.inTown && W.crewHere('phonk');
+        if (!on) { if (jukeEl && !jukeEl.paused) jukeEl.pause(); return; }
+        if (!jukeEl) { jukeEl = new Audio(); jukeEl.loop = true; }
+        const src = 'audio/' + encodeURIComponent(t.file);
+        if (jukeEl.dataset.src !== src) { jukeEl.dataset.src = src; jukeEl.src = src; }
+        jukeEl.volume = jukeVolume();
+        if (jukeEl.paused) { const p = jukeEl.play(); if (p && p.catch) p.catch(() => {}); }
+    }
+    WHW.jukebox = {
+        tracks: () => Crew.ownedMusic(mainSave()),
+        current: () => (WHW.settings.jukebox && Crew.ownedMusic(mainSave()).some(t => t.id === WHW.settings.jukebox) ? WHW.settings.jukebox : null),
+        play(id) { WHW.settings.jukebox = id; WHW.saveSettings(); jukeSync(); },
+        stop() { WHW.settings.jukebox = null; WHW.saveSettings(); jukeSync(); },
+        sync: jukeSync,
+    };
+
     // only one tab plays at a time: the lock is held for the page's lifetime; "Play here" steals it
     function holdLock(steal) {
         const cover = document.getElementById('tabLock');
@@ -263,6 +339,8 @@
         }
         if (!pos && opts.atCamp && g.map.camp) pos = { x: g.map.camp.x, y: g.map.camp.y + 40 };
         if (!pos) pos = g.map.entry;
+        // a saved spot that is now inside something you can't walk on (the town grew the WH Depot there, say): the entry
+        if (pos !== g.map.entry && G.blocksWalk(G.tileAt(g.map, pos.x, pos.y))) pos = g.map.entry;
         p.x = pos.x; p.y = pos.y; p.vx = p.vy = p.kbx = p.kby = 0;
         E.collideTiles(p);
         p.trail = [];
@@ -283,6 +361,7 @@
         W.questEvent(s, { kind: 'visit', zone: zoneId });
         E.snapCamera();
         save();
+        jukeSync(); // the Phonk Man's music plays in town only
     }
 
     // ---------------- player helpers ----------------
@@ -409,12 +488,16 @@
             if (!p || p.dead) return;
             const wait = (g.potionCd || 0) - E.time;
             if (wait > 0) { WHW.hint('Your next potion is ready in ' + Math.ceil(wait) + 's.'); return; }
+            // arena matches, the Pit and the waves: a few potions per fight
+            const limitKey = potionLimitKey();
+            if (W.potionsLeft(g.potionLimit, limitKey) <= 0) { WHW.toast('No potions left for this fight: ' + D.RULES.potionsPerMatch + ' per arena match, Pit visit or wave run.', 'bad'); return; }
             const missing = p.maxHp - p.hp;
             if (missing < 1) { WHW.toast('You are already at full health.'); return; }
             const order = missing >= W.potionHeal('potion_small', p.maxHp) * 2 ? ['potion_big', 'potion_max', 'potion_small'] : ['potion_small', 'potion_big', 'potion_max'];
             const id = order.find(k => s.cons[k] > 0);
             if (!id) { WHW.toast('No potions. Brew them at the Rune Altar or buy them from the Trader.', 'bad'); return; }
             s.cons[id]--;
+            if (limitKey) g.potionLimit = W.notePotion(g.potionLimit, limitKey);
             p.hp = Math.min(p.maxHp, p.hp + W.potionHeal(id, p.maxHp));
             const cd = D.CONSUMABLES_BY_ID[id].cd || 1;
             g.potionCd = E.time + cd;
@@ -468,18 +551,78 @@
         },
         acceptQuest(npc) {
             const r = W.acceptQuest(g.state, npc, now());
-            if (!r.ok) { WHW.toast(r.reason === 'locked' ? 'That one has to wait until you can reach it.' : 'Nothing to take on right now.', 'bad'); return; }
+            if (!r.ok) { WHW.toast(r.reason === 'locked' ? 'That one has to wait until you can reach it.' : r.reason === 'away' ? 'They are not in town right now.' : 'Nothing to take on right now.', 'bad'); return; }
             WHW.toast('📜 New quest: ' + D.QUESTS[r.id].title, 'gold');
             W.questEvent(g.state, { kind: 'visit', zone: g.zoneId });
             WHW.sfx('craft'); save(); WHW.ui.refresh(); WHW.ui.renderHud();
         },
         turnInQuest(npc) {
-            const r = W.turnInQuest(g.state, npc, now());
+            const r = W.turnInQuest(g.state, npc, now(), g.ack);
             if (!r.ok) { WHW.toast(r.reason === 'materials' ? "You don't have everything they asked for." : 'That quest is not done yet.', 'bad'); return; }
             questsNoticed.delete(r.id);
             const extra = r.cons ? Object.entries(r.cons).map(([id, n]) => ' and ' + n + ' ' + D.CONSUMABLES_BY_ID[id].name + (n > 1 ? 's' : '')).join('') : '';
             WHW.toast('♦ +' + r.rubies.toLocaleString() + ' rubies' + extra + ': "' + D.QUESTS[r.id].title + '" complete!', 'gold');
+            if (r.clicker) WHW.toast('🎁 ' + WHW.ui.gameItemsText(r.clicker) + ' sent to your game\'s Items.', 'gold');
             WHW.sfx('gem'); save(); WHW.ui.refresh(); WHW.ui.renderHud();
+        },
+        // the crew from the game: a shop (the Somalian Pirate, the Grape God) and ez villager's Trading Hall
+        crewBuy(crewId, stockId) {
+            const r = W.crewBuy(g.state, crewId, stockId, now());
+            if (!r.ok) { WHW.toast(r.reason === 'soldout' ? 'Sold out for today.' : r.reason === 'locked' ? 'Open that zone first.' : reasonText[r.reason] || 'Can\'t buy that.', 'bad'); return; }
+            WHW.sfx('craft'); save(); refreshPlayer();
+        },
+        crewTrade(crewId, tradeId) {
+            const r = W.crewTrade(g.state, crewId, tradeId, now());
+            if (!r.ok) { WHW.toast(r.reason === 'soldout' ? 'That trade is done for today.' : r.reason === 'materials' ? "You don't have what it takes." : r.reason === 'locked' ? 'Open that zone first.' : 'Can\'t trade that.', 'bad'); return; }
+            WHW.toast('🔁 Hrmm! ' + Object.entries(r.get).map(([id, n]) => n + ' ' + D.MATERIALS_BY_ID[id].name).join(', ') + '.', 'gold');
+            WHW.sfx('gather'); save();
+        },
+        // every Wilds half of the Renown milestones waiting, with one toast
+        claimAllRenown() {
+            refreshClickerView(true);
+            let rubies = 0; const cons = {}, levels = [];
+            for (const m of W.renownClaimable(g.state)) {
+                const r = W.claimRenown(g.state, m.level);
+                if (!r.ok) continue;
+                levels.push(m.level); rubies += r.rubies;
+                for (const id in r.cons || {}) cons[id] = (cons[id] || 0) + r.cons[id];
+            }
+            if (!levels.length) return;
+            const extra = Object.entries(cons).map(([id, n]) => ', ' + n + ' ' + D.CONSUMABLES_BY_ID[id].name + (n > 1 ? 's' : '')).join('');
+            WHW.toast('⭐ Renown ' + levels.join(', ') + ': ♦ +' + rubies.toLocaleString() + ' rubies' + extra + '!', 'gold');
+            WHW.sfx('gem'); save(); WHW.ui.renderHud();
+        },
+        // hero guilds (core/world-guilds.js): the Guildmaster's contracts and charters
+        takeGuildContract(up) {
+            const r = W.takeGuildContract(g.state, up, now());
+            const why = { busy: 'Finish or give up your other contract first.', stock: 'That guild is not on the table any more.', soldout: 'Sold out until the next stock.', locked: 'Open its zone first.' };
+            if (!r.ok) { WHW.toast(why[r.reason] || 'Can\'t take that contract.', 'bad'); return; }
+            WHW.toast('📜 New contract: ' + WHWorldGuilds().BY_UP[up].name, 'gold');
+            WHW.sfx('craft'); save(); WHW.ui.renderHud();
+        },
+        dropGuildContract() {
+            const gc = g.state.guilds.contract;
+            if (!W.dropGuildContract(g.state)) return;
+            if (gc) questsNoticed.delete('guild:' + gc.up);
+            WHW.toast('Contract given up. You can take another one.');
+            save(); WHW.ui.renderHud();
+        },
+        buyGuild(up) {
+            const r = W.buyGuild(g.state, up, now());
+            if (!r.ok) { WHW.toast(r.reason === 'unfinished' ? 'Finish the contract first.' : reasonText[r.reason] || 'Can\'t buy that charter.', 'bad'); return; }
+            questsNoticed.delete('guild:' + up); // the next contract for this guild says "done" again
+            const gd = WHWorldGuilds().BY_UP[up];
+            WHW.toast(gd.crest + ' ' + gd.name + ' joined! You own ' + r.owned + ': ' + gd.hero + ' earns +' + Math.round(WHWorldGuilds().PER_GUILD * 100 * r.owned) + '% in the game.', 'gold');
+            WHW.sfx('gem'); save(); refreshPlayer(); WHW.ui.renderHud();
+        },
+        // the Wilds half of a Renown milestone (the game pays its own half, from its top bar)
+        claimRenown(level) {
+            refreshClickerView(true);
+            const r = W.claimRenown(g.state, level);
+            if (!r.ok) { WHW.toast(r.reason === 'claimed' ? 'Already claimed.' : 'Not there yet.', 'bad'); return; }
+            const extra = r.cons ? Object.entries(r.cons).map(([id, n]) => ', ' + n + ' ' + D.CONSUMABLES_BY_ID[id].name + (n > 1 ? 's' : '')).join('') : '';
+            WHW.toast('⭐ Renown ' + level + ': ♦ +' + r.rubies.toLocaleString() + ' rubies' + extra + '!', 'gold');
+            WHW.sfx('gem'); save(); WHW.ui.renderHud();
         },
         abandonQuest(npc) {
             if (!W.abandonQuest(g.state, npc)) return;
@@ -650,7 +793,7 @@
             save();
         }
         for (const n of map.npcs || []) {
-            if (dist(p, n) < 56) { prompt = `<kbd>E</kbd>Talk to ${esc(D.NPCS[n.id].name)}`; if (press) WHW.ui.openNpc(n.id); break; }
+            if (dist(p, n) < 56 && visibleNpc(n)) { prompt = `<kbd>E</kbd>Talk to ${esc(D.NPCS[n.id].name)}`; if (press) WHW.ui.openNpc(n.id); break; }
         }
         if (prompt) { /* talking comes first */ } else if (g.inTown) {
             if (map.hall && dist(p, map.hall.door) < 52) { prompt = '<kbd>E</kbd>🏛️ Enter the Hall of Gods'; if (press) enterZone('hall'); }
@@ -777,6 +920,12 @@
     function statueGod(st) { return st.god || Gods.HALL_GODS[st.slot]; }
     // what floats over a quest giver's head
     function npcMark(id) {
+        // the Guildmaster: your contract's state, or "!" while a guild you can take a contract for is in stock
+        if (D.NPCS[id].guild) {
+            const gs = W.guildStock(g.state, now());
+            if (gs.contract) return gs.contract.progress.done ? 'ready' : 'busy';
+            return gs.items.some(it => !it.sold && !it.locked) ? 'new' : null;
+        }
         if (!D.NPCS[id].chain.length && !D.NPCS[id].daily.length) return null;
         const o = W.questOffer(g.state, id, now());
         if (!o || o.doneToday || o.locked) return null;
@@ -792,7 +941,7 @@
         if (WHW.waves) WHW.waves.update(dt);
         if (WHW.mobs) WHW.mobs.update(dt);
         if (WHW.tour) WHW.tour.update(dt);
-        if (p.dead) { A.updateProjectiles(dt); return; }
+        if (p.dead) { A.updateProjectiles(dt); g.wasInPit = false; return; } // getting back up in the Pit is a new stay
         A.updatePlayer(p, dt);
         if (p.dead) return;
         const near = [];
@@ -839,10 +988,11 @@
         for (const n of g.nodes) if (n.shake > 0) n.shake -= dt;
         if (g.map.braziers && E.perf !== 'low') for (const b of g.map.braziers) if (Math.random() < dt * 3) E.burst(b.x + (Math.random() - 0.5) * 10, b.y - 30, b.cold ? '#7fe8ff' : '#ffb347', 1, 30, { angle: -Math.PI / 2, spread: 0.6, life: 1.1, grav: -40, size: 2 });
         interactions(dt);
+        trackPit();
         questT -= dt;
         if (questT <= 0) { questT = 0.5; noticeQuests(); }
         achT -= dt;
-        if (achT <= 0) { achT = 6; noticeAchievements(); }
+        if (achT <= 0) { achT = 6; noticeAchievements(); refreshClickerView(); }
         statT += dt;
         if (statT >= 1) { g.state.stats.playSec += Math.floor(statT); statT -= Math.floor(statT); }
         hudT += dt;
@@ -1035,7 +1185,7 @@
         for (const n of E.nodesNear(E.cam.x + vw / 2, E.cam.y + vh / 2, Math.max(vw, vh) / 2 + 80)) items.push({ y: n.y, n });
         for (const a of g.actors) if (!a.dead && inView(a.x, a.y, 80)) items.push({ y: a.y, a });
         items.push({ y: p.y, a: p });
-        for (const n of g.map.npcs || []) if (inView(n.x, n.y, 80)) items.push({ y: n.y, npc: n });
+        for (const n of g.map.npcs || []) if (inView(n.x, n.y, 80) && visibleNpc(n)) items.push({ y: n.y, npc: n });
         for (const st of g.map.statues || []) if (inView(st.x, st.y, 120)) items.push({ y: st.y, statue: st });
         for (const pl of g.map.pillars || []) if (inView(pl.x, pl.y, 120)) items.push({ y: pl.y, pillar: pl });
         for (const b of g.map.braziers || []) if (inView(b.x, b.y, 80)) items.push({ y: b.y, brazier: b });
@@ -1226,9 +1376,11 @@
         const on = (id, fn) => { const el = document.getElementById(id); if (el) el.addEventListener('click', fn); };
         on('btnBag', () => WHW.ui.openBag());
         on('btnMap', () => WHW.ui.openMap());
+        on('minimap', () => WHW.ui.openMap()); // the minimap opens the big map too (on phones it stands in for the Map button)
         on('btnSkills', () => WHW.ui.openSkills());
         on('btnHelp', () => WHW.ui.openHelp());
         on('btnSettings', () => WHW.ui.openSettings());
+        on('btnRenown', () => WHW.ui.openRenown());
         on('wModalClose', () => WHW.ui.closeModal());
         document.getElementById('wModal').addEventListener('click', (ev) => { if (ev.target.id === 'wModal' && !(WHW.craft && WHW.craft.isOpen())) WHW.ui.closeModal(); });
         on('tabLockTake', () => {
@@ -1238,6 +1390,7 @@
                 g.canSave = true;
                 window._saveLoaded = true;
                 collectRubies();
+                refreshClickerView();
                 document.getElementById('tabLock').hidden = true;
                 E.paused = false;
                 refreshPlayer();
@@ -1272,8 +1425,12 @@
         if (ev.key === 'whathappened_cloud_applied' && ev.newValue) { stopSaving(); location.reload(); return; }
         if (ev.key === Bridge.ACK_KEY) { g.ack = Bridge.readAck(localStorage); return; }
         if (ev.key === Bridge.INBOX_KEY) { collectRubies(); return; }
-        // a skin equipped or unlocked in the game's tab
-        if (ev.key === 'whathappened_save') { if (g.state) { g.faceSrc = faceFromSkin(); E.img(g.faceSrc); } return; }
+        // a skin equipped or unlocked in the game's tab (and how far the game got: the crew, 'clicker' quests, Renown)
+        if (ev.key === 'whathappened_save') { if (g.state) { g.faceSrc = faceFromSkin(); E.img(g.faceSrc); refreshViewSoon(); jukeSync(); } return; }
+        if (Crew && (ev.key === Crew.BEST_KEY || ev.key === 'whathappened_followers' || ev.key === 'whathappened_lifetime_clicks' || ev.key === 'whathappened_prestige_times' || (Ren && ev.key === Ren.CLAIMED_KEY))) {
+            refreshViewSoon();
+            return;
+        }
         if (ev.key !== KEY) return;
         if (ev.newValue === null) { stopSaving(); location.reload(); return; } // progress was reset from the game
         let writer = '';
@@ -1283,6 +1440,8 @@
     window.addEventListener('pageshow', (ev) => { if (ev.persisted) { stopSaving(); location.reload(); } });
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'hidden') save();
+        // the jukebox is quiet while you are in another tab (the game's own music may be playing there)
+        if (document.visibilityState === 'hidden') { if (jukeEl && !jukeEl.paused) jukeEl.pause(); } else jukeSync();
         if (WHW.online) WHW.online.visibility(document.visibilityState === 'hidden');
     });
     window.addEventListener('pagehide', save);
@@ -1298,6 +1457,8 @@
             spawnDummy: () => { const d = A.makeMonster('slime', g.player.x + 40, g.player.y); d.maxHp = d.hp = 500; d.speed = 0; d.def = Object.assign({}, d.def, { attacks: [] }); d.cds = []; g.actors.push(d); return d.id; },
             actorHp: (id) => { const a = g.actors.find(x => x.id === id); return a ? a.hp : null; },
             state: () => g.state,
+            clickerView: () => W.getClickerView(),
+            crewHere: () => (g.map.npcs || []).filter(n => D.NPCS[n.id].crew && visibleNpc(n)).map(n => n.id),
             travel: (z) => enterZone(z),
             teleport: (x, y) => { g.player.x = x; g.player.y = y; },
             online: () => {
@@ -1328,6 +1489,7 @@
             W.abortCraft(g.state);
             WHW.toastLater = 'An unfinished craft was cancelled: your materials are back, the fee is spent.';
         }
+        refreshClickerView(true); // before the town is drawn: which of the crew stand in it
         refreshPlayer();
         g.player.hp = Math.min(g.player.maxHp, g.state.hp || g.player.maxHp);
         noticeQuests(true);
@@ -1338,6 +1500,7 @@
             if (!ok) { lostToOtherTab(); return; }
             collectRubies();
             window._saveLoaded = true; // (cloud.js) this tab owns the Wilds save: it can sync it
+            refreshClickerView(); // crew who came since last time say hello
         });
         g.zoneId = g.state.zone;
         enterZone(g.state.zone, { pos: g.state.pos, silent: g.state.zone !== 'town' });

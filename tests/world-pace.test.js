@@ -1,10 +1,13 @@
 'use strict';
 // The Far Reaches are meant to take longer than the first four zones. These checks work it out from the tables alone, so a
 // later tweak to a monster, a recipe or a node can't quietly undo it. "On-tier" gear for a zone of tier z is gear tier z + 1
-// (Frostveil, tier 4, is Mithril, tier 5): a Common sword with a decent swing (x1.08) and a full Common armor set.
+// (Frostveil, tier 4, is Mithril, tier 5): a Common sword with a decent swing (80% swing speed, a 2-hit combo, worked out
+// with the sword's own curve in core/world-combat.js hitDamage) and a full Common armor set.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const D = require('../core/world-data');
+const C = require('../core/world-combat');
+const SWING = C.hitDamage(1, 0.8, 2, 1, D.WEAPON_CLASSES.sword).dmg;
 
 const FAR = D.ZONE_ORDER.filter(z => D.ZONES[z].via === 'waystone');
 const KIT = ['sword', 'helmet', 'chest', 'boots', 'shield', 'pickaxe', 'axe'];
@@ -13,7 +16,7 @@ const ARMOR = ['helmet', 'chest', 'boots'];
 function gear(zone, behind = 0) {
     const t = D.ZONES[zone].tier + 1 - behind;
     return {
-        hit: 1.08 * D.GEAR_BY_ID['sword_' + t].dmg,
+        hit: SWING * D.GEAR_BY_ID['sword_' + t].dmg,
         hp: 100 + 20 + ARMOR.reduce((a, s) => a + D.GEAR_BY_ID[s + '_' + t].hp, 0),
         armor: ARMOR.reduce((a, s) => a + D.GEAR_BY_ID[s + '_' + t].armor, 0),
     };

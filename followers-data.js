@@ -206,6 +206,10 @@
             if (!pack || !isFinite(t)) delete s.packReadyAt[id];
             else if (t > now + pack.cooldown) s.packReadyAt[id] = now + pack.cooldown;
         }
+        // packs bought with Glory in the Wilds' Arena, waiting to be opened free (grantFreePacks)
+        const fp = s.freePacks && typeof s.freePacks === 'object' ? s.freePacks : {};
+        s.freePacks = {};
+        for (const id in fp) { const n = Math.max(0, Math.min(999, Math.floor(Number(fp[id]) || 0))); if (PACKS_BY_ID[id] && n) s.freePacks[id] = n; }
         if (!Array.isArray(s.nursery)) s.nursery = [];
         s.nursery = s.nursery.filter(e => e && e.child && SPECIES_BY_ID[e.child.sp] && isFinite(Number(e.readyAt)));
         s.nursery.forEach(e => { const dur = Number(e.duration) || 0; if (e.readyAt > now + dur) e.readyAt = now + dur; });
@@ -327,12 +331,12 @@
     }
     // ms until `packId` can be opened again (0 = ready)
     function packWait(s, packId) { return Math.max(0, (Number(s.packReadyAt && s.packReadyAt[packId]) || 0) - Date.now()); }
-    // Open a pack into state `s` (caller has already paid and checked packWait). Starts the pack's cooldown.
-    // Returns the new followers, each with an isNew flag.
-    function openPack(s, packId) {
+    // Open a pack into state `s` (caller has already paid and checked packWait). Starts the pack's cooldown, unless it is
+    // a free one from the Wilds (opts.free). Returns the new followers, each with an isNew flag.
+    function openPack(s, packId, opts) {
         const pack = PACKS_BY_ID[packId];
         if (!s.packReadyAt) s.packReadyAt = {};
-        s.packReadyAt[packId] = Date.now() + pack.cooldown;
+        if (!(opts && opts.free)) s.packReadyAt[packId] = Date.now() + pack.cooldown;
         const out = [];
         for (let i = 0; i < pack.count; i++) {
             let weights = pack.weights.slice();
@@ -352,6 +356,21 @@
         }
         s.opened = (Number(s.opened) || 0) + 1;
         return out;
+    }
+
+    // Follower packs from the Wilds (main.js applyWorldRewards: bought with Glory in the Arena), { packId: n }: they wait in
+    // the save to be opened free on the Followers page. Re-reads storage first, like every other change. Returns how many.
+    function grantFreePacks(map) {
+        const s = loadState();
+        let n = 0;
+        for (const id in map || {}) {
+            const k = Math.max(0, Math.floor(Number(map[id]) || 0));
+            if (!PACKS_BY_ID[id] || !k) continue;
+            s.freePacks[id] = Math.min(999, (s.freePacks[id] || 0) + k);
+            n += k;
+        }
+        if (n) saveState(s);
+        return n;
     }
 
     // ---------------- breeding ----------------
@@ -867,7 +886,7 @@
         maxLevel, xpForLevel, investedXp, feedValue, previewLevel,
         bloodline, followerBuffs, computeBonuses, fmtBuff,
         NURSERY_SLOTS, HATCH_TIME_BY_RARITY,
-        openPack, packWait, breedCost, breedOdds, hatchTime, eggFor, eggReady, startBreed, claimEgg,
+        openPack, packWait, grantFreePacks, breedCost, breedOdds, hatchTime, eggFor, eggReady, startBreed, claimEgg,
         fmtDuration, fmtSpan,
         art,
     };

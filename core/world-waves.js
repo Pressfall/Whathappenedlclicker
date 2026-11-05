@@ -52,12 +52,8 @@
         out.forEach((m, i) => { m.mid = 'w' + wave + '_' + i; m.gate = Math.floor(rng() * 6); m.delay = Math.floor(i / WAVES.batch) * WAVES.batchSec + rng() * 0.8; });
         return out;
     }
-    // where a run starts: the highest checkpoint (every five waves) that everyone in the room has reached
-    function startWave(bests) {
-        const list = (bests || []).map(b => Math.max(0, Math.floor(Number(b) || 0)));
-        const low = list.length ? Math.min(...list) : 0;
-        return 1 + Math.floor(low / WAVES.perTier) * WAVES.perTier;
-    }
+    // where a run starts: always wave 1, however far anyone in the room got before (there are no checkpoints)
+    function startWave() { return 1; }
     // What clearing a wave pays (the Glory still goes through the day's cap): { rubies, glory, milestone }
     function rewardFor(wave, firstTime) {
         const tier = tierFor(wave);

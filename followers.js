@@ -161,6 +161,9 @@
             } else {
                 action = `<button type="button" class="btn btn-gold btn-block" data-pack="${p.id}"${golden < p.cost ? ' disabled' : ''}>${golden < p.cost ? `Need ${p.cost} Golden` : `Open for ${p.cost} Golden`}</button>`;
             }
+            // packs bought with Glory in the Wilds' Arena: free, and they don't wait for the cooldown
+            const free = (state.freePacks && state.freePacks[p.id]) || 0;
+            if (free) action = `<button type="button" class="btn btn-primary btn-block" data-freepack="${p.id}">🎁 Open free (${free} from the Arena)</button>` + action;
             return `<div class="pack glass-panel">
                 <div class="pack-top">
                     <div class="pack-box" style="--p1:${p.colors[0]};--p2:${p.colors[1]}">${p.icon}</div>
@@ -171,6 +174,18 @@
                 ${action}
             </div>`;
         }).join('');
+    }
+    // a pack bought with Glory in the Wilds (WHF.grantFreePacks): no Golden, no cooldown
+    function openFreePack(id) {
+        const pack = W.PACKS_BY_ID[id];
+        refresh();
+        if (!((state.freePacks || {})[id] > 0)) { renderAll(); return; }
+        if (state.list.length + state.nursery.length + pack.count > W.INVENTORY_CAP) { toast(`Your collection is full (${W.INVENTORY_CAP}). Sacrifice some followers to make room.`, 'bad'); return; }
+        state.freePacks[id]--;
+        const got = W.openPack(state, id, { free: true });
+        W.saveState(state);
+        renderAll();
+        showReveal(pack.name, got, { colors: pack.colors });
     }
     function buyPack(id) {
         const pack = W.PACKS_BY_ID[id];
@@ -569,6 +584,8 @@
             toast(`Slot ${state.slots} unlocked!`, 'good');
             return;
         }
+        const freePack = e.target.closest('[data-freepack]');
+        if (freePack) { openFreePack(freePack.dataset.freepack); return; }
         const pack = e.target.closest('[data-pack]');
         if (pack && !pack.disabled) { buyPack(pack.dataset.pack); return; }
         const parent = e.target.closest('.parent-slot');

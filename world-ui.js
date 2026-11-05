@@ -5,7 +5,7 @@
  */
 (function () {
     'use strict';
-    const D = window.WHWorldData, W = window.WHWorld, Bridge = window.WHWorldBridge, Gods = window.WHWorldGods;
+    const D = window.WHWorldData, W = window.WHWorld, Bridge = window.WHWorldBridge, Gods = window.WHWorldGods, Crew = window.WHCrew, Ren = window.WHRenown;
     const WHW = window.WHW;
     const E = WHW.engine;
     const $ = (id) => document.getElementById(id);
@@ -288,7 +288,15 @@
         }
         const sl = $('shieldSlot');
         if (sl) { sl.classList.toggle('is-sel', p.shield.up); sl.classList.toggle('is-broken', p.shield.brokenUntil > E.time); }
-        const key = s.equip.offhand + '|' + s.hotbar.join(',') + '|' + s.sel + '|' + s.cons.potion_small + s.cons.potion_big + s.cons.potion_max + '|' + s.cons.arrow + '|' + s.gear.length + '|' + s.classes.active + W.abilityKit(s).join(',');
+        // Renown: the level world.js last worked out, and a dot when a milestone's Wilds half is waiting
+        const rn = $('btnRenown');
+        if (rn) {
+            const lv = W.getClickerView().renown;
+            setText($('renownCount'), lv);
+            const ready = W.renownClaimable(s).length > 0;
+            if (rn._ready !== ready) { rn._ready = ready; rn.classList.toggle('has-claim', ready); rn.title = 'Renown ' + lv + ': one rank for the game and the Wilds together' + (ready ? '. A reward is waiting!' : ''); }
+        }
+        const key = s.equip.offhand + '|' + s.hotbar.join(',') + '|' + s.sel + '|' + s.cons.potion_small + s.cons.potion_big + s.cons.potion_max + '|' + s.cons.arrow + '|' + s.gear.length + '|' + s.classes.active + W.abilityKit(s).join(',') + '|' + (WHW.potionsLeft ? WHW.potionsLeft() : '');
         if (key !== hotbarKey) { hotbarKey = key; renderHotbar(); }
         renderQuests();
         // boss bar
@@ -317,7 +325,10 @@
         const potions = (s.cons.potion_small || 0) + (s.cons.potion_big || 0) + (s.cons.potion_max || 0);
         const shield = W.findGear(s, s.equip.offhand);
         if (shield) html += `<span class="w-slot w-slot--cons w-slot--shield" id="shieldSlot" title="${esc(W.gearName(shield))}: hold right-click or F to block" aria-label="Shield: hold right-click or F to block"><span class="k">RMB</span>🛡️<i class="q" style="background:${W.qualityOf(shield.score).color}"></i></span>`;
-        html += `<button class="w-slot w-slot--cons" data-potion="1" title="Drink a potion (Z). Small, Big and Max potions need 6, 10 and 20 seconds before the next." aria-label="Drink a potion, ${potions} left"><span class="k">Z</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span><span class="cd" hidden></span></button>`;
+        // in an arena match, the Pit or a wave run: how many of this fight's potions are left
+        const lim = WHW.potionsLeft ? WHW.potionsLeft() : null;
+        const limTxt = lim === null ? '' : `<span class="lim" title="Potions left in this fight">${lim}/${D.RULES.potionsPerMatch}</span>`;
+        html += `<button class="w-slot w-slot--cons${lim === 0 ? ' is-out' : ''}" data-potion="1" title="Drink a potion (Z). Small, Big and Max potions need 6, 10 and 20 seconds before the next.${lim === null ? '' : ' In arena matches, the Pit and the waves you may drink ' + D.RULES.potionsPerMatch + ' per fight.'}" aria-label="Drink a potion, ${potions} left"><span class="k">Z</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span>${limTxt}<span class="cd" hidden></span></button>`;
         const cls = W.classOf(s);
         W.abilityKit(s).forEach((id, i) => {
             const a = D.ABILITIES[id], k = D.ABILITY_KEYS[i];
@@ -444,9 +455,12 @@
             case 'deliver': return 'Bring ' + Object.entries(goal.mats).map(([id, k]) => k + ' ' + matName(id)).join(' and ');
             case 'visit': return 'Step inside the ' + D.ZONES[goal.zone].name;
             case 'god': return 'Raise any statue in the Hall of Gods';
+            case 'clicker': return Crew.goalText(goal);
         }
         return '';
     }
+    // "3 × Spare Battery" for consumables a crew quest or Renown sends to the game (core/world-bridge.js ITEMS)
+    function gameItemsText(items) { return Object.entries(items || {}).map(([id, n]) => n + ' × ' + (Bridge.ITEMS[id] || id)).join(', '); }
     // the accepted quests, under the zone name
     let questKey = '';
     function renderQuests() {
@@ -462,6 +476,7 @@
     let npcOpen = null;
     const npcLine = {}; // which of a wanderer's lines was said last (this visit only)
     function openNpc(id) {
+        if (D.NPCS[id] && D.NPCS[id].guild) return openGuilds();
         npcOpen = id;
         modal(D.NPCS[id].name, '', { render: renderNpc });
         renderNpc();
@@ -472,6 +487,9 @@
         let html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(npc.greet)}"</p></div></div>`;
         if (npc.rumor) html += `<p class="w-npc-rumor"><b>They mention:</b> "${esc(npc.rumor)}"</p>`;
         if (npc.arena) html += '<div class="w-card-actions" style="margin-bottom:10px"><button class="btn btn-gold" data-arenamenu>🏟️ The Arena: play, ranking, Glory shop</button></div>';
+        // the crew from the game: what they do besides quests
+        const SERVICES = { shop: id === 'grape' ? '🍷 Buy potions' : '🏴‍☠️ See the smuggled goods', trade: '🔁 Trading Hall', jukebox: '🎵 The jukebox', ledger: '⭐ Your Renown' };
+        if (npc.crew && npc.service && SERVICES[npc.service]) html += `<div class="w-card-actions" style="margin-bottom:10px"><button class="btn btn-gold" data-crewsvc="${npc.service}">${SERVICES[npc.service]}</button></div>`;
         if (npc.lines) {
             const line = s.secrets.hallDoor && npc.opened ? npc.opened : npc.lines[(npcLine[id] = ((npcLine[id] === undefined ? -1 : npcLine[id]) + 1) % npc.lines.length)];
             html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(line)}"</p></div></div>`;
@@ -489,16 +507,190 @@
                 act = `<button class="btn btn-primary" data-qturnin ${p.done ? '' : 'disabled'}>${p.done ? 'Hand in' : 'Not done yet'}</button><button class="btn btn-ghost btn-sm" data-qquit>Give up</button>`;
             } else if (o.locked) act = `<span class="lock">🔒 Come back once you can reach ${esc(D.ZONES[o.locked.zone].name)}.</span>`;
             else act = '<button class="btn btn-primary" data-qaccept>Accept</button>';
+            const forGame = q.clicker && !q.daily ? ' + ' + esc(gameItemsText(q.clicker)) + ' <span class="muted">in the game</span>' : '';
+            const gameNote = q.goal.kind === 'clicker' ? '<p class="w-note">This one is done in the game. It counts what the game has saved (it saves every 30 seconds), so it moves on even while you are here.</p>' : '';
             html += `<div class="w-quest"><div class="w-quest-kicker">${kicker}</div><div class="w-quest-title">${esc(q.title)}</div><p class="w-quest-text">"${esc(q.text)}"</p>
-                <div class="w-quest-goal"><b>Goal:</b> ${esc(goalText(q.goal))}</div>${prog}
-                <div class="w-quest-reward"><b>Reward:</b> ♦ ${fmt(o.rubies)} rubies${esc(potions)}${q.daily ? ' <span class="muted">(more once you reach further zones)</span>' : ''}</div>
+                <div class="w-quest-goal"><b>Goal:</b> ${esc(goalText(q.goal))}</div>${prog}${gameNote}
+                <div class="w-quest-reward"><b>Reward:</b> ♦ ${fmt(o.rubies)} rubies${esc(potions)}${forGame}${q.daily ? ' <span class="muted">(more once you reach further zones)</span>' : ''}</div>
                 <div class="w-card-actions">${act}</div></div>`;
         }
         body.innerHTML = html;
         on(body, '[data-arenamenu]', () => WHW.arena && WHW.arena.openMenu('play'));
+        on(body, '[data-crewsvc]', (d) => openCrewService(id, d.crewsvc));
         on(body, '[data-qaccept]', () => WHW.actions.acceptQuest(id));
         on(body, '[data-qturnin]', () => WHW.actions.turnInQuest(id));
         on(body, '[data-qquit]', () => WHW.actions.abandonQuest(id));
+    }
+
+    // ---------------- the crew from the game (core/world-crew.js): their services, the WH Depot ----------------
+    function openCrewService(crewId, svc) {
+        if (svc === 'shop') return openCrewShop(crewId);
+        if (svc === 'trade') return openCrewTrade(crewId);
+        if (svc === 'jukebox') return openJukebox();
+        if (svc === 'ledger') return openRenown();
+    }
+    function crewHead(crewId, line) {
+        const npc = D.NPCS[crewId];
+        return `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(line)}"</p></div></div>`;
+    }
+    const backToNpc = (crewId) => `<div class="w-card-actions" style="margin-top:12px"><button class="btn btn-ghost btn-sm" data-backnpc="${crewId}">← Back to ${esc(D.NPCS[crewId].name)}</button></div>`;
+    const lockText = (zone) => `<span class="lock">🔒 Open ${esc(D.ZONES[zone].name)} first</span>`;
+    let crewOpen = null;
+    function openCrewShop(crewId) {
+        crewOpen = crewId;
+        modal(D.NPCS[crewId].name, '', { wide: true, render: renderCrewShop });
+        renderCrewShop();
+    }
+    function renderCrewShop() {
+        const body = $('wModalBody'), s = game().state, id = crewOpen, list = W.crewShop(s, id, Date.now());
+        if (!list) { body.innerHTML = '<p class="muted">They are not in town right now.</p>'; return; }
+        const line = id === 'grape' ? 'Blessed, fermented, and a little cheaper than the Trader. Stock is limited: even gods run out.' : 'Ore from the zones you have opened. Do not ask whose it was. Fresh stock every day.';
+        body.innerHTML = crewHead(id, line) + `<div class="w-grid">${list.map(it => {
+            const first = Object.keys(it.give)[0], mat = D.MATERIALS_BY_ID[first];
+            const name = Object.entries(it.give).map(([m, n]) => `${n} × ${matName(m)}`).join(', ');
+            const icon = (D.CONSUMABLES_BY_ID[first] || mat || {}).icon || '📦';
+            const act = it.locked ? lockText(it.locked) : !it.left ? '<span class="muted">Sold out today</span>' : `<button class="btn btn-sm btn-primary" data-cbuy="${it.id}" ${s.rubies >= it.price ? '' : 'disabled'}>Buy</button>`;
+            return `<div class="w-card"><div class="w-card-top"${mat ? ` data-mat="${first}" tabindex="0"` : ''}><div class="w-card-ico">${icon}</div><div><div class="w-card-name">${esc(name)}</div><div class="w-card-sub">♦ ${fmt(it.price)} · ${it.left} of ${it.limit} left today</div></div></div>
+                <div class="w-card-actions">${act}</div></div>`;
+        }).join('')}</div>` + backToNpc(id);
+        on(body, '[data-cbuy]', (d) => { WHW.actions.crewBuy(id, d.cbuy); renderCrewShop(); });
+        on(body, '[data-backnpc]', (d) => openNpc(d.backnpc));
+    }
+    function openCrewTrade(crewId) {
+        crewOpen = crewId;
+        modal('🔁 Trading Hall', '', { wide: true, render: renderCrewTrade });
+        renderCrewTrade();
+    }
+    function renderCrewTrade() {
+        const body = $('wModalBody'), s = game().state, id = crewOpen, list = W.crewTrades(s, id, Date.now());
+        if (!list) { body.innerHTML = '<p class="muted">They are not in town right now.</p>'; return; }
+        const side = (mats) => Object.entries(mats).map(([m, n]) => `<span data-mat="${m}" tabindex="0">${n} × ${esc(matName(m))}</span>`).join(', ');
+        const haveOf = (mats) => Object.keys(mats).map(m => fmt(W.count(s, m)) + ' ' + esc(matName(m))).join(', ');
+        body.innerHTML = crewHead(id, 'Hrmm. (Fair trades, a few of each every day. He taps the contract twice.)') + `<div class="w-grid">${list.map(t => {
+            const act = t.locked ? lockText(t.locked) : !t.left ? '<span class="muted">Done for today</span>' : `<button class="btn btn-sm btn-primary" data-ctrade="${t.id}" ${t.can ? '' : 'disabled'}>Trade</button>`;
+            return `<div class="w-card"><div class="w-card-top"><div class="w-card-ico">🔁</div><div><div class="w-card-name">${side(t.give)} → ${side(t.get)}</div><div class="w-card-sub">You have ${haveOf(t.give)} · ${t.left} of ${t.limit} left today</div></div></div>
+                <div class="w-card-actions">${act}</div></div>`;
+        }).join('')}</div>` + backToNpc(id);
+        on(body, '[data-ctrade]', (d) => { WHW.actions.crewTrade(id, d.ctrade); renderCrewTrade(); });
+        on(body, '[data-backnpc]', (d) => openNpc(d.backnpc));
+    }
+    function openJukebox() {
+        modal('🎵 The jukebox', '', { render: renderJukebox });
+        renderJukebox();
+    }
+    function renderJukebox() {
+        const body = $('wModalBody'), J = WHW.jukebox, tracks = J.tracks(), cur = J.current();
+        body.innerHTML = crewHead('phonk', 'Whatever you own back in the game, I spin it here. More tracks? The game\'s Shop has them, under Music.') +
+            `<div class="w-list">${tracks.map(t => `<div class="w-row" style="justify-content:space-between;margin-bottom:6px"><span>${cur === t.id ? '🔊 ' : '🎵 '}${esc(t.name)}</span>
+                <button class="btn btn-sm ${cur === t.id ? 'btn-ghost' : 'btn-primary'}" data-jplay="${t.id}" ${cur === t.id ? 'disabled' : ''}>${cur === t.id ? 'Playing' : 'Play'}</button></div>`).join('')}</div>
+            <p class="w-note">The music plays while you are in Wildgate. Its volume follows the game's music volume and the Wilds' volume (Settings).</p>
+            <div class="w-card-actions"><button class="btn btn-ghost btn-sm" data-jstop ${cur ? '' : 'disabled'}>⏹ Stop the music</button></div>` + backToNpc('phonk');
+        on(body, '[data-jplay]', (d) => { J.play(d.jplay); renderJukebox(); });
+        on(body, '[data-jstop]', () => { J.stop(); renderJukebox(); });
+        on(body, '[data-backnpc]', (d) => openNpc(d.backnpc));
+    }
+    function openDepot() {
+        modal('🏭 WH Depot', '', { wide: true, render: renderDepot });
+        renderDepot();
+    }
+    function renderDepot() {
+        const body = $('wModalBody'), view = W.getClickerView();
+        const cards = Crew.CREW.map(c => {
+            const known = Crew.discovered(c.id, view), here = Crew.arrived(c.id, view);
+            const status = here ? 'In the yard outside: talk to them' : known ? `Comes once ${c.name} reaches level ${c.arrive} in the game (best so far: ${fmt(view.best[c.up])})` : 'Someone from the game. Buy more kinds of upgrade there to meet them';
+            return `<div class="w-crew-card ${here ? 'is-here' : ''}"><img src="${known ? c.face : 'mainimage/whathappened.jpeg'}" alt="" class="${known ? '' : 'is-unknown'}">
+                <div><div class="w-card-name">${esc(known ? c.name : '???')}${here && c.service ? ' <span class="muted">· ' + esc(c.role) + '</span>' : ''}</div><div class="w-card-sub">${esc(status)}</div></div></div>`;
+        }).join('');
+        const n = Crew.CREW.filter(c => Crew.arrived(c.id, view)).length;
+        body.innerHTML = `<p class="w-note">The factory from your game sent its crew to Wildgate. Each one comes when their upgrade gets far enough in the game, and their quests pay here <b>and</b> in the game. Some of them ask you to do things back in the game.</p>
+            <p><b>${n} of ${Crew.CREW.length}</b> have arrived.</p><div class="w-crew">${cards}</div>
+            <div class="w-card-actions" style="margin-top:12px"><button class="btn btn-gold" data-renown>⭐ Your Renown</button></div>`;
+        on(body, '[data-renown]', () => openRenown());
+    }
+
+    // ---------------- hero guilds (core/world-guilds.js): the Guildmaster by the Rune Altar ----------------
+    const Gu = window.WHGuilds;
+    // the hero (the game's upgrade) a guild belongs to
+    const heroName = (up) => (Gu.BY_UP[up] ? Gu.BY_UP[up].hero : 'upgrade ' + up);
+    WHW.heroName = heroName;
+    function untilText(ms) { const m = Math.max(0, Math.ceil(ms / 60000)); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
+    function openGuilds() {
+        modal('⚜️ Hero Guilds', '', { wide: true, render: renderGuilds });
+        renderGuilds();
+    }
+    function guildBadge(g) { return `<span class="w-guild-crest" style="--gc:${g.color}">${g.crest}</span>`; }
+    function renderGuilds() {
+        const body = $('wModalBody'), s = game().state, now = Date.now(), gs = W.guildStock(s, now), npc = D.NPCS.guildmaster;
+        let html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(npc.greet)}"</p></div></div>
+            <p class="w-note">Each guild adds <b>+${Math.round(Gu.PER_GUILD * 100)}%</b> to its hero's CPS in the game (OP mouse: click power) and dresses up that upgrade's button. Own as many as you like: each one stacks.
+            Take a guild's contract, finish it, then pay for the charter. A charter bought is sold out until new stock comes in <b>${untilText(gs.restockAt - now)}</b> from now (new stock every two days, at midnight).</p>`;
+        const c = gs.contract;
+        if (c) {
+            const p = c.progress, can = p.done && s.rubies >= c.price.rubies && W.has(s, c.price.mats);
+            html += `<div class="w-quest w-guild-mine"><div class="w-quest-kicker">Your contract</div><div class="w-quest-title">${guildBadge(c.guild)} ${esc(c.guild.name)} <span class="muted">· ${esc(heroName(c.up))}</span></div>
+                <p class="w-quest-text">"${esc(c.contract.text)}"</p><div class="w-quest-goal"><b>Goal:</b> ${esc(goalText(c.contract.goal))}</div>
+                <div class="w-quest-prog" role="progressbar" aria-valuemin="0" aria-valuemax="${p.need}" aria-valuenow="${p.have}"><i style="width:${(100 * p.have / p.need).toFixed(0)}%"></i><span>${p.have} / ${p.need}</span></div>
+                <div class="w-quest-reward"><b>Charter:</b></div>${needHtml(s, c.price.mats, c.price.rubies)}
+                <div class="w-card-actions"><button class="btn btn-gold" data-gbuy="${c.up}" ${can ? '' : 'disabled'}>${p.done ? 'Buy the charter' : 'Finish the contract first'}</button><button class="btn btn-ghost btn-sm" data-gdrop>Give up the contract</button></div></div>`;
+        }
+        html += `<h4>On the table now</h4><div class="w-grid">${gs.items.map(it => {
+            const mineHere = c && c.up === it.up;
+            let act;
+            if (it.sold) act = '<span class="muted">Sold out until the next stock</span>';
+            else if (mineHere) act = '<span class="muted">Your contract (above)</span>';
+            else if (it.locked) act = `<span class="lock">🔒 Open ${esc(D.ZONES[it.locked.zone].name)} first</span>`;
+            else act = `<button class="btn btn-sm btn-primary" data-gtake="${it.up}" ${c ? 'disabled title="Finish or give up your contract first"' : ''}>Take the contract</button>`;
+            return `<div class="w-card w-guild-card${it.sold ? ' is-sold' : ''}" style="--gc:${it.guild.color}"><div class="w-card-top">${guildBadge(it.guild)}<div><div class="w-card-name">${esc(it.guild.name)}</div>
+                <div class="w-card-sub">${esc(heroName(it.up))} · you own ${it.owned}</div></div></div>
+                <div class="w-card-sub"><b>Contract:</b> ${esc(goalText(it.contract.goal))}</div>${needHtml(s, it.price.mats, it.price.rubies)}
+                <div class="w-card-actions">${act}</div></div>`;
+        }).join('')}</div>`;
+        const owned = Gu.GUILDS.filter(g => s.guilds.owned[g.up]);
+        html += `<h4>Your guilds</h4>` + (owned.length ? `<div class="w-guild-owned">${owned.map(g => `<span title="${esc(g.name)}: +${Math.round(Gu.PER_GUILD * 100 * s.guilds.owned[g.up])}% ${esc(heroName(g.up))}">${guildBadge(g)} ${esc(heroName(g.up))} ×${s.guilds.owned[g.up]}</span>`).join('')}</div>`
+            : '<p class="muted">None yet. The Arena\'s Glory shop also sells a Guild Chest: one guild at random.</p>');
+        body.innerHTML = html;
+        on(body, '[data-gtake]', (d) => { WHW.actions.takeGuildContract(Number(d.gtake)); renderGuilds(); });
+        on(body, '[data-gbuy]', (d) => { WHW.actions.buyGuild(Number(d.gbuy)); renderGuilds(); });
+        on(body, '[data-gdrop]', () => { WHW.actions.dropGuildContract(); renderGuilds(); });
+    }
+
+    // ---------------- Renown (core/renown.js): one rank for the game and the Wilds together ----------------
+    function readJSON(key) { try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch (e) { return null; } }
+    function renownRank() { try { return Ren.rank(window.WHA ? window.WHA.snapshot() : {}); } catch (e) { return Ren.rank({}); } }
+    const potionText = (cons) => Object.entries(cons || {}).map(([id, n]) => ', ' + n + ' × ' + (D.CONSUMABLES_BY_ID[id] || { name: id }).name).join('');
+    function openRenown() {
+        if (WHW.refreshClickerView) WHW.refreshClickerView(true);
+        modal('⭐ Renown', '', { wide: true, render: renderRenown });
+        renderRenown();
+    }
+    function renderRenown() {
+        const body = $('wModalBody'), s = game().state, r = renownRank(), b = Ren.bonus(r.level);
+        const here = Ren.cleanClaimed(s.renown.claimed), inGame = Ren.cleanClaimed(readJSON(Ren.CLAIMED_KEY));
+        const lv = Math.min(r.level, W.getClickerView().renown); // what this page has counted (claims go by it)
+        // reached ones with either half still to claim (so "claim it in the game" stays in view), then the next two
+        const ready = Ren.claimable(lv, here), upcoming = Ren.MILESTONES.filter(m => m.level > r.level).slice(0, 2);
+        const open = Ren.MILESTONES.filter(m => m.level <= lv && (!here.includes(m.level) || !inGame.includes(m.level)));
+        const ms = open.concat(upcoming).map(m => {
+            const reached = m.level <= lv;
+            const wild = here.includes(m.level) ? '<span class="w-rn-done">✓ Claimed</span>' : reached ? `<button class="btn btn-sm btn-gold" data-rnclaim="${m.level}">Claim</button>` : '🔒';
+            const gm = inGame.includes(m.level) ? '<span class="w-rn-done">✓ Claimed in the game</span>' : reached ? '<span class="muted">Claim it in the game (⭐ in its top bar)</span>' : '🔒';
+            return `<div class="w-rn-ms ${reached ? 'is-reached' : ''}"><b>${m.level}</b><div><small>⚔️ Here</small>♦ ${fmt(m.wilds.rubies)} rubies${esc(potionText(m.wilds.cons))}<div>${wild}</div></div>
+                <div><small>🖱️ In the game</small>${esc(gameItemsText(m.clicker.items))}<div>${gm}</div></div></div>`;
+        }).join('') || '<p class="muted">Every milestone is claimed here. You reached the top.</p>';
+        const src = (game) => r.parts.filter(p => p.game === game).map(p => `<li><div><span>${esc(p.label)}</span><b>${fmt(p.pts)} / ${p.cap}</b></div>
+            <div class="w-rn-bar"><i style="width:${(100 * p.pts / p.cap).toFixed(1)}%"></i></div><div class="muted">${p.pts >= p.cap - 1e-9 ? 'Maxed out' : esc(p.hint)}</div></li>`).join('');
+        const split = r.total > 0 ? 100 * r.clicker / r.total : 50;
+        body.innerHTML = `<div class="w-rn-level"><div class="w-rn-big">${r.level}</div><div style="flex:1">
+                <div class="w-rn-bar"><i style="width:${(100 * r.frac).toFixed(1)}%"></i></div>
+                <div class="muted" style="margin-top:6px">${r.level >= Ren.MAX_LEVEL ? 'The top: Renown ' + Ren.MAX_LEVEL : fmt(r.total) + ' / ' + fmt(Math.ceil(r.next)) + ' points to Renown ' + (r.level + 1)}</div></div></div>
+            <p class="w-note">One rank for both of your jobs: what you did in <b>the game</b> and <b>here</b> both count. One alone gets you to about Renown 70; the top needs both.
+                Renown ${r.level} gives <b>+${b.rubies}% rubies</b> from monsters, bosses and veins here, and <b>+${b.cps}% CPS and click power</b> in the game.</p>
+            <div class="w-rn-split"><i class="is-game" style="width:${split.toFixed(1)}%"></i><i class="is-wilds" style="width:${(100 - split).toFixed(1)}%"></i></div>
+            <div class="w-rn-key"><span>🖱️ The game: ${fmt(r.clicker)}</span><span>⚔️ The Wilds: ${fmt(r.wilds)}</span></div>
+            <h4>Milestones</h4>${ready.length > 1 ? `<div class="w-card-actions" style="justify-content:flex-end;margin-bottom:6px"><button class="btn btn-gold" data-rnclaimall>Claim all ${ready.length} here</button></div>` : ''}${ms}
+            <div class="w-rn-cols"><div><h4>⚔️ From the Wilds</h4><ul class="w-rn-src">${src('wilds')}</ul></div><div><h4>🖱️ From the game</h4><ul class="w-rn-src">${src('clicker')}</ul></div></div>`;
+        on(body, '[data-rnclaim]', (d) => { WHW.actions.claimRenown(Number(d.rnclaim)); renderRenown(); });
+        on(body, '[data-rnclaimall]', () => { WHW.actions.claimAllRenown(); renderRenown(); });
     }
 
     // ---------------- the Hall of Gods: its far wall, and the hidden room's altar ----------------
@@ -912,6 +1104,7 @@
     function openStation(id) {
         if (id === 'trader') return openTrader();
         if (id === 'board') return openHelp();
+        if (id === 'depot') return openDepot();
         const st = D.STATIONS[id];
         stationTab[id] = stationTab[id] || STATION_TABS[id][0];
         const render = () => renderStation(id);
@@ -1138,6 +1331,12 @@
             <p>Smelt ore into bars at the Forge, cut planks and leather at the Workbench, then craft gear. Every piece of gear is made with a <b>minigame</b>: the better you play, the better its quality, from Crude to <b style="color:#ffc83d">Legendary</b> (up to 1.75× the stats, plus bonus traits). Use <b>Practice</b> to learn the minigames for free.</p>
             <h3>Rubies and your game</h3>
             <p>Rubies are the money of the Wilds: earn them from monsters, ruby veins, bosses and the Trader, and spend them on crafting fees and supplies. You can also send treasures home: <b>lootboxes</b> crafted at the Rune Altar, plus <b>gems</b> and <b>Golden What Happened</b> from bosses, elites, ruby veins and the Trader's weekly exchange. They arrive the next time you open the game. Rubies can come the other way too: trade Golden What Happened in the game's Divine menu, or redeem a rubies code in its Settings.</p>
+            <h3>The crew from your game, and Renown</h3>
+            <p>The characters from your clicker's upgrades move to Wildgate once their upgrade gets far enough there, and stand in the yard of the <b>WH Depot</b>, south-east of the plaza (the Depot lists who is still on the way). They have quests, some done back in the game, that pay rubies here and boosts in the game, and some run a stall, a Trading Hall or a jukebox.
+            <b>Renown</b> (⭐ next to your rubies) is one rank for the game and the Wilds together: each level adds rubies here and CPS there, and every 5 levels has a reward on each side.</p>
+            <h3>Hero guilds</h3>
+            <p><b>Guildmaster Aurelio</b>, just outside the Rune Altar, has 6 guild charters on his table, new ones every two days. Take a guild's contract, finish it, then pay for the charter; it is sold out until the next six. Every guild adds <b>+25%</b> to its hero's CPS in the game, as many as you like, and dresses up its button there. The Arena's Glory shop sells a Guild Chest too.
+            In arena matches, the Pit and the Proving Grounds you may drink <b>${D.RULES.potionsPerMatch} potions per fight</b>.</p>
             <h3>Online</h3>
             <p>Other players in the same zone appear live (🌐 at the top shows how many). Press <kbd>Enter</kbd> to chat or send an emote. <b>Outside town, players can fight each other</b> with the same swings, shields and parries; you're protected for a few seconds after arriving. A player knocked out by another drops part of what they carry: the winner gets first pick, then anyone can grab it. Bosses are shared: everyone in the arena fights the same one, and everyone who did enough damage gets the reward. Other monsters are shared too: the same ones in the same places, a kill falls for everyone, damage adds up, and whoever fought one gets its loot. Each zone's camp (the dashed ring) is safe ground: monsters ignore you and nobody can hurt you there, until you hit something from inside it. <b>Parties</b>: walk up to another player and press <kbd>E</kbd> to invite them (up to 4). Party members can't hurt each other, see where each other are (top left), and have their own chat: start a line with <kbd>/p</kbd>, or press <kbd>P</kbd>. In the Arena you can open or join <b>tournaments</b> (a knockout of duels: the entry fees are the prize, and the host can lock everyone's gear to one tier), and see the <b>leaderboards</b> for the highest rating and the highest wave. You can play offline from the 🌐 menu.</p>
             <h3>The Arena</h3>
@@ -1193,5 +1392,6 @@
     WHW.toast = toast;
     WHW.hint = hint;
     WHW.banner = banner;
-    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openWaystone, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged, ICONS, esc };
+    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openWaystone, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged,
+        openDepot, openRenown, openCrewShop, openCrewTrade, openJukebox, openGuilds, gameItemsText, ICONS, esc };
 })();

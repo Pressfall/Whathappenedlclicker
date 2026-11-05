@@ -799,6 +799,25 @@
         if (!(opts && opts.quiet)) sfx('spawn');
         return n;
     }
+    // Consumables from the Wilds (crew quests) or a Renown milestone: { id: n }. Only timed boosts and saved-up time are
+    // accepted (core/world-bridge.js ITEMS), never gem or Golden items. Returns how many were added.
+    function grantItems(map, opts) {
+        const B = window.WHWorldBridge, s = st();
+        let n = 0;
+        for (const id in map || {}) {
+            const it = ITEMS_BY_ID[id], k = Math.max(0, Math.floor(Number(map[id]) || 0));
+            if (!k || !it || it.kind !== 'use' || !(B && B.isItem(id))) continue;
+            s.items[id] = (s.items[id] || 0) + k;
+            s.seen[id] = true;
+            n += k;
+        }
+        if (!n) return 0;
+        if (opts && opts.fromWorld) s.stats.fromWorld += n;
+        save();
+        afterChange();
+        if (!(opts && opts.quiet)) sfx('spawn');
+        return n;
+    }
     // A one-of-a-kind item bought elsewhere (main.js settleWorldPurchases: the Auto Clicker). False if it is already owned.
     function grantSpecial(id) {
         const s = st(), it = ITEMS_BY_ID[id];
@@ -1335,6 +1354,6 @@
     window.WHI = {
         STORAGE_KEY, RARITIES, BOXES, ITEMS, ITEMS_BY_ID,
         sellItems, sellValue, sellableCount, bonuses, renderHud, gemBurst, shakeChip, confirmSpend, renderTreasury,
-        openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary, grantBoxes, grantSpecial, hasItem, autoClicks, toggleEquip,
+        openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary, grantBoxes, grantItems, grantSpecial, hasItem, autoClicks, toggleEquip,
     };
 })();

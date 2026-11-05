@@ -756,7 +756,8 @@ function computeEffectiveCpsParts() {
         const expectedPirate = pirateLvl * per[2];
         const pirateExtra = (typeof pirateCps === 'number' ? pirateCps : 0) - expectedPirate;
         const pirateMult = computeLevelMultiplier(pirateLvl);
-        const pirateEffective = expectedPirate * pirateMult + (pirateExtra || 0);
+        // hero guilds (core/world-guilds.js, bought in the Wilds): +25% to each upgrade's own share per guild
+        const pirateEffective = (expectedPirate * pirateMult + (pirateExtra || 0)) * guildMult(2);
 
         // other upgrades 3..10
         let expectedOther = 0;
@@ -766,7 +767,7 @@ function computeEffectiveCpsParts() {
             const base = (per[i] || 0) * lvl;
             expectedOther += base;
             const mult = computeLevelMultiplier(lvl);
-            derivedOther += base * mult * (i === 10 ? (phonkOtherMultiplier || 1) : 1); // Memphis Tapes doubles The Phonk Man
+            derivedOther += base * mult * (i === 10 ? (phonkOtherMultiplier || 1) : 1) * guildMult(i); // Memphis Tapes doubles The Phonk Man
         }
         // account for upgrade13 (ropingnecurse) separately so it can get its own multiplier
         const upgrade13Lvl = getUpgradeLevel(13);
@@ -779,28 +780,28 @@ function computeEffectiveCpsParts() {
         const otherBase = derivedOther + (baseOtherExtra > 0 ? baseOtherExtra : 0);
         // compute roping contribution with its own level multiplier and roping-specific multiplier
         const ropingMult = computeLevelMultiplier(upgrade13Lvl);
-        const ropingEffective = expectedRoping * ropingMult * (ropingOtherMultiplier || 1);
+        const ropingEffective = expectedRoping * ropingMult * (ropingOtherMultiplier || 1) * guildMult(13);
 
         // account for upgrade14 (skibbidi scimitar) separately so specials multiply it
         const upgrade14Lvl = getUpgradeLevel(14);
         const per14 = per[14] || 0;
         const expectedSkibidi = (upgrade14Lvl > 0 && per14 > 0) ? per14 * upgrade14Lvl : 0;
         const skibidiMult = computeLevelMultiplier(upgrade14Lvl);
-        const skibidiEffective = expectedSkibidi * skibidiMult * (skibbidiOtherMultiplier || 1);
+        const skibidiEffective = expectedSkibidi * skibidiMult * (skibbidiOtherMultiplier || 1) * guildMult(14);
 
         // account for upgrade15 (What Happened Beats) separately so its specials multiply it
         const upgrade15Lvl = getUpgradeLevel(15);
         const per15 = per[15] || 0;
         const expectedBeats = (upgrade15Lvl > 0 && per15 > 0) ? per15 * upgrade15Lvl : 0;
         const beatsMult = computeLevelMultiplier(upgrade15Lvl);
-        const beatsEffective = expectedBeats * beatsMult * (beatsOtherMultiplier || 1);
+        const beatsEffective = expectedBeats * beatsMult * (beatsOtherMultiplier || 1) * guildMult(15);
 
         // account for upgrade16 (ez villager) separately so specials multiply it
         const upgrade16Lvl = getUpgradeLevel(16);
         const per16 = per[16] || 0;
         const expectedEz = (upgrade16Lvl > 0 && per16 > 0) ? per16 * upgrade16Lvl : 0;
         const ezMult = computeLevelMultiplier(upgrade16Lvl);
-        const ezEffective = expectedEz * ezMult * (ezOtherMultiplier || 1);
+        const ezEffective = expectedEz * ezMult * (ezOtherMultiplier || 1) * guildMult(16);
 
         const otherEffective = otherBase + ropingEffective + skibidiEffective + beatsEffective + ezEffective;
 
@@ -809,62 +810,62 @@ function computeEffectiveCpsParts() {
         const per17 = per[17];
         const expectedScp = (upgrade17Lvl > 0 && per17 > 0) ? per17 * upgrade17Lvl : 0;
         const scpMult = computeLevelMultiplier(upgrade17Lvl);
-        const scpEffective = expectedScp * scpMult * (scpMultiplier || 1);
+        const scpEffective = expectedScp * scpMult * (scpMultiplier || 1) * guildMult(17);
 
         // account for upgrade18 (The Goatis)
         const upgrade18Lvl = getUpgradeLevel(18);
         const per18 = per[18];
         const expectedGoatis = (upgrade18Lvl > 0 && per18 > 0) ? per18 * upgrade18Lvl : 0;
         const goatisMult = computeLevelMultiplier(upgrade18Lvl);
-        const goatisEffective = expectedGoatis * goatisMult * (goatisMultiplier || 1);
+        const goatisEffective = expectedGoatis * goatisMult * (goatisMultiplier || 1) * guildMult(18);
 
         // account for upgrade20 (The Landon Stream)
         const upgrade20Lvl = getUpgradeLevel(20);
         const per20 = per[20];
         const expectedLandon = (upgrade20Lvl > 0 && per20 > 0) ? per20 * upgrade20Lvl : 0;
         const landonMult = computeLevelMultiplier(upgrade20Lvl);
-        const landonEffective = expectedLandon * landonMult * (landonMultiplier || 1);
+        const landonEffective = expectedLandon * landonMult * (landonMultiplier || 1) * guildMult(20);
 
         // account for upgrade21 (The Bass)
         const upgrade21Lvl = getUpgradeLevel(21);
         const per21 = per[21];
         const expectedTheBass = (upgrade21Lvl > 0 && per21 > 0) ? per21 * upgrade21Lvl : 0;
         const theBassMult = computeLevelMultiplier(upgrade21Lvl);
-        const theBassEffective = expectedTheBass * theBassMult * (theBassMultiplier || 1);
+        const theBassEffective = expectedTheBass * theBassMult * (theBassMultiplier || 1) * guildMult(21);
 
         // account for upgrade22 (Good Noodles)
         const upgrade22Lvl = getUpgradeLevel(22);
         const per22 = per[22];
         const expectedGoodNoodles = (upgrade22Lvl > 0 && per22 > 0) ? per22 * upgrade22Lvl : 0;
         const goodNoodlesMult = computeLevelMultiplier(upgrade22Lvl);
-        const goodNoodlesEffective = expectedGoodNoodles * goodNoodlesMult * (goodNoodlesMultiplier || 1);
+        const goodNoodlesEffective = expectedGoodNoodles * goodNoodlesMult * (goodNoodlesMultiplier || 1) * guildMult(22);
 
         // account for upgrade23 (Mobile Man 38)
         const upgrade23Lvl = getUpgradeLevel(23);
         const per23 = per[23];
         const expectedMobileMan = (upgrade23Lvl > 0 && per23 > 0) ? per23 * upgrade23Lvl : 0;
         const mobileManMult = computeLevelMultiplier(upgrade23Lvl);
-        const mobileManEffective = expectedMobileMan * mobileManMult * (mobileMan38Multiplier || 1);
+        const mobileManEffective = expectedMobileMan * mobileManMult * (mobileMan38Multiplier || 1) * guildMult(23);
 
         // account for upgrade24 (Easton Bundy)
         const upgrade24Lvl = getUpgradeLevel(24);
         const per24 = per[24];
         const expectedEaston = (upgrade24Lvl > 0 && per24 > 0) ? per24 * upgrade24Lvl : 0;
         const eastonMult = computeLevelMultiplier(upgrade24Lvl);
-        const eastonEffective = expectedEaston * eastonMult * (typeof eastonBundyMultiplier !== 'undefined' ? eastonBundyMultiplier : 1);
+        const eastonEffective = expectedEaston * eastonMult * (typeof eastonBundyMultiplier !== 'undefined' ? eastonBundyMultiplier : 1) * guildMult(24);
 
         // account for upgrade19 (goatises raw liver)
         const upgrade19Lvl = getUpgradeLevel(19);
         const per19 = per[19];
         const expectedRaw = (upgrade19Lvl > 0 && per19 > 0) ? per19 * upgrade19Lvl : 0;
         const rawMult = computeLevelMultiplier(upgrade19Lvl);
-        const rawEffective = expectedRaw * rawMult * (rawMultiplier || 1);
+        const rawEffective = expectedRaw * rawMult * (rawMultiplier || 1) * guildMult(19);
 
         // upgrades 25+ (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo): level-based, each with its own specials multiplier
         let lateTierEffective = 0;
         for (let i = 25; i <= UPGRADE_COUNT; i++) {
             const lvl = numericLevel(getUpgradeLevel(i));
-            if (lvl > 0) lateTierEffective += per[i] * lvl * computeLevelMultiplier(lvl) * lateTierMultiplier(i);
+            if (lvl > 0) lateTierEffective += per[i] * lvl * computeLevelMultiplier(lvl) * lateTierMultiplier(i) * guildMult(i);
         }
 
         const otherEffectiveFinal = otherEffective + scpEffective + goatisEffective + rawEffective + landonEffective + theBassEffective + goodNoodlesEffective + mobileManEffective + eastonEffective + lateTierEffective;
@@ -874,14 +875,14 @@ function computeEffectiveCpsParts() {
         const expectedJonathan = jonathanLvl * per[11];
         const jonathanExtra = (typeof jonathanBaseCps === 'number' ? jonathanBaseCps : 0) - expectedJonathan;
         const jonathanMult = computeLevelMultiplier(jonathanLvl);
-        const jonathanEffective = expectedJonathan * jonathanMult + (jonathanExtra || 0);
+        const jonathanEffective = (expectedJonathan * jonathanMult + (jonathanExtra || 0)) * guildMult(11);
 
         // CR lurker (upgrade12)
         const crLvl = getUpgradeLevel(12);
         const expectedCr = crLvl * per[12];
         const crExtra = (typeof crBaseCps === 'number' ? crBaseCps : 0) - expectedCr;
         const crMult = computeLevelMultiplier(crLvl);
-        const crEffective = expectedCr * crMult + (crExtra || 0);
+        const crEffective = (expectedCr * crMult + (crExtra || 0)) * guildMult(12);
 
         return {
             pirateEffective,
@@ -1090,7 +1091,7 @@ function getUpgradeCps(upgradeId) {
         if (i === 1) return Number(clickPower) * Number(goldenMultiplier);
         const lvl = numericLevel(getUpgradeLevel(i));
         if (lvl <= 0 || !UPGRADE_CPS[i]) return 0;
-        const own = UPGRADE_CPS[i] * lvl * computeLevelMultiplier(lvl) * upgradeOwnMultiplier(i);
+        const own = UPGRADE_CPS[i] * lvl * computeLevelMultiplier(lvl) * upgradeOwnMultiplier(i) * guildMult(i);
         // the same grouping updateDisplays uses: pirate | (crew, Jonathan, CR) x Goonsaw, then the total-CPS specials
         const parts = computeEffectiveCpsParts();
         const crew = [diddyOtherMultiplier, argonOtherMultiplier, grapeOtherMultiplier, skippieOtherMultiplier, islandOtherMultiplier, tribalOtherMultiplier].reduce((a, m) => a * (Number(m) || 1), 1);
@@ -1987,16 +1988,18 @@ function getItemBonuses() {
 // ---------- The Hall of Gods (The Wilds): statues raised there bless this game (core/world-gods.js) ----------
 // Their levels live in the Wilds save, which this page only reads: re-read at most every 3s, and whenever it changes.
 const NO_GOD_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, offline: 0, gems: 0, golden: 0, divine: 0, gods: 0 };
-let _godCache = { at: 0, levels: {}, bonus: NO_GOD_BONUS };
+let _godCache = { at: 0, levels: {}, bonus: NO_GOD_BONUS, world: null };
 function readGods() {
     const now = Date.now();
     if (now - _godCache.at > 3000) {
-        let levels = {}, bonus = NO_GOD_BONUS;
+        let levels = {}, bonus = NO_GOD_BONUS, world = null;
+        try { world = JSON.parse(localStorage.getItem('whathappened_world') || 'null'); } catch (e) { world = null; }
         try {
             const G = window.WHWorldGods;
-            if (G) { levels = G.levelsFrom(JSON.parse(localStorage.getItem('whathappened_world') || 'null')); bonus = G.bonuses(levels); }
+            if (G) { levels = G.levelsFrom(world); bonus = G.bonuses(levels); }
         } catch (e) { levels = {}; bonus = NO_GOD_BONUS; }
-        _godCache = { at: now, levels, bonus };
+        // the parsed Wilds save, for the crew's requests on the upgrade buttons (renderCrewTags)
+        _godCache = { at: now, levels, bonus, world };
     }
     return _godCache;
 }
@@ -2015,6 +2018,130 @@ function renderGodBlessings() {
         el.appendChild(line);
     }
 }
+// ---------- The crew (core/world-crew.js): upgrade characters who move to Wildgate, the Wilds' town ----------
+// whathappened_upgrade_best: the best level every upgrade ever reached, { "2": 57, ... }. Written only by this page and
+// never lowered (prestige keeps it), so the Wilds can tell who has come to town. The first time it is written, a save that
+// has prestiged before is counted as having had CR lurker at 150 (prestige needs it) and upgrades 1 to 11 at 25.
+let _upgradeBest = null;
+function readUpgradeBest() {
+    if (_upgradeBest) return _upgradeBest;
+    let raw = null;
+    try { raw = JSON.parse(localStorage.getItem(window.WHCrew ? window.WHCrew.BEST_KEY : 'whathappened_upgrade_best') || 'null'); } catch (e) { raw = null; }
+    _upgradeBest = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : null;
+    return _upgradeBest;
+}
+function noteUpgradeBest(quiet) {
+    const C = window.WHCrew;
+    if (!C || !window._saveLoaded || suppressAutosave) return false; // (not while a reset or a prestige reloads the page)
+    const stored = readUpgradeBest(), first = !stored;
+    const best = Object.assign({}, stored || {});
+    if (first && (Number(prestigeTimes) || 0) >= 1) {
+        best[12] = Math.max(Number(best[12]) || 0, 150);
+        for (let i = 1; i <= 11; i++) best[i] = Math.max(Number(best[i]) || 0, 25);
+    }
+    let changed = first;
+    for (let i = 1; i <= UPGRADE_COUNT; i++) {
+        const lvl = Math.floor(numericLevel(getUpgradeLevel(i)) || 0);
+        if (lvl > (Number(best[i]) || 0)) { best[i] = lvl; changed = true; }
+    }
+    if (!changed) return false;
+    const before = C.bestLevels(stored || {}, {}), after = C.bestLevels(best, {});
+    try { localStorage.setItem(C.BEST_KEY, JSON.stringify(best)); } catch (e) { return false; }
+    _upgradeBest = best;
+    _renownCache.at = 0;
+    const came = C.newArrivals(before, after).map(id => C.CREW_BY_ID[id].name);
+    if (came.length && !quiet) {
+        if (came.length === 1) notify('🏕️ ' + came[0] + ' packed a bag for Wildgate. Find them at the WH Depot in The Wilds.', 7000);
+        else notify('🏕️ Your crew moved to Wildgate: ' + came.join(', ') + '. Find them at the WH Depot in The Wilds.', 8000);
+    }
+    try { renderCrewTags(); } catch (e) {}
+    return true;
+}
+// A small tag on each crew member's upgrade button: 🏕️ once they are in Wildgate (and what a quest there asks of this
+// upgrade), or how far they still have to go
+let _crewTagKey = '';
+function renderCrewTags() {
+    const C = window.WHCrew;
+    if (!C) return;
+    const best = C.bestLevels(readUpgradeBest() || {}, {});
+    for (let i = 1; i <= UPGRADE_COUNT; i++) best[i] = Math.max(best[i], Math.floor(numericLevel(getUpgradeLevel(i)) || 0));
+    const view = Object.assign(C.clickerView({}), { best });
+    const asks = C.asksOf(readGods().world, view);
+    const key = C.CREW.map(c => c.id + ':' + best[c.up] + ':' + (asks[c.up] ? asks[c.up].have + '/' + asks[c.up].need : '')).join('|');
+    if (key === _crewTagKey) return;
+    _crewTagKey = key;
+    for (const c of C.CREW) {
+        const btn = document.getElementById('upgrade' + c.up);
+        if (!btn) continue;
+        let tag = btn.querySelector('.crew-tag');
+        const here = best[c.up] >= c.arrive, ask = asks[c.up];
+        if (!best[c.up]) { if (tag) tag.hidden = true; continue; }
+        if (!tag) { tag = document.createElement('span'); tag.className = 'crew-tag'; btn.appendChild(tag); }
+        tag.hidden = false;
+        tag.classList.toggle('crew-tag--away', !here);
+        tag.classList.toggle('crew-tag--ask', !!ask);
+        tag.textContent = ask ? '📜 ' + formatNumber(ask.have) + '/' + formatNumber(ask.need) : here ? '🏕️' : '🏕️ ' + c.arrive;
+        tag.title = ask ? 'Wildgate asks: "' + ask.title + '" (' + c.name + ' in The Wilds wants this upgrade at level ' + formatNumber(ask.need) + ')'
+            : here ? c.name + ' ' + c.blurb + '. Find them at the WH Depot in The Wilds.'
+            : 'At level ' + c.arrive + ' (best ever), ' + c.name + ' moves to Wildgate in The Wilds.';
+    }
+}
+// ---------- Hero guilds (core/world-guilds.js): only to be had in the Wilds ----------
+// Their counts live in the Wilds save (this page only reads them, from the same 3 s cache as the gods). Each guild adds 25%
+// to its own upgrade's share of CPS (OP mouse: the click power it gives) and dresses up that upgrade's button.
+function getGuildsOwned() {
+    const c = readGods();
+    if (!c.guilds) { try { c.guilds = window.WHGuilds ? window.WHGuilds.ownedFrom(c.world) : {}; } catch (e) { c.guilds = {}; } }
+    return c.guilds;
+}
+function guildMult(i) {
+    const G = window.WHGuilds;
+    return G ? G.multFor(getGuildsOwned(), i) : 1;
+}
+let _guildLookKey = '';
+function renderGuildLooks() {
+    const G = window.WHGuilds;
+    if (!G) return;
+    const owned = getGuildsOwned();
+    const key = JSON.stringify(owned);
+    if (key === _guildLookKey) return;
+    _guildLookKey = key;
+    for (const g of G.GUILDS) {
+        const btn = document.getElementById('upgrade' + g.up);
+        if (!btn) continue;
+        const n = owned[g.up] || 0;
+        let crest = btn.querySelector('.guild-crest');
+        btn.classList.toggle('has-guild', n > 0);
+        // the more guilds, the grander: a trim, then a glow (3+), then a shimmer (5+), then a crown (10+)
+        btn.classList.toggle('guild-glow', n >= 3);
+        btn.classList.toggle('guild-shimmer', n >= 5);
+        btn.classList.toggle('guild-crown', n >= 10);
+        if (!n) { if (crest) crest.hidden = true; btn.style.removeProperty('--guild-color'); continue; }
+        btn.style.setProperty('--guild-color', g.color);
+        if (!crest) { crest = document.createElement('span'); crest.className = 'guild-crest'; btn.appendChild(crest); }
+        crest.hidden = false;
+        crest.textContent = g.crest + (n > 1 ? ' ×' + n : '');
+        crest.title = g.name + (n > 1 ? ' ×' + n : '') + ': +' + Math.round(G.PER_GUILD * 100 * n) + '% ' + (g.up === 1 ? 'click power from ' : 'CPS from ') + g.hero + '. Hero guilds come from The Wilds.';
+    }
+}
+// ---------- Renown (core/renown.js): one rank for the game and the Wilds together ----------
+// Worked out from everything both games saved (achievements-data.js snapshot), at most every 5 s. Each level adds a little
+// CPS and click power here (and rubies in the Wilds). renown-panel.js shows it and pays this game's half of the milestones.
+let _renownCache = { at: 0, rank: null };
+function readRenown() {
+    const now = Date.now();
+    if (now - _renownCache.at > 5000 || !_renownCache.rank) {
+        let rank = null;
+        try { if (window.WHRenown && window.WHA) rank = window.WHRenown.rank(window.WHA.snapshot()); } catch (e) { rank = null; }
+        _renownCache = { at: now, rank };
+    }
+    return _renownCache.rank;
+}
+function getRenownLevel() { const r = readRenown(); return r ? r.level : 0; }
+function getRenownBonus() {
+    try { return window.WHRenown ? window.WHRenown.bonus(getRenownLevel()) : { cps: 0, click: 0, rubies: 0 }; } catch (e) { return { cps: 0, click: 0, rubies: 0 }; }
+}
+window.WHGame = Object.assign(window.WHGame || {}, { readRenown, getRenownLevel, resetRenown: () => { _renownCache.at = 0; } });
 // Equipped followers + their totals under the stats card; only rebuilt when the team changes.
 let _followerStripKey = null;
 function renderFollowerStrip() {
@@ -2096,8 +2223,13 @@ try {
         if (window.WHWorldBridge && ev.key === window.WHWorldBridge.WORLD_KEY && ev.newValue) {
             try { applyWorldRewards(); } catch (e) {}
             _godCache.at = 0; // a statue may have been raised
+            _renownCache.at = 0; // and Renown counts the Wilds too
             try { renderGodBlessings(); } catch (e) {}
+            try { renderCrewTags(); } catch (e) {}
+            try { renderGuildLooks(); updateDisplays(); } catch (e) {} // a guild bought there counts here at once
         }
+        // followers found in another tab (followers.html) count for Renown
+        if (ev.key === 'whathappened_followers') _renownCache.at = 0;
     });
 } catch (e) {}
 
@@ -2187,7 +2319,7 @@ function updateDisplays() {
         // compute OP mouse effective base applying milestone multipliers (milestones apply to OP mouse levels)
         const opLvl = upgrade1Level || 0;
         const opBaseInitial = 1; // starting base click power
-        const opUpgradeEffective = opLvl * computeLevelMultiplier(opLvl); // applies milestone multipliers when lvl>500
+        const opUpgradeEffective = opLvl * computeLevelMultiplier(opLvl) * guildMult(1); // milestone multipliers past lvl 500; its hero guilds
         const opEffectiveBase = opBaseInitial + opUpgradeEffective;
         clickPower = opEffectiveBase * clickMultiplier * divineSomalianMult;
         // compute effective components applying per-upgrade multipliers
@@ -2297,6 +2429,22 @@ function updateDisplays() {
             cps = cps * gCps;
             clickPower = clickPower * gClick;
         }
+    } catch (e) {}
+    // Renown: the rank made of this game and the Wilds together (core/renown.js)
+    try {
+        const rb = getRenownBonus();
+        const rCps = 1 + (rb.cps || 0) / 100, rClick = 1 + (rb.click || 0) / 100;
+        if (hasDecimal) {
+            cps = cps.times(D(rCps));
+            clickPower = clickPower.times(D(rClick));
+        } else {
+            cps = cps * rCps;
+            clickPower = clickPower * rClick;
+        }
+    } catch (e) {}
+    // who of the crew is in Wildgate (cheap: only rewrites the tags when something changed; best levels at most every 2 s)
+    try {
+        if (Date.now() - (window._lastCrewCheck || 0) > 2000) { window._lastCrewCheck = Date.now(); noteUpgradeBest(); renderCrewTags(); renderGuildLooks(); }
     } catch (e) {}
     try { renderFollowerStrip(); } catch (e) {}
     // persist latest cps for achievements UI to read when opened in separate tab
@@ -4998,6 +5146,8 @@ function buyPrestige() {
     const finalAwards = getPotentialPrestigeAwards();
 
     if (!confirm(`Gain ${finalAwards} Golden What Happeneds for ${totalLevels} upgrade levels? This will reset your progress.`)) return;
+    // the levels this run reached stay counted as the best ever (the crew in the Wilds), before they reset
+    try { noteUpgradeBest(true); } catch (e) {}
 
     // The prestige save keeps Golden, Divine upgrades, gems, clan points, shop and settings (WHSave.PRESTIGE_KEEP) and
     // drops everything else: the reloaded page starts the run again from the defaults. Built before anything changes.
@@ -6748,7 +6898,11 @@ function applyWorldRewards() {
             if (!plan.entries.length) return false;
             const t = plan.totals;
             const hasBoxes = t.boxes.some(n => n > 0);
+            const hasItems = Object.keys(t.items || {}).some(id => t.items[id] > 0); // consumables from crew quests
+            const hasPacks = Object.keys(t.packs || {}).some(id => t.packs[id] > 0); // follower packs from the Arena's Glory shop
             if ((hasBoxes || t.buys.length) && !(window.WHI && typeof window.WHI.grantBoxes === 'function')) return false;
+            if (hasItems && !(window.WHI && typeof window.WHI.grantItems === 'function')) return false;
+            if (hasPacks && !(window.WHF && typeof window.WHF.grantFreePacks === 'function')) return false;
             // purchases are remembered first, so they are never lost; remembering one twice changes nothing
             if (t.buys.length && !writeWorldOwed(readWorldOwed().concat(t.buys))) return false;
             diamonds = getGems() + t.gems;
@@ -6763,6 +6917,8 @@ function applyWorldRewards() {
             }
             _worldAckApplied = plan.lastSeq;
             if (hasBoxes) { try { window.WHI.grantBoxes(t.boxes, { quiet: true }); } catch (e) {} }
+            if (hasItems) { try { window.WHI.grantItems(t.items, { quiet: true, fromWorld: true }); } catch (e) {} }
+            if (hasPacks) { try { window.WHF.grantFreePacks(t.packs); } catch (e) {} }
             B.writeAck(localStorage, plan.lastSeq);
             if (t.buys.length) settleWorldPurchases(true);
             const msg = B.describe(t);
@@ -7663,6 +7819,8 @@ function saveGame() {
         // also persist legacy-friendly stat keys
         try { localStorage.setItem('whathappened_prestige_times', String(prestigeTimes || 0)); } catch (e) {}
         try { localStorage.setItem('whathappened_total_golden', String(totalGoldenEver || 0)); } catch (e) {}
+        // the best level each upgrade ever reached (the crew in the Wilds)
+        try { noteUpgradeBest(); } catch (e) {}
         return true;
     } catch (e) {
         console.error('Save failed', e);
@@ -8189,6 +8347,8 @@ function resetGame() {
     try { if (window.WHI) localStorage.removeItem(window.WHI.STORAGE_KEY); } catch (e) {}
     try { if (window.WHWorldBridge) { localStorage.removeItem(window.WHWorldBridge.WORLD_KEY); localStorage.removeItem(window.WHWorldBridge.ACK_KEY); localStorage.removeItem(window.WHWorldBridge.INBOX_KEY); } } catch (e) {}
     try { localStorage.removeItem(WORLD_OWED_KEY); localStorage.removeItem(AUTO_CLICK_KEY); localStorage.removeItem('whathappened_golden_trades'); } catch (e) {}
+    // the crew's best levels and the game's Renown claims
+    try { localStorage.removeItem('whathappened_upgrade_best'); localStorage.removeItem('whathappened_renown'); } catch (e) {}
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }

@@ -14,7 +14,7 @@ const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/world-bridge.js', 'core/world-gods.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'specials.js', 'items.js', 'guide.js', 'save-tools.js'];
+const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/world-bridge.js', 'core/world-gods.js', 'core/world-crew.js', 'core/renown.js', 'core/world-guilds.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'specials.js', 'items.js', 'renown-panel.js', 'guide.js', 'save-tools.js'];
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 let cache = null;
@@ -34,6 +34,7 @@ function sources() {
  * @param {boolean} [opts.decimal]  load decimal.js first (not what production does)
  * @param {boolean} [opts.confirm]  what window.confirm answers (default true)
  * @param {Function} [opts.beforeInit]  called with the window once all scripts are loaded, before the game reads its save
+ * @param {boolean} [opts.noRenown]  leave Renown's CPS and click boost out (for tests that pin other exact numbers)
  */
 function loadGame(opts = {}) {
     const { html, scripts } = sources();
@@ -85,6 +86,9 @@ function loadGame(opts = {}) {
         new vm.Script(decimalSrc, { filename: 'decimal.js' }).runInContext(ctx);
     }
     for (const s of scripts) s.runInContext(ctx);
+    // Renown (core/renown.js) adds CPS and click power from everything both games saved; tests about other numbers can
+    // leave it out so their exact ratios still hold
+    if (opts.noRenown) w.getRenownBonus = () => ({ cps: 0, click: 0, rubies: 0 });
     if (opts.beforeInit) opts.beforeInit(w); // after every script has loaded, before initApp() reads the save
     readyState = 'complete';
     w.document.dispatchEvent(new w.Event('readystatechange'));
@@ -106,7 +110,7 @@ function loadGame(opts = {}) {
         /** every localStorage entry, to carry over into the next page load */
         dumpStorage() { const o = {}; for (let i = 0; i < w.localStorage.length; i++) { const k = w.localStorage.key(i); o[k] = w.localStorage.getItem(k); } return o; },
         /** a fresh page load of the same browser profile (same storage, same clock) */
-        reload(extra = {}) { return loadGame(Object.assign({ storage: game.dumpStorage(), now, decimal: opts.decimal, confirm: opts.confirm, beforeInit: opts.beforeInit }, extra)); },
+        reload(extra = {}) { return loadGame(Object.assign({ storage: game.dumpStorage(), now, decimal: opts.decimal, confirm: opts.confirm, beforeInit: opts.beforeInit, noRenown: opts.noRenown }, extra)); },
         close() { w.close(); },
     };
     return game;

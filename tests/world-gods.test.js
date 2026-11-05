@@ -134,9 +134,10 @@ test('the Hall of Gods: reached from a door in town; inside, a statue per god, a
 const worldWithGods = (gods) => JSON.stringify({ v: 1, rubies: 0, gods, outbox: [] });
 
 test('statues raised in the Wilds bless the clicker: CPS, click power, crits, gems, Golden and offline', () => {
-    const plain = loadGame({ now: NOW });
+    // (Renown counts statue levels too: left out here, tests/renown.test.js checks it)
+    const plain = loadGame({ now: NOW, noRenown: true });
     plain.eval('upgrade2Level = 50; upgrade3Level = 30; upgrade5Level = 12; updateDisplays();');
-    const blessed = loadGame({ now: NOW, storage: { whathappened_world: worldWithGods({ solarus: 4, vulkar: 2, fortuna: 5, chronos: 3, aurum: 2, nyx: 5 }) } });
+    const blessed = loadGame({ now: NOW, noRenown: true, storage: { whathappened_world: worldWithGods({ solarus: 4, vulkar: 2, fortuna: 5, chronos: 3, aurum: 2, nyx: 5 }) } });
     blessed.eval('upgrade2Level = 50; upgrade3Level = 30; upgrade5Level = 12; updateDisplays();');
     assert.deepEqual(JSON.parse(JSON.stringify(blessed.eval('getGodBonuses()'))), { cps: 20, click: 16, critChance: 2, critDmg: 30, offline: 30, gems: 10, golden: 10, divine: 0, gods: 0 });
     assert.deepEqual(JSON.parse(JSON.stringify(plain.eval('getGodBonuses()'))), { cps: 0, click: 0, critChance: 0, critDmg: 0, offline: 0, gems: 0, golden: 0, divine: 0, gods: 0 });
@@ -149,7 +150,7 @@ test('statues raised in the Wilds bless the clicker: CPS, click power, crits, ge
 
 test('Chronos raises what you earn while away', () => {
     const away = (gods) => {
-        const g = loadGame({ now: NOW, storage: gods ? { whathappened_world: worldWithGods(gods) } : {} });
+        const g = loadGame({ now: NOW, noRenown: true, storage: gods ? { whathappened_world: worldWithGods(gods) } : {} });
         g.eval('count = 1000; upgrade2Level = 50; upgrade3Level = 30; upgrade5Level = 12; updateDisplays(); saveGame();');
         g.advance(3600 * 1000);
         const back = g.reload();

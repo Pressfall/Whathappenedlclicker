@@ -7,9 +7,10 @@ const NOW = 1_700_000_000_000;
 const HOUR = 3600 * 1000;
 const START_COUNT = 1000;
 
-// A player with some income, saved at NOW.
+// A player with some income, saved at NOW. (Renown is left out: it is worked out from what was saved, so it can be a
+// level higher by the time the player comes back than the CPS saved on leaving, and these compare the two exactly.)
 function player(opts) {
-    const g = loadGame({ now: NOW, ...opts });
+    const g = loadGame({ now: NOW, noRenown: true, ...opts });
     g.eval(`count = ${START_COUNT}; upgrade2Level = 50; upgrade3Level = 30; upgrade5Level = 12; updateDisplays(); saveGame();`);
     return g;
 }

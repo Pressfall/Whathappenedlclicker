@@ -148,6 +148,18 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     const stakes = Ar.RULES.stakes.filter(Boolean);
     assert.ok(g.includes(`${stakes[0].toLocaleString('en-US')} to ${stakes.at(-1).toLocaleString('en-US')} rubies each`), 'stakes');
     for (const z of D.ZONE_ORDER.filter(id => D.ZONES[id].wards)) assert.ok(g.includes(D.TIERS[D.ZONES[z].tier + 1].name), D.TIERS[D.ZONES[z].tier + 1].name + ' gear is named');
+    // the crew from the clicker: who, from which level of their upgrade; and what Renown counts
+    const Crew = require('../core/world-crew'), Ren = require('../core/renown');
+    assert.deepEqual(rows(read('wilds-guide.html'), 'crew-table').map(r => [r[0], Number(r[1])]), Crew.CREW.map(c => [c.name, c.arrive]));
+    for (const r of rows(read('wilds-guide.html'), 'crew-table')) assert.equal(/Quests only/.test(r[2]), !Crew.CREW.find(c => c.name === r[0]).service, r[0] + ': service');
+    assert.deepEqual(rows(read('wilds-guide.html'), 'renown-table').map(r => [r[0] === 'Clicker' ? 'clicker' : 'wilds', r[1], Number(r[2])]), Ren.SOURCES.map(s => [s.game, s.label, s.cap]));
+    assert.ok(g.includes(`+${Ren.PER_LEVEL.cps}% CPS and click power`) && g.includes(`+${Ren.PER_LEVEL.rubies}% rubies`), 'what a level of Renown gives');
+    assert.ok(g.includes('Renown ' + Ren.MAX_LEVEL) && g.includes('Every ' + (Ren.MILESTONES[1].level - Ren.MILESTONES[0].level) + ' levels'), 'the top and the milestones');
+    // hero guilds and the Glory shop's Guild Chest
+    const Gu = require('../core/world-guilds');
+    assert.ok(g.includes(`${Gu.STOCK_SIZE} guild charters`) && g.includes(`+${Gu.PER_GUILD * 100}%`) && g.includes(`all ${Gu.GUILDS.length} upgrades`), 'guilds');
+    assert.ok(g.includes(`${Ar.SHOP_BY_ID.guild_chest.glory.toLocaleString('en-US')} Glory`), 'the Guild Chest');
+    assert.ok(g.includes(`at most ${D.RULES.potionsPerMatch} potions per match`), 'the potion limit');
     // the hidden room in the Hall of Gods stays a secret
     const WORD = Buffer.from('YnJpbGV5aXNt', 'base64').toString();
     assert.ok(!g.toLowerCase().includes(WORD), 'the Wilds guide does not give away the secret');
@@ -163,23 +175,10 @@ test('the privacy policy says where ads can appear, as the code does', () => {
     assert.match(t, /the AdSense code is also loaded on the achievements, casino and leaderboard pages and on this page/);
 });
 
-test('Ko-fi: one link in the footer next to Privacy Policy and one in Settings, the same address, outside the ad area', () => {
+test('no tip links for now (Ko-fi was taken out until there is a real page), and no placeholder left behind', () => {
     const html = read('index.html');
-    const links = [...html.matchAll(/<a [^>]*href="(https:\/\/ko-fi\.com\/[^"]*)"[^>]*>([^<]*)<\/a>/g)];
-    assert.equal(links.length, 2, 'exactly two, so changing the handle is a two-line edit');
-    assert.equal(links[0][1], links[1][1], 'the same address in both');
-    assert.match(links[0][1], /^https:\/\/ko-fi\.com\/\w+$/);
-    for (const l of links) {
-        assert.equal(l[2], '☕ Support the game — keep The Wilds online');
-        assert.match(l[0], /target="_blank" rel="noopener"/);
-    }
-    const footer = html.slice(html.indexOf('<footer class="site-footer">'), html.indexOf('</footer>'));
-    assert.match(footer, /<a href="privacy\.html">Privacy Policy<\/a>\s*(<!--[\s\S]*?-->\s*)?<a href="https:\/\/ko-fi\.com\//, 'right after Privacy Policy');
-    const help = html.slice(html.indexOf('<h4>Help &amp; privacy</h4>'), html.indexOf('</section>', html.indexOf('<h4>Help &amp; privacy</h4>')));
-    assert.ok(help.includes('id="adChoicesBtn"') && help.includes('ko-fi.com'), 'in Settings > Help & privacy, with Ad & cookie choices');
-    assert.ok(help.includes('Tips go toward the Firebase bill for online play. The game itself stays free.'));
-    const adStart = html.indexOf('<div id="adWrapper"'), adEnd = html.indexOf('</script>', adStart);
-    assert.ok(!html.slice(adStart, adEnd).includes('ko-fi'), 'not inside the ad area');
+    assert.ok(!/ko-fi\.com/i.test(html), 'no Ko-fi link on the game page');
+    for (const f of PAGES.concat('index.html', 'privacy.html')) assert.ok(!read(f).includes('YOUR_KOFI_NAME'), f + ': no placeholder address');
     // tips unlock nothing: no game code knows about them
     for (const f of ['main.js', 'items.js', 'followers.js', 'gamba.js', 'world.js', 'world-ui.js', 'clan.html', 'world.html'])
         assert.ok(!/ko-?fi|support the game/i.test(read(f)), f + ' does not mention tips'); // ("donated" in clan.html is clan points)

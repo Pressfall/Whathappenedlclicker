@@ -1017,7 +1017,7 @@
         const combo = C.comboHit(p.combo, dir, E.time, swingId);
         // a spear thrust gains damage from the speed you are moving toward the target (dash into it for the most)
         const mom = cls === 'spear' ? C.momentumMult(p.vx * Math.cos(angle) + p.vy * Math.sin(angle), g.pstats.momentum + buffSum(p, 'momentum')) : 1;
-        const hd = C.hitDamage(info.baseDmg, s, combo, (assist ? D.COMBAT.assist.mult : 1) * mom * dmgBuff(p) * (g.pstats.dmgBy[cls] || 1));
+        const hd = C.hitDamage(info.baseDmg, s, combo, (assist ? D.COMBAT.assist.mult : 1) * mom * dmgBuff(p) * (g.pstats.dmgBy[cls] || 1), P);
         const critChance = st.crit + g.pstats.crit + buffSum(p, 'crit');
         const charge = mom >= 1.25 ? 'CHARGE x' + mom.toFixed(1) : '';
         if (t.kind === 'remote') {

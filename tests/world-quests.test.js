@@ -3,10 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const D = require('../core/world-data');
 const W = require('../core/world-logic');
+const Crew = require('../core/world-crew');
+const Bridge = require('../core/world-bridge');
 
 const NOW = new Date(2026, 9, 28, 12, 0, 0).getTime();
 const DAY = 24 * 3600 * 1000;
-const KINDS = ['kill', 'boss', 'rival', 'harvest', 'craft', 'box', 'deliver', 'visit', 'god', 'ward', 'wave'];
+const KINDS = ['kill', 'boss', 'rival', 'harvest', 'craft', 'box', 'deliver', 'visit', 'god', 'ward', 'wave', 'clicker'];
 
 test('every quest giver has a story and daily quests (wanderers only talk), and every quest asks for things that exist', () => {
     const seen = new Set();
@@ -14,7 +16,10 @@ test('every quest giver has a story and daily quests (wanderers only talk), and 
         const npc = D.NPCS[id];
         assert.ok(npc.name && npc.role && npc.greet && npc.face && D.ZONES[npc.zone], id);
         if (npc.lines) { assert.ok(npc.lines.length >= 3 && !npc.chain.length && !npc.daily.length, id + ' only talks'); continue; }
-        assert.ok(npc.chain.length >= (npc.zone === 'town' ? 6 : 3) && npc.daily.length >= 1, id);
+        // the Guildmaster's contracts come with his stock of hero guilds (core/world-guilds.js), not from a chain
+        if (npc.guild) { assert.ok(!npc.chain.length && !npc.daily.length, id + ' sells guilds'); continue; }
+        // townsfolk have long chains; camp NPCs and the crew from the game (core/world-crew.js) have three or more
+        assert.ok(npc.chain.length >= (npc.zone === 'town' && !npc.crew ? 6 : 3) && npc.daily.length >= 1, id);
         // out in a zone, that zone is open: you are standing in it
         assert.ok(npc.daily.some(q => !D.QUESTS[q].need || D.QUESTS[q].need.zone === npc.zone), id + ' always has a daily quest on offer');
         let zone = -1;
@@ -40,6 +45,13 @@ test('every quest giver has a story and daily quests (wanderers only talk), and 
         if (g.mats) for (const m in g.mats) assert.ok(D.MATERIALS_BY_ID[m] && g.mats[m] > 0, id + ' ' + m);
         if (q.need) assert.ok(D.ZONE_ORDER.includes(q.need.zone), id);
         if (q.cons) for (const c in q.cons) assert.ok(D.CONSUMABLES_BY_ID[c], id + ' ' + c);
+        // something done in the game: a stat the game keeps (an upgrade's level only for a crew member's own upgrade)
+        if (g.kind === 'clicker') assert.ok(Crew.STATS.includes(g.stat) && (g.stat !== 'upgrade' || Crew.CREW_BY_UP[g.up]), id + ' asks the game for something it keeps');
+        // consumables for the game: story quests only (a daily would be a new daily income), and only what the bridge allows
+        if (q.clicker) {
+            assert.ok(!q.daily && D.NPCS[q.npc].crew, id + ': only the crew\'s story quests send things to the game');
+            for (const c in q.clicker) assert.ok(Bridge.isItem(c) && q.clicker[c] >= 1 && q.clicker[c] <= Bridge.LIMITS.item, id + ' ' + c);
+        }
     }
 });
 

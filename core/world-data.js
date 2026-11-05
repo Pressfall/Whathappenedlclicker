@@ -6,12 +6,12 @@
  *   Wooden Crate equivalents (3 boxes merge into the next tier in items.js, so a box of tier t is worth 3^t).
  * - Gear tier t needs materials from zone t (zone 1 = Greenwood), so each boss opens the next tier.
  *
- * Works in a browser (<script src="core/world-data.js"> sets window.WHWorldData) and in Node (require).
+ * Works in a browser (<script src="core/world-data.js"> sets window.WHWorldData, after core/world-crew.js) and in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory();
-    else root.WHWorldData = factory();
-}(typeof self !== 'undefined' ? self : this, function () {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-crew'));
+    else root.WHWorldData = factory(root.WHCrew);
+}(typeof self !== 'undefined' ? self : this, function (Crew) {
     'use strict';
 
     const TILE = 32;
@@ -158,7 +158,8 @@
     // cd: seconds before the same target can be hit again. stam: stamina per second while swinging fast.
     // kb: knockback. dmg: damage multiplier for the class.
     const WEAPON_CLASSES = {
-        sword: { name: 'Sword', r0: 10, len: 46, k: 25, wMax: 22, aMax: 230, vMin: 260, vFull: 700, cd: 0.22, stam: 9, kb: 160, dmg: 1 },
+        // speedScale / perfectMult (core/world-combat.js hitDamage): a sword gains less from a fast swing than other weapons
+        sword: { name: 'Sword', r0: 10, len: 46, k: 25, wMax: 22, aMax: 230, vMin: 260, vFull: 700, cd: 0.22, stam: 9, kb: 160, dmg: 1, speedScale: 0.35, perfectMult: 1.15 },
         axe: { name: 'Axe', r0: 10, len: 42, k: 12, wMax: 14, aMax: 95, vMin: 200, vFull: 520, cd: 0.35, stam: 12, kb: 260, dmg: 1.3, chop: true, armored: 1.5 },
         pickaxe: { name: 'Pickaxe', r0: 10, len: 38, k: 16, wMax: 16, aMax: 120, vMin: 200, vFull: 500, cd: 0.3, stam: 10, kb: 120, dmg: 0.6, mine: true },
         dagger: { name: 'Dagger', r0: 8, len: 30, k: 35, wMax: 30, aMax: 420, vMin: 220, vFull: 560, cd: 0.12, stam: 6, kb: 80, dmg: 0.6, backstab: 1.5 },
@@ -743,6 +744,8 @@
         altar: { name: 'Rune Altar', icon: '🔮', desc: 'Potions, rings and lootboxes for the main game', color: '#b07dff' },
         trader: { name: 'Trader', icon: '💰', desc: 'Sell materials, buy supplies, exchange rubies', color: '#ff3d5e' },
         board: { name: 'Notice Board', icon: '📜', desc: 'How the Wilds work', color: '#d8c79a' },
+        // the clicker's crew moves in here (core/world-crew.js): who has come, and who is still on the way
+        depot: { name: 'WH Depot', icon: '🏭', desc: 'The factory crew from your game set up shop here', color: '#ffc83d' },
     };
 
     // ---------------- townsfolk, wanderers and their quests ----------------
@@ -750,7 +753,8 @@
     // zone, and the tile itself in the Hall of Gods. They give their chain of quests in order, then one daily quest a day
     // from their daily list. rumor: something they let slip; lines: what someone with no quests says, one per talk. Goals (kind): kill (monster, elite, zone: all optional), boss (boss optional), rival,
     // harvest (tool, zone optional), craft (gear; minScore optional), box (a lootbox at the Rune Altar), deliver (mats,
-    // taken when you hand the quest in), visit (zone), god (raise statues in the Hall of Gods). n: how many.
+    // taken when you hand the quest in), visit (zone), god (raise statues in the Hall of Gods), clicker (something done in
+    // the game, counted from what it saved: core/world-crew.js goalHave). n: how many.
     // need: what must be open before it is offered ({ zone }). Daily quests pay rubies x the tier of the furthest zone open.
     const NPCS = {
         brannoc: { name: 'Captain Brannoc', role: 'Warden of Wildgate', face: 'mainimage/thumbs/WHboss.webp', color: '#b5483a', spot: [-7, -3],
@@ -820,6 +824,17 @@
             ],
             opened: 'So. You said it, and it heard you. Go in. He has waited a long time.' },
     };
+    // The Guildmaster, just south-east of the Rune Altar's door: hero guilds (core/world-guilds.js), no quest chain. Each
+    // guild he stocks has a contract to finish before it can be bought.
+    NPCS.guildmaster = { name: 'Guildmaster Aurelio', role: 'Keeper of the Hero Guilds', face: 'mainimage/thumbs/moneyman.webp', color: '#c9a34a', spot: [16, 11], guild: true,
+        greet: 'Every hero of your factory has a guild out here, and every guild wants proof before it takes your coin. Six charters on my table, new ones every other day.',
+        chain: [], daily: [] };
+    // The crew from the clicker (core/world-crew.js), in the Depot's yard. crew: their id there; they only stand in town
+    // once you have reached them in the game (world.js), and their 'clicker' goals count what you did there.
+    for (const c of Crew.CREW) {
+        NPCS[c.id] = { name: c.name, role: c.role, face: c.face, color: c.color, spot: c.spot.slice(), greet: c.greet,
+            chain: c.chain.slice(), daily: c.daily.slice(), crew: c.id, service: c.service || null };
+    }
     const NPC_ORDER = Object.keys(NPCS);
     const QUESTS = {
         // Captain Brannoc: hunting
@@ -926,6 +941,8 @@
         ilya_seals: { title: 'The Garden Gate', text: 'All four wards. Then Vrill WH, at the heart of its garden.', goal: { kind: 'ward', zone: 'sky', n: 4 }, need: { zone: 'sky' }, rubies: 12000 },
         ilya_daily: { title: 'Read the Sky', text: 'Fifteen monsters on the isles today.', goal: { kind: 'kill', zone: 'sky', n: 15 }, need: { zone: 'sky' }, rubies: 200, daily: true },
     };
+    // the crew's quests (core/world-crew.js), copied so that table stays as it was written
+    for (const id in Crew.QUESTS) QUESTS[id] = JSON.parse(JSON.stringify(Crew.QUESTS[id]));
     for (const id of NPC_ORDER) NPCS[id].zone = NPCS[id].zone || 'town';
     for (const id in QUESTS) QUESTS[id].id = id;
 
@@ -1196,6 +1213,9 @@
         hotbarSlots: 5,
         zoneScale: { hp: 1.7, dmg: 1.5, rubies: 1.8 }, // already built into the monster numbers above, kept for reference
         tierShift: { up95: 0.5, up85: 0.2, downBelow: 25 },
+        // potions you may drink in one arena match (duel, team battle, tournament duel), one stay in the Pit (until you are
+        // knocked out or step out of it) and one run of the Proving Grounds' waves
+        potionsPerMatch: 3,
     };
 
     return {

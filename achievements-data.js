@@ -170,6 +170,10 @@
         { key: 'w_wager', cat: 'The Wilds', name: 'High Roller', desc: 'Win a duel played for rubies.', title: 'High Roller', rarity: 'rare', badge: '🎲', stat: 'wildsWagerWins', target: 1 },
         { key: 'w_wave10', cat: 'The Wilds', name: 'Holding the Line', desc: 'Clear wave 10 in the Proving Grounds.', title: 'Line Holder', rarity: 'rare', badge: '🌊', stat: 'wildsWaveBest', target: 10 },
         { key: 'w_wave30', cat: 'The Wilds', name: 'Unbreakable', desc: 'Clear wave 30 in the Proving Grounds.', title: 'Unbreakable', rarity: 'legendary', badge: '🗻', stat: 'wildsWaveBest', target: 30 },
+        // hero guilds (core/world-guilds.js): bought from the Guildmaster or found in a Guild Chest
+        { key: 'w_guild1', cat: 'The Wilds', name: 'Card-Carrying', desc: 'Join a hero guild: finish a Guildmaster contract and buy the charter, or open a Guild Chest.', title: 'Guild Member', rarity: 'rare', badge: '⚜️', stat: 'wildsGuilds', target: 1 },
+        { key: 'w_guild10', cat: 'The Wilds', name: 'Patron of the Guilds', desc: 'Own 10 hero guilds, any mix.', title: 'Guild Patron', rarity: 'epic', badge: '🏰', stat: 'wildsGuilds', target: 10 },
+        { key: 'w_guild_one5', cat: 'The Wilds', name: 'Guild Hall', desc: 'Own 5 guilds of the same hero.', title: 'Guildmaster', rarity: 'legendary', badge: '🛡️', stat: 'wildsGuildTop', target: 5 },
         { key: 'w_death10', cat: 'The Wilds', name: 'Learning Experience', desc: 'Get knocked out 10 times.', title: 'Respawn Regular', rarity: 'common', badge: '💫', stat: 'wildsDeaths', target: 10 },
         { key: 'w_gems10', cat: 'The Wilds', name: 'Care Package', desc: 'Send 10 gems home from the Wilds.', title: 'Gem Courier', rarity: 'uncommon', badge: '💎', stat: 'wildsGemsSent', target: 10 },
         { key: 'w_hours10', cat: 'The Wilds', name: 'Frontier Regular', desc: 'Spend 10 hours in the Wilds.', title: 'Frontiersman', rarity: 'uncommon', badge: '⏱️', stat: 'wildsHours', target: 10, unit: 'h' },
@@ -177,6 +181,12 @@
         // hidden ones: ??? on the achievements page until unlocked
         { key: 'w_door', cat: 'The Wilds', name: 'Open Sesame', desc: 'Find the way into the hidden room at the far end of the Hall of Gods.', title: 'Doorkeeper', rarity: 'epic', badge: '🚪', hidden: true, stat: 'wildsHall', target: 1 },
         { key: 'w_hands_off', cat: 'The Wilds', name: 'Hands Off', desc: 'Unlock the Auto Clicker.', title: 'Hands-Free', rarity: 'mythic', badge: '🖲️', hidden: true, stat: 'autoClicker', target: 1 },
+        // ---- Renown (core/renown.js): one rank for the game and the Wilds together ----
+        { key: 'x_renown10', cat: 'Dedication', name: 'Making a Name', desc: 'Reach Renown 10. Renown counts the game and the Wilds together.', title: 'Known Locally', rarity: 'common', badge: '🎖️', stat: 'renownLevel', target: 10 },
+        { key: 'x_renown25', cat: 'Dedication', name: 'Two Jobs', desc: 'Reach Renown 25.', title: 'Double Shift', rarity: 'uncommon', badge: '🏅', stat: 'renownLevel', target: 25 },
+        { key: 'x_renown50', cat: 'Dedication', name: 'Household Name', desc: 'Reach Renown 50.', title: 'Household Name', rarity: 'rare', badge: '🥇', stat: 'renownLevel', target: 50 },
+        { key: 'x_renown75', cat: 'Dedication', name: 'Both Worlds', desc: 'Reach Renown 75. One game alone can\'t get you there.', title: 'Of Both Worlds', rarity: 'epic', badge: '🌗', stat: 'renownLevel', target: 75 },
+        { key: 'x_renown100', cat: 'Dedication', name: 'What Happened Legend', desc: 'Reach Renown 100, the top.', title: 'What Happened Legend', rarity: 'legendary', badge: '🌟', stat: 'renownLevel', target: 100 },
         // ---- misc ----
         { key: 'x_gems_100', cat: 'Collector', name: 'Shiny Rocks', desc: 'Hold 100 gems at once.', title: 'Gem Hoarder', rarity: 'uncommon', badge: '💎', stat: 'gems', target: 100 },
     ];
@@ -272,12 +282,22 @@
             wildsWards: wWards, wildsTopTier: wTier,
             wildsArenaWins: wc(wa.w), wildsTeamWins: wc(wa.teamW), wildsRating: wc(wa.rating), wildsPitKOs: wc(wa.pitKO),
             wildsWagerWins: wc(wa.wagerWins), wildsWaveBest: wc(wa.waveBest),
+            // hero guilds owned: all of them, and the most of any one hero
+            wildsGuilds: Object.values((w.guilds && w.guilds.owned) || {}).reduce((a, n) => a + wc(n), 0),
+            wildsGuildTop: Math.max(0, ...Object.values((w.guilds && w.guilds.owned) || {}).map(wc)),
         }, divine, live || {});
         const ups = snap.upgrades.slice(1);
         snap.upgradeMax = Math.max(0, ...ups);
         snap.upgradeTotal = ups.reduce((a, b) => a + b, 0);
         snap.upgradesOwned = ups.filter(l => l >= 1).length;
+        // every kind of upgrade bought at least once, in any run (whathappened_upgrade_best keeps the best level of each)
+        const best = readJSON('whathappened_upgrade_best') || {};
+        if (!('upgradesEver' in (live || {}))) snap.upgradesEver = ups.filter((l, i) => Math.max(l, Number(best[i + 1]) || 0) >= 1).length;
         snap.divineTotal = snap.divineArgon + snap.divineSomalian + snap.divineAssassin + snap.divineCollector + snap.divineMoneyMan + snap.divineSpirit + snap.divineVillager + snap.divineBrileyism;
+        // every statue level in the Hall of Gods, the hidden one included
+        snap.wildsGodLevels = Object.keys(wGods).reduce((a, g) => a + wc(wGods[g]), 0);
+        // Renown (core/renown.js), the rank made of both games
+        snap.renownLevel = window.WHRenown ? window.WHRenown.rank(snap).level : 0;
         return snap;
     }
 

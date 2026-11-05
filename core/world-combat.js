@@ -74,10 +74,14 @@
         if (v < vMin) return -1;
         return clamp((v - vMin) / (vFull - vMin), 0, 1);
     }
-    function hitDamage(base, s, combo, mult = 1) {
-        let m = 0.5 + 0.5 * s;
+    // P: the weapon class (D.WEAPON_CLASSES). speedScale: how much swing speed adds on top of the half every hit does
+    // (0.5 unless the class says otherwise: the sword's is lower, so a fast sword swing pays off less); perfectMult: its
+    // bonus for a perfect swing
+    function hitDamage(base, s, combo, mult = 1, P) {
+        const scale = P && P.speedScale !== undefined ? P.speedScale : 0.5;
+        let m = 0.5 + scale * s;
         const perfect = s >= C.perfect.at;
-        if (perfect) m *= C.perfect.mult;
+        if (perfect) m *= P && P.perfectMult !== undefined ? P.perfectMult : C.perfect.mult;
         m *= 1 + C.combo.step * Math.min(C.combo.max, combo || 0);
         return { dmg: base * m * mult, perfect };
     }

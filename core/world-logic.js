@@ -8,15 +8,23 @@
  * and in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'));
-    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour);
-}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour) {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'), require('./world-crew'), require('./renown'), require('./world-guilds'));
+    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour, root.WHCrew, root.WHRenown, root.WHGuilds);
+}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour, Crew, Renown, Guilds) {
     'use strict';
 
     const WORLD_VERSION = 1;
     const SLOTS = ['helmet', 'chest', 'boots', 'ring', 'offhand'];
     const int = (v, max = Number.MAX_SAFE_INTEGER) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)));
     const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+    // ---------------- what you did in the game (the clicker) ----------------
+    // core/world-crew.js clickerView: best upgrade levels, prestiges, lifetime clicks... and the Renown level. The page
+    // builds it from the game's storage (world.js) and sets it here; it is never saved in the Wilds save. Crew arrivals,
+    // 'clicker' quest goals, crew services and the Renown boost read it. Tests set it directly.
+    let clickerView = Crew.clickerView({});
+    function setClickerView(v) { clickerView = v && Array.isArray(v.best) ? v : Crew.clickerView({}); return clickerView; }
+    function getClickerView() { return clickerView; }
 
     // ---------------- calendar (local day; ISO week, so a week always starts on Monday) ----------------
     function dayKey(now) {
@@ -33,7 +41,35 @@
     function freshStats() {
         return { kills: 0, elites: 0, deaths: 0, crafted: 0, bestScore: 0, legendaries: 0, mined: 0, chopped: 0, gathered: 0,
             rubiesEarned: 0, playSec: 0, bossKills: 0, rivalsBeaten: 0, boxesCrafted: 0, gemsSent: 0, goldenSent: 0, lostGear: 0, pvpWins: 0, pvpLosses: 0,
-            blocks: 0, backstabs: 0, arrowHits: 0, rushHits: 0, questsDone: 0 };
+            blocks: 0, backstabs: 0, arrowHits: 0, rushHits: 0, questsDone: 0, guildsGot: 0 };
+    }
+    function freshGuilds() { return { owned: {}, sold: { period: '', ups: {} }, contract: null }; }
+    function cleanGuilds(raw) {
+        const out = freshGuilds();
+        if (!isObj(raw)) return out;
+        out.owned = Guilds.cleanOwned(raw.owned);
+        const sd = isObj(raw.sold) ? raw.sold : {};
+        out.sold = { period: typeof sd.period === 'string' ? sd.period.slice(0, 12) : '', ups: {} };
+        if (isObj(sd.ups)) for (const k in sd.ups) if (Guilds.BY_UP[Number(k)] && sd.ups[k]) out.sold.ups[Number(k)] = true;
+        const c = raw.contract;
+        if (isObj(c) && Guilds.BY_UP[Number(c.up)]) {
+            const def = Guilds.contractOf(Number(c.up));
+            out.contract = { up: Number(c.up), prog: int(c.prog, def.goal.n || 1) };
+        }
+        return out;
+    }
+    function freshCrew() { return { seen: {}, shop: { day: '', used: {} }, trade: { day: '', used: {} } }; }
+    // a stored crew record -> a usable one: only real crew ids, today's counts per known stock or trade
+    function cleanCrew(raw) {
+        const out = freshCrew();
+        if (!isObj(raw)) return out;
+        out.seen = filterFlags(raw.seen, Crew.CREW_BY_ID);
+        const known = (lists) => Object.fromEntries(Object.values(lists).flat().map(x => [x.id, true]));
+        for (const [k, lists] of [['shop', Crew.SHOPS], ['trade', Crew.TRADES]]) {
+            const r = isObj(raw[k]) ? raw[k] : {};
+            out[k] = { day: typeof r.day === 'string' ? r.day.slice(0, 12) : '', used: cleanCounts(r.used, known(lists)) };
+        }
+        return out;
     }
     function freshState(now) {
         const s = {
@@ -59,6 +95,12 @@
             gods: {},   // Hall of Gods statue levels (core/world-gods.js); the game reads them for its blessings
             quests: {}, // per NPC: { step, active: { id, prog } or null, dailyDone }
             secrets: { hallDoor: false, autoClicker: false }, // the Hall's far wall opened; the hidden room's Auto Clicker bought
+            // the crew from the game (core/world-crew.js): who has been greeted in town, and today's shop and trade counts
+            crew: freshCrew(),
+            renown: { claimed: [] }, // Renown milestones whose Wilds half was claimed here (core/renown.js)
+            // hero guilds (core/world-guilds.js): how many of each you own (the game reads these), which of this stock you
+            // bought (sold out until the stock changes), and the one contract you are working on
+            guilds: freshGuilds(),
             stats: freshStats(),
         };
         const shield = addGear(s, D.STARTER_OFFHAND, 40, [], now);
@@ -164,12 +206,16 @@
         if (isObj(raw.overflow)) {
             const o = raw.overflow;
             s.overflow = { gems: int(o.gems), golden: int(o.golden), boxes: D.BOX_NAMES.map((_, i) => int(Array.isArray(o.boxes) ? o.boxes[i] : 0)) };
+            for (const k of Bridge.MAP_KINDS) { const m = Bridge.cleanMap(k, o[k], Number.MAX_SAFE_INTEGER); if (Object.keys(m).length) s.overflow[k] = m; }
             if (Bridge.isEmpty(s.overflow)) s.overflow = null;
         }
         s.tutorial = filterFlags(raw.tutorial);
         s.skills = cleanSkills(raw.skills, raw.abilities);
         s.gods = cleanGods(raw.gods);
         s.quests = cleanQuests(raw.quests);
+        s.crew = cleanCrew(raw.crew);
+        s.renown = { claimed: Renown.cleanClaimed(isObj(raw.renown) ? raw.renown.claimed : null) };
+        s.guilds = cleanGuilds(raw.guilds);
         const sec = isObj(raw.secrets) ? raw.secrets : {};
         s.secrets = { hallDoor: sec.hallDoor === true, autoClicker: sec.autoClicker === true };
         s.skin = cleanSkin(raw.skin);
@@ -276,6 +322,10 @@
         for (const id in s.skills.learned) if (!skillDef(id)) p.push('skills.' + id);
         for (const id in s.gods) if (!Gods.GODS[id] || !(s.gods[id] >= 1 && s.gods[id] <= Gods.LEVEL_CAP)) p.push('gods.' + id);
         for (const id in s.quests) if (!D.NPCS[id]) p.push('quests.' + id);
+        for (const id in (s.crew && s.crew.seen) || {}) if (!Crew.CREW_BY_ID[id]) p.push('crew.' + id);
+        if (!s.renown || Renown.cleanClaimed(s.renown.claimed).length !== (s.renown.claimed || []).length) p.push('renown');
+        for (const k in (s.guilds && s.guilds.owned) || {}) if (!Guilds.BY_UP[Number(k)] || !(s.guilds.owned[k] >= 1)) p.push('guilds.' + k);
+        if (s.guilds && s.guilds.contract && !Guilds.BY_UP[s.guilds.contract.up]) p.push('guilds.contract');
         for (const z in s.seals) if (!wardCount(z) || !(s.seals[z] > 0 && s.seals[z] < (1 << wardCount(z)))) p.push('seals.' + z);
         for (const c in s.classes.loadout) {
             const lo = s.classes.loadout[c];
@@ -429,6 +479,8 @@
             out.maxHp += st.hp; out.armor += st.armor; out.speed += st.speed; out.rubies += st.rubies;
             out.luck += st.luck; out.yield += st.yield; out.fireResist += st.fireResist; out.stamRegen += st.stamRegen;
         }
+        // Renown (core/renown.js), counted from both games: a little more rubies from monsters, bosses and veins
+        out.rubies += Renown.bonus(clickerView.renown).rubies / 100;
         Object.assign(out, { crit: 0, dmgBy: {}, arrowSave: 0, lifesteal: 0, momentum: 0, backstab: 0, regen: 0, pierce: 0, thorns: 0, dodge: 0 }, MULT_BONUS);
         const cid = classId(s);
         out.usesMana = !!D.CLASSES[cid].mana; // abilities and staff spells cost mana, not stamina
@@ -800,15 +852,30 @@
     function pitKO(s, now) { s.arena.pitKO++; s.stats.pvpWins++; questEvent(s, { kind: 'pitko' }); return Arena.giveGlory(s.arena, 'pit', Arena.GLORY.pitKO, dayKey(now)); }
     function pitDown(s) { s.arena.pitDown++; }
     // The Arena Master's shop (Glory). Returns { ok, reason?, item }
-    function arenaBuy(s, id, now, ack) {
+    // How many more of a Glory shop item can be bought this week (Infinity when it has no weekly limit)
+    function arenaWeekLeft(s, id, now) {
+        const it = Arena.SHOP_BY_ID[id];
+        if (!it || !it.perWeek) return Infinity;
+        const b = s.arena.bought, wk = weekKey(now);
+        if (b.week !== wk) { b.week = wk; b.n = {}; }
+        return Math.max(0, it.perWeek - (b.n[id] || 0));
+    }
+    // rng: for the Guild Chest's pick (the page passes Math.random)
+    function arenaBuy(s, id, now, ack, rng) {
         const it = Arena.SHOP_BY_ID[id];
         if (!it) return { ok: false, reason: 'unknown' };
         const a = s.arena;
         if (it.title && a.titles[it.title]) return { ok: false, reason: 'owned' };
         if (it.weekly && a.coffer === weekKey(now)) return { ok: false, reason: 'week' };
+        if (!arenaWeekLeft(s, id, now)) return { ok: false, reason: 'week' };
         if (it.coffer !== undefined && boxAllowanceLeft(s, now) < D.BOX_POINTS[it.coffer]) return { ok: false, reason: 'allowance' };
+        // gems and Golden for the game still come out of today's caps, like the Trader's exchange
+        if (it.gems && gemsLeftToday(s, now) < it.gems) return { ok: false, reason: 'cap' };
+        if (it.golden && goldenLeftToday(s, now) < it.golden) return { ok: false, reason: 'cap' };
         if (a.glory < it.glory) return { ok: false, reason: 'glory' };
         a.glory -= it.glory;
+        if (it.perWeek) a.bought.n[id] = (a.bought.n[id] || 0) + 1;
+        const out = { ok: true, item: it };
         if (it.give) giveAll(s, it.give, true);
         if (it.title) { a.titles[it.title] = true; a.title = it.title; }
         if (it.coffer !== undefined) {
@@ -817,7 +884,16 @@
             const boxes = D.BOX_NAMES.map(() => 0); boxes[it.coffer] = 1;
             Bridge.push(s, { boxes, src: 'arena' }, ack, now);
         }
-        return { ok: true, item: it };
+        if (it.rubies) out.rubies = addRubies(s, it.rubies);
+        if (it.gems) out.gems = grantGems(s, it.gems, now, 'arena', ack).gems;
+        if (it.golden) out.golden = grantGolden(s, it.golden, now, 'arena', ack).golden;
+        if (it.pack) Bridge.push(s, { packs: { [it.pack]: 1 }, src: 'arena' }, ack, now);
+        if (it.guild) {
+            const r = typeof rng === 'function' ? rng() : 0;
+            out.guild = Guilds.UPS[Math.min(Guilds.UPS.length - 1, Math.floor(Math.max(0, r) * Guilds.UPS.length))];
+            out.owned = grantGuild(s, out.guild);
+        }
+        return out;
     }
     // A wave of the Proving Grounds was cleared with this player in it: rubies, Glory (inside today's cap, a one-time bonus
     // at waves 10, 20, 30 and 40), and their best wave. Returns { rubies, glory, milestone, best }
@@ -1192,10 +1268,13 @@
             return { have, need, done: has(s, g.mats) };
         }
         if (g.kind === 'ward') { const need = g.n || 1, have = Math.min(need, wardsBroken(s, g.zone)); return { have, need, done: have >= need }; }
+        // something done in the game: counted from what it saved, so it is never missed and can't be farmed here
+        if (g.kind === 'clicker') { const need = g.n || 1, have = Math.min(need, Math.floor(Crew.goalHave(g, clickerView))); return { have, need, done: have >= need }; }
         const need = g.n || 1, have = Math.min(need, rec.active.prog);
         return { have, need, done: have >= need };
     }
     function acceptQuest(s, npcId, now) {
+        if (D.NPCS[npcId] && D.NPCS[npcId].crew && !Crew.arrived(npcId, clickerView)) return { ok: false, reason: 'away' };
         const o = questOffer(s, npcId, now);
         if (!o || o.doneToday) return { ok: false, reason: 'none' };
         if (o.active) return { ok: false, reason: 'active' };
@@ -1204,8 +1283,9 @@
         questRec(s, npcId).active = o.daily ? { id: o.id, prog: 0, day: dayKey(now) } : { id: o.id, prog: 0 };
         return { ok: true, id: o.id };
     }
-    // Hand a finished quest in: deliveries are taken, the rubies (and any potions) paid, and the NPC moves on
-    function turnInQuest(s, npcId, now) {
+    // Hand a finished quest in: deliveries are taken, the rubies (and any potions) paid, and the NPC moves on. A crew
+    // story quest's `clicker` consumables go to the game through the outbox (ack: what the game already applied).
+    function turnInQuest(s, npcId, now, ack) {
         const rec = s.quests[npcId];
         if (!rec || !rec.active) return { ok: false, reason: 'none' };
         const q = D.QUESTS[rec.active.id];
@@ -1213,11 +1293,20 @@
         if (q.goal.kind === 'deliver' && !take(s, q.goal.mats)) return { ok: false, reason: 'materials' };
         const rubies = addRubies(s, questRubies(s, q));
         if (q.cons) for (const id in q.cons) s.cons[id] = (s.cons[id] || 0) + q.cons[id];
+        const story = !q.daily && D.NPCS[npcId].chain[rec.step] === q.id;
+        let clicker = null;
+        if (q.clicker && story) {
+            clicker = Bridge.cleanItems(q.clicker, Bridge.LIMITS.item);
+            if (Object.keys(clicker).length) Bridge.push(s, { items: clicker, src: 'crew' }, ack, now);
+            else clicker = null;
+        }
         if (q.daily) rec.dailyDone = rec.active.day || dayKey(now);
-        else if (D.NPCS[npcId].chain[rec.step] === q.id) rec.step++;
+        else if (story) rec.step++;
         rec.active = null;
         s.stats.questsDone++;
-        return { ok: true, id: q.id, rubies, cons: q.cons || null };
+        const out = { ok: true, id: q.id, rubies, cons: q.cons || null };
+        if (clicker) out.clicker = clicker; // consumables sent to the game
+        return out;
     }
     function abandonQuest(s, npcId) {
         const rec = s.quests[npcId];
@@ -1244,16 +1333,171 @@
             const a = s.quests[npcId].active;
             if (!a) continue;
             const g = D.QUESTS[a.id].goal;
-            if (g.kind === 'deliver' || g.kind === 'ward' || a.prog >= (g.n || 1) || !goalMatches(g, ev)) continue;
+            if (g.kind === 'deliver' || g.kind === 'ward' || g.kind === 'clicker' || a.prog >= (g.n || 1) || !goalMatches(g, ev)) continue;
             a.prog++;
             changed = true;
+        }
+        // the hero guild contract being worked on (core/world-guilds.js)
+        const gc = s.guilds && s.guilds.contract;
+        if (gc) {
+            const g = Guilds.contractOf(gc.up).goal;
+            if (gc.prog < (g.n || 1) && goalMatches(g, ev)) { gc.prog++; changed = true; }
         }
         return changed;
     }
     // Every accepted quest, for the tracker: [{ npc, id, quest, progress }]
     function activeQuests(s) {
-        return D.NPC_ORDER.filter(n => s.quests[n] && s.quests[n].active)
+        const out = D.NPC_ORDER.filter(n => s.quests[n] && s.quests[n].active)
             .map(n => ({ npc: n, id: s.quests[n].active.id, quest: D.QUESTS[s.quests[n].active.id], progress: questProgress(s, n) }));
+        // a hero guild contract shows in the tracker too
+        const gc = s.guilds && s.guilds.contract;
+        if (gc) out.push({ npc: 'guildmaster', id: 'guild:' + gc.up, quest: Guilds.contractOf(gc.up), progress: guildContractProgress(s), guild: gc.up });
+        return out;
+    }
+
+    // ---------------- the crew from the game (core/world-crew.js) ----------------
+    function crewHere(id) { return Crew.arrived(id, clickerView); }
+    // Crew who have come to Wildgate since the last time this was asked: marks them greeted (the page says hello once)
+    function greetCrew(s) {
+        const out = [];
+        for (const c of Crew.CREW) if (crewHere(c.id) && !s.crew.seen[c.id]) { s.crew.seen[c.id] = true; out.push(c.id); }
+        return out;
+    }
+    // today's per-day counts for shops or trades (a new day starts them over)
+    function crewDay(s, kind, now) {
+        const rec = s.crew[kind], d = dayKey(now);
+        if (rec.day !== d) { rec.day = d; rec.used = {}; }
+        return rec;
+    }
+    // A crew shop: [{ ...stock, left, locked (a zone that isn't open yet) }], or null when they have no shop or aren't here
+    function crewShop(s, crewId, now) {
+        const list = Crew.SHOPS[crewId];
+        if (!list || !crewHere(crewId)) return null;
+        const rec = crewDay(s, 'shop', now);
+        return list.map(it => Object.assign({}, it, { left: Math.max(0, it.limit - (rec.used[it.id] || 0)), locked: it.need && !s.unlocked.zones[it.need] ? it.need : null }));
+    }
+    function crewBuy(s, crewId, stockId, now) {
+        const list = crewShop(s, crewId, now);
+        if (!list) return { ok: false, reason: 'away' };
+        const it = list.find(x => x.id === stockId);
+        if (!it) return { ok: false, reason: 'unknown' };
+        if (it.locked) return { ok: false, reason: 'locked' };
+        if (!it.left) return { ok: false, reason: 'soldout' };
+        if (s.rubies < it.price) return { ok: false, reason: 'rubies', need: it.price - s.rubies };
+        s.rubies -= it.price;
+        giveAll(s, it.give, true);
+        const rec = s.crew.shop;
+        rec.used[it.id] = (rec.used[it.id] || 0) + 1;
+        return { ok: true, give: it.give };
+    }
+    // ez villager's Trading Hall: [{ ...trade, left, locked, can (you have what it takes) }]
+    function crewTrades(s, crewId, now) {
+        const list = Crew.TRADES[crewId];
+        if (!list || !crewHere(crewId)) return null;
+        const rec = crewDay(s, 'trade', now);
+        return list.map(t => Object.assign({}, t, { left: Math.max(0, t.limit - (rec.used[t.id] || 0)), locked: t.need && !s.unlocked.zones[t.need] ? t.need : null, can: has(s, t.give) }));
+    }
+    function crewTrade(s, crewId, tradeId, now) {
+        const list = crewTrades(s, crewId, now);
+        if (!list) return { ok: false, reason: 'away' };
+        const t = list.find(x => x.id === tradeId);
+        if (!t) return { ok: false, reason: 'unknown' };
+        if (t.locked) return { ok: false, reason: 'locked' };
+        if (!t.left) return { ok: false, reason: 'soldout' };
+        if (!take(s, t.give)) return { ok: false, reason: 'materials' };
+        giveAll(s, t.get, true);
+        const rec = s.crew.trade;
+        rec.used[t.id] = (rec.used[t.id] || 0) + 1;
+        return { ok: true, get: t.get };
+    }
+
+    // ---------------- Renown (core/renown.js): the Wilds half of each milestone ----------------
+    // The level comes from the clicker view (the page works it out from both games and puts it there)
+    function renownClaimable(s) { return Renown.claimable(clickerView.renown, s.renown.claimed); }
+    // ---------------- potions in arena matches, the Pit and the waves ----------------
+    // key: which limited fight you are in (a match, a stay in the Pit, a wave run), or null for none. tracker: { key, used },
+    // kept by the page for the fight in progress. Returns how many potions you may still drink there.
+    function potionsLeft(tracker, key) {
+        if (!key) return Infinity;
+        return tracker && tracker.key === key ? Math.max(0, D.RULES.potionsPerMatch - tracker.used) : D.RULES.potionsPerMatch;
+    }
+    // one potion drunk in that fight: the tracker to keep (a new fight starts the count again)
+    function notePotion(tracker, key) {
+        if (!key) return tracker || null;
+        if (!tracker || tracker.key !== key) return { key, used: 1 };
+        return { key, used: tracker.used + 1 };
+    }
+
+    // ---------------- hero guilds (core/world-guilds.js): the Guildmaster by the Rune Altar ----------------
+    // this stock's "bought" list, started over when the stock changes
+    function guildSold(s, now) {
+        const period = Guilds.periodOf(now);
+        if (s.guilds.sold.period !== period) s.guilds.sold = { period, ups: {} };
+        return s.guilds.sold;
+    }
+    function guildContractProgress(s) {
+        const gc = s.guilds.contract;
+        if (!gc) return null;
+        const need = Guilds.contractOf(gc.up).goal.n || 1, have = Math.min(need, gc.prog);
+        return { have, need, done: have >= need };
+    }
+    // What the Guildmaster has now: { period, restockAt, items: [{ up, guild, price, contract, sold, mine (your contract),
+    // progress, locked (a zone that must be open first), owned }], contract (yours, which may be from an earlier stock) }
+    function guildStock(s, now) {
+        const period = Guilds.periodOf(now), sold = guildSold(s, now), gc = s.guilds.contract;
+        const items = Guilds.stockFor(period).map(up => {
+            const contract = Guilds.contractOf(up);
+            return { up, guild: Guilds.BY_UP[up], price: Guilds.priceOf(up), contract, sold: !!sold.ups[up], mine: !!gc && gc.up === up,
+                progress: gc && gc.up === up ? guildContractProgress(s) : null, locked: needMet(s, contract.need) ? null : contract.need, owned: s.guilds.owned[up] || 0 };
+        });
+        return { period, restockAt: Guilds.nextRestockAt(now), items, contract: gc ? { up: gc.up, guild: Guilds.BY_UP[gc.up], contract: Guilds.contractOf(gc.up), progress: guildContractProgress(s), price: Guilds.priceOf(gc.up) } : null };
+    }
+    // Take a guild's contract: it has to be in stock (not sold out this stock), its zone open, and no other contract on
+    function takeGuildContract(s, up, now) {
+        if (!Guilds.BY_UP[up]) return { ok: false, reason: 'unknown' };
+        if (s.guilds.contract) return { ok: false, reason: 'busy' };
+        if (!Guilds.stockFor(Guilds.periodOf(now)).includes(up)) return { ok: false, reason: 'stock' };
+        if (guildSold(s, now).ups[up]) return { ok: false, reason: 'soldout' };
+        if (!needMet(s, Guilds.contractOf(up).need)) return { ok: false, reason: 'locked' };
+        s.guilds.contract = { up, prog: 0 };
+        return { ok: true, up };
+    }
+    function dropGuildContract(s) {
+        if (!s.guilds.contract) return false;
+        s.guilds.contract = null;
+        return true;
+    }
+    // Buy the guild whose contract is done. The contract stays yours even if the stock changed since you took it; buying
+    // sells that guild out until the next stock.
+    function buyGuild(s, up, now) {
+        const gc = s.guilds.contract;
+        if (!gc || gc.up !== up) return { ok: false, reason: 'contract' };
+        if (!guildContractProgress(s).done) return { ok: false, reason: 'unfinished' };
+        const price = Guilds.priceOf(up);
+        if (s.rubies < price.rubies) return { ok: false, reason: 'rubies', need: price.rubies - s.rubies };
+        if (!has(s, price.mats)) return { ok: false, reason: 'materials' };
+        take(s, price.mats);
+        s.rubies -= price.rubies;
+        s.guilds.contract = null;
+        guildSold(s, now).ups[up] = true;
+        return { ok: true, up, owned: grantGuild(s, up) };
+    }
+    // one more of a guild (bought, or from a Guild Chest). Returns how many you own now.
+    function grantGuild(s, up) {
+        s.guilds.owned[up] = Math.min(Guilds.OWN_MAX, (s.guilds.owned[up] || 0) + 1);
+        s.stats.guildsGot = (s.stats.guildsGot || 0) + 1;
+        return s.guilds.owned[up];
+    }
+
+    function claimRenown(s, level) {
+        const m = Renown.MILESTONE_BY_LEVEL[level];
+        if (!m) return { ok: false, reason: 'unknown' };
+        if (clickerView.renown < level) return { ok: false, reason: 'level' };
+        if (s.renown.claimed.includes(level)) return { ok: false, reason: 'claimed' };
+        s.renown.claimed = Renown.cleanClaimed(s.renown.claimed.concat([level]));
+        const rubies = addRubies(s, m.wilds.rubies);
+        if (m.wilds.cons) for (const id in m.wilds.cons) give(s, id, m.wilds.cons[id], true);
+        return { ok: true, rubies, cons: m.wilds.cons || null };
     }
 
     // ---------------- nodes ----------------
@@ -1283,8 +1527,10 @@
         refreshCaps, gemsLeftToday, goldenLeftToday, grantGems, grantGolden,
         rollLoot, rollRubies, monsterLoot, nodeLoot, bossLoot, rivalLoot, die, recoverGrave, nextZoneAfter,
         wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal,
-        arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, setTitle, waveCleared,
+        arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, arenaWeekLeft, setTitle, waveCleared,
         sell, buy, exchange, classId, classOf, classProgress, classState, unlockClass, setClass, skillDef, skillState, learnSkill, loadoutOf, equipAbility, unequipAbility, abilityKit, treeOrder,
         godState, upgradeGod, isHallWord, speak, hiddenShopState, buyHidden, questOffer, questProgress, acceptQuest, turnInQuest, abandonQuest, questEvent, activeQuests, furthestTier, noteNode, nodeReadyAt, pruneNodes, serialize,
+        setClickerView, getClickerView, crewHere, greetCrew, crewShop, crewBuy, crewTrades, crewTrade, renownClaimable, claimRenown,
+        guildStock, takeGuildContract, dropGuildContract, guildContractProgress, buyGuild, grantGuild, potionsLeft, notePotion,
     };
 }));

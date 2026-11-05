@@ -108,12 +108,11 @@
     WV.start = function () {
         const now = sNow();
         if (WV.run && !Wv.runNeedsReset(WV.run, now)) { WHW.toast('A run is already going: get in the ring!'); return; }
-        const bests = [game().state.arena.waveBest].concat(others().map(r => r.info.wb || 0));
-        const start = Wv.startWave(bests);
+        const start = Wv.startWave(); // every run starts at wave 1
         const run = { gen: Math.random().toString(36).slice(2, 10), seed: Math.floor(Math.random() * 1e9), start, wave: start, st: 'ready', n: WV.players(), at: now + R.readySec * 1000, t: now };
         if (shared()) net().db.set(Z('w'), run);
         setRun(Object.assign({ m: {}, x: [], h: null }, run));
-        WHW.toast(start > 1 ? 'Starting at wave ' + start + ' (the furthest checkpoint everyone here has reached).' : 'The waves are coming. Hold the ring!');
+        WHW.toast('The waves are coming, from wave 1. Hold the ring! (' + D.RULES.potionsPerMatch + ' potions per run)');
     };
     WV.promptText = function () {
         const r = WV.run, now = sNow();

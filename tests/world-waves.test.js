@@ -39,11 +39,10 @@ test('more players: more monsters, and each one tougher', () => {
     assert.equal(Wv.composition(9, 8, 99).length, Wv.composition(9, 8, Wv.RATE.maxPlayers).length, 'capped');
 });
 
-test('a run starts at the furthest checkpoint everyone has reached', () => {
-    assert.equal(Wv.startWave([]), 1);
-    assert.equal(Wv.startWave([0, 30]), 1);
-    assert.equal(Wv.startWave([12, 17]), 11);
-    assert.equal(Wv.startWave([25]), 26);
+test('a run always starts at wave 1, however far anyone got before', () => {
+    assert.equal(Wv.startWave(), 1);
+    assert.equal(Wv.startWave([12, 17]), 1);
+    assert.equal(Wv.startWave([25]), 1);
 });
 
 test('the snapshot goes there and back, and never grows past the database limit', () => {

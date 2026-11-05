@@ -1,0 +1,44 @@
+/* Hero guilds on the upgrade buttons (main.js renderGuildLooks; the guilds come from the Wilds, core/world-guilds.js).
+   --guild-color is the guild's own colour. One guild: a trim and a crest. 3+: a glow. 5+: a shimmer. 10+: a crown. */
+#leftBar .upgrade-full-btn.has-guild {
+    border-color: var(--guild-color) !important;
+    background: linear-gradient(100deg, color-mix(in srgb, var(--guild-color) 22%, var(--surface-2)) 0%, var(--surface-2) 55%) !important;
+    box-shadow: inset 3px 0 0 var(--guild-color);
+}
+#leftBar .upgrade-full-btn.has-guild .upgrade-img { box-shadow: 0 0 0 2px var(--guild-color); }
+#leftBar .upgrade-full-btn.guild-glow { box-shadow: inset 3px 0 0 var(--guild-color), 0 0 14px color-mix(in srgb, var(--guild-color) 45%, transparent); }
+#leftBar .upgrade-full-btn.guild-shimmer { overflow: hidden; }
+#leftBar .upgrade-full-btn.guild-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(110deg, transparent 30%, color-mix(in srgb, var(--guild-color) 30%, transparent) 50%, transparent 70%);
+    background-size: 250% 100%;
+    animation: guild-shimmer 3.2s linear infinite;
+    border-radius: inherit;
+}
+@keyframes guild-shimmer { from { background-position: 150% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { #leftBar .upgrade-full-btn.guild-shimmer::after { animation: none; } }
+
+/* the crest: top-right corner of the button */
+.guild-crest {
+    position: absolute;
+    top: 3px;
+    right: 6px;
+    z-index: 1;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: rgba(8, 10, 16, 0.86);
+    border: 1px solid var(--guild-color, var(--gold));
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.5;
+    color: #fff;
+    white-space: nowrap;
+    cursor: help;
+}
+.guild-crest[hidden] { display: none; }
+/* room for the crest, so a long name is cut short (…) instead of running under it */
+#leftBar .upgrade-full-btn.has-guild .up-name { padding-right: 58px; }
+#leftBar .upgrade-full-btn.guild-crown .guild-crest::before { content: '👑 '; }
