@@ -2810,7 +2810,7 @@ function updateDisplays() {
         const appliedPercent = divineArgonPercentAt();
         const nextPercent = divineArgonPercentAt(numericLevel(divineArgonLevel) + 1);
         // build HTML label showing level, applied percent (if any), and next cost/percent
-        const imgHtml = `<img class="upgrade-img" src="mainimage/divineargonian.png" alt="" width="56" height="56">`;
+        const imgHtml = `<img class="upgrade-img" src="mainimage/divineargonian.png" alt="" width="56" height="56" loading="lazy">`;
         const html = imgHtml + '<span class="upgrade-label">' + divineCardHtml('Divine Argonian', divineArgonLevel, `CPS +${formatNumber(appliedPercent)}% → +${formatNumber(nextPercent)}%`, divineArgonCost) + '</span>';
         setHtmlIfChanged(divineArgBtn, html);
         // always show the divine button inside divine menu but disable if not affordable or locked
@@ -6213,6 +6213,7 @@ function initApp() {
     // Performance mode: high = quality, low = frame rate. Drives full-update interval and falling-image throttle.
     function getPerformanceMode() { try { return localStorage.getItem('whathappened_performance') || 'high'; } catch (e) { return 'high'; } }
     function applyPerformanceMode(mode) {
+        try { document.body.classList.toggle('perf-low', mode === 'low'); } catch (e) {}
         if (mode === 'low') {
             window._perfFullUpdateMs = 1500;
             window._perfFallingThrottleMs = 0;
@@ -7105,7 +7106,7 @@ function updateShopUI() {
             const costHtml = (skin.cost === null) ? `Unlock: <strong>${skin.unlockText}</strong>` : (skin.owned() ? '<strong>Owned</strong>' : `Price: ${gemPriceHtml(skin.cost)}`);
             html += `<div class="shop-item" id="shop${skin.id}Item">
                 <div class="shop-item-title">${skin.title}</div>
-                <img id="shop${skin.id}Img" src="${thumbFor(skin.path)}" alt="${skin.title}" class="shop-item-img" style="cursor:pointer;" decoding="async" data-full="${skin.path}" data-fallback="${placeholder(skin)}" />
+                <img id="shop${skin.id}Img" src="${thumbFor(skin.path)}" alt="${skin.title}" class="shop-item-img" style="cursor:pointer;" loading="lazy" decoding="async" data-full="${skin.path}" data-fallback="${placeholder(skin)}" />
                 <div class="shop-item-info">${costHtml}</div>
                 <div style="display:flex;gap:8px;align-items:center;margin-top:6px;">
                     ${skin.cost === null ? '' : `<button id="buy${skin.id}Btn" style="padding:6px 8px;border-radius:6px;" aria-label="Buy ${skin.title} for ${skin.cost} gems">Buy ${gemPriceHtml(skin.cost)}</button>`}
@@ -7169,7 +7170,7 @@ function updateShopUI() {
                     displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
                     bgHtml += `<div class="shop-item" id="shopBgItem_${id}">`;
                     bgHtml += `<div class="shop-item-title">${displayName}</div>`;
-                    bgHtml += `<img id="shopBgImg_${id}" src="${thumbFor(bgPathFor(fn))}" alt="${displayName}" class="shop-item-img" style="cursor:pointer;" decoding="async" onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='${bgPathFor(fn)}';}" />`;
+                    bgHtml += `<img id="shopBgImg_${id}" src="${thumbFor(bgPathFor(fn))}" alt="${displayName}" class="shop-item-img" loading="lazy" style="cursor:pointer;" decoding="async" onerror="if(!this.dataset.retry){this.dataset.retry=1;this.src='${bgPathFor(fn)}';}" />`;
                     bgHtml += `<div class="shop-item-info">${(shopBgPurchased && shopBgPurchased[bgPathFor(fn)]) ? '<strong>Owned</strong>' : 'Price: ' + gemPriceHtml(bgCostFor(fn))}</div>`;
                     bgHtml += `<div style="display:flex;gap:8px;align-items:center;margin-top:6px;">`;
                     bgHtml += `<button id="buyBg_${id}" style="padding:6px 8px;border-radius:6px;" aria-label="Buy the ${displayName} background for ${bgCostFor(fn)} gems">Buy ${gemPriceHtml(bgCostFor(fn))}</button>`;

@@ -364,6 +364,10 @@ button[disabled] { opacity: 0.5; filter: grayscale(0.5); cursor: not-allowed; }
 }
 .main-image-btn:hover .main-image { box-shadow: 0 0 0 3px rgba(255, 200, 61, 0.55), 0 24px 60px rgba(0, 0, 0, 0.55); }
 @keyframes floaty { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+/* the idle decoration (the main image's float, the gem chip's shine) stops for players who asked for less motion, and on
+   Settings > Performance > Low (main.js applyPerformanceMode sets body.perf-low) */
+@media (prefers-reduced-motion: reduce) { .main-image, .gem-chip::after { animation: none; } }
+body.perf-low .main-image, body.perf-low .gem-chip::after { animation: none; }
 .main-image.pulsate { animation: pulsateAnim 600ms cubic-bezier(.2, .9, .2, 1) !important; }
 @keyframes pulsateAnim { 0% { transform: scale(1); } 35% { transform: scale(1.05); } 100% { transform: scale(1); } }
 

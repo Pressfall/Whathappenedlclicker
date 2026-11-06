@@ -42,7 +42,7 @@
     left: -50%;
     width: 36%;
     background: linear-gradient(100deg, transparent, rgba(255, 255, 255, 0.28), transparent);
-    transform: skewX(-18deg);
+    transform: translateX(0) skewX(-18deg);
     animation: gem-sweep 6s ease-in-out infinite;
 }
 .gem-chip:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 28px rgba(94, 231, 255, 0.34); }
@@ -65,7 +65,9 @@
 .gem-chip--sm .gem-chip-plus { width: 24px; height: 24px; font-size: 16px; }
 .gem-chip.is-bump { animation: gem-bump 420ms cubic-bezier(.2, .9, .2, 1.4); }
 .gem-chip.is-shake { animation: gem-shake 360ms ease; }
-@keyframes gem-sweep { 0%, 70% { left: -50%; } 100% { left: 130%; } }
+/* moved with transform, so the compositor runs it: animating `left` redid the page's layout every frame, which was most of
+   the game's idle CPU. 500% of its own width (36% of the chip) = from left -50% to 130% of the chip, as before. */
+@keyframes gem-sweep { 0%, 70% { transform: translateX(0) skewX(-18deg); } 100% { transform: translateX(500%) skewX(-18deg); } }
 @keyframes gem-bump { 40% { transform: scale(1.14); box-shadow: 0 0 0 4px rgba(94, 231, 255, 0.25), 0 0 34px rgba(94, 231, 255, 0.6); } }
 @keyframes gem-shake { 20%, 60% { transform: translateX(-4px); } 40%, 80% { transform: translateX(4px); } }
 
