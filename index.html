@@ -2040,6 +2040,8 @@
                     if (imgSrc) {
                         const newImg = document.createElement('img');
                         newImg.className = 'upgrade-img';
+                        newImg.alt = ''; // the button's label already names the upgrade
+                        newImg.loading = 'lazy'; newImg.decoding = 'async';
                         newImg.src = imgSrc;
                         newImg.style.display = 'inline-block';
                         newImg.style.width = '56px';

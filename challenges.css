@@ -73,3 +73,24 @@
     .ch-sub { flex-direction: column; gap: 1px; }
     .ch-reward { text-align: left; }
 }
+
+/* ---- the top bar on small phones: the 📋 chip made it a little too long, which left the Specials button scrolled half
+   out of view. The gem chip keeps opening the Treasury without its "+"; the chips and gaps get a little tighter. ---- */
+@media (max-width: 480px) {
+    #topBar { gap: 6px; padding-left: 10px; padding-right: 10px; }
+    .top-nav { gap: 4px; }
+    .gem-chip .gem-chip-plus { display: none; }
+    .gem-chip { padding-right: 11px; }
+    .renown-chip { padding: 0 9px 0 7px; gap: 4px; }
+    .challenge-chip { min-width: 38px; padding: 0 8px; }
+}
+/* the smallest phones (360 px and under): the Menu button keeps its icon, arrow and dot, not its word (it still says
+   "Game navigation menu" to screen readers), or the Specials button ends up off the left edge where it can't be reached */
+@media (max-width: 380px) {
+    #topBar .nav-btn--menu .nav-txt { display: none !important; }
+    #topBar .nav-btn--menu { padding: 0 9px; }
+}
+@media (max-width: 340px) {
+    #topBar { gap: 4px; padding-left: 6px; padding-right: 6px; }
+    .renown-chip { padding: 0 7px 0 6px; }
+}

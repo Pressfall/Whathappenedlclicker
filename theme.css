@@ -15,7 +15,7 @@
     /* text */
     --text: #f3f5fa;
     --text-dim: #a7b0c4;
-    --text-faint: #6d7690;
+    --text-faint: #8a93ab; /* 4.5:1 or more on every surface here (WCAG AA for small text); was #6d7690, 3.6:1 */
 
     /* accents */
     --gold: #ffc83d;

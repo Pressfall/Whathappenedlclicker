@@ -165,7 +165,8 @@
         const btn = panel.querySelector('.rn-close');
         if (btn) btn.focus();
     }
-    function close() { if (panel) panel.hidden = true; updateChip(); }
+    // closing puts the keyboard back on the chip that opened it
+    function close() { const was = isOpen(); if (panel) panel.hidden = true; updateChip(); if (was) { const c = $('renownChip'); if (c) c.focus(); } }
     function isOpen() { return !!panel && !panel.hidden; }
 
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && isOpen()) { ev.stopPropagation(); close(); } }, true);

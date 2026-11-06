@@ -147,7 +147,7 @@
                 : v.done ? `<button type="button" class="btn btn-gold btn-sm" data-chclaim="${esc(v.id)}">Claim</button>`
                     : canReroll ? `<button type="button" class="btn btn-ghost btn-sm ch-reroll" data-chreroll="${esc(v.id)}" title="Swap this one for another (once a day)">🎲 Swap</button>` : '';
             return `<li class="ch-row${v.claimed ? ' is-claimed' : v.done ? ' is-done' : ''}"><span class="ch-ico" aria-hidden="true">${v.icon}</span>` +
-                `<div class="ch-main"><div class="ch-text">${esc(v.text)}</div><div class="rn-mini" role="progressbar" aria-valuemin="0" aria-valuemax="${v.target}" aria-valuenow="${v.progress}"><i style="width:${pct}%"></i></div>` +
+                `<div class="ch-main"><div class="ch-text">${esc(v.text)}</div><div class="rn-mini" role="progressbar" aria-label="${esc(v.text)}" aria-valuemin="0" aria-valuemax="${v.target}" aria-valuenow="${v.progress}"><i style="width:${pct}%"></i></div>` +
                 `<div class="ch-sub"><span>${fmt(v.progress)} / ${fmt(v.target)}</span><span class="ch-reward">${esc(rewardText(v.reward))}</span></div></div>` +
                 `<div class="ch-act">${action}</div></li>`;
         }).join('');
@@ -182,7 +182,8 @@
         const btn = panel.querySelector('.ch-close');
         if (btn) btn.focus();
     }
-    function close() { if (panel) panel.hidden = true; updateChip(); }
+    // closing puts the keyboard back on the chip that opened it
+    function close() { const was = isOpen(); if (panel) panel.hidden = true; updateChip(); if (was) { const c = $('challengeChip'); if (c) c.focus(); } }
     function isOpen() { return !!panel && !panel.hidden; }
 
     document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && isOpen()) { ev.stopPropagation(); close(); } }, true);

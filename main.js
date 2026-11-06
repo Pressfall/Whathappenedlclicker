@@ -3182,6 +3182,7 @@ function spawnFallingImage(isCrit = false) {
     const img = document.createElement('img');
     img.src = (typeof equippedShopImage === 'string' && equippedShopImage) ? equippedShopImage : 'mainimage/whathappened.jpeg';
     img.className = 'falling-image';
+    img.alt = ''; img.setAttribute('aria-hidden', 'true'); // decoration: screen readers skip it
     // base size
     const baseSize = 40 + Math.floor(Math.random() * 30); // 40-70px base
     const critScale = isCrit ? (1.6 + Math.random() * 0.6) : 1;
