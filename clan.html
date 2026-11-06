@@ -76,6 +76,7 @@
 
   <script src="achievements-data.js"></script>
   <script src="core/chat-safety.js"></script>
+  <script src="core/clan-roles.js"></script>
   <script type="module">
   import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
   import { getFirestore, collection, addDoc, setDoc, doc, getDoc, updateDoc, arrayUnion, arrayRemove, query, where, orderBy, limit, getDocs, serverTimestamp, deleteDoc, onSnapshot, runTransaction, increment, deleteField } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-firestore.js";
@@ -90,6 +91,92 @@
   };
   const app = getApps().length ? getApps()[0] : initializeApp(firebaseConfig);
   const db = getFirestore(app);
+
+  // ---- who is writing (core/clan-roles.js) ----
+  // A clan is held by Firebase sign-in ids now. Players with an account are already signed in on this site (account.html);
+  // anyone else gets an anonymous sign-in, which is enough to be a member. Creating, owning or being co-leader of a clan
+  // needs an account. Auth loads on its own, so if it can't (offline, a blocked host) the page still shows clans.
+  const Roles = window.WHClanRoles;
+  let _authReady = null, _authUser = null, _myUid = null;
+  function authReady(){
+    if (_authReady) return _authReady;
+    _authReady = (async () => {
+      try {
+        const A = await import("https://www.gstatic.com/firebasejs/12.8.0/firebase-auth.js");
+        const auth = A.getAuth(app);
+        _authUser = await new Promise((res) => { const off = A.onAuthStateChanged(auth, (u) => { off(); res(u); }); setTimeout(() => res(auth.currentUser), 6000); });
+        if (!_authUser) { try { _authUser = (await Promise.race([A.signInAnonymously(auth), new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 8000))])).user; } catch (e) { _authUser = null; } }
+        A.onAuthStateChanged(auth, (u) => { _authUser = u; _myUid = u ? u.uid : null; });
+      } catch (e) { _authUser = null; }
+      _myUid = _authUser ? _authUser.uid : null;
+      return _authUser;
+    })();
+    return _authReady;
+  }
+  // { uid, account } for the player on this page, or null when there is no sign-in
+  async function me(){ const u = await authReady(); return u ? { uid: u.uid, account: !u.isAnonymous } : null; }
+  authReady();
+  // the clan actions the buttons call, for tests/browser/chat.js (function declarations below are hoisted)
+  window.WHClanPage = { joinClan, leaveClan, kickMember, promoteMember, transferOwnership, loadClanDetail, me };
+  // my own entry in a clan's roles (joining as a member), and taking an entry out (leaving, or being kicked)
+  function joinFields(who, name){ return { ['roles.' + who.uid]: 'member', ['names.' + who.uid]: name, ['acct.' + who.uid]: !!who.account }; }
+  function leaveFields(uid){ return { ['roles.' + uid]: deleteField(), ['names.' + uid]: deleteField(), ['acct.' + uid]: deleteField() }; }
+  // A claimed clan's members, leaders and owner come from its roles (the old name lists are only kept for older pages)
+  function normalizeClan(c){
+    if (!c || !Roles.claimed(c)) return c;
+    const roles = c.roles || {}, names = c.names || {};
+    const uids = Object.keys(roles).filter(u => typeof names[u] === 'string' && Roles.roleOf(c, u));
+    return Object.assign({}, c, {
+      members: uids.map(u => names[u]),
+      owner: names[c.ownerUid] || c.owner,
+      leaders: uids.filter(u => u === c.ownerUid || roles[u] === 'co-leader').map(u => names[u]),
+    });
+  }
+  function isMemberOf(c, name){
+    if (Roles.claimed(c)) return !!(_myUid && Roles.roleOf(c, _myUid));
+    return !!name && Array.isArray(c.members) && c.members.includes(name);
+  }
+  // Opening a clan from before this update: its owner (signed in to an account) claims it; its members put their own
+  // entry back. Each is tried once per visit.
+  const _claimTried = {};
+  async function maybeClaim(clanId, raw){
+    const name = localStorage.getItem('player_username') || '';
+    if (!raw || !name || _claimTried[clanId]) return;
+    const who = await me();
+    if (!who) return;
+    const roles = raw.roles || {};
+    if (roles[who.uid] || raw.ownerUid === who.uid) return;
+    const legacyMember = Array.isArray(raw.members) && raw.members.includes(name);
+    if (!legacyMember) return;
+    _claimTried[clanId] = true;
+    try {
+      if (!Roles.claimed(raw) && raw.owner === name) {
+        if (!who.account) return; // the banner says to sign in
+        await updateDoc(doc(db,'clans',clanId), { ownerUid: who.uid, ['roles.' + who.uid]: 'leader', ['names.' + who.uid]: name, ['acct.' + who.uid]: true });
+        notify('👑 You claimed ' + (raw.name || 'your clan') + ': it is tied to your account now, so nobody else can take it over.', 'good');
+      } else if (raw.owner !== name) {
+        await updateDoc(doc(db,'clans',clanId), joinFields(who, name));
+      }
+    } catch (e) { console.warn('clan claim failed', e); }
+  }
+  // Kicked from a claimed clan: the kick notice is in the clan, not in my profile any more
+  function checkKicked(clanId, raw){
+    if (!Roles.claimed(raw) || !_myUid || Roles.roleOf(raw, _myUid) || localStorage.getItem('player_clanId') !== clanId) return;
+    const k = raw.kicks && raw.kicks[_myUid];
+    if (!k) return;
+    localStorage.removeItem('player_clanId'); localStorage.removeItem('player_clanName'); localStorage.removeItem('player_clanRole');
+    const name = localStorage.getItem('player_username') || '';
+    if (name) setDoc(doc(db,'profiles',name), { clanId: null, clanName: null, clanRole: null }, { merge: true }).catch(() => {});
+    try{ updatePlayerClanStatus(); }catch(e){}
+    notify('You were removed from ' + (raw.name || 'the clan') + (k.reason ? ': ' + k.reason : '.'), 'bad');
+  }
+  function unclaimedNote(c){
+    if (Roles.claimed(c)) return '';
+    const name = localStorage.getItem('player_username') || '';
+    const mine = name && name === c.owner;
+    return `<div class="clan-unclaimed" role="note">🔓 ${mine ? 'Sign in to an account (the Account page) and open this page again to claim your clan. Until then it can\'t be managed, so nobody else can take it over.'
+      : 'This clan hasn\'t been claimed yet. Its leader, ' + escapeHtml(c.owner || '?') + ', needs to sign in to an account and open this page. Until then nobody can manage it. Check-ins and events still work.'}</div>`;
+  }
   // Expose common Firestore helpers to the global scope so non-module scripts (e.g., main.js)
   // can access the same Firestore instance and functions when this page is loaded.
   try{
@@ -484,6 +571,15 @@
       const me = localStorage.getItem('player_username')||'';
       if(!me) return alert('You must be signed in');
       const cRef = doc(db,'clans',clanId);
+      const cs = await getDoc(cRef), cd = cs.exists() ? cs.data() : {};
+      if (Roles.claimed(cd)) {
+        const t = Roles.uidOfName(cd, uname);
+        if (!t) { alert('That player is not in the clan any more.'); reloadMembers(clanId); return; }
+        await updateDoc(cRef, Object.assign({ members: arrayRemove(uname), leaders: arrayRemove(uname), ['kicks.' + t]: { reason: reason || null, at: Date.now() }, act: { by: _myUid, kind: 'kick', target: t } }, leaveFields(t)));
+        notify(`${uname} was kicked from the clan.`);
+        reloadMembers(clanId);
+        return;
+      }
       await updateDoc(cRef, { members: arrayRemove(uname), leaders: arrayRemove(uname) });
       // write kicked message to profile so the kicked client can see it
       try{
@@ -667,9 +763,12 @@
       try{ list = await fetchClanList(true); }catch(e){}
       const err = validateClanName(cname, list);
       if (err) { notify(err, 'bad'); updateCreateHint(); return; }
+      const who = await me();
+      if (!who || !who.account) { notify('Creating a clan needs an account, so you keep it on any device. Sign in on the Account page first.', 'bad'); return; }
       if(!confirm(`Create the clan "${cname}" for 10 Golden What Happeneds?`)) return;
       const btn = document.getElementById('createClan'); if(btn) btn.disabled = true;
-      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default', clanXp: 0, description: '' });
+      const docRef = await addDoc(collection(db,'clans'), { name: cname, owner: username, members: [username], leaders: [username], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default', clanXp: 0, description: '',
+        ownerUid: who.uid, roles: { [who.uid]: 'leader' }, names: { [who.uid]: username }, acct: { [who.uid]: true }, kicks: {} });
       // charge only after the clan exists, re-reading the save in case the game wrote to it meanwhile
       try{ const fresh = readSaveObj() || save; fresh.goldenWhat = Math.max(0, (Number(fresh.goldenWhat) || 0) - 10); writeSaveObj(fresh); }catch(e){ console.warn('charging clan cost failed', e); }
       localStorage.setItem('player_clanId', docRef.id);
@@ -677,7 +776,7 @@
       localStorage.setItem('player_clanRole', 'leader');
       try{ const ach = window.WHA && window.WHA.unlock('clan_created'); if(ach) setTimeout(() => notify(`🏆 ${ach.name}: ${ach.desc} Title: ${ach.title}`, 'gold'), 600); }catch(e){}
       try{ await setDoc(doc(db,'profiles',username), { clanId: docRef.id, clanName: cname, clanRole: 'leader' }, { merge: true }); }catch(e){}
-      try{ await setDoc(doc(db,'clans',docRef.id,'members',username), { mainClicks: 0, clanRole: 'leader' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
+      try{ await setDoc(doc(db,'clans',docRef.id,'members',username), { mainClicks: 0, clanRole: 'leader', uid: who.uid }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
       try{ await addDoc(collection(db,'clan_chat'), { clanId: docRef.id, name: 'SYSTEM', message: `🎉 ${username} founded ${cname}!`, createdAt: serverTimestamp(), system: true, color: 'gold' }); }catch(e){}
       notify(`Welcome to ${cname}! You're the leader.`, 'good');
       nameInp.value = '';
@@ -696,15 +795,17 @@
       const clanRef = doc(db,'clans',clanId);
       const snap = await getDoc(clanRef);
       if(!snap.exists()) { alert('Clan not found'); return; }
-      const data = snap.data();
+      const data = normalizeClan(snap.data());
+      const who = await me();
+      if (!who) { alert("Couldn't sign in, so you can't join right now. Check your connection and try again."); return; }
       const members = Array.isArray(data.members) ? data.members : [];
-      if(members.includes(username)) { alert('You are already a member.'); return; }
+      if(Roles.roleOf(data, who.uid) || (!Roles.claimed(data) && members.includes(username))) { alert('You are already a member.'); return; }
       if(members.length >= (data.maxMembers || 30)) { alert('Clan is full.'); return; }
-      await updateDoc(clanRef, { members: arrayUnion(username) });
+      await updateDoc(clanRef, Object.assign({ members: arrayUnion(username) }, joinFields(who, username)));
       try{ await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${username} joined the clan!`, createdAt: serverTimestamp(), system: true, color: 'green', scrollToBottom: true }); }catch(e){}
       await setDoc(doc(db,'profiles',username), { clanId: clanId, clanName: data.name, clanRole: 'member' }, { merge: true });
       // Create member doc in subcollection so clan-v-clan clicks and totals include this user (mainClicks start at 0)
-      try{ await setDoc(doc(db,'clans',clanId,'members',username), { mainClicks: 0, clanRole: 'member' }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
+      try{ await setDoc(doc(db,'clans',clanId,'members',username), { mainClicks: 0, clanRole: 'member', uid: who.uid }, { merge: true }); }catch(e){ console.warn('create clan member doc failed', e); }
       localStorage.setItem('player_clanId', clanId);
       localStorage.setItem('player_clanName', data.name || '');
       localStorage.setItem('player_clanRole', 'member');
@@ -786,6 +887,7 @@
     return `<span>${ic.emoji || '⚔'}</span>`;
   }
   function viewerRoleFor(c, me){
+    if(c && Roles.claimed(c)) return (_myUid && Roles.roleOf(c, _myUid)) || 'member';
     if(!me || !c) return 'member';
     if(me === c.owner) return 'leader';
     if(Array.isArray(c.leaders) && c.leaders.includes(me)) return 'co-leader';
@@ -804,23 +906,28 @@
   async function loadClanDetail(clanId){
     const area = document.getElementById('clanDetailArea'); if(!area || !clanId) return;
     closeClanView();
+    await authReady(); // so the first view already knows who I am
     _clanView.id = clanId;
     area.innerHTML = window.WHSk ? '<div class="card">' + WHSk.panel(6) + '</div>' : '<div class="card"><div class="muted">Loading clan…</div></div>';
     currentClanUnsub = onSnapshot(doc(db,'clans',clanId), async snap => {
       try{
         if(_clanView.id !== clanId) return;
         if(!snap.exists()) return handleMissingClan(clanId);
-        const c = snap.data() || {};
+        const raw = snap.data() || {};
+        const c = normalizeClan(raw);
         const me = localStorage.getItem('player_username') || '';
-        const isMember = !!me && Array.isArray(c.members) && c.members.includes(me);
+        const isMember = isMemberOf(c, me);
+        checkKicked(clanId, raw);
         _clanView.doc = c;
         _clanView.member = isMember;
         if(isMember){ try{ localStorage.setItem('whathappened_clan_level', String(clanLevelFromXp(c.clanXp).level)); }catch(e){} }
         _clanView.viewerRole = viewerRoleFor(c, me);
         if(_clanView.shellFor !== (isMember ? 'member' : 'guest')) renderClanShell(clanId, isMember);
         renderClanBanner(clanId, c, isMember);
+        { const bt = document.getElementById('bannerTop'); const note = unclaimedNote(c); if (bt && note && !bt.querySelector('.clan-unclaimed')) bt.insertAdjacentHTML('beforeend', note); }
         renderCheckin(clanId, c);
         await refreshMembers(clanId, c);
+        maybeClaim(clanId, raw);
         if(isMember) checkClanAchievements();
       }catch(e){ console.error('clan snapshot render failed', e); }
     }, err => { console.warn('clan snapshot failed', err); area.innerHTML = '<div class="card"><div class="muted">Couldn\'t load this clan. Try again in a moment.</div></div>'; });
@@ -1051,6 +1158,7 @@
   }
   function reloadMembers(clanId){ if(_clanView.id === clanId && _clanView.doc) refreshMembers(clanId, _clanView.doc, true); }
   function memberRole(c, name, p){
+    if(Roles.claimed(c)) { const u = Roles.uidOfName(c, name); return (u && Roles.roleOf(c, u)) || 'member'; }
     if(name === c.owner) return 'leader';
     if(Array.isArray(c.leaders) && c.leaders.includes(name)) return 'co-leader';
     const r = (p && p.clanRole) || 'member';
@@ -1126,7 +1234,13 @@
   async function transferOwnership(clanId, target){
     const me = localStorage.getItem('player_username') || '';
     try{
-      await updateDoc(doc(db,'clans',clanId), { owner: target, leaders: arrayUnion(target) });
+      const cs = await getDoc(doc(db,'clans',clanId)), cd = cs.exists() ? cs.data() : {};
+      if (Roles.claimed(cd)) {
+        const who = await authReady().then(() => _myUid), t = Roles.uidOfName(cd, target);
+        if (!who || cd.ownerUid !== who || !t) { notify('Only the clan leader can hand it over.', 'bad'); return; }
+        if (!(cd.acct && cd.acct[t] === true)) { notify(target + ' needs to sign in to an account before they can lead the clan.', 'bad'); return; }
+        await updateDoc(doc(db,'clans',clanId), { ownerUid: t, owner: target, leaders: arrayUnion(target), ['roles.' + t]: 'leader', ['roles.' + who]: 'co-leader' });
+      } else await updateDoc(doc(db,'clans',clanId), { owner: target, leaders: arrayUnion(target) });
       try{ await setDoc(doc(db,'profiles',target), { clanRole: 'leader' }, { merge: true }); }catch(e){}
       try{ await setDoc(doc(db,'profiles',me), { clanRole: 'co-leader' }, { merge: true }); }catch(e){}
       localStorage.setItem('player_clanRole', 'co-leader');
@@ -1193,10 +1307,12 @@
       const clanRef = doc(db,'clans',clanId);
       const snap = await getDoc(clanRef);
       if(!snap.exists()) { alert('Clan not found'); return; }
-      const data = snap.data();
+      const data = normalizeClan(snap.data());
       const owner = data.owner || '';
+      const who = await me();
+      const iOwn = Roles.claimed(data) ? !!who && data.ownerUid === who.uid : username === owner;
       // If owner is leaving, try to transfer leadership (or delete if no members remain)
-      if(username === owner){
+      if(iOwn){
         const remaining = Array.isArray(data.members) ? data.members.filter(m=>m!==username) : [];
         if(!remaining || remaining.length === 0){
           await deleteClan(clanId);
@@ -1207,11 +1323,12 @@
           closeClanView(); showRecommendedClans();
           return;
         } else {
-          await transferLeadershipToBestCandidate(clanId, remaining);
+          const ok = await transferLeadershipToBestCandidate(clanId, remaining);
+          if (ok === false) { alert('Nobody else in the clan is signed in to an account, so nobody can take it over. Ask someone to sign in, or delete the clan instead.'); return; }
         }
       }
 
-      await updateDoc(clanRef, { members: arrayRemove(username), leaders: arrayRemove(username) });
+      await updateDoc(clanRef, Object.assign({ members: arrayRemove(username), leaders: arrayRemove(username) }, who && data.roles && data.roles[who.uid] ? leaveFields(who.uid) : {}));
       // After removing, check whether clan has any members left; if empty, delete the clan to avoid orphans
       try{
         const fresh = await getDoc(clanRef);
@@ -1243,7 +1360,7 @@
   // stored role keys stay as-is for existing Firestore data; this only fixes how they read on screen
   function roleLabel(role){ return String(role||'') === 'eleite member' ? 'elite member' : String(role||''); }
   // promotion ranks priority (higher wins)
-  const RANK_PRIORITY = { 'leader':5, 'co-leader':4, 'elder':3, 'eleite member':2, 'member':1 };
+  const RANK_PRIORITY = Roles.RANK_PRIORITY;
 
   function roleRank(role){ return RANK_PRIORITY[(role||'member').toLowerCase()] || 1; }
 
@@ -1255,15 +1372,8 @@
     return a > t;
   }
 
-  function canKick(actorRole, targetRole, isTargetOwner){
-    const a = roleRank(actorRole);
-    const t = roleRank(targetRole);
-    // only owner/leader can kick owner
-    if(isTargetOwner) return a >= roleRank('leader');
-    if(a >= roleRank('leader')) return true;
-    // otherwise actor must have strictly higher rank than target
-    return a > t;
-  }
+  // nobody kicks the owner (they hand the clan over, or delete it); otherwise a strictly higher rank, as the rules say
+  function canKick(actorRole, targetRole, isTargetOwner){ return Roles.canKick(actorRole, targetRole, isTargetOwner); }
 
   function canEditDescription(actorRole){ return roleRank(actorRole) >= roleRank('co-leader'); }
   function canChangeName(actorRole){ return roleRank(actorRole) >= roleRank('leader'); }
@@ -1278,6 +1388,21 @@
       const cSnap = await getDoc(cRef);
       if(!cSnap.exists()) return alert('Clan not found');
       const c = cSnap.data();
+      if (Roles.claimed(c)) {
+        const myUid = await authReady().then(() => _myUid), t = Roles.uidOfName(c, uname); // (`me` is the name here)
+        const myRole = myUid ? Roles.roleOf(c, myUid) : null, prevRole = t ? Roles.roleOf(c, t) : null;
+        if (!t || !prevRole) return alert('That player is not in the clan any more.');
+        if (!myRole || !canAssignRole(myRole, newRole) || !canAssignRole(myRole, prevRole)) return alert('You do not have permission to assign that role');
+        if (roleRank(newRole) >= roleRank('co-leader') && !(c.acct && c.acct[t] === true)) return alert(uname + ' needs to sign in to an account before they can be co-leader.');
+        await updateDoc(cRef, { ['roles.' + t]: newRole, leaders: String(newRole).toLowerCase() === 'co-leader' ? arrayUnion(uname) : arrayRemove(uname), act: { by: myUid, kind: 'role', target: t } });
+        try{
+          const isPromotion = roleRank(newRole) > roleRank(prevRole);
+          await addDoc(collection(db,'clan_chat'), { clanId, name: 'SYSTEM', message: `${me} ${isPromotion ? 'promoted' : 'demoted'} ${uname} to ${roleLabel(newRole)}`, createdAt: serverTimestamp(), system: true, color: isPromotion ? 'green' : 'red', scrollToBottom: true });
+        }catch(e){}
+        notify(`${uname} is now ${roleLabel(newRole)}.`, 'good');
+        reloadMembers(clanId);
+        return;
+      }
       // the owner is also in `leaders`, so check ownership first (otherwise owners counted as co-leaders and couldn't make co-leaders)
       const myRole = (me === c.owner) ? 'leader' : (Array.isArray(c.leaders) && c.leaders.indexOf(me)!==-1) ? 'co-leader' : (await (async()=>{ try{ const p = await getDoc(doc(db,'profiles',me)); if(p && p.exists()) return p.data().clanRole || 'member'; }catch(e){} return 'member'; })());
       if(!canAssignRole(myRole, newRole)) return alert('You do not have permission to assign that role');
@@ -1315,6 +1440,18 @@
 
   async function transferLeadershipToBestCandidate(clanId, candidateUsernames){
     try{
+      const cs = await getDoc(doc(db,'clans',clanId)), cd = cs.exists() ? cs.data() : null;
+      if (cd && Roles.claimed(cd)) {
+        const mine = await authReady().then(() => _myUid);
+        const cands = Object.keys(cd.roles || {}).filter(u => u !== mine && cd.acct && cd.acct[u] === true && cd.names && cd.names[u]);
+        if (!cands.length) return false;
+        const best = Math.max(...cands.map(u => roleRank(cd.roles[u])));
+        const top = cands.filter(u => roleRank(cd.roles[u]) === best);
+        const t = top[Math.floor(Math.random() * top.length)];
+        await updateDoc(doc(db,'clans',clanId), { ownerUid: t, owner: cd.names[t], leaders: arrayUnion(cd.names[t]), ['roles.' + t]: 'leader', ['roles.' + mine]: 'co-leader' });
+        try{ await setDoc(doc(db,'profiles',cd.names[t]), { clanRole: 'leader' }, { merge: true }); }catch(e){}
+        return true;
+      }
       if(!candidateUsernames || candidateUsernames.length===0) return;
       const infos = [];
       for(const u of candidateUsernames){ try{ const s = await getDoc(doc(db,'profiles',u)); if(s.exists()) infos.push({ username: u, role: (s.data() && s.data().clanRole) || 'member' }); else infos.push({ username: u, role: 'member' }); }catch(e){ infos.push({ username: u, role: 'member' }); } }

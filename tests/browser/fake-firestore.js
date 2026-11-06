@@ -81,7 +81,12 @@ function run(q) {
 }
 export async function getDoc(ref) { return docSnap(ref.path); }
 export async function getDocs(q) { return run(q.type === 'col' ? { path: q.path, cons: [] } : q); }
-export async function setDoc(ref, data, opts) { FS.docs[ref.path] = apply(opts && opts.merge ? FS.docs[ref.path] : undefined, data); changed(); }
+// window.__fakeGuard(path, before, after): a reason to refuse the write (like a rules denial), or nothing to allow it
+function guard(path, before, after) {
+    const why = typeof window.__fakeGuard === 'function' ? window.__fakeGuard(path, before === undefined ? null : before, after === undefined ? null : after) : null;
+    if (why) throw Object.assign(new Error('permission-denied: ' + why), { code: 'permission-denied' });
+}
+export async function setDoc(ref, data, opts) { const next = apply(opts && opts.merge ? FS.docs[ref.path] : undefined, data); guard(ref.path, FS.docs[ref.path], next); FS.docs[ref.path] = next; changed(); }
 export async function updateDoc(ref, data) {
     if (FS.docs[ref.path] === undefined) throw Object.assign(new Error('not-found'), { code: 'not-found' });
     const cur = Object.assign({}, FS.docs[ref.path]);
@@ -91,9 +96,10 @@ export async function updateDoc(ref, data) {
         for (const kk of keys) { o[kk] = isObj(o[kk]) ? Object.assign({}, o[kk]) : {}; o = o[kk]; }
         if (isObj(data[k]) && data[k].__fake === 'del') delete o[last]; else o[last] = apply(o[last], data[k]);
     }
+    guard(ref.path, FS.docs[ref.path], cur);
     FS.docs[ref.path] = cur; changed();
 }
-export async function deleteDoc(ref) { delete FS.docs[ref.path]; changed(); }
+export async function deleteDoc(ref) { guard(ref.path, FS.docs[ref.path], null); delete FS.docs[ref.path]; changed(); }
 export async function addDoc(col, data) {
     const ref = doc(col);
     FS.docs[ref.path] = apply(undefined, data);

@@ -68,7 +68,105 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ---- clans: held by Firebase sign-in ids (uid), not by names anyone can type ----
+    // The spec is core/clan-roles.js classifyClanUpdate (tested in tests/clan-roles.test.js): these rules say the same.
+    // Fields: ownerUid, roles {uid: role}, names {uid: username}, acct {uid: bool (signed in to an account)},
+    // kicks {uid: {reason, at}}, act {by, kind, target} (a kick or role change names its target: rules can't pick the
+    // changed key out of a set). The old owner / members / leaders lists are still written for older pages.
+    // Creating, owning, and being co-leader need an account (not an anonymous sign-in). A clan from before this update has no
+    // ownerUid: its owner claims it (signed in, under the old owner name); until then it can't be managed.
+    // NOT COVERED: clans/{id}/members (per-member event points) and events/* are still self-reported and open: see
+    // docs/trust-boundaries.md. XP and the other shared progress fields are whatever a member's browser says.
+    match /clans/{clanId} {
+      allow read: if true;
+      allow create: if signedIn() && isAccount() && validNewClan();
+      allow delete: if signedIn() && claimed(resource.data) && resource.data.ownerUid == request.auth.uid;
+      allow update: if signedIn() && (claimLegacy() || joinOrLeave() || progress()
+        || (claimed(resource.data) && (transfer() || rename() || roleChange() || kick() || manage())));
+    }
+
     // ---------------------------------------------------------------- helpers
+
+    function signedIn() { return request.auth != null; }
+    function isAccount() { return request.auth.token.firebase.sign_in_provider != 'anonymous'; }
+    function claimed(d) { return d.get('ownerUid', '') is string && d.get('ownerUid', '') != ''; }
+    function rankOf(r) { return r == 'leader' ? 5 : r == 'co-leader' ? 4 : r == 'elder' ? 3 : r == 'eleite member' ? 2 : r == 'member' ? 1 : 0; }
+    function roleIn(d, u) { return d.get('ownerUid', '') == u ? 'leader' : d.get('roles', {}).get(u, ''); }
+    function changedKeys() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function mapChanged(field) { return request.resource.data.get(field, {}).diff(resource.data.get(field, {})).affectedKeys(); }
+    function memberFields() { return ['clanXp', 'checkin', 'activeBuffs', 'activeBuff', 'buffProgress', 'cpDonated', 'clanShopIconsUnlocked', 'eventXpAwarded']; }
+    function manageFields() { return ['description', 'clanIcon', 'clanCustomLogoUrl', 'maxMembers']; }
+
+    function validNewClan() {
+      let a = request.resource.data;
+      let me = request.auth.uid;
+      return a.ownerUid == me && a.roles.keys().size() == 1 && a.roles[me] == 'leader'
+        && a.names[me] is string && a.acct[me] == true && a.get('clanXp', 0) == 0;
+    }
+    // an old clan's owner, signed in to an account, under the old owner name: only ownerUid and their own entry change
+    function claimLegacy() {
+      let a = request.resource.data;
+      let me = request.auth.uid;
+      return !claimed(resource.data) && isAccount() && a.ownerUid == me && a.names[me] == resource.data.owner
+        && mapChanged('roles') == [me].toSet() && a.roles[me] == 'leader'
+        && changedKeys().hasOnly(['ownerUid', 'roles', 'names', 'acct']);
+    }
+    // my own entry: in as a member (my acct saying what my sign-in really is, room in the clan), or out (not the owner)
+    function joinOrLeave() {
+      let a = request.resource.data;
+      let b = resource.data;
+      let me = request.auth.uid;
+      let was = b.get('roles', {}).get(me, '');
+      let now = a.get('roles', {}).get(me, '');
+      return mapChanged('roles') == [me].toSet() && mapChanged('names').hasOnly([me]) && mapChanged('acct').hasOnly([me]) && mapChanged('kicks').size() == 0
+        && changedKeys().hasOnly(['roles', 'names', 'acct', 'members', 'leaders'])
+        && ((was == '' && now == 'member' && a.names[me] is string && a.get('acct', {}).get(me, false) == isAccount()
+              && (!claimed(b) || a.roles.keys().size() <= b.get('maxMembers', 30)))
+          || (was != '' && now == '' && b.get('ownerUid', '') != me));
+    }
+    // shared progress: anyone in a claimed clan; anyone signed in for an old one (as today)
+    function progress() {
+      return changedKeys().hasOnly(memberFields()) && (!claimed(resource.data) || roleIn(resource.data, request.auth.uid) != '');
+    }
+    // the owner hands the clan to a member with an account, who becomes leader; the old owner stays as co-leader
+    function transfer() {
+      let a = request.resource.data;
+      let b = resource.data;
+      let me = request.auth.uid;
+      let to = a.ownerUid;
+      return b.ownerUid == me && to != me && b.get('roles', {}).get(to, '') != '' && b.get('acct', {}).get(to, false) == true
+        && a.roles[to] == 'leader' && a.roles[me] == 'co-leader' && mapChanged('roles').hasOnly([to, me])
+        && changedKeys().hasOnly(['ownerUid', 'roles', 'owner', 'leaders']);
+    }
+    function rename() { return changedKeys().hasOnly(['name']) && rankOf(roleIn(resource.data, request.auth.uid)) >= 5; }
+    function manage() { return changedKeys().hasOnly(manageFields()) && rankOf(roleIn(resource.data, request.auth.uid)) >= 4; }
+    // a role change: one member's role, never the owner's, up to just below mine (anything, for the leader); co-leader
+    // only for someone with an account
+    function roleChange() {
+      let a = request.resource.data;
+      let b = resource.data;
+      let t = a.act.target;
+      let mine = rankOf(roleIn(b, request.auth.uid));
+      let was = b.get('roles', {}).get(t, '');
+      let now = a.get('roles', {}).get(t, '');
+      return a.act.by == request.auth.uid && a.act.kind == 'role' && mapChanged('roles') == [t].toSet() && t != b.ownerUid
+        && was != '' && rankOf(now) > 0 && now != 'leader'
+        && (mine >= 5 || (mine > rankOf(now) && mine > rankOf(was)))
+        && (rankOf(now) < 4 || b.get('acct', {}).get(t, false) == true)
+        && changedKeys().hasOnly(['roles', 'leaders', 'act']);
+    }
+    // a kick: one member out (never the owner), by someone of a higher rank (or the leader), with an optional notice
+    function kick() {
+      let a = request.resource.data;
+      let b = resource.data;
+      let t = a.act.target;
+      let mine = rankOf(roleIn(b, request.auth.uid));
+      return a.act.by == request.auth.uid && a.act.kind == 'kick' && mapChanged('roles') == [t].toSet() && t != b.ownerUid
+        && b.get('roles', {}).get(t, '') != '' && a.get('roles', {}).get(t, '') == ''
+        && mine > 0 && (mine >= 5 || mine > rankOf(b.roles[t]))
+        && mapChanged('names').hasOnly([t]) && mapChanged('acct').hasOnly([t]) && mapChanged('kicks').hasOnly([t])
+        && changedKeys().hasOnly(['roles', 'names', 'acct', 'kicks', 'members', 'leaders', 'act']);
+    }
 
     function validLeaderboardEntry() {
       let d = request.resource.data;
@@ -141,3 +239,26 @@ service cloud.firestore {
 //   clan_chat update that changes `message`                                                               DENY
 //   profiles/A create {username:'A', score:10, golden:0, clanId:null, updatedAt: request.time}            ALLOW
 //   profiles/A merge-update {clanRole:'leader'} ALLOW; {username:'B'} DENY; {isAdmin:true} DENY; any delete DENY
+//
+// CLANS (signed in; "account" = Google/email, "anon" = anonymous). Start from a claimed clan C: ownerUid O, roles
+// {O:'leader', K:'co-leader', E:'elder', M:'member'}, names for each, acct {O:true, K:true, E:true, M:true}, maxMembers 30.
+//   create as account O {ownerUid:O, roles:{O:'leader'}, names:{O:'Olive'}, acct:{O:true}, clanXp:0, ...}           ALLOW
+//   the same as anon, or with roles {O:'leader', X:'member'}, or clanXp 999                                       DENY
+//   as X (anon) update roles.X='member', names.X='Xan', acct.X=false, members+['Xan']                             ALLOW (join)
+//   as X update roles.X='co-leader' (straight in as co-leader), or roles.Y='member' (adding someone else)          DENY
+//   as M update roles.M deleted, names.M deleted, acct.M deleted                                                   ALLOW (leave)
+//   as O update roles.O deleted (the owner leaving without handing over)                                           DENY
+//   as K update roles.M deleted (+names, acct, kicks.M) with act {by:K, kind:'kick', target:M}                     ALLOW
+//   the same by E against K, or by M against E, or targeting O, or with act.target != M                            DENY
+//   as O update roles.M='co-leader', act {by:O, kind:'role', target:M}                                            ALLOW
+//   as K update roles.M='co-leader' (a co-leader making co-leaders), or roles.M='elder' without act                DENY
+//   as O update ownerUid=K, roles.K='leader', roles.O='co-leader', owner='Cole'                                    ALLOW
+//   as K update ownerUid=K (taking it), or as O handing it to an anonymous member                                  DENY
+//   as O update name; as K update description; as M update clanXp + checkin                                         ALLOW
+//   as K update name; as E update description; as M update owner or members only; as X (not a member) update clanXp DENY
+//   delete as O ALLOW; as K DENY
+// An OLD clan L (owner 'Olive', members ['Olive','Mia'], no ownerUid):
+//   as account O update ownerUid=O, roles.O='leader', names.O='Olive', acct.O=true                                ALLOW (claim)
+//   the same as anon, or with names.O='Mallory', or also changing clanXp                                           DENY
+//   as anyone update owner='Mallory', or members=[] (the old takeover), or description                             DENY
+//   as anyone update clanXp (shared progress, as before)                                                          ALLOW

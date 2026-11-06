@@ -24,6 +24,23 @@ const CANDIDATES = [
 const CHROME = CANDIDATES.find((p) => fs.existsSync(p));
 if (!CHROME) { console.error('Chrome not found. Set CHROME_PATH to your chrome executable.'); process.exit(2); }
 const FAKE_FS = fs.readFileSync(path.join(__dirname, 'fake-firestore.js'));
+// For the clan ownership checks: a stand-in for Firebase Auth's module (only once those checks start, so cloud.js keeps the
+// real one before): the player is whoever localStorage __fake_auth says ({ uid, anon }), anonymous sign-in makes one up.
+const FAKE_AUTH = Buffer.from(`
+const cur = () => { try { const v = JSON.parse(localStorage.getItem('__fake_auth') || 'null'); return v ? { uid: v.uid, isAnonymous: !!v.anon } : null; } catch (e) { return null; } };
+export function getAuth() { return { get currentUser() { return cur(); } }; }
+export function onAuthStateChanged(a, cb) { setTimeout(() => cb(cur()), 0); return () => {}; }
+export async function signInAnonymously() { localStorage.setItem('__fake_auth', JSON.stringify({ uid: 'anon' + Math.random().toString(36).slice(2, 10), anon: true })); return { user: cur() }; }
+`);
+let fakeAuth = false;
+// ...and every write to a clan document has to pass the rules' spec (core/clan-roles.js), as Firestore would make it
+const GUARD = `window.__fakeGuard = function (path, before, after) {
+    if (!(path.startsWith('clans/') && path.split('/').length === 2) || !window.WHClanRoles) return null;
+    const u = JSON.parse(localStorage.getItem('__fake_auth') || 'null');
+    const r = window.WHClanRoles.classifyClanUpdate(before, after, u && u.uid, !!u && !u.anon);
+    const log = JSON.parse(localStorage.getItem('__denied') || '[]'); log.push(r.ok ? 'ok:' + r.action : 'DENY ' + r.action + ':' + r.reason); localStorage.setItem('__denied', JSON.stringify(log));
+    return r.ok ? null : r.action + ':' + r.reason;
+};`;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const results = [];
@@ -68,7 +85,13 @@ async function main() {
         await new Promise((r) => ws.addEventListener('open', r));
         let id = 0; const pending = new Map(); const events = [];
         ws.addEventListener('message', (m) => { const msg = JSON.parse(m.data); if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); } else events.push(msg); });
-        const send = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
+        // a call the browser never answers gives up after a minute (so a stuck run fails its checks instead of hanging)
+        const send = (method, params = {}) => new Promise((res) => {
+            const i = ++id;
+            const timer = setTimeout(() => { if (pending.delete(i)) { console.log('(no answer from the browser to ' + method + ' after 60 s)'); res({ error: { message: 'timeout' } }); } }, 60000);
+            pending.set(i, (msg) => { clearTimeout(timer); res(msg); });
+            ws.send(JSON.stringify({ id: i, method, params }));
+        });
         const evalJs = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.result && r.result.result ? r.result.result.value : undefined; };
         const waitFor = async (expr, ms = 20000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await evalJs(expr) === true) return true; await sleep(200); } return false; };
         await send('Page.enable'); await send('Runtime.enable');
@@ -81,7 +104,9 @@ async function main() {
                 if (e.method !== 'Fetch.requestPaused') continue;
                 events.splice(i, 1); i--;
                 const url = e.params.request.url;
-                if (/firebasejs\/[\d.]+\/firebase-firestore\.js/.test(url)) {
+                if (fakeAuth && /firebasejs\/[\d.]+\/firebase-auth\.js/.test(url)) {
+                    send('Fetch.fulfillRequest', { requestId: e.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/javascript' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: FAKE_AUTH.toString('base64') });
+                } else if (/firebasejs\/[\d.]+\/firebase-firestore\.js/.test(url)) {
                     send('Fetch.fulfillRequest', { requestId: e.params.requestId, responseCode: 200, responseHeaders: [{ name: 'Content-Type', value: 'application/javascript' }, { name: 'Access-Control-Allow-Origin', value: '*' }], body: FAKE_FS.toString('base64') });
                 } else if (blockRe.test(url)) send('Fetch.failRequest', { requestId: e.params.requestId, errorReason: 'BlockedByClient' });
                 else send('Fetch.continueRequest', { requestId: e.params.requestId });
@@ -152,6 +177,45 @@ async function main() {
             i.value = "hi clan"; f.requestSubmit(); i.value = "hi clan"; f.requestSubmit(); return true; })()`);
         await sleep(600);
         check('clan page: a double send goes once', await evalJs(adds('clan_chat')) === before + 1, [before, await evalJs(adds('clan_chat'))]);
+
+        // ---- clan ownership (core/clan-roles.js; firestore-social.rules says the same): every clan write checked ----
+        fakeAuth = true;
+        // (no cache, so the page really fetches the Auth module, and gets the stand-in)
+        await send('Network.enable'); await send('Network.setCacheDisabled', { cacheDisabled: true });
+        await send('Page.addScriptToEvaluateOnNewDocument', { source: GUARD });
+        const clanDoc = 'JSON.stringify(window.__fakeFS.docs["clans/testclan"] || null)';
+        // the owner, signed in to an account, opens the clan page: their clan is claimed for them
+        await evalJs(`(() => { localStorage.setItem('__denied', '[]'); localStorage.setItem('__fake_auth', JSON.stringify({ uid: 'uidOwnerMe', anon: false })); localStorage.setItem('player_username', 'Me'); localStorage.setItem('player_clanId', 'testclan');
+            localStorage.setItem('__fake_fs_seed', JSON.stringify(JSON.parse(JSON.stringify(window.__fakeFS.docs)))); return true; })()`);
+        await navigate(`http://localhost:${PORT}/clan.html`, '!!window.__fakeFS && !!window.WHClanPage');
+        check('clans: the owner, signed in to an account, claims their old clan by opening it', await waitFor(`(() => { const c = window.__fakeFS.docs['clans/testclan']; return !!c && c.ownerUid === 'uidOwnerMe' && c.roles.uidOwnerMe === 'leader' && c.names.uidOwnerMe === 'Me'; })()`, 15000), await evalJs(clanDoc));
+        // someone else tries the old takeover, and taking ownerUid
+        const takeover = await evalJs(`(async () => { localStorage.setItem('__fake_auth', JSON.stringify({ uid: 'uidMallory', anon: true }));
+            const out = [];
+            for (const up of [{ owner: 'Mallory', members: [] }, { ownerUid: 'uidMallory', 'roles.uidMallory': 'leader' }, { description: 'pwned' }]) { try { await updateDoc(doc(db, 'clans', 'testclan'), up); out.push('allowed'); } catch (e) { out.push(e.code); } }
+            return out.join(); })()`);
+        check('clans: anyone else taking it over, emptying it or editing it is refused', takeover === 'permission-denied,permission-denied,permission-denied', takeover);
+        // an anonymous player joins as a member
+        // (a page keeps the sign-in it opened with, so each change of player opens the page again, with the clan as it is now)
+        const as = async (auth, name, clanId) => {
+            await evalJs(`(() => { localStorage.setItem('__fake_auth', ${JSON.stringify(JSON.stringify(auth))}); localStorage.setItem('player_username', ${JSON.stringify(name)});
+                ${clanId ? `localStorage.setItem('player_clanId', '${clanId}');` : `localStorage.removeItem('player_clanId');`} localStorage.setItem('whathappened_prestige_times', '1');
+                localStorage.setItem('__fake_fs_seed', JSON.stringify(window.__fakeFS.docs)); return true; })()`);
+            await navigate(`http://localhost:${PORT}/clan.html`, '!!window.__fakeFS && !!window.WHClanPage');
+            await sleep(500);
+        };
+        await as({ uid: 'uidNewbie1', anon: true }, 'Newbie', null);
+        const joined = await evalJs(`(async () => { await WHClanPage.joinClan('testclan'); const c = window.__fakeFS.docs['clans/testclan'];
+            return c.roles.uidNewbie1 + ':' + c.acct.uidNewbie1 + ':' + c.members.includes('Newbie'); })()`);
+        check('clans: an anonymous player joins, as a member, through the rules', joined === 'member:false:true', joined);
+        // the owner kicks them: their entry goes, and a notice is left in the clan
+        await as({ uid: 'uidOwnerMe', anon: false }, 'Me', 'testclan');
+        const kicked = await evalJs(`(async () => { await WHClanPage.kickMember('testclan', 'Newbie', 'testing'); const c = window.__fakeFS.docs['clans/testclan'];
+            return (c.roles.uidNewbie1 === undefined) + ':' + (c.kicks.uidNewbie1 && c.kicks.uidNewbie1.reason) + ':' + c.members.includes('Newbie'); })()`);
+        check('clans: the owner kicks them, through the rules, with a notice', kicked === 'true:testing:false', kicked);
+        const log = await evalJs('JSON.parse(localStorage.getItem("__denied") || "[]").join("|")');
+        check('clans: the page itself never sent a write the rules would refuse (only the three takeover tries were)', (log.match(/DENY/g) || []).length === 3 && /ok:claim/.test(log) && /ok:join/.test(log) && /ok:kick/.test(log), log);
+        fakeAuth = false;
 
         const errs = events.filter((e) => e.method === 'Runtime.exceptionThrown').map((e) => (e.params.exceptionDetails.exception && e.params.exceptionDetails.exception.description) || e.params.exceptionDetails.text)
             .filter((e) => !/Failed to fetch|firebase|ERR_BLOCKED|Load failed|NetworkError|net::/i.test(e));

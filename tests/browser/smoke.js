@@ -64,7 +64,13 @@ async function main() {
             const msg = JSON.parse(m.data);
             if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); } else events.push(msg);
         });
-        const send = (method, params = {}) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params })); });
+        // a call the browser never answers gives up after a minute (so a stuck run fails its checks instead of hanging)
+        const send = (method, params = {}) => new Promise((res) => {
+            const i = ++id;
+            const timer = setTimeout(() => { if (pending.delete(i)) { console.log('(no answer from the browser to ' + method + ' after 60 s)'); res({ error: { message: 'timeout' } }); } }, 60000);
+            pending.set(i, (msg) => { clearTimeout(timer); res(msg); });
+            ws.send(JSON.stringify({ id: i, method, params }));
+        });
         const evalJs = async (expression) => { const r = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.result && r.result.result ? r.result.result.value : undefined; };
 
         await send('Page.enable'); await send('Runtime.enable'); await send('Log.enable');
