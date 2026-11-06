@@ -748,6 +748,23 @@ async function main() {
         console.log('blocked requests:', [...new Set(blocked.map((u) => new URL(u).host))].join(', '));
         ws.close();
     } finally {
+
+        // ---- installing as an app (pwa.js, sw.js): last, because it stops the server to play offline ----
+        await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
+        check('app: the service worker takes charge of the game', await waitFor('!!(navigator.serviceWorker && navigator.serviceWorker.controller)', 30000));
+        check('app: the Install row in Settings says something', await evalJs('!document.getElementById("installAppRow").hidden && document.getElementById("installAppHelp").textContent.length > 20'));
+        check('app: the files of the first visit are kept', await waitFor(`(async () => { const c = await caches.open('wh-pages-v1'); return !!(await c.match(location.origin + '/main.js')) && !!(await c.match(location.origin + '/core/world-data.js')); })()`, 30000));
+        const cachedMedia = await evalJs(`(async () => (await (await caches.open('wh-media-v1')).keys()).length)()`);
+        check('app: images are kept too', cachedMedia > 3, cachedMedia);
+        check('app: nothing from Google or Firebase was kept', await evalJs(`(async () => { for (const n of await caches.keys()) for (const r of await (await caches.open(n)).keys()) if (new URL(r.url).origin !== location.origin) return false; return true; })()`));
+        const errsBeforeOffline = errors().length;
+        try { server.kill(); } catch (e) {}
+        await sleep(800);
+        await send('Page.navigate', { url: `http://localhost:${PORT}/index.html` });
+        check('app: with the server gone, the game still opens from what was kept', await waitFor('window._saveLoaded === true && typeof buyUpgrade1 === "function"', 30000));
+        check('app: and it plays', await evalJs('(() => { const before = Number(upgrade1Level); count = 1e6; buyUpgrade1(); return Number(upgrade1Level) > before; })()'));
+        const offlineBad = errors().slice(errsBeforeOffline).filter((e) => !/Failed to fetch|firebase|Firestore|ERR_BLOCKED|Load failed|NetworkError|net::|ERR_CONNECTION_REFUSED|ERR_INTERNET/i.test(e));
+        check('app: no page errors offline (network noise excluded)', offlineBad.length === 0, offlineBad);
         cleanup();
     }
     const failed = results.filter((r) => !r.ok);

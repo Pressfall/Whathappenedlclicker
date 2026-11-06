@@ -20,3 +20,13 @@
 
 /cloud.js
   X-Content-Type-Options: nosniff
+
+# Installing the game as an app (pwa.js). The service worker must never be cached by the browser, or an update to it could
+# take a day to reach players; the manifest needs its own content type.
+/sw.js
+  Cache-Control: no-cache
+  Service-Worker-Allowed: /
+
+/manifest.webmanifest
+  Content-Type: application/manifest+json; charset=utf-8
+  Cache-Control: no-cache

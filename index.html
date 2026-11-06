@@ -24,7 +24,9 @@
     <link rel="stylesheet" href="consent.css">
     <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
     <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
-    <link rel="apple-touch-icon" href="mainimage/upgrades/argoonion.png">
+    <link rel="manifest" href="manifest.webmanifest">
+    <meta name="theme-color" content="#0b0d13">
+    <link rel="apple-touch-icon" href="mainimage/icons/apple-180.png">
 </head>
 <body class="leftbar-open">
     <!-- ========== Loading overlay (hidden after init or 10s failsafe) ========== -->
@@ -721,6 +723,14 @@
                 <div class="setting-row">
                     <div class="setting-inline">
                         <button id="exportSaveBtn" class="btn btn-primary btn-sm" type="button">Download save file</button>
+            <section class="settings-group">
+                <h4>App</h4>
+                <!-- pwa.js fills this in: an Install button where the browser offers it, the steps on iPhone, or "installed" -->
+                <div class="setting-row" id="installAppRow" hidden>
+                    <button id="installAppBtn" class="btn btn-primary btn-sm" type="button" hidden>📲 Install the game as an app</button>
+                    <div id="installAppHelp" class="setting-help">Install the game to open it from your home screen or app list.</div>
+                </div>
+            </section>
                         <button id="importSaveBtn" class="btn btn-ghost btn-sm" type="button">Import save file…</button>
                     </div>
                     <input id="importSaveInput" type="file" accept=".json,application/json" hidden>
@@ -1717,6 +1727,7 @@
                 const refresh = () => {
                     try {
                         WHSite.applyNavBadges(map);
+        <script src="pwa.js"></script>
                         // Also show dot on navMenuToggle if any badge is present
                         const alerts = (window.WHSite && window.WHSite.alerts) ? WHSite.alerts() : {};
                         const hasAlert = Object.keys(alerts).some(k => alerts[k] && (alerts[k].count > 0 || alerts[k].text));
