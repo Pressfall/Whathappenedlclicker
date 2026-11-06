@@ -193,6 +193,7 @@
         const AR = WHW.arena, WV = WHW.waves;
         if (AR && AR.match && !AR.match.result) return 'match:' + AR.match.id;
         if (g.zoneId === 'trials' && WV && WV.run && WV.run.st !== 'over') return 'waves:' + WV.run.gen;
+        if (g.zoneId === 'vault' && WV && WV.run) return 'vault:' + WV.run.gen + ':' + (WV.run.st === 'fight' ? WV.run.wave : 'king');
         if (inPit()) return 'pit:' + (g.pitStay || 0);
         return null;
     }
@@ -294,6 +295,7 @@
         g.actors = []; g.respawns = [];
         if (z.interior) return; // nothing lives inside the Hall of Gods
         if (z.gen === 'arena' || z.gen === 'trials') return; // players only (the Proving Grounds' waves come from world-waves.js)
+        if (z.gen === 'vault') { if (WHW.waves) WHW.waves.syncDoors(); return; } // its rooms' monsters and the King come with the run
         if (g.zoneId === 'town') {
             const d = A.makeMonster('dummy', g.map.dummy.x, g.map.dummy.y);
             g.actors.push(d);
@@ -680,6 +682,21 @@
             if (zoneId !== 'town' && !g.state.unlocked.zones[zoneId]) { WHW.toast('That gate is still locked.', 'bad'); return; }
             enterZone(zoneId, { atCamp });
         },
+        // The Sunken Vault (core/world-vault.js): a party of 2 to 4 that has reached the Far Reaches, online
+        enterVault() {
+            const V = window.WHWorldVault, P = WHW.party;
+            const size = P && P.id ? Math.max(P.tickets.length, P.members.size) : 0;
+            const ok = V.mayEnter(size, W.vaultReached(g.state));
+            if (!ok.ok) {
+                WHW.toast({ reach: 'The Waystone only reaches the Vault once you have been to the Far Reaches.', party: 'The Vault is for a party of ' + V.PARTY.min + ' to ' + V.PARTY.max + '. Invite someone with E first (P opens your party).',
+                    size: 'At most ' + V.PARTY.max + ' can go in together.' }[ok.reason], 'bad');
+                return;
+            }
+            if (!(WHW.online && WHW.online.db && WHW.online.status === 'online')) { WHW.toast('The Vault needs online play: your party goes in together.', 'bad'); return; }
+            enterZone('vault');
+            WHW.toast('🔱 The Sunken Vault: start the first room from its ready circle, together.', 'gold');
+        },
+        leaveVault() { if (g.zoneId === 'vault') enterZone('town'); },
     };
 
     // The far wall of the Hall grinds open: the hidden room is carved into the map for good
@@ -821,6 +838,11 @@
                 if (best) { prompt = `<kbd>E</kbd>⚔️ ${esc(best.info.n)}: challenge, or invite to your party`; if (press) WHW.arena.openPlayer(best); }
             }
             if (!prompt && WHW.arena && !WHW.arena.match && dist(p, map.pit) < map.pit.r) prompt = '🩸 The Pit: anyone in here can fight you';
+        } else if (map.rooms) {
+            // the Sunken Vault: back out, the Vault Keeper (an NPC, below), and the next room's ready circle
+            const rc = WHW.waves && WHW.waves.vaultReady();
+            if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Back to town'; if (press) enterZone('town'); }
+            else if (rc && dist(p, rc) < rc.r + 20) { const w = WHW.waves.promptText(); prompt = w.text; if (press && w.can) WHW.waves.start(); }
         } else if (map.floor) {
             // the Proving Grounds
             if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Back to the Arena'; if (press) enterZone('arena'); }
@@ -1020,6 +1042,7 @@
         if (map.arena && inView(map.arena.x + map.arena.w / 2, map.arena.y + map.arena.h / 2, map.arena.w)) drawArenaOutside(ctx, map.arena);
         if (map.pit) drawArenaInside(ctx, map);
         if (map.floor) drawTrials(ctx, map);
+        if (map.rooms) drawVault(ctx, map);
         if (map.runes) for (const r of map.runes) {
             if (!inView(r.x, r.y, 40)) continue;
             const a = 0.16 + Math.sin(E.time * 1.3 + r.y * 0.01) * 0.08;
@@ -1112,6 +1135,19 @@
             ctx.fillStyle = 'rgba(255,160,60,' + (0.22 + Math.sin(E.time * 3) * 0.06) + ')'; ctx.beginPath(); ctx.arc(t.x, t.y, 28, 0, Math.PI * 2); ctx.fill();
             ctx.strokeStyle = '#ffb347'; ctx.lineWidth = 3; ctx.stroke();
             E.label(ctx, 'Proving Grounds', t.x, t.y - 38, { font: '800 12px Inter, sans-serif', fill: '#fff', stroke: 'rgba(0,0,0,0.75)' });
+        }
+    }
+    // The Sunken Vault: the next room's ready circle, its rooms' gates, and the shut doors shimmering
+    function drawVault(ctx, map) {
+        const rc = WHW.waves && WHW.waves.vaultReady();
+        if (rc) {
+            ctx.strokeStyle = 'rgba(95,211,224,' + (0.45 + Math.sin(E.time * 3) * 0.15) + ')'; ctx.lineWidth = 3;
+            ctx.beginPath(); ctx.arc(rc.x, rc.y, rc.r, 0, Math.PI * 2); ctx.stroke();
+            E.label(ctx, 'Ready circle', rc.x, rc.y - rc.r - 10, { font: '800 12px Inter, sans-serif', fill: '#bff6ff', stroke: 'rgba(0,0,0,0.7)' });
+        }
+        for (const d of map.rooms.map(r => r.door).concat([map.kingDoor])) {
+            if (d.open || !inView(d.at.x, d.at.y, 200)) continue;
+            for (const [tx, ty] of d.tiles) { ctx.fillStyle = `rgba(95,211,224,${0.3 + Math.sin(E.time * 3 + tx + ty) * 0.15})`; ctx.fillRect(tx * TILE + 2, ty * TILE + 2, TILE - 4, TILE - 4); }
         }
     }
     function drawTrials(ctx, map) {
@@ -1502,6 +1538,7 @@
             window._saveLoaded = true; // (cloud.js) this tab owns the Wilds save: it can sync it
             refreshClickerView(); // crew who came since last time say hello
         });
+        if (D.ZONES[g.state.zone] && D.ZONES[g.state.zone].instance) { g.state.zone = 'town'; g.state.pos = null; WHW.toastLater = WHW.toastLater || 'You came out of the Sunken Vault: go back in with your party through the Waystone.'; }
         g.zoneId = g.state.zone;
         enterZone(g.state.zone, { pos: g.state.pos, silent: g.state.zone !== 'town' });
         WHW.ui.renderHud();

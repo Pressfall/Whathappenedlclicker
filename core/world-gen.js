@@ -462,10 +462,63 @@
         return m;
     }
 
+    // ---------------- the Sunken Vault ----------------
+    // A chain going north from the entry hall (the door back out at the bottom, the Vault Keeper): three round rooms, then
+    // the Drowned King's chamber, joined by short corridors. Each room's door (rooms[i].door.tiles) is a barrier across the
+    // corridor into it, shut until setVaultDoor opens it (the run decides: core/world-vault.js doorOpen). rooms[i]: its
+    // floor (x, y, r), its four gates (where its monsters come in) and its ready circle (in the corridor before its door).
+    function buildVault(def) {
+        const m = { id: def.id, w: def.w, h: def.h, tiles: grid(def.w, def.h, T.WALL) };
+        const cx = Math.floor(m.w / 2);
+        const n = valueNoise(D.WORLD_SEED + ':vault:n', 4);
+        const fl = (x, y) => (n(x, y) > 0.55 ? T.FLOOR2 : T.FLOOR);
+        // the entry hall
+        const hallY = m.h - 10;
+        for (let y = hallY - 5; y <= hallY + 5; y++) for (let x = cx - 9; x <= cx + 9; x++) set(m, x, y, T.PLAZA);
+        for (let y = hallY + 5; y < m.h - 2; y++) for (let x = cx - 1; x <= cx + 1; x++) set(m, x, y, T.PATH);
+        // rooms (south to north) and the King's chamber
+        const R = [{ y: hallY - 20, r: 9 }, { y: hallY - 45, r: 10 }, { y: hallY - 71, r: 10 }];
+        const K = { y: 16, r: 12 };
+        const room = (c, r) => { for (let y = c - r - 1; y <= c + r + 1; y++) for (let x = cx - r - 1; x <= cx + r + 1; x++) { const d = Math.hypot(x - cx, y - c); if (d <= r) set(m, x, y, fl(x, y)); } };
+        const corridor = (y0, y1) => { for (let y = Math.min(y0, y1); y <= Math.max(y0, y1); y++) for (let x = cx - 1; x <= cx + 1; x++) set(m, x, y, T.PATH); };
+        corridor(R[0].y + R[0].r, hallY - 5);
+        R.forEach((c, i) => { room(c.y, c.r); if (i) corridor(c.y + c.r, R[i - 1].y - R[i - 1].r); });
+        room(K.y, K.r);
+        corridor(K.y + K.r, R[2].y - R[2].r);
+        // a door: the corridor's three tiles just outside the room's south edge, shut
+        const door = (cy, r) => {
+            const tiles = [];
+            for (let y = cy + r + 1; y <= cy + r + 2; y++) for (let x = cx - 1; x <= cx + 1; x++) { tiles.push([x, y, get(m, x, y)]); set(m, x, y, T.BUILDING); }
+            return { tiles, open: false, at: { x: px(cx), y: px(cy + r + 1) } };
+        };
+        m.rooms = R.map((c, i) => {
+            const rr = c.r * TILE, fx = px(cx), fy = px(c.y);
+            const gates = [-Math.PI / 2, Math.PI, 0, -Math.PI / 2 + 0.9].map((a) => ({ x: fx + Math.cos(a) * (rr - 1.5 * TILE), y: fy + Math.sin(a) * (rr - 1.5 * TILE) }));
+            return { i: i + 1, floor: { x: fx, y: fy, r: rr }, gates, ready: { x: fx, y: px(c.y + c.r + 5), r: 2.4 * TILE }, door: door(c.y, c.r) };
+        });
+        m.kingDoor = door(K.y, K.r);
+        m.boss = { x: px(cx), y: px(K.y), r: K.r * TILE };
+        m.entry = { x: px(cx), y: px(hallY + 2) };
+        m.exit = { x: px(cx), y: px(m.h - 3), to: 'town' };
+        m.npcs = npcsIn(def.id, cx, hallY);
+        m.nodes = []; m.spawns = []; m.elites = []; m.stations = []; m.portals = []; m.deco = [];
+        m.camp = null; m.rival = null;
+        return m;
+    }
+    // Open or shut a Vault door: i = 1-3 the rooms, 4 the King's chamber. Returns whether anything changed.
+    function setVaultDoor(m, i, open) {
+        const d = i <= (m.rooms || []).length ? m.rooms[i - 1] && m.rooms[i - 1].door : m.kingDoor;
+        if (!d || d.open === !!open) return false;
+        d.open = !!open;
+        for (const [x, y, t] of d.tiles) set(m, x, y, open ? t : T.BUILDING);
+        return true;
+    }
+
     function generateZone(zoneId) {
         const def = D.ZONES[zoneId];
         if (!def) throw new Error('unknown zone ' + zoneId);
-        return def.gen === 'town' ? buildTown(def) : def.gen === 'hall' ? buildHall(def) : def.gen === 'arena' ? buildArena(def) : def.gen === 'trials' ? buildTrials(def) : buildWild(def);
+        return def.gen === 'town' ? buildTown(def) : def.gen === 'hall' ? buildHall(def) : def.gen === 'arena' ? buildArena(def) : def.gen === 'trials' ? buildTrials(def)
+            : def.gen === 'vault' ? buildVault(def) : buildWild(def);
     }
     // A fingerprint of a map (for the determinism test)
     function mapHash(m) {
@@ -476,5 +529,5 @@
     }
     function tileAt(m, wx, wy) { return get(m, Math.floor(wx / TILE), Math.floor(wy / TILE)); }
 
-    return { T, SOLID, isSolid, blocksWalk, hashStr, mulberry32, valueNoise, generateZone, openSecret, openLair, flood, mapHash, tileAt, get };
+    return { T, SOLID, isSolid, blocksWalk, hashStr, mulberry32, valueNoise, generateZone, openSecret, openLair, setVaultDoor, flood, mapHash, tileAt, get };
 }));

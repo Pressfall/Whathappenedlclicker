@@ -25,7 +25,8 @@ test('every Wilds achievement reads a number the snapshot really has, and can be
     assert.equal(target('w_skills_all'), D.ABILITY_ORDER.length + D.PERK_ORDER.length, 'every skill of every class');
     assert.equal(target('w_class5'), D.CLASS_ORDER.length - 1, 'every class besides the Warrior you start as');
     assert.equal(target('w_boss4'), 4, 'the first four bosses');
-    assert.equal(target('w_boss8'), Object.keys(D.BOSSES).length, 'every boss');
+    // (the Sunken Vault's Drowned King is a party's boss, counted by its own achievements: not one of the zones' bosses)
+    assert.equal(target('w_boss8'), Object.keys(D.BOSSES).filter(b => !D.BOSSES[b].vault).length, 'every boss');
     assert.equal(target('w_frost'), D.ZONE_ORDER.indexOf('frost') + 2, 'town and every zone up to Frostveil');
     assert.equal(target('w_sky'), D.ZONE_ORDER.length + 1, 'town and every zone');
     assert.equal(target('w_wards_all'), D.ZONE_ORDER.reduce((n, z) => n + (D.ZONES[z].wards || 0), 0), 'every ward stone');

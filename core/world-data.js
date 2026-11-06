@@ -137,6 +137,8 @@
         { id: 'halo_of_vrill', name: 'Halo of Vrill', color: '#ffe98a', icon: '😇', sell: 30000, kind: 'trophy' },
         // Frozen WH's rarest drop, for the hidden god and the hidden room: can't be sold, never lost on death
         { id: 'hidden_shard', name: 'Shard of the Hidden', color: '#3dffb4', icon: '🌑', sell: 0, kind: 'key' },
+        // the Sunken Vault's (core/world-vault.js): the Drowned King's first kill of each week, for the Vault Keeper's shop
+        { id: 'vault_seal', name: 'Vault Seal', color: '#4fd8d0', icon: '🔱', sell: 0, kind: 'key' },
     ];
     const MATERIALS_BY_ID = Object.fromEntries(MATERIALS.map(m => [m.id, m]));
 
@@ -635,6 +637,19 @@
             sigil: 'sigil_sky', rubiesFirst: 7000, rubies: [1400, 2000], gems: [2, 3], golden: 0.15,
             drops: [['starmetal_ore', 4, 6, 1], ['celestite', 3, 5, 1], ['seraph_feather', 2, 3, 1], ['aether_core', 1, 2, 0.8], ['vrill_eye', 1, 1, 0.35], ['halo_of_vrill', 1, 1, 0.04]],
         },
+        // ---- the Sunken Vault (core/world-vault.js): a party's boss. vault: pays through world-logic.js vaultKingLoot (no
+        // drops of his own); partyScale: his health grows with the players in the fight (Vault.bossHp); enrage: after sec of
+        // fighting he hits mult times as hard. burden: a mark on one player that bursts, its damage shared by everyone in it.
+        drowned_king: {
+            name: 'The Drowned King', zone: 'vault', face: 'mainimage/thumbs/whblackandwhite.webp', hp: 90000, dmg: 430, r: 52, speed: 74, armor: 115, color: '#5fd3e0',
+            phases: [
+                ['tide', 'ring', 'charge', 'burden'],
+                ['tide', 'whirlpool', 'lightning', 'summon', 'burden'],
+                ['starfall', 'whirlpool', 'lightning', 'orbs', 'burden', 'charge'],
+            ],
+            summon: 'drowned', vault: true, partyScale: true, enrage: { sec: 420, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
     };
 
     // ---------------- rivals: AI adventurers who fight with the player's own weapon rules ----------------
@@ -722,6 +737,12 @@
         trials: { id: 'trials', name: 'Proving Grounds', gen: 'trials', w: 46, h: 46, pvp: 'off', coop: true, sub: 'Co-op waves', banner: 'Hold the ring, alone or together',
             bg: 'bgimages/thumbs/stonghengebg.webp',
             palette: { floor: '#6d6152', floor2: '#665a4c', path: '#8c7350', wall: '#2f2820', plaza: '#7d6f5c' } },
+        // The Sunken Vault, through the Waystone: a dungeon for a party of 2 to 4 (core/world-vault.js). instance: every party
+        // has its own copy online (world-online.js zone key vault_<party>). coop: its rooms are fought like the Proving
+        // Grounds' waves (world-waves.js). Nobody can hurt another player here, and a knockout drops nothing.
+        vault: { id: 'vault', name: 'The Sunken Vault', gen: 'vault', w: 40, h: 124, pvp: 'off', coop: 'vault', instance: true, boss: 'drowned_king', via: 'waystone', dark: 170,
+            sub: 'A dungeon for a party', banner: 'Three rooms, then the Drowned King', bg: 'bgimages/thumbs/oceanviewbg.webp',
+            palette: { floor: '#34484c', floor2: '#2f4246', path: '#4f6870', wall: '#17242a', plaza: '#41575d', water: '#1d5a74' } },
         // inside the Hall of Gods, a building in town (world-gen.js buildHall). interior: entered by its door, no monsters, and
         // nobody else online in there. dark: how far the player's own light reaches; the braziers light the rest.
         hall: { id: 'hall', name: 'Hall of Gods', gen: 'hall', w: 26, h: 56, safe: true, interior: true, dark: 170,
@@ -829,6 +850,10 @@
     NPCS.guildmaster = { name: 'Guildmaster Aurelio', role: 'Keeper of the Hero Guilds', face: 'mainimage/thumbs/moneyman.webp', color: '#c9a34a', spot: [16, 11], guild: true,
         greet: 'Every hero of your factory has a guild out here, and every guild wants proof before it takes your coin. Six charters on my table, new ones every other day.',
         chain: [], daily: [] };
+    // The Vault Keeper, in the Sunken Vault's entry hall: the Vault Seal shop (VAULT_SHOP)
+    NPCS.vaultkeeper = { name: 'Maren the Vault Keeper', role: 'Keeper of the Sunken Vault', face: 'mainimage/thumbs/divinespirit.webp', color: '#4fd8d0', spot: [-5, 0], zone: 'vault', vaultShop: true,
+        greet: 'Three rooms of the drowned, and the King at the bottom of it all. Bring me his seals and I will make it worth the swim.',
+        chain: [], daily: [] };
     // The crew from the clicker (core/world-crew.js), in the Depot's yard. crew: their id there; they only stand in town
     // once you have reached them in the game (world.js), and their 'clicker' goals count what you did there.
     for (const c of Crew.CREW) {
@@ -836,6 +861,14 @@
             chain: c.chain.slice(), daily: c.daily.slice(), crew: c.id, service: c.service || null };
     }
     const NPC_ORDER = Object.keys(NPCS);
+    // What the Vault Keeper sells for Vault Seals. title: an Arena-style title shown under your name (core/world-arena.js
+    // allows these); give: consumables; box: a lootbox for the game (counted in the week's lootbox allowance, perWeek).
+    const VAULT_SHOP = [
+        { id: 'vault_potions', name: '2 Max Potions', seals: 1, give: { potion_max: 2 } },
+        { id: 'vault_title', name: 'Title: Vaultbreaker', seals: 3, title: 'Vaultbreaker' },
+        { id: 'vault_title2', name: "Title: King's Bane", seals: 9, title: "King's Bane" },
+        { id: 'vault_mythic', name: 'Mythic Vault (a lootbox for your game)', seals: 6, box: 4, perWeek: 1 },
+    ];
     const QUESTS = {
         // Captain Brannoc: hunting
         brannoc_slimes: { title: 'Slime Season', text: 'Slimes are eating the herb gardens again. Thin them out in Greenwood.', goal: { kind: 'kill', monster: 'slime', n: 6 }, rubies: 60 },
@@ -1224,5 +1257,6 @@
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
         ELITE_RESPAWN_SEC, WARD, CAMP, MAX_TIER, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
+        VAULT_SHOP,
     };
 }));

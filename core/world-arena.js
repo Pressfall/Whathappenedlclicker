@@ -313,7 +313,7 @@
         a.wagerNet = int(raw.wagerNet, -1e9, 1e9);
         a.rating = clampRating(raw.rating === undefined ? RULES.elo.start : raw.rating);
         a.peak = Math.max(a.rating, clampRating(raw.peak === undefined ? a.rating : raw.peak));
-        if (isObj(raw.titles)) for (const t in raw.titles) if (raw.titles[t] && SHOP.some(x => x.title === t)) a.titles[t] = true;
+        if (isObj(raw.titles)) for (const t in raw.titles) if (raw.titles[t] && (SHOP.some(x => x.title === t) || (D.VAULT_SHOP || []).some(x => x.title === t))) a.titles[t] = true;
         if (isObj(raw.seasonTitles)) for (const k in raw.seasonTitles) if (raw.seasonTitles[k] === true && SEASON_TITLE_RE.test(k)) a.seasonTitles[k] = true;
         const se = isObj(raw.season) ? raw.season : {};
         a.season = { id: typeof se.id === 'string' && SEASON_RE.test(se.id) ? se.id : '', peak: clampRating(se.peak === undefined ? a.rating : se.peak),

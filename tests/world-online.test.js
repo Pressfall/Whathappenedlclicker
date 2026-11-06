@@ -328,7 +328,10 @@ test('database.rules.json is valid and covers every place the game writes', () =
     assert.match(zone.h.$victim.$hid['.write'], /newData\.child\('from'\)\.val\(\) === auth\.uid/, 'hits are signed by their sender');
     assert.equal(O.ROOT, 'wilds/v1/zones');
     // every zone players meet in (inside a building, like the Hall of Gods, nobody is online)
-    for (const z of Object.keys(D.ZONES).filter(id => !D.ZONES[id].interior)) assert.ok(new RegExp(zone['.validate'].match(/\/(.*)\//)[1]).test(z), 'zone ' + z + ' allowed');
+    // (an instance, the Sunken Vault, is one copy per party: vault_ and the party's id)
+    const zoneRe = new RegExp(zone['.validate'].match(/\/(.*)\//)[1]);
+    for (const z of Object.keys(D.ZONES).filter(id => !D.ZONES[id].interior)) assert.ok(zoneRe.test(D.ZONES[z].instance ? z + '_abcd2345ef' : z), 'zone ' + z + ' allowed');
+    assert.ok(!zoneRe.test('vault') && !zoneRe.test('vault_x') && !zoneRe.test('vault_../x'), 'only a real party id');
 });
 
 test('nobody can hurt a player standing in a camp, and the camp is a sensible size', () => {

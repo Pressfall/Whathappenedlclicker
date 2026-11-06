@@ -169,6 +169,10 @@
         // Arena seasons: wildsSeasonBest is the best rank a finished season reached (core/world-arena.js RANKS index + 1: Gold 3, Champion 6)
         { key: 'w_season_gold', cat: 'The Wilds', name: 'A Good Month', desc: 'Finish an Arena season at Gold or better, with at least 5 rated matches.', title: 'Season Regular', rarity: 'rare', badge: '📅', stat: 'wildsSeasonBest', target: 3 },
         { key: 'w_season_champ', cat: 'The Wilds', name: 'Champion of the Month', desc: 'Finish an Arena season as Champion.', title: 'Monthly Champion', rarity: 'legendary', badge: '🗓️', stat: 'wildsSeasonBest', target: 6 },
+        // the Sunken Vault (core/world-vault.js): the Drowned King's kills, and those with a party of exactly two
+        { key: 'w_vault1', cat: 'The Wilds', name: 'Into the Deep', desc: 'Beat the Drowned King at the bottom of the Sunken Vault.', title: 'Vault Diver', rarity: 'epic', badge: '🔱', stat: 'wildsVaultKills', target: 1 },
+        { key: 'w_vault_duo', cat: 'The Wilds', name: 'Just the Two of Us', desc: 'Beat the Drowned King with a party of exactly two.', title: 'Dynamic Duo', rarity: 'legendary', badge: '🫂', stat: 'wildsVaultDuo', target: 1 },
+        { key: 'w_vault10', cat: 'The Wilds', name: 'Regular at the Bottom', desc: 'Beat the Drowned King 10 times.', title: 'Deep Regular', rarity: 'legendary', badge: '🌊', stat: 'wildsVaultKills', target: 10 },
         { key: 'w_pit10', cat: 'The Wilds', name: 'King of the Pit', desc: 'Knock out 10 players in the Pit.', title: 'Pit Fighter', rarity: 'rare', badge: '🕳️', stat: 'wildsPitKOs', target: 10 },
         { key: 'w_wager', cat: 'The Wilds', name: 'High Roller', desc: 'Win a duel played for rubies.', title: 'High Roller', rarity: 'rare', badge: '🎲', stat: 'wildsWagerWins', target: 1 },
         { key: 'w_wave10', cat: 'The Wilds', name: 'Holding the Line', desc: 'Clear wave 10 in the Proving Grounds.', title: 'Line Holder', rarity: 'rare', badge: '🌊', stat: 'wildsWaveBest', target: 10 },
@@ -289,6 +293,7 @@
             wildsWards: wWards, wildsTopTier: wTier,
             wildsArenaWins: wc(wa.w), wildsTeamWins: wc(wa.teamW), wildsRating: wc(wa.rating), wildsPitKOs: wc(wa.pitKO),
             wildsWagerWins: wc(wa.wagerWins), wildsWaveBest: wc(wa.waveBest), wildsSeasonBest: wc(wa.seasonBest),
+            wildsVaultKills: wc((w.raid || {}).kills), wildsVaultDuo: wc((w.raid || {}).duo),
             // hero guilds owned: all of them, and the most of any one hero
             wildsGuilds: Object.values((w.guilds && w.guilds.owned) || {}).reduce((a, n) => a + wc(n), 0),
             wildsGuildTop: Math.max(0, ...Object.values((w.guilds && w.guilds.owned) || {}).map(wc)),

@@ -149,6 +149,15 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     assert.deepEqual(rows(read('wilds-guide.html'), 'ranks-table').map(r => [Number(r[2].replace(/,/g, '')), r[3] === 'Yes']),
         Ar.RANKS.map(r => [Ar.SEASON.rewards[r.id].glory, !!Ar.SEASON.rewards[r.id].title]));
     assert.match(read('wilds-guide.html'), new RegExp('at least <b>' + Ar.SEASON.minGames + ' rated matches</b>'));
+    // the Sunken Vault's numbers
+    const V = require('../core/world-vault'), guide = read('wilds-guide.html');
+    assert.match(guide, new RegExp('party of ' + V.PARTY.min + ' to ' + V.PARTY.max));
+    assert.match(guide, new RegExp('up to <b>' + V.REWARDS.roomPaysPerDay + ' rooms a day</b>'));
+    assert.match(guide, new RegExp('<b>' + V.REWARDS.king.glory + ' Glory</b>, <b>' + V.REWARDS.king.seals + ' Vault Seals</b>'));
+    assert.match(guide, new RegExp('more than ' + Math.round(D.BOSSES[V.BOSS].enrage.sec / 60) + ' minutes'));
+    assert.match(guide, new RegExp('<b>' + D.RULES.potionsPerMatch + ' potions</b> per room'));
+    for (const r of V.ROOMS) assert.ok(guide.includes(r.name.replace(/^The /, 'the ')), r.name);
+    for (const it of D.VAULT_SHOP.filter(x => x.title)) assert.ok(guide.includes(it.title.replace("'", "'")), it.title);
     const stakes = Ar.RULES.stakes.filter(Boolean);
     assert.ok(g.includes(`${stakes[0].toLocaleString('en-US')} to ${stakes.at(-1).toLocaleString('en-US')} rubies each`), 'stakes');
     for (const z of D.ZONE_ORDER.filter(id => D.ZONES[id].wards)) assert.ok(g.includes(D.TIERS[D.ZONES[z].tier + 1].name), D.TIERS[D.ZONES[z].tier + 1].name + ' gear is named');

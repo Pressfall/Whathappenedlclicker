@@ -6,7 +6,7 @@
       "v1": {
         "zones": {
           "$zone": {
-            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost|coast|storm|ruins|sky|arena|trials)$/)",
+            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost|coast|storm|ruins|sky|arena|trials|vault_[A-Za-z0-9]{8,12})$/)",
             "p": {
               ".read": "auth != null",
               "$uid": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isString() && newData.val().length <= 120" }

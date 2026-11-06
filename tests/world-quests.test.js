@@ -18,6 +18,8 @@ test('every quest giver has a story and daily quests (wanderers only talk), and 
         if (npc.lines) { assert.ok(npc.lines.length >= 3 && !npc.chain.length && !npc.daily.length, id + ' only talks'); continue; }
         // the Guildmaster's contracts come with his stock of hero guilds (core/world-guilds.js), not from a chain
         if (npc.guild) { assert.ok(!npc.chain.length && !npc.daily.length, id + ' sells guilds'); continue; }
+        // the Vault Keeper only runs the Vault Seal shop
+        if (npc.vaultShop) { assert.ok(!npc.chain.length && !npc.daily.length && D.VAULT_SHOP.length, id + ' sells for seals'); continue; }
         // townsfolk have long chains; camp NPCs and the crew from the game (core/world-crew.js) have three or more
         assert.ok(npc.chain.length >= (npc.zone === 'town' && !npc.crew ? 6 : 3) && npc.daily.length >= 1, id);
         // out in a zone, that zone is open: you are standing in it

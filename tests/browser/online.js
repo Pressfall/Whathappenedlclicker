@@ -69,8 +69,10 @@ async function main() {
             await s('Emulation.setDeviceMetricsOverride', { width: 1100, height: 700, deviceScaleFactor: 1, mobile: false });
             const evalJs = async (expression) => { const r = await s('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }); return r.result && r.result.result ? r.result.result.value : undefined; };
             const waitFor = async (expr, ms = 30000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await evalJs(expr) === true) return true; await sleep(200); } return false; };
+            // ONLINE_SHOTS=<folder>: p.shot('name') saves a screenshot of this player's page there
+            const shot = async (file) => { if (!process.env.ONLINE_SHOTS) return; const r = await s('Page.captureScreenshot', { format: 'png' }); if (r.result) require('fs').writeFileSync(require('path').join(process.env.ONLINE_SHOTS, name + '-' + file + '.png'), Buffer.from(r.result.data, 'base64')); };
             const p = {
-                name, evalJs, waitFor,
+                name, evalJs, waitFor, shot,
                 mouse: (x, y) => s('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0 }),
                 errors: () => events.filter((e) => e.sessionId === sid && e.method === 'Runtime.exceptionThrown').map((e) => (e.params.exceptionDetails.exception && e.params.exceptionDetails.exception.description) || e.params.exceptionDetails.text),
             };
@@ -367,6 +369,42 @@ async function main() {
         check('party: it works across zones (where each member is)', await a.waitFor('[...WHW.party.members].some(([u, m]) => u !== WHW.online.uid && m.z === "town")', 6000));
         await b.evalJs('WHW.engine.time += 5; WHW.party.say("in town now")');
         check('party: and its chat too', await a.waitFor('WHW.online.log.some(l => l.ch === "party" && l.m === "in town now")', 5000));
+
+        // ---- the Sunken Vault: the party's own copy, a room fought together, the King's health for two ----
+        for (const p of [a, b]) await p.evalJs('(() => { WHW.game.state.unlocked.zones.coast = true; WHW.actions.enterVault(); return true; })()');
+        check('vault: both go in, into the party\'s own copy (vault_ and the party id)', await a.waitFor('WHW.game.zoneId === "vault" && WHW.online.zone === "vault" && WHW.online.key === "vault_" + WHW.party.id', 8000) &&
+            await b.waitFor('WHW.game.zoneId === "vault" && WHW.online.key === "vault_" + WHW.party.id', 8000), await a.evalJs('[WHW.game.zoneId, WHW.online.key, WHW.party.id]'));
+        check('vault: they see each other there', await a.waitFor('WHW.online.here().length === 1', 8000) && await b.waitFor('WHW.online.here().length === 1', 8000));
+        check('vault: only the first door is open', await a.evalJs('(() => { const m = WHW.game.map; return !!m.rooms && m.rooms[0].door.open && !m.rooms[1].door.open && !m.rooms[2].door.open && !m.kingDoor.open; })()'));
+        await a.evalJs('(() => { const r = WHW.waves.vaultReady(); WHWorldDebug.teleport(r.x, r.y); WHW.waves.start(); return true; })()');
+        check('vault: the first room starts on both pages, sealed', await a.waitFor('!!WHW.waves.run && WHW.waves.run.st === "fight" && WHW.waves.run.wave === 1', 12000) &&
+            await b.waitFor('!!WHW.waves.run && WHW.waves.run.st === "fight" && !WHW.game.map.rooms[0].door.open', 12000), await b.evalJs('WHW.waves.run && [WHW.waves.run.st, WHW.waves.run.wave]'));
+        await a.shot('vault-room');
+        check('vault: both were brought into the room', await b.evalJs('(() => { const f = WHW.game.map.rooms[0].floor, p = WHW.game.player; return Math.hypot(p.x - f.x, p.y - f.y) < f.r; })()'));
+        for (let i = 0; i < 30 && await a.evalJs('WHW.waves.run && WHW.waves.run.st') === 'fight'; i++) {
+            for (const p of [a, b]) await p.evalJs('WHW.game.actors.filter(x => x.wave && !x.dead).forEach(x => WHW.actors.damage(x, 1e9, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }))');
+            await sleep(700);
+        }
+        check('vault: clearing it pays both and opens the next door on both pages', await a.waitFor('WHW.waves.run.st === "break" && WHW.game.map.rooms[1].door.open && WHW.game.state.raid.roomsToday.n === 1', 10000) &&
+            await b.waitFor('WHW.game.map.rooms[1].door.open && WHW.game.state.raid.roomsToday.n === 1', 10000), await a.evalJs('[WHW.waves.run.st, WHW.waves.run.wave, WHW.game.state.raid.roomsToday.n]'));
+        // the King: as if the other two rooms were cleared too
+        await a.evalJs('WHW.online.db.update(WHW.online.Z("w"), { st: "break", wave: 3, t: WHW.online.db.serverNow() })');
+        check("vault: after the third room the King's chamber opens and he is there", await a.waitFor('WHW.game.map.kingDoor.open && WHW.game.actors.some(x => x.kind === "boss" && x.type === "drowned_king" && !x.dead)', 8000) &&
+            await b.waitFor('WHW.game.map.kingDoor.open', 8000));
+        await a.evalJs('(() => { const k = WHW.game.map.boss; WHWorldDebug.teleport(k.x - 40, k.y + k.r - 70); return true; })()');
+        await b.evalJs('(() => { const k = WHW.game.map.boss; WHWorldDebug.teleport(k.x + 40, k.y + k.r - 70); return true; })()');
+        await sleep(1500); await a.shot('vault-king');
+        check('vault: his health is for a party of two', await a.waitFor('(() => { const s = WHW.online.boss; return !!s && s.max === WHWorldVault.bossHp(WHWorldData.BOSSES.drowned_king.hp, 2); })()', 15000), await a.evalJs('WHW.online.boss && WHW.online.boss.max'));
+        // both hit him, in rounds (each needs a share of the damage to be paid)
+        for (let i = 0; i < 4 && await a.evalJs('WHW.game.actors.some(x => x.kind === "boss" && !x.dead)'); i++) {
+            for (const p of [a, b]) await p.evalJs('(() => { const k = WHW.game.actors.find(x => x.kind === "boss" && !x.dead); if (k) WHW.actors.damage(k, 1.2e5, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return !!k; })()');
+            await sleep(900);
+        }
+        check("vault: the King falls and pays both their week's reward (3 Vault Seals)", await a.waitFor('WHWorld.count(WHW.game.state, "vault_seal") === 3 && WHW.game.state.raid.kills === 1', 15000) &&
+            await b.waitFor('WHWorld.count(WHW.game.state, "vault_seal") === 3', 15000), [await a.evalJs('WHWorld.count(WHW.game.state, "vault_seal")'), await b.evalJs('WHWorld.count(WHW.game.state, "vault_seal")')]);
+        check('vault: the run is done', await a.waitFor('!!WHW.waves.run && WHW.waves.run.st === "over"', 8000));
+        for (const p of [a, b]) await p.evalJs('WHW.actions.leaveVault()');
+        check('vault: back out in town', await a.waitFor('WHW.game.zoneId === "town" && WHW.online.key === "town"', 6000) && await b.waitFor('WHW.game.zoneId === "town"', 6000));
 
         // ---- a tournament: entry fees, a locked-tier kit, the winner takes the pot ----
         for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("arena"); const g = WHW.game; g.state.rubies = 1000; return true; })()');

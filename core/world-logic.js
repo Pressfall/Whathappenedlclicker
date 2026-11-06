@@ -8,9 +8,9 @@
  * and in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'), require('./world-crew'), require('./renown'), require('./world-guilds'));
-    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour, root.WHCrew, root.WHRenown, root.WHGuilds);
-}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour, Crew, Renown, Guilds) {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'), require('./world-crew'), require('./renown'), require('./world-guilds'), require('./world-vault'));
+    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour, root.WHCrew, root.WHRenown, root.WHGuilds, root.WHWorldVault);
+}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour, Crew, Renown, Guilds, Vault) {
     'use strict';
 
     const WORLD_VERSION = 1;
@@ -101,6 +101,7 @@
             // hero guilds (core/world-guilds.js): how many of each you own (the game reads these), which of this stock you
             // bought (sold out until the stock changes), and the one contract you are working on
             guilds: freshGuilds(),
+            raid: freshRaid(), // the Sunken Vault (core/world-vault.js): this week's King, kills, and today's paid rooms
             stats: freshStats(),
         };
         const shield = addGear(s, D.STARTER_OFFHAND, 40, [], now);
@@ -217,6 +218,7 @@
         s.crew = cleanCrew(raw.crew);
         s.renown = { claimed: Renown.cleanClaimed(isObj(raw.renown) ? raw.renown.claimed : null) };
         s.guilds = cleanGuilds(raw.guilds);
+        s.raid = cleanRaid(raw.raid);
         const sec = isObj(raw.secrets) ? raw.secrets : {};
         s.secrets = { hallDoor: sec.hallDoor === true, autoClicker: sec.autoClicker === true };
         s.skin = cleanSkin(raw.skin);
@@ -735,6 +737,7 @@
                 if (b.sigil === id) add({ kind: 'boss', name: b.name, zone: z, chance: 1, first: !b.sigilEvery }); // its sigil: the first time it falls, or every time (sigilEvery)
             }
         }
+        if (id === 'vault_seal') add({ kind: 'boss', name: D.BOSSES[Vault.BOSS].name, zone: Vault.ZONE, chance: 1, weekly: true }); // the King's first kill of each week
         for (const r of D.BASIC_RECIPES) if (r.out[id]) add({ kind: 'craft', name: D.STATIONS[r.station].name, station: r.station, inputs: r.in, n: r.out[id] });
         for (const t of D.TRADER_STOCK) if (t.give && t.give[id]) add({ kind: 'trader', name: 'Trader', price: t.price, n: t.give[id] });
         const rank = { node: 0, craft: 1, trader: 2, monster: 3, elite: 4, boss: 5 };
@@ -914,6 +917,80 @@
     }
     // the Arena's season turned (a new month): see core/world-arena.js rollSeason. Returns true when it did.
     function rollSeason(s, now) { return Arena.rollSeason(s.arena, now); }
+    // ---------------- the Sunken Vault (core/world-vault.js) ----------------
+    function freshRaid() { return { week: '', kills: 0, duo: 0, roomsToday: { day: '', n: 0 }, bought: { week: '', n: {} } }; }
+    function cleanRaid(raw) {
+        const r = freshRaid();
+        if (!isObj(raw)) return r;
+        r.week = typeof raw.week === 'string' ? raw.week.slice(0, 12) : '';
+        r.kills = int(raw.kills, 0, 1e6); r.duo = int(raw.duo, 0, 1e6);
+        const t = isObj(raw.roomsToday) ? raw.roomsToday : {};
+        r.roomsToday = { day: typeof t.day === 'string' ? t.day.slice(0, 12) : '', n: int(t.n, 0, Vault.REWARDS.roomPaysPerDay) };
+        const b = isObj(raw.bought) ? raw.bought : {};
+        r.bought = { week: typeof b.week === 'string' ? b.week.slice(0, 12) : '', n: {} };
+        if (isObj(b.n)) for (const it of D.VAULT_SHOP) if (it.perWeek) { const v = int(b.n[it.id], 0, 1e6); if (v) r.bought.n[it.id] = v; }
+        return r;
+    }
+    // reached the Far Reaches: the Waystone carries you to the Vault
+    function vaultReached(s) { return D.ZONE_ORDER.some(z => D.ZONES[z].via === 'waystone' && s.unlocked.zones[z]); }
+    // A room of the Vault was cleared with this player in it: rubies, up to roomPaysPerDay rooms a day. Returns { rubies }
+    function vaultRoomCleared(s, room, now) {
+        const t = s.raid.roomsToday, day = dayKey(now);
+        if (t.day !== day) { t.day = day; t.n = 0; }
+        if (t.n >= Vault.REWARDS.roomPaysPerDay) return { rubies: 0, capped: true };
+        t.n++;
+        questEvent(s, { kind: 'vaultroom' });
+        return { rubies: addRubies(s, Vault.REWARDS.room * Math.max(1, Math.min(Vault.ROOMS.length, room))) };
+    }
+    // The Drowned King fell with this player in the fight (players: how many). The first kill of a week: rubies, Glory (once a
+    // week, outside the daily caps), Vault Seals and a Golden Chest for the game (if the week's lootbox allowance has room);
+    // later kills that week: a few rubies. Returns what bossLoot returns (rubies, mats) plus first and box.
+    function vaultKingLoot(s, now, ack, players) {
+        const r = s.raid, week = weekKey(now), K = Vault.REWARDS.king;
+        r.kills++;
+        if (players === 2) r.duo++;
+        questEvent(s, { kind: 'vaultking' });
+        if (r.week === week) return { rubies: addRubies(s, Vault.REWARDS.kingRepeat), mats: {}, first: false };
+        r.week = week;
+        const rubies = addRubies(s, K.rubies * Math.max(1, furthestTier(s) / 8));
+        s.arena.glory += K.glory; s.arena.gloryTotal += K.glory;
+        give(s, 'vault_seal', K.seals, true);
+        let box = false;
+        if (boxAllowanceLeft(s, now) >= D.BOX_POINTS[K.box]) {
+            s.caps.boxPts += D.BOX_POINTS[K.box];
+            const boxes = D.BOX_NAMES.map(() => 0); boxes[K.box] = 1;
+            Bridge.push(s, { boxes, src: 'vault' }, ack, now);
+            box = true;
+        }
+        return { rubies, mats: { vault_seal: K.seals }, glory: K.glory, box, first: true };
+    }
+    // The Vault Keeper's shop (D.VAULT_SHOP, paid in Vault Seals). Returns { ok, reason?, item }
+    function vaultWeekLeft(s, id, now) {
+        const it = D.VAULT_SHOP.find(x => x.id === id);
+        if (!it || !it.perWeek) return Infinity;
+        const b = s.raid.bought, wk = weekKey(now);
+        if (b.week !== wk) { b.week = wk; b.n = {}; }
+        return Math.max(0, it.perWeek - (b.n[id] || 0));
+    }
+    function vaultBuy(s, id, now, ack) {
+        const it = D.VAULT_SHOP.find(x => x.id === id);
+        if (!it) return { ok: false, reason: 'unknown' };
+        if (it.title && s.arena.titles[it.title]) return { ok: false, reason: 'owned' };
+        if (!vaultWeekLeft(s, id, now)) return { ok: false, reason: 'week' };
+        if (it.box !== undefined && boxAllowanceLeft(s, now) < D.BOX_POINTS[it.box]) return { ok: false, reason: 'allowance' };
+        if (count(s, 'vault_seal') < it.seals) return { ok: false, reason: 'seals' };
+        take(s, { vault_seal: it.seals });
+        if (it.perWeek) s.raid.bought.n[id] = (s.raid.bought.n[id] || 0) + 1;
+        if (it.give) giveAll(s, it.give, true);
+        if (it.title) { s.arena.titles[it.title] = true; s.arena.title = it.title; }
+        if (it.box !== undefined) {
+            s.caps.boxPts += D.BOX_POINTS[it.box];
+            const boxes = D.BOX_NAMES.map(() => 0); boxes[it.box] = 1;
+            Bridge.push(s, { boxes, src: 'vault' }, ack, now);
+        }
+        return { ok: true, item: it };
+    }
+
     function setTitle(s, title) {
         if (title && !Arena.titlesOf(s.arena).includes(title)) return false;
         s.arena.title = title || '';
@@ -1535,6 +1612,7 @@
         rollLoot, rollRubies, monsterLoot, nodeLoot, bossLoot, rivalLoot, die, recoverGrave, nextZoneAfter,
         wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal,
         arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, arenaWeekLeft, setTitle, rollSeason, waveCleared,
+        vaultReached, vaultRoomCleared, vaultKingLoot, vaultBuy, vaultWeekLeft,
         sell, buy, exchange, classId, classOf, classProgress, classState, unlockClass, setClass, skillDef, skillState, learnSkill, loadoutOf, equipAbility, unequipAbility, abilityKit, treeOrder,
         godState, upgradeGod, isHallWord, speak, hiddenShopState, buyHidden, questOffer, questProgress, acceptQuest, turnInQuest, abandonQuest, questEvent, activeQuests, furthestTier, noteNode, nodeReadyAt, pruneNodes, serialize,
         setClickerView, getClickerView, crewHere, greetCrew, crewShop, crewBuy, crewTrades, crewTrade, renownClaimable, claimRenown,

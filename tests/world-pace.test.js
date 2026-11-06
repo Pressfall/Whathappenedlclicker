@@ -80,3 +80,19 @@ test('each zone\'s best ore needs the pickaxe from the zone before it', () => {
         assert.ok(node.respawn >= D.SAVED_RESPAWN_SEC, z + ' ore timer is saved');
     }
 });
+
+test('the Drowned King: about as long for each player in a party as Vrill alone, and the Shared Burden needs company', () => {
+    const V = require('../core/world-vault');
+    const g = gear('sky'), K = D.BOSSES[V.BOSS], vrill = hits(D.BOSSES.vrill, g);
+    for (let n = V.PARTY.min; n <= V.PARTY.max; n++) {
+        const each = hits(Object.assign({}, K, { hp: V.bossHp(K.hp, n) }), g) / n;
+        assert.ok(each >= vrill * 0.9 && each <= vrill * 1.4, n + ' players: ' + each.toFixed(0) + ' hits each (Vrill alone ' + vrill.toFixed(0) + ')');
+    }
+    assert.ok(share(K, g) >= 0.08 && share(K, g) <= 0.13, 'the King hits for ' + (share(K, g) * 100).toFixed(1) + '%');
+    // the Burden (world-actors.js BOSS_MOVES.burden dmg 8.5): near-lethal alone, bearable for two, light for four
+    const burden = share(K, g) * 8.5;
+    assert.ok(burden >= 0.7 && burden < 1, 'alone: ' + (burden * 100).toFixed(0) + '%');
+    assert.ok(burden / 2 <= 0.45 && burden / 4 <= 0.25, 'shared: ' + (burden * 50).toFixed(0) + '% for two');
+    // and the rooms' monsters stay those of their zones, scaled up a little with the party
+    assert.ok(V.SCALE.hp <= 0.4 && V.SCALE.dmg <= 0.1);
+});

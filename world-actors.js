@@ -238,7 +238,10 @@
             WHW.sfx('boss');
             WHW.save();
         } else if (t.kind === 'boss') {
-            const r = W.bossLoot(g.state, t.type, Math.random, at, g.ack);
+            // the Drowned King pays through the Vault (once a week the most); every other boss through bossLoot
+            const vault = !!(D.BOSSES[t.type] && D.BOSSES[t.type].vault);
+            const r = vault ? W.vaultKingLoot(g.state, at, g.ack, WHW.waves ? WHW.waves.players() : 1) : W.bossLoot(g.state, t.type, Math.random, at, g.ack);
+            if (vault && WHW.waves) WHW.waves.kingDown();
             g.bossDeadUntil[g.zoneId] = E.time + 90;
             g.actors.filter(a => a.kind === 'clone' || a.summoned).forEach(a => { a.dead = true; });
             g.hazards.length = 0;
@@ -1578,6 +1581,8 @@
         gust: { type: 'push', windup: 0.6, active: 0.2, reach: 420, arc: 1.6, force: 380, time: 1.0, dmg: 0.4 },
         orbs: { type: 'orbs', windup: 0.6, active: 0.2, count: 3, speed: 150, life: 4.5, turn: 2.2, pr: 12, dmg: 1.1 },
         starfall: { type: 'targets', windup: 0.4, active: 0.2, count: 9, radius: 50, delay: 1.2, stagger: 0.08, around: 'arena', dmg: 1.0, stun: 0.3, bolt: true },
+        // the Sunken Vault: a mark follows one player and bursts after `delay`; its damage is split between everyone in it
+        burden: { type: 'burden', windup: 0.6, active: 0.2, radius: 95, delay: 4, dmg: 8.5 },
     };
     A.BOSS_MOVES = BOSS_MOVES;
     function bossPhase(b) { const f = b.hp / b.maxHp; return f > 0.66 ? 0 : f > 0.33 ? 1 : 2; }
@@ -1622,6 +1627,10 @@
             const ang = angTo(b, p);
             for (let i = 1; i <= a.count; i++) hazard({ kind: 'circle', x: b.x + Math.cos(ang) * (b.r + i * a.gap), y: b.y + Math.sin(ang) * (b.r + i * a.gap), r: a.radius, windup: a.delay + i * 0.06, dmg: b.dmg * (a.dmg || 1), chill: true, owner: b.id, ice: true });
             if (b.phase >= 1) for (const off of [-0.5, 0.5]) for (let i = 1; i <= a.count - 2; i++) hazard({ kind: 'circle', x: b.x + Math.cos(ang + off) * (b.r + i * a.gap), y: b.y + Math.sin(ang + off) * (b.r + i * a.gap), r: a.radius, windup: a.delay + 0.3 + i * 0.06, dmg: b.dmg * (a.dmg || 1), chill: true, owner: b.id, ice: true });
+        } else if (a.type === 'burden') {
+            // on the host, aimUid is '' when it aimed at its own player; on everyone else it says who (world-online.js)
+            const target = k.aimUid || (WHW.online && WHW.online.uid) || '';
+            hazard({ kind: 'burden', target, x: p.x, y: p.y, r: a.radius, windup: a.delay, dmg: b.dmg * (a.dmg || 1), owner: b.id });
         } else if (a.type === 'clone') {
             if (!g.actors.some(x => x.kind === 'clone' && !x.dead)) {
                 const ang = rnd() * TAU;
@@ -1660,12 +1669,22 @@
                 if (b.leaveT > (p.dead ? 2 : 6)) {
                     // the player left: reset the fight
                     b.active = false; b.hp = b.maxHp; b.atk = null; b.x = b.home.x; b.y = b.home.y; b.leaveT = 0; b.phase = 0;
+                    b.fightAt = 0; if (b.enraged) { b.enraged = false; b.dmg = b.baseDmg; }
                     g.actors.filter(a => a.kind === 'clone' || a.summoned).forEach(a => { a.dead = true; });
                     g.hazards.length = 0;
                     WHW.onBossReset && WHW.onBossReset(b);
                     return;
                 }
             } else b.leaveT = 0;
+        }
+        // the Drowned King: fought too long, he hits much harder (def.enrage: after sec, mult times)
+        if (b.def.enrage && b.kind === 'boss') {
+            if (!b.fightAt) b.fightAt = E.time;
+            if (!b.enraged && E.time - b.fightAt > b.def.enrage.sec) {
+                b.enraged = true; b.baseDmg = b.dmg; b.dmg = b.dmg * b.def.enrage.mult;
+                E.floatText(b.x, b.y - b.r - 40, 'THE TIDE RISES', '#5fd3e0', 20, 2.2); E.addShake(10);
+                WHW.toast(b.name + ' is enraged and hits far harder: finish him!', 'bad');
+            }
         }
         const ph = bossPhase(b);
         if (ph !== b.phase && b.kind === 'boss') { b.phase = ph; b.plan = []; E.floatText(b.x, b.y - b.r - 30, ph === 1 ? 'ENRAGED' : 'FURIOUS', '#ff6b7a', 18, 1.6); E.addShake(8); }
@@ -1882,6 +1901,20 @@
                     if (h.t - h.windup < h.lingering) { if (Math.hypot(p.x - h.x, p.y - h.y) <= h.r * 0.8) { p.hp -= 12 * (1 - g.pstats.fireResist) * dt; if (p.hp <= 0 && !p.dead) { p.hp = 0; p.dead = true; WHW.onPlayerDeath(); } } }
                     else h.gone = true;
                 } else if (h.done && h.t > h.windup + 0.25) h.gone = true;
+            } else if (h.kind === 'burden') {
+                // follow the marked player until it bursts; then whoever stands in it shares the damage
+                const net = WHW.online, mine = !h.target || (net && h.target === net.uid);
+                const t = mine ? p : net && net.remotes.get(h.target);
+                if (!h.done && t && !t.dead) { h.x = t.x; h.y = t.y; }
+                if (!h.done && h.t >= h.windup) {
+                    h.done = true;
+                    const others = net ? [...net.remotes.values()].filter(r => !r.stale && !r.dead && Math.hypot(r.x - h.x, r.y - h.y) <= h.r + 13).length : 0;
+                    const meIn = !p.dead && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + p.r;
+                    if (meIn) A.hurtPlayer(h.dmg / (1 + others), { from: h, kb: 160, unblockable: true });
+                    E.burst(h.x, h.y, '#5fd3e0', 26, 220, { life: 0.6 }); E.addShake(5);
+                    E.floatText(h.x, h.y - h.r - 10, meIn || others ? 'Shared by ' + ((meIn ? 1 : 0) + others) : 'Nobody shared it', '#bff6ff', 13, 1.2);
+                }
+                if (h.done && h.t > h.windup + 0.4) h.gone = true;
             } else if (h.kind === 'wave') {
                 const prev = h.r;
                 h.r += h.speed * dt;
@@ -2433,6 +2466,16 @@
                 } else {
                     ctx.fillStyle = h.ice ? 'rgba(220,250,255,0.7)' : 'rgba(255,230,200,0.5)';
                     ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+                }
+            } else if (h.kind === 'burden') {
+                if (!h.done) {
+                    const f = Math.min(1, h.t / h.windup);
+                    ctx.fillStyle = `rgba(80,210,230,${0.12 + 0.2 * f})`;
+                    ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.fill();
+                    ctx.strokeStyle = 'rgba(160,240,255,0.95)'; ctx.lineWidth = 3;
+                    ctx.beginPath(); ctx.arc(h.x, h.y, h.r * (1 - f) + 6, 0, TAU); ctx.stroke();
+                    ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.stroke();
+                    E.label(ctx, 'Share it! ' + Math.max(0, Math.ceil(h.windup - h.t)), h.x, h.y - h.r - 8, { font: '800 12px Inter, sans-serif', fill: '#dffaff', stroke: 'rgba(0,0,0,0.75)' });
                 }
             } else if (h.kind === 'wave') {
                 ctx.strokeStyle = h.color || 'rgba(120,200,90,0.85)'; ctx.lineWidth = h.width;

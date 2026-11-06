@@ -477,6 +477,7 @@
     const npcLine = {}; // which of a wanderer's lines was said last (this visit only)
     function openNpc(id) {
         if (D.NPCS[id] && D.NPCS[id].guild) return openGuilds();
+        if (D.NPCS[id] && D.NPCS[id].vaultShop) return openVaultShop();
         npcOpen = id;
         modal(D.NPCS[id].name, '', { render: renderNpc });
         renderNpc();
@@ -614,6 +615,30 @@
     const heroName = (up) => (Gu.BY_UP[up] ? Gu.BY_UP[up].hero : 'upgrade ' + up);
     WHW.heroName = heroName;
     function untilText(ms) { const m = Math.max(0, Math.ceil(ms / 60000)); return m >= 60 ? Math.floor(m / 60) + 'h ' + (m % 60) + 'm' : m + 'm'; }
+    // The Vault Keeper's shop (D.VAULT_SHOP, paid in Vault Seals: the Drowned King's first kill of each week)
+    function openVaultShop() {
+        const npc = D.NPCS.vaultkeeper;
+        modal(npc.name, '', { wide: true, render: renderVaultShop });
+        renderVaultShop();
+    }
+    function renderVaultShop() {
+        const g = game(), s = g.state, body = document.getElementById('wModalBody');
+        if (!body) return;
+        const seals = W.count(s, 'vault_seal'), now = Date.now(), npc = D.NPCS.vaultkeeper;
+        body.innerHTML = `<p class="w-note">${esc(npc.greet)}</p><p>You have <b>🔱 ${seals}</b> Vault Seal${seals === 1 ? '' : 's'}. The Drowned King gives ${window.WHWorldVault.REWARDS.king.seals} the first time he falls to you each week.</p>
+            <div class="w-grid">${D.VAULT_SHOP.map(it => {
+                const owned = it.title && s.arena.titles[it.title], left = it.perWeek ? W.vaultWeekLeft(s, it.id, now) : null;
+                const sub = '🔱 ' + it.seals + (it.box !== undefined ? ' · counts toward your lootbox allowance' : '') + (left !== null ? ' · ' + left + ' of ' + it.perWeek + ' left this week' : '');
+                return `<div class="w-card"><div class="w-card-name">${esc(it.name)}</div><div class="w-card-sub">${esc(sub)}</div>
+                    <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-vbuy="${it.id}" ${owned || left === 0 || seals < it.seals ? 'disabled' : ''}>${owned ? 'Owned' : left === 0 ? 'Bought this week' : 'Buy'}</button></div></div>`;
+            }).join('')}</div>`;
+        on(body, '[data-vbuy]', (d) => {
+            const r = W.vaultBuy(s, d.vbuy, Date.now(), g.ack);
+            if (!r.ok) WHW.toast({ seals: 'Not enough Vault Seals.', week: 'Already bought this week.', allowance: "This week's lootbox allowance is used up.", owned: 'You have it already.' }[r.reason] || "Can't do that.", 'bad');
+            else { WHW.toast('Bought: ' + r.item.name + (r.item.box !== undefined ? '. It arrives the next time you open the game.' : '.'), 'gold'); WHW.sfx('craft'); WHW.save(); if (WHW.online) WHW.online.infoKey = ''; }
+            renderVaultShop();
+        });
+    }
     function openGuilds() {
         modal('⚜️ Hero Guilds', '', { wide: true, render: renderGuilds });
         renderGuilds();
@@ -826,7 +851,7 @@
             }
             if (src.kind === 'monster') return [SOURCE_ICON.monster, 'Defeat a ' + src.name + pct(src.chance), where(src.zones)];
             if (src.kind === 'elite') return [SOURCE_ICON.elite, src.name + ', an elite' + pct(src.chance), where(src.zones)];
-            if (src.kind === 'boss') return [SOURCE_ICON.boss, src.name + (src.first ? ', the first time you beat it' : pct(src.chance)), where(src.zones) + ' boss'];
+            if (src.kind === 'boss') return [SOURCE_ICON.boss, src.name + (src.weekly ? ', the first time each week' : src.first ? ', the first time you beat it' : pct(src.chance)), where(src.zones) + ' boss'];
             if (src.kind === 'craft') return [D.STATIONS[src.station].icon, src.name + ': ' + Object.entries(src.inputs).map(([k, n]) => n + ' ' + matName(k)).join(' + ') + (src.n > 1 ? ' makes ' + src.n : ''), 'in town'];
             return [SOURCE_ICON.trader, 'Buy ' + src.n + ' for ♦ ' + fmt(src.price), 'the Trader, in town'];
         });
@@ -1289,9 +1314,16 @@
                 <div class="w-card-actions"><button class="btn btn-sm btn-primary" data-go="${id}" ${open ? '' : 'disabled'}>Travel</button>
                 ${camp ? `<button class="btn btn-sm btn-ghost" data-camp="${id}">To the camp</button>` : ''}</div></div>`;
         }).join('');
+        const V = window.WHWorldVault, reached = V && W.vaultReached(s), kingDone = V && s.raid && s.raid.week === W.weekKey(Date.now());
+        const vaultCard = V ? `<div class="w-card w-vault-card${reached ? '' : ' is-locked'}"><div class="w-zone-card"><img src="${D.ZONES.vault.bg}" alt=""><div>
+                <div class="w-card-name">${reached ? '🔱 ' : '🔒 '}${esc(D.ZONES.vault.name)}</div>
+                <div class="w-card-sub">A dungeon for a party of ${V.PARTY.min} to ${V.PARTY.max}: three rooms, then ${esc(D.BOSSES[V.BOSS].name)}. Built for Skyreach gear; nothing is lost in it.</div>
+                <div class="w-card-sub" style="color:${reached ? '#bff6ff' : '#ffb3bb'}">${!reached ? 'Opens once you have been to the Far Reaches.' : kingDone ? 'The King fell to you this week: rubies only until Monday.' : 'This week\'s King is still waiting for you: Vault Seals, Glory and a Golden Chest.'}</div></div></div>
+                <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-vault ${reached ? '' : 'disabled'}>Go in with your party</button></div></div>` : '';
         const body = modal('🗿 The Waystone', `<p class="w-note">The old stone hums. It carries you past the four gates into <b>the Far Reaches</b>, where everything is harder: monsters are built for that zone's own gear, its best ore needs the last zone's pickaxe, and each boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, wake a ward, and beat its guardian to break it.</p>
-            <div style="display:flex;flex-direction:column;gap:8px">${cards}</div>`, { wide: true });
+            <div style="display:flex;flex-direction:column;gap:8px">${cards}${vaultCard}</div>`, { wide: true });
         on(body, '[data-go]', (d) => { closeModal(); WHW.actions.travel(d.go, false); });
+        on(body, '[data-vault]', () => { closeModal(); WHW.actions.enterVault(); });
         on(body, '[data-camp]', (d) => { closeModal(); WHW.actions.travel(d.camp, true); });
     }
     function openMap() {
@@ -1393,5 +1425,5 @@
     WHW.hint = hint;
     WHW.banner = banner;
     WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openWaystone, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged,
-        openDepot, openRenown, openCrewShop, openCrewTrade, openJukebox, openGuilds, gameItemsText, ICONS, esc };
+        openDepot, openRenown, openCrewShop, openCrewTrade, openJukebox, openGuilds, openVaultShop, gameItemsText, ICONS, esc };
 })();

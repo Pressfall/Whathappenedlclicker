@@ -66,7 +66,14 @@
     // chat is kept as sent and filtered when shown (core/chat-safety.js), so the swear filter toggle applies at once
     const CS = window.WHChatSafety;
     const chatLimits = CS.limiter();
-    const Z = (sub) => O.ROOT + '/' + ON.zone + (sub ? '/' + sub : '');
+    // a zone's place in the database: its id, or for an instance (the Sunken Vault) one per party (vault_<party id>)
+    const Z = (sub) => O.ROOT + '/' + (ON.key || ON.zone) + (sub ? '/' + sub : '');
+    ON.Z = (sub) => Z(sub);
+    function keyFor(zone) {
+        const zd = D.ZONES[zone] || {};
+        if (!zd.instance) return zone;
+        return window.WHWorldVault ? window.WHWorldVault.instanceKey(WHW.party && WHW.party.id) : null;
+    }
 
     // ---------------- connecting ----------------
     function setStatus(s, err) {
@@ -154,9 +161,12 @@
         if (!db) return;
         // inside a building (the Hall of Gods) you are out of sight: leave the zone you were in, join none
         if (D.ZONES[zone] && D.ZONES[zone].interior) { leave(); ON.wantZone = zone; return; }
-        if (ON.zone === zone && !force) return;
+        const key = keyFor(zone);
+        if (!key) { leave(); ON.wantZone = zone; return; } // the Vault without a party: nobody to share it with
+        if (ON.zone === zone && ON.key === key && !force) return;
         leave();
         ON.zone = zone;
+        ON.key = key;
         ON.wantZone = zone;
         const me = ON.uid;
         for (const p of ['p/' + me, 'i/' + me, 'h/' + me, 'd/' + me, 'm/' + me]) db.onDisconnectRemove(Z(p));
@@ -186,7 +196,7 @@
         if (WHW.mobs) WHW.mobs.reset();
         ON.remotes.clear(); ON.parked.clear(); ON.loot.clear();
         ON.boss = null; ON.bossPending = 0; ON.bossGen = ''; ON.isHost = false; ON.hostUid = null; ON.followSeq = -1;
-        ON.zone = null;
+        ON.zone = null; ON.key = null;
     }
 
     // ---------------- other players ----------------
@@ -605,7 +615,7 @@
             if (move && !first) {
                 const target = h.tg === ON.uid ? game().player : ON.remotes.get(h.tg);
                 const at = target ? { x: target.x, y: target.y, vx: target.vx || 0, vy: target.vy || 0, r: 13 } : { x: h.tx, y: h.ty, vx: 0, vy: 0, r: 13 };
-                b.atk = { a: move, name: h.a, t: 0, phase: 'windup', dir: h.d, tx: at.x, ty: at.y, hit: false, follow: true, aimPt: at };
+                b.atk = { a: move, name: h.a, t: 0, phase: 'windup', dir: h.d, tx: at.x, ty: at.y, hit: false, follow: true, aimPt: at, aimUid: h.tg || '' };
             }
         }
     };
@@ -661,7 +671,10 @@
         // starting a fight: the host makes a fresh shared one when there is none (or the last is over)
         if (meIn && b.active && ON.status === 'online' && ON.hostUid === ON.uid && (!ON.boss || O.bossNeedsReset(ON.boss, now, BOSS_RESPAWN)) && E.time - ON.resetAt > 2) {
             ON.resetAt = E.time;
-            const max = b.def.hp;
+            // the Drowned King: stronger for every player of the party in the Vault (not only those already in his chamber:
+            // the first one in would start the fight on their own) (core/world-vault.js bossHp)
+            const party = Math.max(fs.length, WHW.waves && WHW.waves.players ? WHW.waves.players() : 1);
+            const max = b.def.partyScale && window.WHWorldVault ? window.WHWorldVault.bossHp(b.def.hp, party) : b.def.hp;
             ON.db.set(Z('b'), { hp: max, max, gen: Math.random().toString(36).slice(2, 10), t: now, killedAt: 0 });
         }
         if (!ON.bossShared(b)) { ON.isHost = false; return; }

@@ -7,7 +7,9 @@ const G = require('../core/world-gen');
 const ZONES = Object.keys(D.ZONES);
 const maps = Object.fromEntries(ZONES.map(z => [z, G.generateZone(z)]));
 // sealed lairs (the Far Reaches), opened: what a player who broke every ward walks through
-const opened = Object.fromEntries(ZONES.map(z => [z, G.openLair(G.generateZone(z))]));
+// (and the Sunken Vault with every door open: a party that cleared its rooms)
+const openAll = (m) => { G.openLair(m); for (let i = 1; i <= 4; i++) G.setVaultDoor(m, i, true); return m; };
+const opened = Object.fromEntries(ZONES.map(z => [z, openAll(G.generateZone(z))]));
 const tileOf = (m, p) => ({ x: Math.floor(p.x / D.TILE), y: Math.floor(p.y / D.TILE) });
 
 test('every zone is the same for every player (fixed seed)', () => {
