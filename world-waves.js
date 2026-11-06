@@ -65,6 +65,9 @@
     function setRun(r) {
         const prev = WV.run;
         if (!r) { if (prev) clearMonsters(); WV.run = null; return; }
+        // a late copy of an older state of this same run (the host changes it here first, then the database echoes the
+        // changes in their own order): taking it would wind the run back, and the host would start the same wave again
+        if (prev && prev.gen === r.gen && (r.t || 0) < (prev.t || 0)) return;
         if (!prev || prev.gen !== r.gen) {
             clearMonsters();
             // joining a wave already being fought: paid from the next one
@@ -87,7 +90,11 @@
         const was = WV.prevSt, wasWave = WV.prevWave;
         WV.prevSt = r.st; WV.prevWave = r.wave;
         if (isVault()) syncDoors();
+        // a fight is set up once: the same fight (run, wave, start time) seen again never spawns its monsters twice
+        const fightKey = r.gen + ':' + r.wave + ':' + r.at;
+        if (r.st === 'fight' && WV.fightKey === fightKey) return;
         if (r.st === 'fight') {
+            WV.fightKey = fightKey;
             WV.comp = isVault() ? Vt.roomComposition(r.seed, r.wave, r.n) : Wv.composition(r.seed, r.wave, r.n);
             WV.spawned = new Set(); WV.dead = new Set(); WV.seen = new Set();
             if (isVault()) {

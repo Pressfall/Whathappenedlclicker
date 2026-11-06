@@ -906,9 +906,10 @@
   async function loadClanDetail(clanId){
     const area = document.getElementById('clanDetailArea'); if(!area || !clanId) return;
     closeClanView();
-    await authReady(); // so the first view already knows who I am
     _clanView.id = clanId;
     area.innerHTML = window.WHSk ? '<div class="card">' + WHSk.panel(6) + '</div>' : '<div class="card"><div class="muted">Loading clan…</div></div>';
+    await authReady(); // so the first view already knows who I am (the placeholder shows meanwhile)
+    if (_clanView.id !== clanId) return; // another clan was opened while signing in
     currentClanUnsub = onSnapshot(doc(db,'clans',clanId), async snap => {
       try{
         if(_clanView.id !== clanId) return;

@@ -553,7 +553,10 @@ async function main() {
         check('wards: the last one opens the lair for good, and the boss is there', lair.open && lair.saved && lair.boss, lair);
         await evalJs('WHWorldDebug.travel("sky")');
         await sleep(400);
+        // (the coast's boss was awake a moment ago: if he knocked the player out, nothing moves them any more, falls included;
+        // a knocked-out player can't travel in the game, only through this debug hook, so stand them up again first)
         const fall = await evalJs(`(() => { const g = WHW.game, G = WHWorldGen, p = g.player, m = g.map;
+            window.__wasDown = !!p.dead; p.dead = false; p.hp = p.maxHp;
             g.actors.forEach(a => { a.dead = true; }); g.hazards.length = 0; g.gustT = 999;
             // find open sky right next to an island, and step off
             for (let y = 6; y < m.h - 6; y++) for (let x = 6; x < m.w - 6; x++) if (G.get(m, x, y) === G.T.VOID && G.get(m, x - 1, y) === G.T.FLOOR && G.get(m, x - 2, y) === G.T.FLOOR) {
@@ -563,7 +566,7 @@ async function main() {
             }
             return null; })()`);
         await sleep(700);
-        const fell = await evalJs('(() => { const p = WHW.game.player; return { hp: p.hp / p.maxHp, onVoid: WHWorldGen.tileAt(WHW.game.map, p.x, p.y) === WHWorldGen.T.VOID }; })()');
+        const fell = await evalJs('(() => { const p = WHW.game.player; return { hp: p.hp / p.maxHp, onVoid: WHWorldGen.tileAt(WHW.game.map, p.x, p.y) === WHWorldGen.T.VOID, wasDown: window.__wasDown }; })()');
         await shot('shot-sky.png');
         if (SCRATCH) await evalJs('(() => { WHW.ui.closeModal(); return true; })()');
         if (SCRATCH) for (const z of ['storm', 'ruins']) { await evalJs('WHWorldDebug.travel("' + z + '")'); await evalJs('(() => { const c = WHW.game.map.camp, p = WHW.game.player; WHWorldDebug.teleport(c.x + 200, c.y - 150); p.maxHp = p.hp = 1e6; WHW.engine.snapCamera(); return true; })()'); await sleep(900); await shot('shot-' + z + '.png'); }
