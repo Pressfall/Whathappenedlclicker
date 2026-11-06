@@ -579,6 +579,19 @@ async function main() {
         await evalJs('document.querySelector("[data-artab=shop]").click()');
         await sleep(150);
         check('arena: the Glory shop lists its wares', await evalJs('document.querySelectorAll("[data-arbuy]").length === WHWorldArena.SHOP.length'));
+        // seasons: the menu says which season it is and when it ends; an ended season's result can be claimed once
+        const season = await evalJs(`(() => { const a = WHW.game.state.arena;
+            a.seasonLast = { id: WHWorldArena.prevSeason(a.season.id), peak: 1420, rank: 'platinum', games: 9, claimed: false };
+            document.querySelector('[data-artab=rank]').click();
+            const body = document.getElementById('wModalBody');
+            const line = (body.querySelector('.w-arena-season') || {}).textContent || '';
+            const btn = body.querySelector('[data-arseason]'), glory = a.glory;
+            const boards = [...body.querySelectorAll('[data-arboard]')].map(b => b.dataset.arboard).join();
+            if (btn) btn.click();
+            return { line, had: !!btn, boards, paid: a.glory - glory, want: WHWorldArena.SEASON.rewards.platinum.glory, title: a.title, again: !!document.querySelector('[data-arseason]') }; })()`);
+        check('arena: the menu shows the season and when it ends', /^Season \w{3} '\d\d: ends in \d+[dh]/.test(season.line) && season.boards === 'season,last,waves', season);
+        check('arena: an ended season\'s reward is claimed once, with its title worn', season.had && season.paid === season.want && /^Platinum · /.test(season.title) && !season.again, season);
+        if (SCRATCH) await shot('shot-arena-season.png');
         await evalJs('WHW.ui.closeModal()');
         await evalJs('WHWorldDebug.travel("trials")');
         await sleep(400);

@@ -171,6 +171,25 @@
               "$other": { ".validate": false }
             }
           },
+          "season": {
+            "$sid": {
+              ".read": "auth != null",
+              ".indexOn": ["r"],
+              ".validate": "$sid.matches(/^s20[0-9][0-9]-(0[1-9]|1[0-2])$/)",
+              "$uid": {
+                ".write": "auth != null && auth.uid === $uid",
+                ".validate": "newData.hasChildren(['n', 'r', 't'])",
+                "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
+                "r": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 5000" },
+                "w": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+                "l": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+                "g": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+                "ti": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "t": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": false }
+              }
+            }
+          },
           "waves": {
             ".read": "auth != null",
             "$uid": {

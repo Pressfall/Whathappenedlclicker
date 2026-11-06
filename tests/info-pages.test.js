@@ -145,6 +145,10 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     // the Arena's ranks and stakes
     const Ar = require('../core/world-arena');
     assert.deepEqual(rows(read('wilds-guide.html'), 'ranks-table').map(r => [r[0], Number(r[1].replace(/,/g, ''))]), Ar.RANKS.map(r => [r.name, r.min]));
+    // and what each rank pays at the end of a season
+    assert.deepEqual(rows(read('wilds-guide.html'), 'ranks-table').map(r => [Number(r[2].replace(/,/g, '')), r[3] === 'Yes']),
+        Ar.RANKS.map(r => [Ar.SEASON.rewards[r.id].glory, !!Ar.SEASON.rewards[r.id].title]));
+    assert.match(read('wilds-guide.html'), new RegExp('at least <b>' + Ar.SEASON.minGames + ' rated matches</b>'));
     const stakes = Ar.RULES.stakes.filter(Boolean);
     assert.ok(g.includes(`${stakes[0].toLocaleString('en-US')} to ${stakes.at(-1).toLocaleString('en-US')} rubies each`), 'stakes');
     for (const z of D.ZONE_ORDER.filter(id => D.ZONES[id].wards)) assert.ok(g.includes(D.TIERS[D.ZONES[z].tier + 1].name), D.TIERS[D.ZONES[z].tier + 1].name + ' gear is named');

@@ -398,17 +398,25 @@
         WHW.sfx('boss');
         WHW.save();
     }
-    // the leaderboards (Arena): 'top' (rating) and 'waves' (the Proving Grounds' best waves). Everyone's records, read once;
-    // and mine, written when it changes (after a match; at a new best wave)
+    // the leaderboards (Arena): 'season' (this month's ratings), 'last' (last month's, read only), 'waves' (the Proving
+    // Grounds' best waves) and the old all-time 'top' (no longer written). Everyone's records, read once; and mine, written
+    // when it changes (after a match; at a new best wave)
+    // 'season' (this month's ratings) and 'last' (last month's): wilds/v1/arena/season/s{YYYY-MM}, by the server's clock
     const BOARDS = { top: TOP_PATH, waves: 'wilds/v1/arena/waves' };
+    function boardPath(kind) {
+        if (kind === 'season' || kind === 'last') {
+            const id = Ar.seasonOf(ON.db.serverNow());
+            return 'wilds/v1/arena/season/' + Ar.seasonKey(kind === 'last' ? Ar.prevSeason(id) : id);
+        }
+        return BOARDS[kind] || null;
+    }
     ON.readBoard = function (kind, cb) {
-        if (!ON.db || !BOARDS[kind]) { cb(null); return; }
+        const path = ON.db && boardPath(kind);
+        if (!path) { cb(null); return; }
         let off = null, done = false;
-        off = ON.db.onValue(BOARDS[kind], (v) => { if (done) return; done = true; cb(v || {}); setTimeout(() => off && off(), 0); });
+        off = ON.db.onValue(path, (v) => { if (done) return; done = true; cb(v || {}); setTimeout(() => off && off(), 0); });
     };
-    ON.writeBoard = function (kind, rec) { if (ON.db && BOARDS[kind]) ON.db.set(BOARDS[kind] + '/' + ON.uid, rec); };
-    ON.readTop = (cb) => ON.readBoard('top', cb);
-    ON.writeTop = (rec) => ON.writeBoard('top', rec);
+    ON.writeBoard = function (kind, rec) { const path = ON.db && kind !== 'last' && boardPath(kind); if (path) ON.db.set(path + '/' + ON.uid, rec); };
 
     // ---------------- PvP ----------------
     ON.hitRemote = function (r, h) {

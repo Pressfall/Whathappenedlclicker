@@ -166,6 +166,9 @@
         { key: 'w_arena25', cat: 'The Wilds', name: 'Crowd Favourite', desc: 'Win 25 arena matches.', title: 'Crowd Favourite', rarity: 'epic', badge: '📣', stat: 'wildsArenaWins', target: 25 },
         { key: 'w_team1', cat: 'The Wilds', name: 'Better Together', desc: 'Win a 2v2 or 3v3 team battle.', title: 'Teammate', rarity: 'rare', badge: '🤝', stat: 'wildsTeamWins', target: 1 },
         { key: 'w_rank_plat', cat: 'The Wilds', name: 'Platinum Gladiator', desc: 'Reach an arena rating of 1,400 (Platinum).', title: 'Platinum Gladiator', rarity: 'epic', badge: '💠', stat: 'wildsRating', target: 1400 },
+        // Arena seasons: wildsSeasonBest is the best rank a finished season reached (core/world-arena.js RANKS index + 1: Gold 3, Champion 6)
+        { key: 'w_season_gold', cat: 'The Wilds', name: 'A Good Month', desc: 'Finish an Arena season at Gold or better, with at least 5 rated matches.', title: 'Season Regular', rarity: 'rare', badge: '📅', stat: 'wildsSeasonBest', target: 3 },
+        { key: 'w_season_champ', cat: 'The Wilds', name: 'Champion of the Month', desc: 'Finish an Arena season as Champion.', title: 'Monthly Champion', rarity: 'legendary', badge: '🗓️', stat: 'wildsSeasonBest', target: 6 },
         { key: 'w_pit10', cat: 'The Wilds', name: 'King of the Pit', desc: 'Knock out 10 players in the Pit.', title: 'Pit Fighter', rarity: 'rare', badge: '🕳️', stat: 'wildsPitKOs', target: 10 },
         { key: 'w_wager', cat: 'The Wilds', name: 'High Roller', desc: 'Win a duel played for rubies.', title: 'High Roller', rarity: 'rare', badge: '🎲', stat: 'wildsWagerWins', target: 1 },
         { key: 'w_wave10', cat: 'The Wilds', name: 'Holding the Line', desc: 'Clear wave 10 in the Proving Grounds.', title: 'Line Holder', rarity: 'rare', badge: '🌊', stat: 'wildsWaveBest', target: 10 },
@@ -285,7 +288,7 @@
             wildsHall: (w.secrets || {}).hallDoor === true ? 1 : 0,
             wildsWards: wWards, wildsTopTier: wTier,
             wildsArenaWins: wc(wa.w), wildsTeamWins: wc(wa.teamW), wildsRating: wc(wa.rating), wildsPitKOs: wc(wa.pitKO),
-            wildsWagerWins: wc(wa.wagerWins), wildsWaveBest: wc(wa.waveBest),
+            wildsWagerWins: wc(wa.wagerWins), wildsWaveBest: wc(wa.waveBest), wildsSeasonBest: wc(wa.seasonBest),
             // hero guilds owned: all of them, and the most of any one hero
             wildsGuilds: Object.values((w.guilds && w.guilds.owned) || {}).reduce((a, n) => a + wc(n), 0),
             wildsGuildTop: Math.max(0, ...Object.values((w.guilds && w.guilds.owned) || {}).map(wc)),

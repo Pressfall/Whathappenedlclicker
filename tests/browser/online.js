@@ -52,7 +52,13 @@ async function main() {
         await new Promise((r) => ws.addEventListener('open', r));
         let id = 0; const pending = new Map(); const events = [];
         ws.addEventListener('message', (m) => { const msg = JSON.parse(m.data); if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); } else events.push(msg); });
-        const send = (method, params = {}, sessionId) => new Promise((res) => { const i = ++id; pending.set(i, res); ws.send(JSON.stringify({ id: i, method, params, sessionId })); });
+        // a call the browser never answers gives up after a minute (so a stuck run fails its checks instead of hanging)
+        const send = (method, params = {}, sessionId) => new Promise((res) => {
+            const i = ++id;
+            const timer = setTimeout(() => { if (pending.delete(i)) { console.log('(no answer from the browser to ' + method + ' after 60 s)'); res({ error: { message: 'timeout' } }); } }, 60000);
+            pending.set(i, (msg) => { clearTimeout(timer); res(msg); });
+            ws.send(JSON.stringify({ id: i, method, params, sessionId }));
+        });
         // one player: an isolated browser context (its own storage) with one page
         async function player(name, opts = {}) {
             const ctx = (await send('Target.createBrowserContext', {})).result.browserContextId;
@@ -333,7 +339,9 @@ async function main() {
         // ---- the leaderboards ----
         const board = (p, kind) => p.evalJs(`new Promise(r => WHW.online.readBoard("${kind}", t => r(Object.keys(t || {}).sort().join(","))))`);
         const uids = [await a.evalJs('WHW.online.uid'), await b.evalJs('WHW.online.uid')].sort().join(',');
-        check('boards: both players are on the rating board', await board(a, 'top') === uids, await board(a, 'top'));
+        check('boards: both players are on this season\'s rating board, with their season\'s matches', await board(a, 'season') === uids &&
+            await a.evalJs('new Promise(r => WHW.online.readBoard("season", t => r(WHWorldArena.topList(t).every(x => x.g >= 1))))'), await board(a, 'season'));
+        check('boards: the season board is this month\'s (UTC), and last month\'s is a different one', await a.evalJs(`(() => { const id = WHWorldArena.seasonOf(WHW.online.db.serverNow()); return WHW.game.state.arena.season.id === id && WHWorldArena.prevSeason(id) !== id; })()`));
         await b.waitFor(`new Promise(r => WHW.online.readBoard("waves", t => r(Object.keys(t || {}).length === 2)))`, 5000);
         check('boards: both players are on the waves board, with their best wave', await board(b, 'waves') === uids &&
             await a.evalJs('new Promise(r => WHW.online.readBoard("waves", t => r(WHWorldArena.wavesList(t)[0].w >= 1)))'), await board(b, 'waves'));

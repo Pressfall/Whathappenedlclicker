@@ -66,6 +66,17 @@
         { id: 'coffer', name: "Champion's Coffer (a Golden Chest for your game)", glory: 500, coffer: 2, weekly: true },
     ];
     const SHOP_BY_ID = Object.fromEntries(SHOP.map(x => [x.id, x]));
+    // Seasons: one calendar month in UTC (the same for everyone, like the board). At the turn every rating moves halfway back
+    // to the start (softReset), and a player who played minGames rated matches or more claims a reward for the best rank they
+    // reached that season: Glory (outside the daily caps, once a season) and, from Gold up, a title for that season.
+    const SEASON = {
+        minGames: 5,
+        rewards: { bronze: { glory: 100 }, silver: { glory: 250 }, gold: { glory: 500, title: true }, platinum: { glory: 800, title: true },
+            diamond: { glory: 1200, title: true }, champion: { glory: 2000, title: true } },
+    };
+    const SEASON_RE = /^20\d{2}-(0[1-9]|1[0-2])$/;
+    const SEASON_TITLE_RE = /^(gold|platinum|diamond|champion):(20\d{2}-(0[1-9]|1[0-2]))$/;
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const UID_RE = /^[A-Za-z0-9_-]{4,64}$/;
     const NAME_RE = /^[A-Za-z0-9 _.\-]{1,16}$/;
     const MID_RE = /^[A-Za-z0-9]{4,24}$/;
@@ -235,12 +246,64 @@
     }
     const toPlayer = (q) => ({ u: q.uid, n: q.n, r: clampRating(q.r) });
 
+    // ---------------- seasons ----------------
+    function seasonOf(now) { const d = new Date(now); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); }
+    function seasonEndsAt(now) { const d = new Date(now); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1); }
+    function prevSeason(id) { const [y, m] = id.split('-').map(Number); return m === 1 ? (y - 1) + '-12' : y + '-' + String(m - 1).padStart(2, '0'); }
+    // the season's board under wilds/v1/arena/season/ (database keys can't start with a digit in the rules' regex)
+    function seasonKey(id) { return 's' + id; }
+    function seasonLabel(id) { const [y, m] = id.split('-'); return MONTHS[Number(m) - 1] + " '" + y.slice(2); }
+    function softReset(r) { return clampRating(Math.round(RULES.elo.start + (clampRating(r) - RULES.elo.start) / 2)); }
+    function rankById(id) { return RANKS.find(r => r.id === id) || null; }
+    function seasonTitle(rankId, id) { const r = rankById(rankId); return r ? r.name + ' · ' + seasonLabel(id) : ''; }
+    function freshSeason(id, rating) { return { id, peak: clampRating(rating), w: 0, l: 0, d: 0 }; }
+    // A new month: the season that ended becomes seasonLast (when it had a match), the rating is softly reset, and the new
+    // season starts from it. The first time a save sees seasons it just joins the current one. A clock that went back is
+    // ignored. Returns true when it turned.
+    function rollSeason(a, now) {
+        const id = seasonOf(now), cur = a.season && a.season.id;
+        if (cur === id || (cur && cur > id)) return false;
+        if (cur) {
+            const games = a.season.w + a.season.l + a.season.d;
+            if (games > 0) {
+                const rank = rankFor(a.season.peak);
+                a.seasonLast = { id: cur, peak: a.season.peak, rank: rank.id, games, claimed: false };
+                if (games >= SEASON.minGames) a.seasonBest = Math.max(a.seasonBest || 0, RANKS.indexOf(rank) + 1);
+            }
+            a.rating = softReset(a.rating);
+        }
+        a.season = freshSeason(id, a.rating);
+        return true;
+    }
+    // A rated match finished (core/world-logic.js arenaResult)
+    function seasonGame(a, o) {
+        const s = a.season;
+        if (o.won) s.w++; else if (o.lost) s.l++; else s.d++;
+        s.peak = Math.max(s.peak, a.rating);
+    }
+    // The ended season's reward. Returns { ok, reason?, glory, title }
+    function claimSeason(a) {
+        const last = a.seasonLast;
+        if (!last) return { ok: false, reason: 'none' };
+        if (last.claimed) return { ok: false, reason: 'claimed' };
+        if (last.games < SEASON.minGames) return { ok: false, reason: 'games' };
+        const pay = SEASON.rewards[last.rank] || SEASON.rewards.bronze;
+        last.claimed = true;
+        a.glory += pay.glory; a.gloryTotal += pay.glory;
+        let title = '';
+        if (pay.title) { a.seasonTitles[last.rank + ':' + last.id] = true; title = seasonTitle(last.rank, last.id); a.title = title; }
+        return { ok: true, glory: pay.glory, title };
+    }
+
     // ---------------- the save ----------------
     function freshArena() {
         return { glory: 0, gloryTotal: 0, rating: RULES.elo.start, peak: RULES.elo.start, w: 0, l: 0, d: 0, teamW: 0, teamL: 0,
             pitKO: 0, pitDown: 0, waveBest: 0, wagerWins: 0, wagerNet: 0, titles: {}, title: '', coffer: '',
             bought: { week: '', n: {} }, // this week's count of each Glory shop item that has a weekly limit (perWeek)
             tourWins: 0, tourPlayed: 0, tourPrize: 0, tours: {}, // tournaments: s.arena.tours is cleaned by core/world-logic.js migrate (core/world-tour.js)
+            // seasons: this one (id '' until the save first sees seasons), the one that ended, the season titles won, and the
+            // best rank a finished season reached (RANKS index + 1; 0 for none)
+            season: { id: '', peak: RULES.elo.start, w: 0, l: 0, d: 0 }, seasonLast: null, seasonTitles: {}, seasonBest: 0,
             day: { key: '', match: 0, pit: 0, waves: 0, rubyWins: 0, vs: {} }, live: null };
     }
     function cleanArena(raw) {
@@ -251,6 +314,15 @@
         a.rating = clampRating(raw.rating === undefined ? RULES.elo.start : raw.rating);
         a.peak = Math.max(a.rating, clampRating(raw.peak === undefined ? a.rating : raw.peak));
         if (isObj(raw.titles)) for (const t in raw.titles) if (raw.titles[t] && SHOP.some(x => x.title === t)) a.titles[t] = true;
+        if (isObj(raw.seasonTitles)) for (const k in raw.seasonTitles) if (raw.seasonTitles[k] === true && SEASON_TITLE_RE.test(k)) a.seasonTitles[k] = true;
+        const se = isObj(raw.season) ? raw.season : {};
+        a.season = { id: typeof se.id === 'string' && SEASON_RE.test(se.id) ? se.id : '', peak: clampRating(se.peak === undefined ? a.rating : se.peak),
+            w: int(se.w, 0, 1e6), l: int(se.l, 0, 1e6), d: int(se.d, 0, 1e6) };
+        a.season.peak = Math.max(a.season.peak, a.rating);
+        const sl = isObj(raw.seasonLast) ? raw.seasonLast : null;
+        a.seasonLast = sl && typeof sl.id === 'string' && SEASON_RE.test(sl.id) && rankById(sl.rank)
+            ? { id: sl.id, peak: clampRating(sl.peak), rank: sl.rank, games: int(sl.games, 0, 1e6), claimed: sl.claimed === true } : null;
+        a.seasonBest = int(raw.seasonBest, 0, RANKS.length);
         a.title = typeof raw.title === 'string' && titlesOf(a).includes(raw.title) ? raw.title : '';
         a.coffer = typeof raw.coffer === 'string' ? raw.coffer.slice(0, 12) : '';
         const b = isObj(raw.bought) ? raw.bought : {};
@@ -263,7 +335,10 @@
         return a;
     }
     // every title this player may show: those bought, and the rank titles up to their best rating
-    function titlesOf(a) { return Object.keys(a.titles || {}).filter(t => a.titles[t]).concat(RANKS.filter(r => r.min > 0 && (a.peak || 0) >= r.min).map(r => r.name)); }
+    function titlesOf(a) {
+        const season = Object.keys(a.seasonTitles || {}).map(k => SEASON_TITLE_RE.exec(k)).filter(Boolean).map(m => seasonTitle(m[1], m[2]));
+        return Object.keys(a.titles || {}).filter(t => a.titles[t]).concat(RANKS.filter(r => r.min > 0 && (a.peak || 0) >= r.min).map(r => r.name), season);
+    }
     // A new day starts the caps again (dayKey: the local day, the way the rest of the Wilds counts days)
     function refreshDay(a, dayKey) { if (a.day.key !== dayKey) a.day = { key: dayKey, match: 0, pit: 0, waves: 0, rubyWins: 0, vs: {} }; return a.day; }
     // Glory for something, inside today's cap for its kind ('match' | 'pit' | 'waves'). Returns what was given.
@@ -279,7 +354,12 @@
     function topRecord(name, a, now) { return { n: String(name || 'Player').slice(0, 16), r: clampRating(a.rating), w: int(a.w, 0, 1e6), l: int(a.l, 0, 1e6), ti: String(a.title || '').slice(0, 24), t: Math.round(now) }; }
     function sanitizeTop(raw) {
         if (!isObj(raw) || typeof raw.n !== 'string' || !NAME_RE.test(raw.n)) return null;
-        return { n: raw.n, r: clampRating(raw.r), w: int(raw.w, 0, 1e6), l: int(raw.l, 0, 1e6), ti: typeof raw.ti === 'string' ? raw.ti.slice(0, 24) : '', t: Number(raw.t) || 0 };
+        return { n: raw.n, r: clampRating(raw.r), w: int(raw.w, 0, 1e6), l: int(raw.l, 0, 1e6), g: int(raw.g, 0, 1e6), ti: typeof raw.ti === 'string' ? raw.ti.slice(0, 24) : '', t: Number(raw.t) || 0 };
+    }
+    // wilds/v1/arena/season/s{YYYY-MM}/{uid}: the season's board, the same records with this season's games (g) and record
+    function seasonRecord(name, a, now) {
+        const se = a.season || freshSeason('', a.rating);
+        return { n: String(name || 'Player').slice(0, 16), r: clampRating(a.rating), w: int(se.w, 0, 1e6), l: int(se.l, 0, 1e6), g: int(se.w + se.l + se.d, 0, 1e6), ti: String(a.title || '').slice(0, 24), t: Math.round(now) };
     }
     // the best n of a { uid: record } tree, highest rating first
     function topList(tree, n = 20) {
@@ -310,5 +390,6 @@
 
     return { MODES, RULES, GLORY, RANKS, SHOP, SHOP_BY_ID, inCircle, hitAllowed, clampRating, expected, elo, teamRating, rankFor,
         teamOf, members, newMatch, reduce, outcome, vsKey, canStake, packAsk, unpackAsk, cleanMsg, KINDS, matchmaker, pickMatches,
-        freshArena, cleanArena, titlesOf, refreshDay, giveGlory, topRecord, sanitizeTop, topList, wavesRecord, sanitizeWaves, wavesList, placeOn };
+        freshArena, cleanArena, titlesOf, refreshDay, giveGlory, topRecord, sanitizeTop, topList, wavesRecord, sanitizeWaves, wavesList, placeOn,
+        SEASON, seasonOf, seasonEndsAt, prevSeason, seasonKey, seasonLabel, softReset, seasonTitle, rollSeason, seasonGame, claimSeason, seasonRecord };
 }));

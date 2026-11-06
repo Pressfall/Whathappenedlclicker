@@ -197,7 +197,7 @@
         const g = game(), s = g.state;
         const m = Ar.newMatch(ask, me());
         if (!m.team) return;
-        if (!W.arenaEscrow(s, m)) { sendAll(ask.a.concat(ask.b), 'quit', ask.id, ''); WHW.toast("You couldn't cover the stake, so you forfeit.", 'bad'); return; }
+        if (!W.arenaEscrow(s, m, sNow())) { sendAll(ask.a.concat(ask.b), 'quit', ask.id, ''); WHW.toast("You couldn't cover the stake, so you forfeit.", 'bad'); return; }
         AR.match = m; AR.queue = ''; AR.prepared = 0; AR.missing = {}; AR.invite = null; AR.accepted = null; AR.pending = null;
         // a tournament that locks gear to a tier: everyone fights this duel with the same kit (core/world-logic.js lendKit)
         const tg = m.tour && WHW.tour ? WHW.tour.tagOf(m.tour) : null;
@@ -248,7 +248,7 @@
     function finish() {
         const m = AR.match, g = game(), s = g.state;
         const r = W.arenaResult(s, m, sNow());
-        if (online()) net().writeTop(Ar.topRecord(net().name(), s.arena, sNow()));
+        if (online()) net().writeBoard('season', Ar.seasonRecord(net().name(), s.arena, sNow())); // the season's board (the old all-time board is no longer written)
         giveBackKit();
         if (m.tour && WHW.tour) WHW.tour.duelOver(m, r);
         const head = r.won ? '🏆 Victory!' : r.draw ? 'A draw' : 'Defeat';
@@ -285,7 +285,28 @@
         game().player.dead = false;
         WHW.save();
     };
-    AR.zoneEntered = function (from, to) { if (from === 'arena' && to !== 'arena') AR.leaving(); };
+    AR.zoneEntered = function (from, to) {
+        if (from === 'arena' && to !== 'arena') AR.leaving();
+        if (to === 'arena' && from !== 'arena') {
+            const s = game().state;
+            if (W.rollSeason && W.rollSeason(s, sNow())) WHW.save();
+            const last = s.arena.seasonLast;
+            if (seasonClaimable(s.arena)) WHW.toast('🏟️ The ' + Ar.seasonLabel(last.id) + ' season is over: you reached ' + Ar.RANKS.find(r => r.id === last.rank).name + '. Claim your reward from the Arena Master.', 'gold');
+        }
+    };
+    const seasonClaimable = (a) => !!(a.seasonLast && !a.seasonLast.claimed && a.seasonLast.games >= Ar.SEASON.minGames);
+    function seasonLeft(now) {
+        const ms = Math.max(0, Ar.seasonEndsAt(now) - now), h = Math.floor(ms / 3600000);
+        return h >= 24 ? Math.floor(h / 24) + 'd ' + (h % 24) + 'h' : h + 'h ' + Math.floor((ms % 3600000) / 60000) + 'm';
+    }
+    function seasonCard(a) {
+        if (!seasonClaimable(a)) return '';
+        const last = a.seasonLast, rank = Ar.RANKS.find(r => r.id === last.rank), pay = Ar.SEASON.rewards[last.rank];
+        return `<div class="w-section w-season-done"><h3>🏆 The ${esc(Ar.seasonLabel(last.id))} season is over</h3>
+            <p>You reached <b style="color:${rank.color}">${esc(rank.name)}</b> (best rating ${last.peak}) in ${last.games} rated matches.</p>
+            <p>Your reward: <b>${fmt(pay.glory)} Glory</b>${pay.title ? ' and the title <b>' + esc(Ar.seasonTitle(last.rank, last.id)) + '</b>' : ''}.</p>
+            <div class="w-card-actions"><button class="btn btn-gold" data-arseason>Claim</button></div></div>`;
+    }
     AR.forfeit = function () { if (AR.match && !AR.match.result) AR.leaving(); };
 
     // ---------------- each step ----------------
@@ -381,7 +402,7 @@
     }
 
     // ---------------- menus ----------------
-    let tab = 'play', board = 'top';
+    let tab = 'play', board = 'season';
     AR.openMenu = function (which) {
         if (which) tab = which;
         WHW.ui.modal('🏟️ The Arena', '', { wide: true, render: renderMenu });
@@ -391,7 +412,8 @@
         const g = game(), s = g.state, a = s.arena, body = document.getElementById('wModalBody');
         const rank = Ar.rankFor(a.rating), tabsHtml = ['play', 'tour', 'rank', 'shop', 'record'].map(t => `<button class="w-tab${t === tab ? ' is-on' : ''}" data-artab="${t}">${{ play: 'Play', tour: 'Tournaments', rank: 'Leaderboards', shop: 'Glory shop', record: 'Your record' }[t]}</button>`).join('');
         let html = `<div class="w-tabs">${tabsHtml}</div>
-            <div class="w-arena-me"><span style="color:${rank.color}">● ${esc(rank.name)}</span> · rating <b>${a.rating}</b> · <b>${fmt(a.glory)}</b> Glory${a.title ? ' · title: <b>' + esc(a.title) + '</b>' : ''}</div>`;
+            <div class="w-arena-me"><span style="color:${rank.color}">● ${esc(rank.name)}</span> · rating <b>${a.rating}</b> · <b>${fmt(a.glory)}</b> Glory${a.title ? ' · title: <b>' + esc(a.title) + '</b>' : ''}</div>
+            <div class="w-arena-season">Season <b>${esc(Ar.seasonLabel(a.season.id || Ar.seasonOf(sNow())))}</b>: ends in ${seasonLeft(sNow())} · ${a.season.w + a.season.l + a.season.d} rated matches (${Ar.SEASON.minGames} for a reward) · best <b>${a.season.peak}</b> (${esc(Ar.rankFor(a.season.peak).name)})</div>${seasonCard(a)}`;
         if (tab === 'play') {
             const party = partyMembers();
             html += `<p class="w-note"><b>The Pit</b>: walk into the sand circle in the middle and fight anyone else in it. <b>Nothing is ever lost in the Arena</b>: a knockout drops nothing, and you are back up at the Pit's gate a moment later. Each knockout earns Glory.</p>
@@ -402,8 +424,9 @@
         } else if (tab === 'tour') {
             html += '<div id="arTour"></div>';
         } else if (tab === 'rank') {
-            html += `<div class="w-row">${[['top', '⚔️ Highest rating'], ['waves', '🌊 Highest wave']].map(([k, l]) => `<button class="btn btn-sm ${board === k ? 'btn-gold' : 'btn-ghost'}" data-arboard="${k}">${l}</button>`).join('')}</div>
-                <div id="arTop"><p class="muted">Loading…</p></div><p class="muted">${board === 'top' ? 'Ratings come from duels and team battles (Elo).' : 'The furthest wave reached in the Proving Grounds, with how many players were in that run.'} Each player's own game reports it, so these boards are for fun, like the game's leaderboard.</p>`;
+            const nowS = sNow(), lastId = Ar.prevSeason(Ar.seasonOf(nowS));
+            html += `<div class="w-row">${[['season', '⚔️ This season'], ['last', '📜 ' + Ar.seasonLabel(lastId)], ['waves', '🌊 Highest wave']].map(([k, l]) => `<button class="btn btn-sm ${board === k ? 'btn-gold' : 'btn-ghost'}" data-arboard="${k}">${esc(l)}</button>`).join('')}</div>
+                <div id="arTop"><p class="muted">Loading…</p></div><p class="muted">${board === 'season' ? 'Ratings from duels and team battles (Elo) this season. A new season starts on the 1st of every month (UTC): every rating moves halfway back to 1000, and the board starts empty.' : board === 'last' ? 'How the ' + esc(Ar.seasonLabel(lastId)) + ' season ended.' : 'The furthest wave reached in the Proving Grounds, with how many players were in that run.'} Each player's own game reports it, so these boards are for fun, like the game's leaderboard.</p>`;
         } else if (tab === 'shop') {
             const nowT = Date.now();
             html += `<p class="w-note">You have <b>${fmt(a.glory)} Glory</b>. Gems and Golden bought here go to your game and count toward the Wilds' daily limit (${D.CAPS.gemsPerDay} gems, ${D.CAPS.goldenPerDay} Golden a day). Follower packs wait on the game's Followers page, to open free. A Guild Chest holds one hero guild at random (see the Guildmaster by the Rune Altar).</p>`;
@@ -419,7 +442,7 @@
             const titles = Ar.titlesOf(a);
             html += `<div class="w-card-stats"><span>Tournaments ${a.tourPlayed}</span><span>Tournament wins ${a.tourWins}</span><span>Prize rubies ${fmt(a.tourPrize)}</span><span>Wins ${a.w}</span><span>Losses ${a.l}</span><span>Draws ${a.d}</span><span>Team wins ${a.teamW}</span><span>Pit knockouts ${a.pitKO}</span><span>Best wave ${a.waveBest}</span><span>Best rating ${a.peak}</span><span>Wagers won ${a.wagerWins} (${a.wagerNet >= 0 ? '+' : ''}${fmt(a.wagerNet)} rubies)</span></div>
                 <div class="w-section"><h3>Title</h3><select id="arTitle"><option value="">None</option>${titles.map(t => `<option ${t === a.title ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>
-                <p class="muted">Shown under your name to other players. Rank titles come with your best rating; others from the Glory shop.</p></div>`;
+                <p class="muted">Shown under your name to other players. Rank titles come with your best rating, season titles with a season's result (Gold or better), others from the Glory shop.</p></div>`;
         }
         body.innerHTML = html;
         body.querySelectorAll('[data-artab]').forEach(b => b.addEventListener('click', () => { tab = b.dataset.artab; renderMenu(); }));
@@ -441,6 +464,12 @@
             }
             renderMenu();
         }));
+        const cs = body.querySelector('[data-arseason]');
+        if (cs) cs.addEventListener('click', () => {
+            const r = Ar.claimSeason(s.arena);
+            if (r.ok) { WHW.toast('🏆 +' + fmt(r.glory) + ' Glory' + (r.title ? ' and the title ' + r.title + ' (you are wearing it)' : '') + '.', 'gold'); WHW.sfx('gem'); WHW.save(); if (net()) net().infoKey = ''; }
+            renderMenu();
+        });
         const ts = body.querySelector('#arTitle'); if (ts) ts.addEventListener('change', () => { W.setTitle(s, ts.value); WHW.save(); if (net()) net().infoKey = ''; renderMenu(); });
         if (tab === 'rank') {
             const box = body.querySelector('#arTop');
@@ -453,7 +482,7 @@
                     const mine = (r) => (r.uid === me() ? ' class="is-me"' : '');
                     const row = waves ? (r) => `<li${mine(r)}><b>${esc(r.n)}</b>${r.ti ? ' <span class="muted">' + esc(r.ti) + '</span>' : ''} wave <b>${r.w}</b> <span class="muted">${r.p === 1 ? 'alone' : 'with ' + r.p + ' players'}</span></li>`
                         : (r) => `<li${mine(r)}><b>${esc(r.n)}</b>${r.ti ? ' <span class="muted">' + esc(r.ti) + '</span>' : ''} <span style="color:${Ar.rankFor(r.r).color}">${r.r}</span> <span class="muted">${esc(Ar.rankFor(r.r).name)} · ${r.w}W ${r.l}L</span></li>`;
-                    const you = place ? `<p>You are <b>#${place}</b>.</p>` : `<p class="muted">You aren't on this board yet: ${waves ? 'clear a wave in the Proving Grounds' : 'finish a duel or team battle'}.</p>`;
+                    const you = place ? `<p>You are <b>#${place}</b>.</p>` : `<p class="muted">${kind === 'last' ? 'You weren\'t on that season\'s board.' : 'You aren\'t on this board yet: ' + (waves ? 'clear a wave in the Proving Grounds' : 'finish a duel or team battle this season')}.</p>`;
                     box.innerHTML = (list.length ? `<ol class="w-arena-top">${list.map(row).join('')}</ol>` : `<p class="muted">${waves ? 'Nobody has cleared a wave yet' : 'Nobody has fought yet'}. Be the first.</p>`) + you;
                 });
             }

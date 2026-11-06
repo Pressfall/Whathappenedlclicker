@@ -174,6 +174,7 @@
         s.seals = {};
         if (isObj(raw.seals)) for (const z in raw.seals) { const n = wardCount(z), v = int(raw.seals[z], (1 << n) - 1); if (n && v) s.seals[z] = v; }
         s.arena = Arena.cleanArena(raw.arena);
+        Arena.rollSeason(s.arena, now); // a new month since the last visit: the season turns
         s.arena.tours = Tour.cleanTours(raw.arena && raw.arena.tours);
         // a match was still on when this save was last written (the page closed or reloaded mid-match): that is a forfeit,
         // so leaving can't dodge a loss. The stake was already paid.
@@ -822,8 +823,9 @@
     // ---------------- the Arena ----------------
     // A match is about to start (its 'go'): the stake is paid now, and what losing would cost is noted in the save, so a page
     // closed mid-match counts it as lost (migrate). Returns false when the stake can't be paid.
-    function arenaEscrow(s, m) {
+    function arenaEscrow(s, m, now) {
         if (m.stake && s.rubies < m.stake) return false;
+        if (now) Arena.rollSeason(s.arena, now);
         s.rubies -= m.stake;
         const lose = Arena.outcome(Object.assign({}, m, { result: m.team === 'a' ? 'b' : 'a' }), s.arena.rating, s.arena.day.vs[Arena.vsKey(m)] || 0).ratingDelta;
         s.arena.live = { mid: m.id, stake: m.stake, delta: Math.min(0, lose), at: 0 };
@@ -831,12 +833,15 @@
     }
     // A finished match: rating, record, Glory, the day's first-win rubies and the wager. Returns what it came to.
     function arenaResult(s, m, now) {
-        const a = s.arena, day = Arena.refreshDay(a, dayKey(now)), key = Arena.vsKey(m);
+        const a = s.arena;
+        Arena.rollSeason(a, now); // first, so a match that ends in a new month counts toward the new season
+        const day = Arena.refreshDay(a, dayKey(now)), key = Arena.vsKey(m);
         const o = Arena.outcome(m, a.rating, day.vs[key] || 0);
         day.vs[key] = (day.vs[key] || 0) + 1;
         a.live = null;
         a.rating = o.newRating; a.peak = Math.max(a.peak, a.rating);
         if (o.won) { a.w++; if (o.team) a.teamW++; } else if (o.lost) { a.l++; if (o.team) a.teamL++; } else a.d++;
+        if (o.counts) Arena.seasonGame(a, o); // only rated matches count toward the season (not the same opponent all day)
         let glory = 0, rubies = 0;
         if (o.counts) {
             const myRounds = m.history.filter(h => h === m.team).length;
@@ -907,6 +912,8 @@
         questEvent(s, { kind: 'wave' });
         return { rubies, glory, milestone: r.milestone, best: first };
     }
+    // the Arena's season turned (a new month): see core/world-arena.js rollSeason. Returns true when it did.
+    function rollSeason(s, now) { return Arena.rollSeason(s.arena, now); }
     function setTitle(s, title) {
         if (title && !Arena.titlesOf(s.arena).includes(title)) return false;
         s.arena.title = title || '';
@@ -1527,7 +1534,7 @@
         refreshCaps, gemsLeftToday, goldenLeftToday, grantGems, grantGolden,
         rollLoot, rollRubies, monsterLoot, nodeLoot, bossLoot, rivalLoot, die, recoverGrave, nextZoneAfter,
         wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal,
-        arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, arenaWeekLeft, setTitle, waveCleared,
+        arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, arenaWeekLeft, setTitle, rollSeason, waveCleared,
         sell, buy, exchange, classId, classOf, classProgress, classState, unlockClass, setClass, skillDef, skillState, learnSkill, loadoutOf, equipAbility, unequipAbility, abilityKit, treeOrder,
         godState, upgradeGod, isHallWord, speak, hiddenShopState, buyHidden, questOffer, questProgress, acceptQuest, turnInQuest, abandonQuest, questEvent, activeQuests, furthestTier, noteNode, nodeReadyAt, pruneNodes, serialize,
         setClickerView, getClickerView, crewHere, greetCrew, crewShop, crewBuy, crewTrades, crewTrade, renownClaimable, claimRenown,
