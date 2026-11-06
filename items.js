@@ -781,7 +781,8 @@
             afterChange();
         });
     }
-    // Lootboxes earned in the Wilds (main.js applyWorldRewards). counts: boxes per tier. Returns how many were added.
+    // Lootboxes earned in the Wilds (main.js applyWorldRewards), or from a challenge (challenges-panel.js, opts.notWorld:
+    // not counted as from the Wilds). counts: boxes per tier. Returns how many were added.
     function grantBoxes(counts, opts) {
         const s = st();
         let n = 0;
@@ -793,7 +794,7 @@
             noteTier(i);
         });
         if (!n) return 0;
-        s.stats.fromWorld += n;
+        if (!(opts && opts.notWorld)) s.stats.fromWorld += n;
         save();
         afterChange();
         if (!(opts && opts.quiet)) sfx('spawn');

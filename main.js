@@ -373,25 +373,36 @@ function unlockAchievement(key) {
 
 // All achievements live in achievements-data.js; check them against the live game every couple of seconds.
 let _lastDataAchCheck = 0;
+// What the save doesn't have yet (it is written every few seconds): this page's own numbers, for achievements-data.js
+// snapshot(). specials: also count the specials owned (slower; achievements need it, challenges don't).
+function liveAchievementData(specials) {
+    const upgrades = [0];
+    for (let i = 1; i <= UPGRADE_COUNT; i++) upgrades.push(numericLevel(getUpgradeLevel(i)));
+    const live = {
+        cps: Number(cps) || 0, clickPower: Number(clickPower) || 0,
+        prestiges: Number(prestigeTimes) || 0, goldenEver: Math.max(Number(totalGoldenEver) || 0, Number(goldenWhat) || 0), gems: Number(diamonds) || 0,
+        upgrades,
+        divineArgon: Number(divineArgonLevel) || 0, divineSomalian: Number(divineSomalianLevel) || 0,
+        divineAssassin: Number(divineAssassinLevel) || 0, divineCollector: Number(divineCollectorLevel) || 0,
+        divineMoneyMan: Number(divineMoneyManLevel) || 0, divineSpirit: Number(divineSpiritLevel) || 0,
+        divineVillager: Number(divineSimpleVillagerLevel) || 0, divineBrileyism: Number(divineBrileyismLevel) || 0,
+    };
+    if (specials && window.SPECIAL_UPGRADES) {
+        live.specialsOwned = window.SPECIAL_UPGRADES.filter(sp => { try { return !!(new Function('return ' + sp.owned))(); } catch (e) { return false; } }).length;
+        live.specialsTotal = window.SPECIAL_UPGRADES.length;
+    }
+    try { _ensureClickCountersLoaded(); if (_memLifetimeClicks !== null) live.clicks = Math.max(Number(_memLifetimeClicks) || 0, Number(_memAchClicks) || 0); } catch (e) {}
+    return live;
+}
+// achievements-data.js snapshot() with this page's live numbers (core/challenges.js measures progress on it)
+function liveSnapshot() { return window.WHA ? window.WHA.snapshot(liveAchievementData(false)) : null; }
 function checkDataAchievements(force) {
     if (!window.WHA) return;
     const now = Date.now();
     if (!force && now - _lastDataAchCheck < 2000) return;
     _lastDataAchCheck = now;
     try {
-        const upgrades = [0];
-        for (let i = 1; i <= UPGRADE_COUNT; i++) upgrades.push(numericLevel(getUpgradeLevel(i)));
-        const owned = (window.SPECIAL_UPGRADES || []).filter(sp => { try { return !!(new Function('return ' + sp.owned))(); } catch (e) { return false; } }).length;
-        const live = {
-            cps: Number(cps) || 0, clickPower: Number(clickPower) || 0,
-            prestiges: Number(prestigeTimes) || 0, goldenEver: Math.max(Number(totalGoldenEver) || 0, Number(goldenWhat) || 0), gems: Number(diamonds) || 0,
-            upgrades,
-            divineArgon: Number(divineArgonLevel) || 0, divineSomalian: Number(divineSomalianLevel) || 0,
-            divineAssassin: Number(divineAssassinLevel) || 0, divineCollector: Number(divineCollectorLevel) || 0,
-            divineMoneyMan: Number(divineMoneyManLevel) || 0, divineSpirit: Number(divineSpiritLevel) || 0,
-            divineVillager: Number(divineSimpleVillagerLevel) || 0, divineBrileyism: Number(divineBrileyismLevel) || 0,
-        };
-        if (window.SPECIAL_UPGRADES) { live.specialsOwned = owned; live.specialsTotal = window.SPECIAL_UPGRADES.length; }
+        const live = liveAchievementData(true);
         const fresh = window.WHA.checkAll(window.WHA.snapshot(live));
         fresh.forEach(a => showAchievementPopup(achievementPopupName(a), `${a.desc} Title: ${a.title}`));
         if (fresh.length) { try { populateTitleSelect(); } catch (e) {} }
@@ -2141,7 +2152,7 @@ function getRenownLevel() { const r = readRenown(); return r ? r.level : 0; }
 function getRenownBonus() {
     try { return window.WHRenown ? window.WHRenown.bonus(getRenownLevel()) : { cps: 0, click: 0, rubies: 0 }; } catch (e) { return { cps: 0, click: 0, rubies: 0 }; }
 }
-window.WHGame = Object.assign(window.WHGame || {}, { readRenown, getRenownLevel, resetRenown: () => { _renownCache.at = 0; } });
+window.WHGame = Object.assign(window.WHGame || {}, { readRenown, getRenownLevel, resetRenown: () => { _renownCache.at = 0; }, liveSnapshot });
 // Equipped followers + their totals under the stats card; only rebuilt when the team changes.
 let _followerStripKey = null;
 function renderFollowerStrip() {

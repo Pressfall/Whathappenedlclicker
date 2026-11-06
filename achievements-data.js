@@ -187,6 +187,10 @@
         { key: 'x_renown50', cat: 'Dedication', name: 'Household Name', desc: 'Reach Renown 50.', title: 'Household Name', rarity: 'rare', badge: '🥇', stat: 'renownLevel', target: 50 },
         { key: 'x_renown75', cat: 'Dedication', name: 'Both Worlds', desc: 'Reach Renown 75. One game alone can\'t get you there.', title: 'Of Both Worlds', rarity: 'epic', badge: '🌗', stat: 'renownLevel', target: 75 },
         { key: 'x_renown100', cat: 'Dedication', name: 'What Happened Legend', desc: 'Reach Renown 100, the top.', title: 'What Happened Legend', rarity: 'legendary', badge: '🌟', stat: 'renownLevel', target: 100 },
+        // ---- daily and weekly challenges (the 📋 chip in the game) ----
+        { key: 'x_chal_10', cat: 'Dedication', name: 'Clocking In', desc: 'Claim 10 daily or weekly challenges.', title: 'Punctual', rarity: 'common', badge: '📋', stat: 'challengesDone', target: 10 },
+        { key: 'x_chal_50', cat: 'Dedication', name: 'Employee of the Month', desc: 'Claim 50 daily or weekly challenges.', title: 'Employee of the Month', rarity: 'rare', badge: '🗒️', stat: 'challengesDone', target: 50 },
+        { key: 'x_chal_200', cat: 'Dedication', name: 'Never Missed a Shift', desc: 'Claim 200 daily or weekly challenges.', title: 'Never Missed a Shift', rarity: 'epic', badge: '📆', stat: 'challengesDone', target: 200 },
         // ---- misc ----
         { key: 'x_gems_100', cat: 'Collector', name: 'Shiny Rocks', desc: 'Hold 100 gems at once.', title: 'Gem Hoarder', rarity: 'uncommon', badge: '💎', stat: 'gems', target: 100 },
     ];
@@ -285,6 +289,8 @@
             // hero guilds owned: all of them, and the most of any one hero
             wildsGuilds: Object.values((w.guilds && w.guilds.owned) || {}).reduce((a, n) => a + wc(n), 0),
             wildsGuildTop: Math.max(0, ...Object.values((w.guilds && w.guilds.owned) || {}).map(wc)),
+            // daily and weekly challenges claimed (core/challenges.js, whathappened_challenges)
+            challengesDone: Math.max(0, Number((readJSON('whathappened_challenges') || {}).done) || 0),
         }, divine, live || {});
         const ups = snap.upgrades.slice(1);
         snap.upgradeMax = Math.max(0, ...ups);

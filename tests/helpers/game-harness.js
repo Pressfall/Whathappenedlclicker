@@ -14,7 +14,7 @@ const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/world-bridge.js', 'core/world-gods.js', 'core/world-crew.js', 'core/renown.js', 'core/world-guilds.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'specials.js', 'items.js', 'renown-panel.js', 'guide.js', 'save-tools.js'];
+const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/world-bridge.js', 'core/challenges.js', 'core/world-gods.js', 'core/world-crew.js', 'core/renown.js', 'core/world-guilds.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'specials.js', 'items.js', 'renown-panel.js', 'challenges-panel.js', 'guide.js', 'save-tools.js'];
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 let cache = null;

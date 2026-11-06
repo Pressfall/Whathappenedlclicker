@@ -45,6 +45,8 @@
         'whathappened_world', 'whathappened_world_ack', 'whathappened_world_inbox', 'whathappened_world_owed', 'whathappened_golden_trades',
         // the best level each upgrade ever reached (the crew in the Wilds) and the game's Renown milestone claims
         'whathappened_upgrade_best', 'whathappened_renown',
+        // the daily and weekly challenges (core/challenges.js)
+        'whathappened_challenges',
     ]);
     // achievement flags (ach_<key>) and clan event rewards already claimed (so they can't be claimed again on another device)
     const SYNC_PREFIXES = ['ach_', 'whathappened_pp_claimed_', 'whathappened_bf_claimed_', 'whathappened_eb_claimed_',

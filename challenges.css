@@ -1,0 +1,75 @@
+/* Daily and weekly challenges (challenges-panel.js). index.html only. The panel reuses Renown's frame (renown.css .rn-*). */
+
+/* ---- the top-bar chip ---- */
+.challenge-chip {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    height: 40px;
+    min-width: 40px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(110, 170, 255, 0.45);
+    background: linear-gradient(180deg, rgba(22, 40, 74, 0.94), rgba(10, 18, 36, 0.95));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #e3eeff;
+    font-weight: 800;
+}
+.challenge-chip:hover { transform: translateY(-1px); border-color: var(--blue); }
+.challenge-ico { font-size: 18px; line-height: 1; }
+.challenge-count {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--primary);
+    color: #04170c;
+    font-size: 11px;
+    line-height: 18px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+.challenge-count[hidden] { display: none; }
+
+/* ---- the panel ---- */
+.ch-panel { width: min(620px, 100%); }
+.ch-sec + .ch-sec, .ch-streak + .ch-sec { margin-top: 14px; }
+.ch-sec-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.ch-sec-head h4 { margin: 4px 0 8px; }
+.ch-reset { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ch-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ch-row {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+}
+.ch-row.is-done { border-color: rgba(255, 200, 61, 0.5); }
+.ch-row.is-claimed { opacity: 0.62; }
+.ch-row.is-done .rn-mini i, .ch-row.is-claimed .rn-mini i { background: var(--primary); }
+.ch-ico { font-size: 20px; text-align: center; }
+.ch-main { min-width: 0; }
+.ch-text { font-weight: 700; font-size: 13.5px; }
+.ch-sub { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.ch-reward { color: var(--text-faint); text-align: right; }
+.ch-act { display: flex; justify-content: flex-end; min-width: 74px; }
+.ch-reroll { font-size: 12px; }
+.ch-bonus, .ch-streak { margin-top: 8px; padding: 8px 11px; border-radius: var(--radius-sm); font-size: 12.5px; }
+.ch-bonus { background: rgba(255, 200, 61, 0.07); border: 1px solid rgba(255, 200, 61, 0.2); }
+.ch-bonus.is-claimed { opacity: 0.7; }
+.ch-streak { background: rgba(255, 120, 60, 0.07); border: 1px solid rgba(255, 120, 60, 0.22); color: var(--text-dim); }
+.ch-streak b { color: var(--text); }
+
+@media (max-width: 520px) {
+    .ch-row { grid-template-columns: 24px 1fr; }
+    .ch-act { grid-column: 2; justify-content: flex-start; }
+    .ch-sub { flex-direction: column; gap: 1px; }
+    .ch-reward { text-align: left; }
+}

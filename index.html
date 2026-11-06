@@ -18,14 +18,15 @@
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="items.css">
     <link rel="stylesheet" href="renown.css">
+    <link rel="stylesheet" href="challenges.css">
     <link rel="stylesheet" href="guilds.css">
     <link rel="stylesheet" href="cloud.css">
     <link rel="stylesheet" href="guide.css">
     <link rel="stylesheet" href="consent.css">
     <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
-    <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
     <link rel="manifest" href="manifest.webmanifest">
     <meta name="theme-color" content="#0b0d13">
+    <link rel="shortcut icon" href="mainimage/upgrades/argoonion.png">
     <link rel="apple-touch-icon" href="mainimage/icons/apple-180.png">
 </head>
 <body class="leftbar-open">
@@ -262,6 +263,10 @@
         <!-- Renown: one rank for the game and the Wilds together (core/renown.js); renown-panel.js opens its panel -->
         <button id="renownChip" class="renown-chip" type="button" title="Renown: one rank for the game and the Wilds together">
             <span class="renown-ico" aria-hidden="true">⭐</span><span class="sr-only">Renown </span><span id="renownChipLevel" class="renown-chip-level">0</span>
+        </button>
+        <!-- Daily and weekly challenges (core/challenges.js); challenges-panel.js opens its panel -->
+        <button id="challengeChip" class="challenge-chip" type="button" title="Daily and weekly challenges">
+            <span class="challenge-ico" aria-hidden="true">📋</span><span class="sr-only">Challenges</span><span id="challengeChipCount" class="challenge-count" hidden>0</span>
         </button>
         <nav class="top-nav" aria-label="Game pages">
             <button id="specialMenuBtn" class="nav-btn nav-btn--special" aria-label="Special upgrades" onclick="toggleSpecialMenu()"><span class="nav-ico" aria-hidden="true">✦</span><span class="nav-txt">Specials</span></button>
@@ -718,11 +723,6 @@
                     <div class="setting-help">Sign in with Google or email to back up your progress and play on any device.</div>
                 </div>
             </section>
-            <section class="settings-group" id="saveBackupGroup">
-                <h4>Save backup</h4>
-                <div class="setting-row">
-                    <div class="setting-inline">
-                        <button id="exportSaveBtn" class="btn btn-primary btn-sm" type="button">Download save file</button>
             <section class="settings-group">
                 <h4>App</h4>
                 <!-- pwa.js fills this in: an Install button where the browser offers it, the steps on iPhone, or "installed" -->
@@ -731,6 +731,11 @@
                     <div id="installAppHelp" class="setting-help">Install the game to open it from your home screen or app list.</div>
                 </div>
             </section>
+            <section class="settings-group" id="saveBackupGroup">
+                <h4>Save backup</h4>
+                <div class="setting-row">
+                    <div class="setting-inline">
+                        <button id="exportSaveBtn" class="btn btn-primary btn-sm" type="button">Download save file</button>
                         <button id="importSaveBtn" class="btn btn-ghost btn-sm" type="button">Import save file…</button>
                     </div>
                     <input id="importSaveInput" type="file" accept=".json,application/json" hidden>
@@ -1710,6 +1715,7 @@
         <script src="core/world-gods.js"></script>
         <script src="core/world-crew.js"></script>
         <script src="core/renown.js"></script>
+        <script src="core/challenges.js"></script>
         <script src="core/world-guilds.js"></script>
         <script src="followers-data.js"></script>
         <script src="achievements-data.js"></script>
@@ -1717,9 +1723,11 @@
         <script src="specials.js"></script>
         <script src="items.js"></script>
         <script src="renown-panel.js"></script>
+        <script src="challenges-panel.js"></script>
         <script src="guide.js"></script>
         <script src="save-tools.js"></script>
         <script src="site.js"></script>
+        <script src="pwa.js"></script>
         <script>
             // badges on the nav buttons for things waiting on other pages (new achievements, eggs, daily spin, clan check-in)
             (function () {
@@ -1727,7 +1735,6 @@
                 const refresh = () => {
                     try {
                         WHSite.applyNavBadges(map);
-        <script src="pwa.js"></script>
                         // Also show dot on navMenuToggle if any badge is present
                         const alerts = (window.WHSite && window.WHSite.alerts) ? WHSite.alerts() : {};
                         const hasAlert = Object.keys(alerts).some(k => alerts[k] && (alerts[k].count > 0 || alerts[k].text));

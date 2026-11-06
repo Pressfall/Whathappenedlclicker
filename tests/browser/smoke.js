@@ -731,6 +731,10 @@ async function main() {
         check('renown: the ⭐ chip in the top bar opens its panel, with the crew', await evalJs('(() => { document.getElementById("renownChip").click(); const ok = !document.getElementById("renownPanel").hidden && /Your crew in Wildgate/.test(document.getElementById("rnBody").textContent) && /In Wildgate/.test(document.getElementById("rnBody").textContent); return ok; })()'));
         if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-renown.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
         await evalJs('WHRenownPanel.close()');
+        // daily and weekly challenges: the 📋 chip opens three of each, with what they pay
+        check('challenges: the 📋 chip opens three dailies and three weeklies', await evalJs('(() => { document.getElementById("challengeChip").click(); const p = document.getElementById("challengePanel"); const ok = !!p && !p.hidden && p.querySelectorAll(".ch-row").length === 6 && /New ones in/.test(p.textContent) && /gem/.test(p.textContent); return ok; })()'));
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-challenges.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+        await evalJs('WHChallengePanel.close()');
         check('crew: the Somalian Pirate\'s upgrade shows he is in Wildgate', await evalJs('(() => { _crewTagKey = ""; renderCrewTags(); const t = document.querySelector("#upgrade2 .crew-tag"); return !!t && !t.hidden && t.textContent === "🏕️"; })()'));
         await navigate(`http://localhost:${PORT}/achievements.html`, 'typeof WHA === "object" && document.querySelectorAll(".ach").length > 20');
         const revealed = await evalJs(`(() => { const c = [...document.querySelectorAll('.ach.done')].find(x => /Hands Off/.test(x.textContent)); return c ? { name: c.querySelector('.name').textContent.replace('NEW', '').trim(), desc: c.querySelector('.desc').textContent, title: c.querySelector('.t').textContent, hiddenLeft: document.querySelectorAll('.ach.is-hidden').length, equip: !!c.querySelector('[data-equip]') } : null; })()`);
@@ -744,10 +748,6 @@ async function main() {
 
         const bad = errors().filter((e) => !/Failed to fetch|firebase|Firestore|ERR_BLOCKED|Load failed|NetworkError|net::/i.test(e));
         check('no uncaught page errors on any page (network noise excluded)', bad.length === 0, bad);
-        clearInterval(pump);
-        console.log('blocked requests:', [...new Set(blocked.map((u) => new URL(u).host))].join(', '));
-        ws.close();
-    } finally {
 
         // ---- installing as an app (pwa.js, sw.js): last, because it stops the server to play offline ----
         await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
@@ -765,6 +765,10 @@ async function main() {
         check('app: and it plays', await evalJs('(() => { const before = Number(upgrade1Level); count = 1e6; buyUpgrade1(); return Number(upgrade1Level) > before; })()'));
         const offlineBad = errors().slice(errsBeforeOffline).filter((e) => !/Failed to fetch|firebase|Firestore|ERR_BLOCKED|Load failed|NetworkError|net::|ERR_CONNECTION_REFUSED|ERR_INTERNET/i.test(e));
         check('app: no page errors offline (network noise excluded)', offlineBad.length === 0, offlineBad);
+        clearInterval(pump);
+        console.log('blocked requests:', [...new Set(blocked.map((u) => new URL(u).host))].join(', '));
+        ws.close();
+    } finally {
         cleanup();
     }
     const failed = results.filter((r) => !r.ok);
