@@ -537,7 +537,10 @@ async function main() {
         check('waystone: it carries you to Saltspray Coast', await evalJs('WHW.game.zoneId === "coast" && !!WHW.game.map.wards && WHW.game.map.wards.length === 3'));
         if (SCRATCH) { await evalJs('(() => { const w = WHW.game.map.wards[0]; WHWorldDebug.teleport(w.x, w.y + 90); WHW.engine.snapCamera(); return true; })()'); await sleep(600); await shot('shot-coast-ward.png'); }
         check('coast: the lair is sealed and its boss asleep', await evalJs('WHW.game.map.lair && !WHW.game.map.lair.open && !WHW.game.actors.some(a => a.kind === "boss")'));
+        // (the guardians, and the boss once the lair opens, fight back: a sturdy player, so nobody is knocked out before the
+        // fall check in the sky, which a knocked-out player can't do; it goes back to normal there)
         const ward = await evalJs(`(() => { const g = WHW.game, W = WHWorld;
+            g.player.maxHp = g.player.hp = 1e6;
             WHWorldDebug.give('key_coast', 3);
             const w = g.map.wards[0]; WHWorldDebug.teleport(w.x, w.y + 50);
             WHW.actions.wakeWard(0);
@@ -556,7 +559,7 @@ async function main() {
         // (the coast's boss was awake a moment ago: if he knocked the player out, nothing moves them any more, falls included;
         // a knocked-out player can't travel in the game, only through this debug hook, so stand them up again first)
         const fall = await evalJs(`(() => { const g = WHW.game, G = WHWorldGen, p = g.player, m = g.map;
-            window.__wasDown = !!p.dead; p.dead = false; p.hp = p.maxHp;
+            window.__wasDown = !!p.dead; p.dead = false; p.maxHp = g.pstats.maxHp; p.hp = p.maxHp;
             g.actors.forEach(a => { a.dead = true; }); g.hazards.length = 0; g.gustT = 999;
             // find open sky right next to an island, and step off
             for (let y = 6; y < m.h - 6; y++) for (let x = 6; x < m.w - 6; x++) if (G.get(m, x, y) === G.T.VOID && G.get(m, x - 1, y) === G.T.FLOOR && G.get(m, x - 2, y) === G.T.FLOOR) {
