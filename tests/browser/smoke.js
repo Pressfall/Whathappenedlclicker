@@ -195,6 +195,19 @@ async function main() {
         await sleep(1500);
         check('save reminder does not come back after a reload', await evalJs('document.getElementById("saveReminder").hidden'));
 
+        // ---- 7a. Beans: the chip, the shop, buying a look with earned Beans; buying for money stays closed with the placeholder config ----
+        await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 500, earnedTotal: 500 })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
+        const bn = await evalJs(`(() => { const o = document.querySelector('.bn-overlay'); return { chip: document.querySelector('#beanChip [data-bean-short]').textContent, open: !!o && !o.hidden, cards: document.querySelectorAll('.bn-card').length }; })()`);
+        check('beans: the chip shows the balance and opens the Beans shop', bn && Number(bn.chip) >= 500 && bn.open && bn.cards === 14, bn);
+        await evalJs(`(() => { document.querySelector('[data-bnbuy="th_matcha"]').click(); document.querySelector('[data-bnyes="th_matcha"]').click(); return true; })()`);
+        await sleep(600);
+        const bought = await evalJs(`({ cls: document.body.classList.contains('bn-theme-matcha'), primary: getComputedStyle(document.body).getPropertyValue('--primary').trim(), owned: WHBeans.read().owned.th_matcha === true, earned: WHBeans.read().earned })`);
+        check('beans: buying a theme with earned Beans recolours the page and takes the Beans', bought && bought.cls && bought.primary === '#9ad66b' && bought.owned && bought.earned < 500, bought);
+        await evalJs(`(() => { document.querySelector('[data-bntab="get"]').click(); return true; })()`);
+        check("beans: Get Beans says buying isn't open while the config has placeholders", /isn't open yet/.test(await evalJs('document.querySelector(".bn-tabbody").textContent')));
+        if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, 'shot-beans.png'), Buffer.from(s.result.data, 'base64')); }
+        await evalJs(`(() => { WHBeansPanel.close(); localStorage.removeItem('whathappened_premium'); document.body.classList.remove('bn-theme-matcha'); return true; })()`);
+
         // ---- 7b. help pages: readable with JavaScript off, on a computer and a phone, and they load nothing from Google ads ----
         check('game footer links the help pages', /^how-to-play\.html,wilds-guide\.html,upgrades-followers-gems\.html,faq\.html,about\.html,privacy\.html$/.test(
             await evalJs('[...document.querySelectorAll(".site-footer a")].map(a => a.getAttribute("href")).join()')));
@@ -256,10 +269,18 @@ async function main() {
         check('wilds: the Guildmaster stands in town with six guild charters', gm.here && gm.cards === 6 && /On the table now/.test(gm.text), { cards: gm.cards, here: gm.here });
         if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-wilds-guilds.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
         await evalJs('WHW.ui.closeModal()');
+        // Beans in the Wilds: the HUD chip opens the Beans shop in the Wilds' own window (which pauses the game); a bought trail is worn
+        await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 7, owned: { tr_ember: true }, equip: { trail: 'tr_ember' } })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
+        const wb = await evalJs(`({ open: WHW.ui.isOpen(), title: document.getElementById('wModalTitle').textContent, cards: document.querySelectorAll('#wModalBody .bn-card').length, chip: document.querySelector('#beanChip [data-bean-short]').textContent, paused: WHW.engine.paused })`);
+        check('wilds: the ☕ chip shows Beans and opens the Beans shop in the Wilds window, pausing the game', wb && wb.open && /Beans/.test(wb.title) && wb.cards === 14 && Number(wb.chip) >= 7 && wb.paused, wb);
+        await evalJs('WHW.ui.closeModal()');
+        const errsBeforeWalk = errors().length;
         const key = (type) => send('Input.dispatchKeyEvent', { type, key: 'd', code: 'KeyD', text: type === 'keyDown' ? 'd' : undefined, windowsVirtualKeyCode: 68 });
         const x0 = await evalJs('WHWorldDebug.player().x');
         await key('keyDown'); await sleep(500); await key('keyUp');
         check('wilds: holding D walks right', (await evalJs('WHWorldDebug.player().x')) > x0 + 20);
+        check('wilds: walking with a Beans trail on draws without errors', errors().length === errsBeforeWalk, errors().slice(errsBeforeWalk));
+        await evalJs('localStorage.removeItem("whathappened_premium"); true');
         await evalJs('WHWorldDebug.travel("greenwood"); WHW.game.actors.forEach(a => { if (a.kind !== "boss") a.dead = true; })');
         await sleep(400);
         check('wilds: a quest giver waits at the Greenwood camp', await evalJs('WHW.game.map.npcs.some(n => n.id === "fenna")'));

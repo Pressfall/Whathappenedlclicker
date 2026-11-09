@@ -445,6 +445,8 @@ const TITLE_RARITIES = {
 
 // every achievement title (achievements-data.js) gets its rarity here too, so chat and lists color them correctly
 try { if (window.WHA) window.WHA.ACHIEVEMENTS.forEach(a => { if (a.title && !TITLE_RARITIES[a.title]) TITLE_RARITIES[a.title] = a.rarity; }); } catch (e) {}
+// titles bought with Beans (core/premium.js CATALOG) too
+try { if (window.WHPremium) window.WHPremium.CATALOG.forEach(c => { if (c.kind === 'title' && !TITLE_RARITIES[c.name]) TITLE_RARITIES[c.name] = c.rarity; }); } catch (e) {}
 
 // Color map for rarities
 const RARITY_COLORS = {

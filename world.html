@@ -15,6 +15,7 @@
         <link rel="stylesheet" href="theme.css">
         <link rel="stylesheet" href="cloud.css">
         <link rel="stylesheet" href="world.css">
+        <link rel="stylesheet" href="premium.css">
     </head>
     <body data-site-nav="off">
         <canvas id="wCanvas" aria-label="The Wilds: move with WASD, swing your weapon by moving the mouse"></canvas>
@@ -40,6 +41,9 @@
                 <!-- on small screens the rest fold away behind ⋯ (a list that names each one); elsewhere they sit in the row -->
                 <button class="w-icon-btn w-more-btn" id="btnMore" title="More" aria-label="More" aria-expanded="false" aria-controls="hudMore">⋯</button>
                 <div class="w-more" id="hudMore">
+                    <!-- Beans: earned by playing or bought, for looks only (premium.js; the panel is premium-panel.js). Next to the
+                         rubies on a wide screen (premium.css), the first line of the ⋯ list on a small one -->
+                    <button class="w-beans" id="beanChip" title="Beans: earned by playing or bought, for titles and looks" aria-label="Beans">☕ <b data-bean-short>0</b></button>
                     <button class="w-online" id="btnOnline" title="Online" aria-label="Online play">🌐 <b id="onlineCount">…</b></button>
                     <button class="w-icon-btn" id="btnParty" title="Party (P)" aria-label="Party">👥</button>
                     <button class="w-icon-btn" id="btnMap" title="Map (M)" aria-label="Map">🗺️</button>
@@ -118,6 +122,9 @@
         <script src="core/world-guilds.js"></script>
         <script src="core/skins.js"></script>
         <script src="achievements-data.js"></script>
+        <script src="core/premium-config.js"></script>
+        <script src="core/kofi.js"></script>
+        <script src="core/premium.js"></script>
         <script src="core/world-arena.js"></script>
         <script src="core/world-waves.js"></script>
         <script src="core/world-vault.js"></script>
@@ -143,6 +150,8 @@
         <script src="world-waves.js"></script>
         <script src="world-mobs.js"></script>
         <script src="world.js"></script>
+        <script src="premium.js"></script>
+        <script src="premium-panel.js"></script>
         <script src="pwa.js"></script>
         <!-- Accounts and cloud saves (cloud.js): while signed in, the Wilds save to the account like the game does, and load
              newer progress from the account when they open. Drives #cloudBtn. -->
@@ -150,5 +159,7 @@
             import { startGameSync } from './cloud.js';
             window.WHCloud = startGameSync({ compact: true });
         </script>
+        <!-- bought Beans: the signed-in account's balance (premium-cloud.js) -->
+        <script type="module" src="premium-cloud.js"></script>
     </body>
 </html>

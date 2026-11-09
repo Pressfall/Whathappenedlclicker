@@ -1,0 +1,123 @@
+// Firestore security rules for Beans ☕ bought on Ko-fi (core/premium.js, premium-cloud.js, kofi-worker/).
+//
+// WHO WRITES WHAT
+//   wallets/{uid}                 the account's bought Beans: { balance, total, spent, lastSpend, updatedAt }.
+//                                 Credited ONLY by the Ko-fi worker. The worker signs in as a Google service account, and
+//                                 service accounts are not subject to these rules: that is the one door Beans come in by.
+//                                 A player may only take Beans OFF their own balance, in the same write that logs the spend.
+//   wallets/{uid}/spends/{id}     what bought Beans paid for: { item, cost, at }. Written by the player with the spend; never
+//                                 changed or deleted. Lets a purchase come back on any device signed in to the account.
+//   wallets/{uid}/credits/{txid}  each Ko-fi payment credited: { beans, kind, at, items }. Worker only; the owner can read.
+//   kofi_links/{code}             a player's link code -> { uid, at }. Created by the player; the code must be the first 12
+//                                 hex digits of sha256('kofi-link:' + their uid), so nobody can make a code that points at
+//                                 someone else's account. The worker reads it to know whose payment it is.
+//   kofi_payments/{txid}          every Ko-fi payment that was worth Beans, matched or not, for idempotency and for the owner.
+//                                 Worker only. No player can read or write it.
+//
+// HOW TO USE: copy the three `match` blocks and the functions below into your rules (Firebase console > Firestore Database >
+// Rules), inside `match /databases/{database}/documents { ... }`, next to the saves and codes blocks. Then test in the Rules
+// Playground (checklist at the bottom) and Publish. The function names start with `beans` so they can't clash with the
+// `isOwner` / `isValidSave` functions from firestore-saves.rules.
+//
+// IMPORTANT: Firestore allows a request if ANY matching rule allows it. With a catch-all such as
+//     match /{document=**} { allow read, write: if true; }
+// or a time-limited test-mode rule, ANY browser could write any wallet a balance of a million Beans, and these rules would
+// not stop it. Buying stays safe only once that catch-all is gone (see docs/trust-boundaries.md and docs/kofi-setup.md).
+//
+// NOT RUN against the Firestore emulator (it needs Java, which was not available here). core/premium.js checkWalletSpend()
+// is the spend rule written out in JavaScript, and tests/premium.test.js tests it; keep the two the same.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /wallets/{uid} {
+      allow get: if beansOwner(uid);
+      allow list, create, delete: if false;
+      // a spend: the balance goes down by exactly the cost of the spend logged in the same write, and nothing else changes
+      allow update: if beansOwner(uid) && beansAccount() && beansValidSpend(uid);
+
+      match /spends/{spendId} {
+        allow get, list: if beansOwner(uid);
+        allow create: if beansOwner(uid) && beansAccount() && beansValidSpendLog(uid, spendId);
+        allow update, delete: if false;
+      }
+      match /credits/{txid} {
+        allow get, list: if beansOwner(uid);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /kofi_links/{code} {
+      // your own code, or "there is none yet" (so the game knows to make it); never someone else's
+      allow get: if request.auth != null && (resource == null || resource.data.uid == request.auth.uid);
+      allow create: if request.auth != null && beansAccount()
+        && request.resource.data.keys().hasOnly(['uid', 'at'])
+        && request.resource.data.keys().hasAll(['uid', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.at == request.time
+        && code.matches('^[0-9A-F]{12}$')
+        && beansLinkHex(request.auth.uid).matches(code + '[0-9A-F]{52}');
+      allow list, update, delete: if false;
+    }
+
+    match /kofi_payments/{txid} {
+      allow read, write: if false;
+    }
+
+    function beansOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    // a real account (email or Google), not the Wilds' anonymous sign-in: bought Beans belong to an account
+    function beansAccount() {
+      return request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    // sha256('kofi-link:' + uid) as 64 upper-case hex digits (core/kofi.js linkIdForUid takes the first 12)
+    function beansLinkHex(uid) {
+      return hashing.sha256('kofi-link:' + uid).toHexString().upper();
+    }
+    function beansValidSpend(uid) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'spent', 'lastSpend'])
+        && request.resource.data.balance is int
+        && request.resource.data.balance >= 0
+        && request.resource.data.balance < resource.data.balance
+        && request.resource.data.spent == resource.data.get('spent', 0) + (resource.data.balance - request.resource.data.balance)
+        && request.resource.data.lastSpend is string
+        && request.resource.data.lastSpend.matches('^[A-Za-z0-9_-]{4,40}$')
+        && !exists(/databases/$(database)/documents/wallets/$(uid)/spends/$(request.resource.data.lastSpend))
+        && existsAfter(/databases/$(database)/documents/wallets/$(uid)/spends/$(request.resource.data.lastSpend))
+        && getAfter(/databases/$(database)/documents/wallets/$(uid)/spends/$(request.resource.data.lastSpend)).data.cost
+             == resource.data.balance - request.resource.data.balance;
+    }
+    function beansValidSpendLog(uid, spendId) {
+      return request.resource.data.keys().hasOnly(['item', 'cost', 'at'])
+        && request.resource.data.keys().hasAll(['item', 'cost', 'at'])
+        && request.resource.data.item is string
+        && request.resource.data.item.size() >= 1 && request.resource.data.item.size() <= 40
+        && request.resource.data.cost is int && request.resource.data.cost > 0
+        && request.resource.data.at == request.time
+        && spendId.matches('^[A-Za-z0-9_-]{4,40}$')
+        && getAfter(/databases/$(database)/documents/wallets/$(uid)).data.lastSpend == spendId
+        && getAfter(/databases/$(database)/documents/wallets/$(uid)).data.balance
+             == get(/databases/$(database)/documents/wallets/$(uid)).data.balance - request.resource.data.cost;
+    }
+  }
+}
+
+// RULES PLAYGROUND CHECKLIST (each should ALLOW unless it says DENY). Use an Authentication "provider" of password or google.com
+// unless it says anonymous. First create, in the console, wallets/U1 = { balance: 500 (number, integer), total: 500 }.
+//   1. get wallets/U1 as U1                                                     ALLOW
+//   2. get wallets/U1 as U2                                                     DENY
+//   3. update wallets/U1 as U1 to { balance: 99999, total: 500 }                DENY (Beans can't be added)
+//   4. create wallets/U2 as U2 with { balance: 100 }                            DENY
+//   5. update wallets/U1 as U1 to { balance: 400, total: 500, spent: 100, lastSpend: 'abcd1234' } on its own
+//                                                                               DENY (no spend logged with it; the Playground
+//                                                                               can't do a batch, so the ALLOW case is checked
+//                                                                               in the game: buy something with bought Beans)
+//   6. create wallets/U1/spends/x as U1                                         DENY (the wallet doesn't change with it)
+//   7. update wallets/U1/credits/anything as U1                                 DENY
+//   8. read kofi_payments/anything as U1                                        DENY
+//   9. create kofi_links/<first 12 hex of sha256('kofi-link:U1'), upper case> as U1 with { uid: 'U1', at: request.time }
+//                                                                               ALLOW (the game shows the code: WH-XXXX-XXXX-XXXX)
+//  10. the same as 9 but with uid 'U2', or as U2, or with any other code        DENY
+//  11. the same as 9 signed in anonymously                                      DENY

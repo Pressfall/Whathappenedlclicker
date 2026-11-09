@@ -1,0 +1,17 @@
+# Cloudflare Worker settings for the Ko-fi webhook (docs/kofi-setup.md).
+# Secrets are NOT in this file and must never be: set them with `npx wrangler secret put NAME` (step 3 of the guide).
+#   KOFI_VERIFICATION_TOKEN  from ko-fi.com/manage/webhooks > Advanced > Verification Token
+#   GCP_SERVICE_ACCOUNT      the whole JSON key file of the Firestore service account
+#   EMAIL_PEPPER             any long random text (keys the email hash on unclaimed payments)
+#   ADMIN_TOKEN              any long random text (for /admin/resolve)
+
+name = "wh-kofi"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[vars]
+FIREBASE_PROJECT_ID = "whleaderboard"
+# OWNER: the site(s) the game runs on, comma separated, exactly as the browser shows them (https://..., no trailing slash).
+# Only these may send "claim a payment" requests.
+ALLOWED_ORIGINS = "OWNER_SITE_ORIGIN"

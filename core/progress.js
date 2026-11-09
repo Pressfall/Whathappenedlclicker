@@ -47,6 +47,9 @@
         'whathappened_upgrade_best', 'whathappened_renown',
         // the daily and weekly challenges (core/challenges.js)
         'whathappened_challenges',
+        // Beans: earned Beans, the looks owned and worn, which rewards were paid (core/premium.js). Bought Beans live in the
+        // account itself (Firestore wallets/{uid}), not in here.
+        'whathappened_premium',
     ]);
     // achievement flags (ach_<key>) and clan event rewards already claimed (so they can't be claimed again on another device)
     const SYNC_PREFIXES = ['ach_', 'whathappened_pp_claimed_', 'whathappened_bf_claimed_', 'whathappened_eb_claimed_',

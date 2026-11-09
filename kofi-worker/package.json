@@ -1,0 +1,10 @@
+{
+  "name": "wh-kofi-worker",
+  "private": true,
+  "type": "module",
+  "description": "Ko-fi webhook for What Happened Clicker: credits Beans into Firestore. See docs/kofi-setup.md.",
+  "scripts": {
+    "dev": "npx wrangler dev",
+    "deploy": "npx wrangler deploy"
+  }
+}

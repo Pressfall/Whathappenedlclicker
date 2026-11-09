@@ -2087,6 +2087,8 @@
         }
     }
     A.drawPlayer = function (ctx, p) {
+        // a trail bought with Beans (premium.js), under the player
+        if (window.WHBeans) { try { window.WHBeans.drawTrail(ctx, p); } catch (e) {} }
         const g = game();
         const it = weaponItem(), b = W.baseOf(it);
         const chest = W.baseOf(W.findGear(g.state, g.state.equip.chest));

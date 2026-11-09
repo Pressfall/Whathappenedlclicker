@@ -188,11 +188,11 @@ test('the privacy policy says where ads can appear, as the code does', () => {
     assert.match(t, /the AdSense code is also loaded on the achievements, casino and leaderboard pages and on this page/);
 });
 
-test('no tip links for now (Ko-fi was taken out until there is a real page), and no placeholder left behind', () => {
+test('Ko-fi: the address lives only in core/premium-config.js, no page has a placeholder, and payments only ever become Beans', () => {
     const html = read('index.html');
-    assert.ok(!/ko-fi\.com/i.test(html), 'no Ko-fi link on the game page');
-    for (const f of PAGES.concat('index.html', 'privacy.html')) assert.ok(!read(f).includes('YOUR_KOFI_NAME'), f + ': no placeholder address');
-    // tips unlock nothing: no game code knows about them
+    assert.ok(!/ko-fi\.com/i.test(html), 'no Ko-fi link written into the game page (the Beans panel builds it from the config)');
+    for (const f of PAGES.concat('index.html', 'privacy.html')) assert.ok(!/YOUR_KOFI_NAME|OWNER_KOFI_NAME/.test(read(f)), f + ': no placeholder address');
+    // a Ko-fi payment can only credit Beans (kofi-worker/, premium-cloud.js); the rest of the game doesn't know Ko-fi exists
     for (const f of ['main.js', 'items.js', 'followers.js', 'gamba.js', 'world.js', 'world-ui.js', 'clan.html', 'world.html'])
-        assert.ok(!/ko-?fi|support the game/i.test(read(f)), f + ' does not mention tips'); // ("donated" in clan.html is clan points)
+        assert.ok(!/ko-?fi|support the game/i.test(read(f).replace('<script src="core/kofi.js"></script>', '')), f + ' does not mention Ko-fi'); // ("donated" in clan.html is clan points)
 });

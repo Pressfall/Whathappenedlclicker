@@ -60,6 +60,21 @@ designed around them:
 A cheater can't take gems or Golden from other players, and anything they make up stays inside the Wilds' caps. Making online fights
 authoritative would need a server (e.g. Cloud Functions or a small game server) deciding hits and loot.
 
+## Beans ☕ (bought on Ko-fi)
+
+Beans have two pools behind one balance (`core/premium.js` explains it):
+
+| What | Who writes it | What a modified page can do | What limits it |
+|---|---|---|---|
+| Earned Beans (`whathappened_premium`, local, synced) | each player's own pages | Give itself any number of earned Beans, and any look | Like gems: it only changes that player's own game. Beans buy looks only, never a currency, a box or a pack, so nothing reaches other players or the economy |
+| Bought Beans (`wallets/{uid}`) | **only the Ko-fi worker** (service account; rules don't apply to it) | Nothing that adds Beans: rules allow the owner only to lower their own balance, by exactly the cost of a spend logged in the same write (`checkWalletSpend` is the rule in JS). It can log a cheaper price than the game asks | A cheap log only changes its own looks (which it could also get by editing its save). It can't touch anyone else's wallet |
+| Link codes (`kofi_links/{code}`) | the player, once | Register a code for someone else | Rules require the code to be the first 12 hex digits of sha256('kofi-link:' + the writer's uid), and the doc's uid to be the writer |
+| Payments (`kofi_payments/{txid}`) | only the worker | Nothing: no client reads or writes | The worker checks Ko-fi's verification token and credits each transaction id once (a create that fails if it exists, in the same atomic commit as the credit) |
+| Claims (`POST /claim` on the worker) | a signed-in account, from the game's site | Claim someone else's unmatched payment | Needs the transaction id (only the payer and the owner know it) and the payer's email, checked against a keyed hash; the worker checks the Firebase ID token itself |
+
+**Only safe once there is no catch-all rule** (see "What this review could and could not see" above): with one, any browser could write
+any wallet. `docs/kofi-setup.md` step 0.
+
 ## Fixed in the code
 
 - **Clan buffs trusted the clan document's multipliers.** `refreshClanBuff` in `main.js` read `cpsMult` / `clickMult` / expiry

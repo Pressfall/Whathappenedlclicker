@@ -44,6 +44,7 @@
     // rubies: for the Wilds. gems / golden: sent to the game, and still inside the Wilds' daily caps (core/world-data.js
     // CAPS), like the Trader's exchange. pack: a follower pack (followers-data.js PACKS) to open free on the game's
     // Followers page. guild: a Guild Chest, one hero guild at random (core/world-guilds.js). perWeek: how many a week.
+    // beans: Beans (core/premium.js EARN.glory pays them, worked out from this item's weekly count; nothing here gives them).
     const SHOP = [
         { id: 'potion_big', name: '2 Big Potions', glory: 60, give: { potion_big: 2 } },
         { id: 'potion_max', name: 'Max Potion', glory: 90, give: { potion_max: 1 } },
@@ -59,6 +60,7 @@
         { id: 'pack_royal', name: 'Royal Chest (follower pack)', glory: 3500, pack: 'royal', perWeek: 1 },
         { id: 'pack_celestial', name: 'Celestial Relic (follower pack)', glory: 8000, pack: 'celestial', perWeek: 1 },
         { id: 'guild_chest', name: 'Guild Chest (a random hero guild)', glory: 15000, guild: true },
+        { id: 'beans', name: '☕ 5 Beans (for titles and looks)', glory: 1500, beans: 5, perWeek: 1 },
         { id: 'title_brawler', name: 'Title: Brawler', glory: 100, title: 'Brawler' },
         { id: 'title_gladiator', name: 'Title: Gladiator', glory: 400, title: 'Gladiator' },
         { id: 'title_warlord', name: 'Title: Warlord', glory: 1200, title: 'Warlord' },

@@ -479,16 +479,18 @@
                 WHW.toast(gd ? gd.crest + ' The chest holds the ' + gd.name + '! ' + gd.hero + ' earns +' + Math.round(G.PER_GUILD * 100 * r.owned) + '% in your game.'
                     : r.item.pack ? 'Bought: ' + r.item.name + '. Open it free on the Followers page in your game.'
                     : r.item.gems || r.item.golden ? 'Bought: ' + r.item.name + '. It arrives the next time you open the game.'
+                    : r.item.beans ? 'Bought: ' + r.item.name + '. Spend them from the ☕ chip.'
                     : 'Bought: ' + r.item.name + '.', 'gold');
                 WHW.sfx(gd ? 'gem' : 'craft');
                 WHW.save(); net() && (net().infoKey = '');
+                if (r.item.beans && window.WHBeans) window.WHBeans.scan(); // premium.js pays them from the weekly count
             }
             renderMenu();
         }));
         const cs = body.querySelector('[data-arseason]');
         if (cs) cs.addEventListener('click', () => {
             const r = Ar.claimSeason(s.arena);
-            if (r.ok) { WHW.toast('🏆 +' + fmt(r.glory) + ' Glory' + (r.title ? ' and the title ' + r.title + ' (you are wearing it)' : '') + '.', 'gold'); WHW.sfx('gem'); WHW.save(); if (net()) net().infoKey = ''; }
+            if (r.ok) { WHW.toast('🏆 +' + fmt(r.glory) + ' Glory' + (r.title ? ' and the title ' + r.title + ' (you are wearing it)' : '') + '.', 'gold'); WHW.sfx('gem'); WHW.save(); if (net()) net().infoKey = ''; if (window.WHBeans) window.WHBeans.scan(); }
             renderMenu();
         });
         const ts = body.querySelector('#arTitle'); if (ts) ts.addEventListener('change', () => { W.setTitle(s, ts.value); WHW.save(); if (net()) net().infoKey = ''; renderMenu(); });

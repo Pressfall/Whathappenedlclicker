@@ -19,6 +19,7 @@
     <link rel="stylesheet" href="items.css">
     <link rel="stylesheet" href="renown.css">
     <link rel="stylesheet" href="challenges.css">
+    <link rel="stylesheet" href="premium.css">
     <link rel="stylesheet" href="guilds.css">
     <link rel="stylesheet" href="cloud.css">
     <link rel="stylesheet" href="guide.css">
@@ -260,6 +261,10 @@
             <span id="gemChipCount" class="gem-chip-count" data-gem-balance>0</span><span class="sr-only"> gems, open the Treasury</span>
             <span class="gem-chip-plus" aria-hidden="true">+</span>
         </button>
+        <!-- Beans: bought on Ko-fi or earned by playing, for looks only (core/premium.js); premium-panel.js opens its panel -->
+        <button id="beanChip" class="bean-chip" type="button" title="Beans: earned by playing or bought, for titles and looks">
+            <span class="bean-ico" aria-hidden="true">☕</span><span class="bean-count" data-bean-short>0</span><span class="sr-only"> Beans</span>
+        </button>
         <!-- Renown: one rank for the game and the Wilds together (core/renown.js); renown-panel.js opens its panel -->
         <button id="renownChip" class="renown-chip" type="button" title="Renown: one rank for the game and the Wilds together">
             <span class="renown-ico" aria-hidden="true">⭐</span><span class="sr-only">Renown </span><span id="renownChipLevel" class="renown-chip-level">0</span>
@@ -297,6 +302,15 @@
                     <span class="nav-sidebar-meta">
                         <span class="nav-txt nav-sidebar-name">Shop</span>
                         <span class="nav-sidebar-desc">Skins, backgrounds & music</span>
+                    </span>
+                    <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
+                </button>
+                <!-- Beans (premium-panel.js); the top-bar chip is hidden on the narrowest phones, so the balance is here too -->
+                <button id="beanMenuBtn" class="nav-btn nav-sidebar-btn" onclick="closeNavSideBar(); window.WHBeansPanel && WHBeansPanel.open();">
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">☕</span>
+                    <span class="nav-sidebar-meta">
+                        <span class="nav-txt nav-sidebar-name">Beans <span class="bean-menu-count" data-bean-balance>0</span></span>
+                        <span class="nav-sidebar-desc">Titles and looks, earned or bought</span>
                     </span>
                     <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
                 </button>
@@ -968,6 +982,8 @@
         // WHCloud.saveNow() saves to the signed-in account right away (it only ever writes that account's own save)
         window.WHCloud = startGameSync();
     </script>
+    <!-- Beans bought on Ko-fi: the signed-in account's balance, spending it, the link code (premium-cloud.js) -->
+    <script type="module" src="premium-cloud.js"></script>
     <!-- ========== Firebase (Firestore, Analytics): exposes db, doc, setDoc, getDoc, updateDoc, etc. for main.js ========== -->
     <script type="module">
   import { initializeApp, getApps, getApp } from "https://www.gstatic.com/firebasejs/12.8.0/firebase-app.js";
@@ -1716,6 +1732,9 @@
         <script src="core/world-crew.js"></script>
         <script src="core/renown.js"></script>
         <script src="core/challenges.js"></script>
+        <script src="core/premium-config.js"></script>
+        <script src="core/kofi.js"></script>
+        <script src="core/premium.js"></script>
         <script src="core/world-guilds.js"></script>
         <script src="followers-data.js"></script>
         <script src="achievements-data.js"></script>
@@ -1724,6 +1743,8 @@
         <script src="items.js"></script>
         <script src="renown-panel.js"></script>
         <script src="challenges-panel.js"></script>
+        <script src="premium.js"></script>
+        <script src="premium-panel.js"></script>
         <script src="guide.js"></script>
         <script src="save-tools.js"></script>
         <script src="site.js"></script>

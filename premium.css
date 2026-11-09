@@ -1,0 +1,129 @@
+/* Beans ☕ (premium.js, premium-panel.js): the balance chips, the panel, and the looks Beans buy. index.html and world.html. */
+
+/* ---- the game's top-bar chip ---- */
+.bean-chip {
+    position: relative;
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 40px;
+    padding: 0 12px 0 9px;
+    border-radius: 999px;
+    border: 1px solid rgba(214, 160, 100, 0.55);
+    background: linear-gradient(180deg, rgba(78, 48, 24, 0.94), rgba(32, 19, 10, 0.95));
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    color: #ffe9cf;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+.bean-chip:hover { transform: translateY(-1px); border-color: #e0a868; }
+.bean-ico { font-size: 17px; line-height: 1; }
+.bean-count { font-size: 15px; min-width: 1ch; }
+.bean-chip.is-bump, .w-beans.is-bump { animation: bn-bump 450ms ease; }
+@keyframes bn-bump { 40% { transform: scale(1.14); } }
+/* phones: the top bar was already full (challenges.css), so the chip shrinks to its icon with the count as a badge (and the bar's
+   gaps by a pixel), and under 360 px it steps out; the balance is always in the Menu too (#beanMenuBtn) */
+@media (min-width: 360px) and (max-width: 420px) { #topBar { gap: 5px; } }
+@media (max-width: 460px) {
+    .bean-chip { width: 34px; padding: 0; justify-content: center; }
+    .bean-chip .bean-count { position: absolute; top: -6px; right: -5px; min-width: 18px; height: 16px; padding: 0 4px; border-radius: 999px;
+        background: #e0a868; color: #2a1600; font-size: 10px; line-height: 16px; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
+}
+@media (max-width: 359px) { #topBar .bean-chip { display: none; } }
+.bean-menu-count { margin-left: 6px; padding: 1px 7px; border-radius: 999px; background: rgba(224, 168, 104, 0.18); color: #f2c58f; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* ---- the Wilds' HUD chip ---- */
+.w-beans { display: flex; align-items: center; gap: 5px; height: 36px; padding: 0 11px; border-radius: 999px; border: 1px solid rgba(214, 160, 100, 0.55); background: rgba(46, 28, 12, 0.86); color: #ffe9cf; font: 700 13px var(--font); cursor: pointer; }
+.w-beans b { font-variant-numeric: tabular-nums; }
+.w-beans:hover { background: rgba(78, 48, 24, 0.92); }
+.w-beans:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+/* it sits in the ⋯ group (world.html #hudMore), which is the row itself on a wide screen: put it next to the rubies there */
+#hudTr > .w-rubies { order: -2; }
+#hudTr .w-beans { order: -1; }
+
+/* ---- the panel ---- */
+.bn-overlay { position: fixed; inset: 0; z-index: 2100; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(4, 5, 9, 0.66); }
+.bn-overlay[hidden] { display: none; }
+.bn-panel { width: min(780px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--surface-solid); border: 1px solid var(--border-strong); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+.bn-head { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.bn-head h3 { margin: 0; font-family: var(--font-display); font-weight: 400; font-size: 20px; color: #f2c58f; }
+.bn-body { padding: 14px 18px 18px; overflow-y: auto; }
+.bn-root h4 { margin: 16px 0 6px; font-size: 14px; color: var(--text); }
+.bn-balance { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 10px; }
+.bn-big { font-family: var(--font-display); font-size: 30px; line-height: 1.1; color: #f2c58f; }
+.bn-split { font-size: 12.5px; color: var(--text-dim); }
+.bn-amt { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bn-tabs { display: flex; gap: 6px; margin: 4px 0 10px; border-bottom: 1px solid var(--border); }
+.bn-tab { padding: 8px 12px; border: 0; border-bottom: 2px solid transparent; background: none; color: var(--text-dim); font-weight: 700; }
+.bn-tab.is-on { color: var(--text); border-bottom-color: #e0a868; }
+.bn-tab:hover { color: var(--text); }
+.bn-sec + .bn-sec { margin-top: 6px; }
+.bn-sub { margin: 0 0 8px; font-size: 12.5px; color: var(--text-dim); }
+.bn-fine { margin: 14px 0 0; font-size: 12px; color: var(--text-faint); }
+.bn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 8px; }
+.bn-card { display: flex; gap: 10px; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.bn-card.is-owned { border-color: rgba(224, 168, 104, 0.45); }
+.bn-sw { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border-strong); }
+.bn-sw--title { display: flex; align-items: center; justify-content: center; font-size: 20px; background: var(--surface-3); }
+.bn-card-main { min-width: 0; flex: 1; }
+.bn-name { font-weight: 800; font-size: 14px; }
+.bn-desc { font-size: 12.5px; color: var(--text-dim); margin: 2px 0 8px; }
+.bn-act { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.bn-act .btn[aria-disabled="true"] { opacity: 0.55; }
+.bn-on { font-size: 12px; font-weight: 700; color: var(--primary); }
+.bn-need { font-size: 12px; color: var(--text-faint); }
+.bn-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; }
+.bn-confirm span { flex-basis: 100%; }
+.bn-msg { margin: 8px 0; padding: 8px 11px; border-radius: var(--radius-sm); font-size: 13px; }
+.bn-msg.is-ok { background: rgba(47, 208, 122, 0.1); border: 1px solid rgba(47, 208, 122, 0.35); }
+.bn-msg.is-bad { background: rgba(255, 91, 107, 0.1); border: 1px solid rgba(255, 91, 107, 0.35); }
+.bn-note { margin: 4px 0 10px; padding: 10px 12px; border-radius: var(--radius-sm); background: rgba(224, 168, 104, 0.08); border: 1px solid rgba(224, 168, 104, 0.3); font-size: 13.5px; }
+.bn-note--parent { font-weight: 700; }
+.bn-note--warn { background: rgba(255, 91, 107, 0.08); border-color: rgba(255, 91, 107, 0.3); }
+.bn-code { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.bn-code code { padding: 8px 12px; border-radius: var(--radius-sm); background: var(--surface-3); border: 1px dashed rgba(224, 168, 104, 0.6); font: 800 18px ui-monospace, SFMono-Regular, Consolas, monospace; letter-spacing: 0.06em; color: #ffe9cf; user-select: all; }
+.bn-rows, .bn-log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.bn-row { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.bn-row.is-done { border-color: rgba(47, 208, 122, 0.4); }
+.bn-ico { font-size: 20px; text-align: center; }
+.bn-what { font-weight: 700; font-size: 13.5px; }
+.bn-status { font-size: 12px; color: var(--text-dim); }
+.bn-pay { font-weight: 800; color: #f2c58f; white-space: nowrap; font-size: 13px; }
+.bn-log li { font-size: 12.5px; color: var(--text-dim); }
+.bn-log time { color: var(--text-faint); margin-left: 4px; }
+.bn-plus, .bn-minus { display: inline-block; min-width: 3.2em; font-weight: 800; font-variant-numeric: tabular-nums; }
+.bn-plus { color: var(--primary); }
+.bn-minus { color: #f2c58f; }
+.bn-claim { margin-top: 14px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); }
+.bn-claim summary { cursor: pointer; font-weight: 700; }
+.bn-claim form { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.bn-claim label { display: flex; flex-direction: column; gap: 3px; font-size: 12px; color: var(--text-dim); flex: 1 1 200px; }
+.bn-claim input { padding: 7px 9px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--surface-3); color: var(--text); }
+@media (max-width: 520px) {
+    .bn-body { padding: 12px; }
+    .bn-row { grid-template-columns: 24px 1fr; }
+    .bn-pay { grid-column: 2; }
+    .bn-grid { grid-template-columns: 1fr; }
+}
+/* in the Wilds the panel sits in the Wilds' own window */
+.w-modal-body .bn-root { font-size: 14px; }
+
+/* ---- the game page's themes (body.bn-theme-*) ---- */
+body.bn-theme-mocha { --primary: #d39a5c; --primary-deep: #a8693a; --gold: #ffd08a; --gold-deep: #e39a4a; --blue: #e0b07a; --divine: #c49bff;
+    --bg: #120d0a; --surface: rgba(30, 21, 15, 0.86); --surface-solid: #1f1712; --surface-2: #2a2019; --surface-3: #3a2c22; --border-strong: rgba(255, 220, 180, 0.2); }
+body.bn-theme-matcha { --primary: #9ad66b; --primary-deep: #5f9e3e; --gold: #dce98f; --gold-deep: #b4cc55; --blue: #8fd6a8;
+    --bg: #0a120b; --surface: rgba(15, 25, 16, 0.86); --surface-solid: #121c13; --surface-2: #1a281b; --surface-3: #233626; --border-strong: rgba(200, 255, 200, 0.18); }
+body.bn-theme-cherry { --primary: #ff6b81; --primary-deep: #d63c5a; --gold: #ffc2a1; --gold-deep: #ff8f6b; --blue: #ff9db0;
+    --bg: #12060a; --surface: rgba(32, 12, 19, 0.86); --surface-solid: #1f0d14; --surface-2: #2c121c; --surface-3: #3d1a27; --border-strong: rgba(255, 190, 200, 0.2); }
+body.bn-theme-midnight { --primary: #8f9bff; --primary-deep: #5b67d6; --gold: #c6b8ff; --gold-deep: #9a86ff; --blue: #9fb4ff;
+    --bg: #070818; --surface: rgba(13, 15, 36, 0.86); --surface-solid: #0f1230; --surface-2: #171b42; --surface-3: #21265a; --border-strong: rgba(190, 200, 255, 0.2); }
+
+/* ---- the click numbers (body.bn-pop-*: main.js spawnClickFloat's .click-float) ---- */
+body.bn-pop-latte .click-float { color: #fff3df; text-shadow: 0 2px 0 #7a4a2a, 0 0 14px rgba(201, 138, 75, 0.75); }
+body.bn-pop-latte .click-float.crit { color: #ffd7a8; }
+body.bn-pop-neon .click-float { color: #c9f8ff; text-shadow: 0 0 6px #5ee7ff, 0 0 16px #5ee7ff, 0 0 26px #ff5bd0; }
+body.bn-pop-neon .click-float.crit { color: #ffd1f3; text-shadow: 0 0 6px #ff5bd0, 0 0 18px #ff5bd0, 0 0 30px #5ee7ff; }
+body.bn-pop-ember .click-float { color: #ffd36b; text-shadow: 0 2px 0 #7a2400, 0 0 12px #ff5a1f, 0 -4px 18px rgba(255, 90, 31, 0.6); }
+body.bn-pop-ember .click-float.crit { color: #fff0b0; }
+@media (prefers-reduced-motion: reduce) { .bean-chip.is-bump, .w-beans.is-bump { animation: none; } }

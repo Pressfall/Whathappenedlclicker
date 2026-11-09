@@ -1,0 +1,224 @@
+# Beans ☕ and Ko-fi: owner setup
+
+Beans are the game's new currency for titles and looks. Players earn a few by playing, or buy them on Ko-fi. This guide
+gets the Ko-fi side running: the shop items, the webhook, the secrets, the Firestore rules and the worker that credits Beans.
+
+Nothing here needs the Firebase Blaze plan or a payment method on Firebase or Cloudflare.
+
+## How it fits together
+
+```
+ player (game, signed in)          Ko-fi                      Cloudflare Worker (kofi-worker/)          Firestore
+ ───────────────────────          ─────                      ─────────────────────────────────          ─────────
+ Get Beans tab shows a      ──►   pays for a Beans pack,  ──► POST /kofi  (form field `data` = JSON)
+ link code WH-XXXX-XXXX-XXXX      code pasted in message      1. verification_token must match      ──► kofi_payments/{txid}  (once per txid)
+                                                              2. Beans from core/premium-config.js       wallets/{uid}.balance += Beans
+                                                              3. link code -> kofi_links/{code}.uid      wallets/{uid}/credits/{txid}
+ ☕ chip shows the balance  ◄────────────────────────────────────────────────────────────────────────── wallets/{uid} (read live)
+ buying a look: the game lowers wallets/{uid}.balance and logs wallets/{uid}/spends/{id} in one write (rules allow only that)
+```
+
+- **Earned Beans** live in the player's save (`whathappened_premium`, synced with their account like the rest of their
+  progress). Like gems, the browser is trusted with them.
+- **Bought Beans** live only in Firestore `wallets/{uid}`. Only the worker can add to them: it signs in as a Google service
+  account, which the security rules don't apply to. A player's browser can only take Beans off its own balance, in the same
+  write that records what they paid for.
+
+### Why two pools (the trade-off)
+
+Everything a player earns by playing is decided in their browser (that is how the whole game works), so earned Beans can't be
+made cheat-proof without a game server, and a player who edits their save only changes their own game. Real money is
+different: it must be credited only by the server, survive a cleared browser, and be checkable when someone writes in.
+Keeping the two apart gives that without a server deciding gameplay:
+
+- a player can never mint bought Beans or touch anyone else's balance (rules: decrements only, logged);
+- bought Beans and everything bought with them come back on any device signed in to the account (the spends log);
+- the cost: two balances behind one number. The game spends earned Beans first and the rest from the account, and takes
+  the account's part first, so a refused or failed write costs the player nothing. The rules check that each spend is logged
+  with its exact cost, but not what the item should cost: a modified browser could log a cheap price for an expensive look.
+  That only affects looks on its own screen, which it could also get by editing its save, so it was not worth a price list
+  inside the rules that would have to be kept in step with the game.
+
+### Why a Cloudflare Worker
+
+Firebase Cloud Functions need the Blaze plan. A Cloudflare Worker is free without a card (100,000 requests a day on the free
+plan), gets an `https://` address straight away (Ko-fi requires https), keeps secrets out of the code (`wrangler secret`),
+has no cold start that could make Ko-fi time out, and can write to Firestore through Firestore's REST API with a service
+account. Writes made this way count against Firestore's free Spark quota (20,000 writes a day; a credited payment is 3
+writes). Netlify or Vercel functions would also work; a Google Apps Script web app can't choose its HTTP status (so it
+couldn't ask Ko-fi to retry after a failed write), and free hosts that sleep (Render) can time out Ko-fi's request.
+
+## What Ko-fi's documentation says, and what to check yourself
+
+From Ko-fi's help article *Does Ko-fi have an API or webhook?* (help.ko-fi.com, read 2026-11-09):
+
+- Ko-fi sends an **HTTP POST** to your webhook URL when a payment completes; the URL **must start with `https://`**.
+- The payment is a JSON object shown as `data = { ... }`, with `verification_token`, `message_id`, `timestamp`, `type`
+  (e.g. `"Donation"`), `is_public`, `from_name`, `message`, `amount` (a string like `"3.00"`), `url`, `email`, `currency`,
+  `is_subscription_payment`, `is_first_subscription_payment`, `kofi_transaction_id`, `shop_items`, `tier_name`, `shipping`.
+- **Your listener must return status 200.** Otherwise Ko-fi "will retry a reasonable number of times with the same
+  `message_id`". The worker answers 200 only once a payment is safely handled, and credits each `kofi_transaction_id` once,
+  so retries can't pay twice.
+- The webhooks page can **send test payments**.
+
+The full field list (including the shape of `shop_items` entries: `direct_link_code`, `variation_name`, `quantity`, and the
+`Subscription` / `Shop Order` / `Commission` types) is on ko-fi.com/manage/webhooks, which needs your Ko-fi login, so I
+could not read it. The worker is written defensively (form or JSON body, `currency` or `currency_code`, a missing
+`quantity` counts as 1). **Please check two things there:**
+
+1. That a Shop Order's `shop_items` entries carry `direct_link_code` (the code in the item's `ko-fi.com/s/...` link).
+2. Whether a shop checkout lets the buyer write a message. If it doesn't, shop buyers can't paste their link code, and every
+   shop order will arrive "unmatched" (players then claim it in the game, see "Fixing a payment"). In that case, prefer
+   selling Beans as **tips with the code in the message** (`donationRate` in the config), since a tip always has a message box.
+
+## Step by step
+
+### 0. Before you start: the Firestore catch-all
+
+Open Firebase console > Firestore Database > Rules. If you see `match /{document=**} { allow read, write: if true; }` or a
+test-mode rule (`if request.time < timestamp.date(...)`), **any browser could give itself bought Beans**, whatever the new
+rules say (Firestore allows a request if any rule allows it). Don't open buying until that catch-all is gone. Removing it
+also needs rules for the clan collections first: see `docs/trust-boundaries.md`, "Before you publish firestore-social.rules".
+
+### 1. Ko-fi: the Beans packs
+
+1. On Ko-fi, make one Shop item per Beans pack (a digital item; no file needed). In its description, tell buyers to paste
+   their link code from the game (Get Beans tab) into the message. Set the price you want.
+2. Open each item and copy its code: the part after `ko-fi.com/s/` in its link.
+
+You decide the packs and the prices; none are set in the code. A common rule of thumb is about 100 Beans per US dollar,
+with a little extra on bigger packs. For scale: the cheapest look costs 100 Beans, most cost 200-350, the dearest 600, and
+all 14 together cost 4,250. `node tools/simulate-beans.js` shows what players earn for free (a regular player about 30-40 a
+month, a dedicated one about 60).
+
+### 2. The config: `core/premium-config.js`
+
+Fill in everything marked `OWNER`:
+
+- `kofiPage`: your Ko-fi page, e.g. `https://ko-fi.com/yourname`.
+- `packs`: one row per item from step 1: `{ code: 'the item code', beans: 500, name: 'Bag of Beans', price: '$4.99' }`.
+  `beans` is per item (a quantity of 2 gives twice as many). `price` is only the label the game shows.
+- Optional `donationRate`: Beans per 1 unit of a currency for a tip that has a link code, e.g. `{ USD: 100, EUR: 100 }`.
+  Leave it empty and tips stay tips: no Beans, and nothing about them is stored.
+- Optional `subscriptionTiers`: Beans per membership payment, by the tier's exact name on Ko-fi.
+- `workerUrl`: fill in after step 4.
+
+Until the Ko-fi page, the worker address and at least one way to buy are filled in, the game's Get Beans tab says buying
+isn't open yet.
+
+### 3. A Google service account for the worker
+
+The worker needs its own login to Firestore. Use a dedicated account that can only use the database:
+
+1. Google Cloud console (console.cloud.google.com), project **whleaderboard** > IAM & Admin > Service Accounts > Create
+   service account. Name it `wh-kofi-worker`.
+2. Role: **Cloud Datastore User** (that is Firestore read/write; nothing else in the project).
+3. Open the account > Keys > Add key > Create new key > JSON. A file downloads. **Never put it in the repo**
+   (`.gitignore` ignores `*service-account*.json` and `whleaderboard-*.json`, but keep it outside the project folder anyway),
+   and delete it after step 4.
+
+(Firebase console > Project settings > Service accounts > Generate new private key also works, but that key can do anything
+in the whole project. The dedicated one is safer.)
+
+### 4. Deploy the worker (Cloudflare)
+
+1. Make a free Cloudflare account (dash.cloudflare.com). No card is needed for Workers.
+2. In a terminal, in the project's `kofi-worker` folder (Node 18 or newer):
+   ```bash
+   npx wrangler login
+   ```
+3. In `kofi-worker/wrangler.toml`, set `ALLOWED_ORIGINS` to the address your game runs on, exactly as the browser shows it
+   (e.g. `https://whathappenedclicker.com`; several are comma separated). Only those may send claim requests.
+4. Set the secrets (each command asks for the value; nothing is written to a file):
+   ```bash
+   npx wrangler secret put KOFI_VERIFICATION_TOKEN
+   ```
+   Paste the token from ko-fi.com/manage/webhooks > Advanced > Verification Token.
+   ```powershell
+   Get-Content "C:\path\to\the-key-file.json" -Raw | npx wrangler secret put GCP_SERVICE_ACCOUNT
+   ```
+   (the whole JSON key file from step 3; on macOS/Linux: `npx wrangler secret put GCP_SERVICE_ACCOUNT < the-key-file.json`)
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+   ```
+   Run that twice and use the two results for:
+   ```bash
+   npx wrangler secret put EMAIL_PEPPER
+   ```
+   ```bash
+   npx wrangler secret put ADMIN_TOKEN
+   ```
+   Keep `ADMIN_TOKEN` somewhere safe (a password manager): it lets you credit payments by hand. Don't change
+   `EMAIL_PEPPER` later, or unclaimed payments can't be claimed any more.
+5. Deploy:
+   ```bash
+   npx wrangler deploy
+   ```
+   It prints the address, like `https://wh-kofi.yourname.workers.dev`. Open it in a browser: it should say the webhook is
+   running. Put that address (no trailing slash) in `workerUrl` in `core/premium-config.js`.
+
+The worker bundles `core/premium-config.js` and `core/kofi.js` when it deploys. **Whenever you change the config, deploy both
+the site and the worker**, or they'll disagree about what a pack is worth.
+
+### 5. Firestore rules
+
+Copy the three `match` blocks and the `beans...` functions from `firestore-premium.rules` into your rules, next to the saves
+and codes blocks. Run the Rules Playground checklist at the bottom of that file, then Publish.
+
+### 6. The Ko-fi webhook
+
+1. ko-fi.com/manage/webhooks > Webhook URL: `https://wh-kofi.yourname.workers.dev/kofi` > Update.
+2. Send a test payment from that page. In a terminal in `kofi-worker`, `npx wrangler tail` shows the worker's log while it
+   runs. Ko-fi's test uses the example transaction id `00000000-1111-2222-3333-444444444444`; the worker answers 200 and
+   credits nothing for it.
+
+### 7. Publish the site and try it
+
+1. Deploy the site with the filled-in config (only after you've reviewed the diff).
+2. In the game, sign in, open ☕ > Get Beans, copy your link code.
+3. Buy the cheapest pack yourself with the code in the message. Within a minute the ☕ chip should go up.
+4. In Firestore, `kofi_payments/<transaction id>` should say `status: credited` with your uid, and hold no name or email.
+
+## Fixing a payment
+
+**Someone paid without their link code** (or with a typo). The payment is kept as `unmatched` in `kofi_payments`, with a
+keyed hash of the email instead of the email.
+
+- The player can claim it themselves: ☕ > Get Beans > "Paid without your code?", with the Ko-fi transaction ID and the
+  email they paid with.
+- Or you give it to them. Find the payment's transaction ID in your Ko-fi dashboard and ask the player for their link code
+  (Get Beans tab), then:
+  ```bash
+  curl -X POST https://wh-kofi.yourname.workers.dev/admin/resolve -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d "{\"txid\":\"THE-TRANSACTION-ID\",\"code\":\"WH-XXXX-XXXX-XXXX\"}"
+  ```
+
+**A payment the worker didn't store** (an item missing from `packs`, a tip before you set `donationRate`): add `"beans": N`
+to the same command to credit it by hand. It still credits each transaction ID once.
+
+**Refunds and chargebacks**: Ko-fi doesn't send a webhook for them. In the Firebase console, lower that player's
+`wallets/{uid}.balance` by hand (your console edits aren't limited by the rules). `kofi_payments` tells you whose it was.
+
+**The player has no link code yet**: they need to open Get Beans once while signed in; that creates it.
+
+## What is kept, and where
+
+| Where | What | Who can read it |
+|---|---|---|
+| `kofi_payments/{txid}` | type, amount, currency, paid/received time, packs and Beans, link code, uid; for an unclaimed payment a keyed email hash (deleted on claim) | only the worker and you (console) |
+| `wallets/{uid}` | bought balance, lifetime total, lifetime spent, last spend id | the player and you |
+| `wallets/{uid}/credits/{txid}` | Beans, kind, packs, time | the player and you |
+| `wallets/{uid}/spends/{id}` | item, cost, time | the player and you |
+| `kofi_links/{code}` | uid, time made | the player (their own) and the worker |
+
+Never kept: the payer's name, email address, message, shipping address or Discord details. Payments worth no Beans aren't
+stored. `privacy.html` says the same; update it if you change what the worker keeps.
+
+## Secrets checklist
+
+- [ ] `KOFI_VERIFICATION_TOKEN`, `GCP_SERVICE_ACCOUNT`, `EMAIL_PEPPER`, `ADMIN_TOKEN` set with `wrangler secret put` (never in
+      `wrangler.toml`, never committed).
+- [ ] The service account key file deleted from your computer after uploading it.
+- [ ] The service account has only **Cloud Datastore User**.
+- [ ] No catch-all Firestore rule.
+- [ ] If a secret leaks: Ko-fi lets you regenerate the verification token; delete and recreate the service account key;
+      `wrangler secret put` the new value and `npx wrangler deploy`.

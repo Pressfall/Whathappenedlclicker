@@ -5,3 +5,9 @@
 
 # dependencies
 node_modules/
+
+# the Ko-fi worker (kofi-worker/): wrangler's local files and secrets, and Google service account keys
+.wrangler/
+.dev.vars
+*service-account*.json
+whleaderboard-*.json
