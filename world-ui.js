@@ -356,21 +356,36 @@
             if (ch && id) setText(ch, WHW.actors.abilityCharges(p, id)); // charges ready
             b.classList.toggle('is-on', !!id && WHW.actors.abilityActive(p, id));
         });
+        // the potion cooldown, the same way
+        const pw = Math.max(0, (g.potionCd || 0) - E.time), pb = document.querySelector('[data-potion]');
+        if (pb) cdText(pb.querySelector('.cd'), pw);
+        // the touch buttons show the same: the cooldown left, the charges ready, lit while running
+        if (!E.isTouch) return;
         for (let i = 0; i < D.ABILITY_KEYS.length; i++) {
             const t = $('tAb' + i);
             if (!t) continue;
             const id = kit[i], a = D.ABILITIES[id];
             if (t.hidden !== !a) t.hidden = !a;
-            if (a) { setText(t, a.icon); t.classList.toggle('is-cd', WHW.actors.abilityCd(p, id) > 0); }
+            if (!a) continue;
+            if (t._id !== id) { t._id = id; t.setAttribute('aria-label', a.name); }
+            setText(t.querySelector('.ic'), a.icon);
+            cdText(t.querySelector('.cd'), WHW.actors.abilityCd(p, id));
+            setText(t.querySelector('.ch'), a.charges > 1 ? WHW.actors.abilityCharges(p, id) : '');
+            t.classList.toggle('is-on', WHW.actors.abilityActive(p, id));
         }
-        // the potion cooldown, the same way
-        const pw = Math.max(0, (g.potionCd || 0) - E.time), pb = document.querySelector('[data-potion]'), pc = pb && pb.querySelector('.cd');
-        if (pc) {
-            if (pc.hidden !== pw <= 0) pc.hidden = pw <= 0;
-            if (pw > 0) setText(pc, pw >= 10 ? Math.ceil(pw) : pw.toFixed(1));
-        }
-        const tp = $('tPotion');
-        if (tp) tp.classList.toggle('is-cd', pw > 0);
+        // the shield button while there is a shield to raise
+        const ts = $('tShield'), shield = !!W.findGear(g.state, g.state.equip.offhand);
+        if (ts.hidden === shield) { ts.hidden = !shield; if (!shield) g.touchShield = false; }
+        // the potion: how many, and whether one can be drunk (some left, and some left for this fight)
+        const s = g.state, potions = (s.cons.potion_small || 0) + (s.cons.potion_big || 0) + (s.cons.potion_max || 0);
+        const lim = WHW.potionsLeft ? WHW.potionsLeft() : null, tp = $('tPotion');
+        setText(tp.querySelector('.n'), lim === null ? potions : Math.min(potions, lim));
+        tp.classList.toggle('is-out', !potions || lim === 0);
+        cdText(tp.querySelector('.cd'), pw);
+    }
+    function cdText(c, left) {
+        if (c.hidden !== left <= 0) c.hidden = left <= 0;
+        if (left > 0) setText(c, left >= 10 ? Math.ceil(left) : left.toFixed(1));
     }
     // ---------------- classes and skill trees ----------------
     let classTab = null;
@@ -809,8 +824,11 @@
     let promptHtml = null;
     function setPrompt(html) {
         const el = $('prompt');
+        // something to use (the prompt names a key): the touch Use button shows, and the prompt can be tapped
+        const act = !!html && html.includes('<kbd>'), use = $('tUse');
+        if (use.hidden === act) { use.hidden = !act; if (!act) { game().useHeld = false; use.classList.remove('is-down'); } }
         if (!html) { if (!el.hidden) el.hidden = true; return; }
-        if (promptHtml !== html) { promptHtml = html; el.innerHTML = html; }
+        if (promptHtml !== html) { promptHtml = html; el.innerHTML = html; el.classList.toggle('is-act', act); }
         if (el.hidden) el.hidden = false;
     }
     function setZone(name, sub) { $('zoneName').innerHTML = esc(name) + (sub ? `<small>${esc(sub)}</small>` : ''); }
@@ -1347,6 +1365,7 @@
         modal('📜 How the Wilds work', `<div class="w-help">
             <h3>Moving and fighting</h3>
             <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move, <kbd>Space</kbd> or <kbd>Shift</kbd> to dash (you can't be hit during a dash), <kbd>1</kbd>–<kbd>5</kbd> or the mouse wheel to switch what you hold, <kbd>Z</kbd> for a potion (then a short wait before the next: longer after stronger ones), <kbd>E</kbd> to use things, <kbd>I</kbd> for your bag, <kbd>M</kbd> for the map.</p>
+            ${E.isTouch ? `<p><b>On a touch screen</b>, put your thumb down anywhere on the ${WHW.settings.touchLefty ? 'right' : 'left'} side to move (the stick comes to it), and drag anywhere else to swing: quick swipes hit hardest. The round buttons by your other thumb dash, raise your shield (hold it), cast your abilities and drink a potion. A gold <b>E</b> button shows up when there's something to use; tapping the note above the buttons does the same. Settings has bigger or smaller buttons and a left-handed layout.</p>` : ''}
             <p><b>Your weapon follows the mouse.</b> To hit hard you have to <b>swing</b>: move the mouse quickly across the target, like the real thing. A slow drag just bumps it. The swing meter under your hotbar shows how fast your blade is moving: past the first mark it hurts, past the second it's a <b style="color:#ffc83d">Perfect</b> hit. Slashing back and forth builds a combo; the tip of the blade hits harder than the hilt. Heavy weapons like axes turn slower but hit harder.</p>
             <ul><li><b>Shields</b>: hold <kbd>right-click</kbd> (or <kbd>F</kbd>) to raise your shield toward the mouse. Hits from in front are mostly blocked but cost stamina; if you run out, your guard breaks. Raise it <i>just</i> as a hit lands to <b style="color:#ffc83d">parry</b>: no damage, the attacker is stunned and projectiles fly back. You can't attack with your weapon while blocking. Falling rocks and meteors can't be blocked.</li>
             <li><b>Quests</b>: four townsfolk stand around the plaza. Talk to them (<kbd>E</kbd>) for quests that pay rubies: a story for each, then a new daily quest every day. A <b style="color:#ffc83d">!</b> over someone's head means a new quest, a <b style="color:#ffc83d">?</b> means one is ready to hand in.</li>
@@ -1388,6 +1407,10 @@
             <label class="w-setting"><span>Damage numbers</span><input type="checkbox" id="setNums" ${S.dmgNumbers ? 'checked' : ''}></label>
             <label class="w-setting"><span>Screen shake and hit pause</span><input type="checkbox" id="setShake" ${S.shake ? 'checked' : ''}></label>
             <label class="w-setting"><span>Sound volume<small>Also follows the game's sound settings.</small></span><input type="range" id="setVol" min="0" max="1" step="0.05" value="${S.volume}"></label>
+            ${E.isTouch ? `<h3 class="w-setting-h">Touch controls</h3>
+            <label class="w-setting"><span>Button size</span>
+                <select id="setTouchSize">${opts([['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']], S.touchSize)}</select></label>
+            <label class="w-setting"><span>Left-handed<small>The stick on the right, the buttons on the left.</small></span><input type="checkbox" id="setLefty" ${S.touchLefty ? 'checked' : ''}></label>` : ''}
             <h3 class="w-setting-h">Performance</h3>
             <label class="w-setting"><span>Graphics<small>Lower draws fewer particles, less ground detail and lighting, and a less sharp picture.</small></span>
                 <select id="setGfx">${opts([['auto', 'Auto (game setting: ' + cap(WHW.gamePerformance()) + ')'], ['high', 'High'], ['medium', 'Medium'], ['low', 'Low']], S.graphics)}</select></label>
@@ -1402,6 +1425,10 @@
         body.querySelector('#setNums').addEventListener('change', (e) => { S.dmgNumbers = e.target.checked; save(); });
         body.querySelector('#setShake').addEventListener('change', (e) => { S.shake = e.target.checked; save(); });
         body.querySelector('#setVol').addEventListener('input', (e) => { S.volume = Number(e.target.value); save(); });
+        const touch = (key, val) => { S[key] = val; save(); WHW.applyTouch(); };
+        const ts = body.querySelector('#setTouchSize'), tl = body.querySelector('#setLefty');
+        if (ts) ts.addEventListener('change', (e) => touch('touchSize', e.target.value));
+        if (tl) tl.addEventListener('change', (e) => touch('touchLefty', e.target.checked));
         const gfx = (key, val) => { S[key] = val; save(); WHW.applyGraphics(); };
         body.querySelector('#setGfx').addEventListener('change', (e) => gfx('graphics', e.target.value));
         body.querySelector('#setRes').addEventListener('change', (e) => gfx('resolution', e.target.value));

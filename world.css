@@ -5,6 +5,11 @@
     --hp: #ff5b6b;
     --stam: #ffd24d;
     --wood: #c48a52;
+    /* the notch, rounded corners and the home bar (world.html asks for the whole screen with viewport-fit=cover) */
+    --sat: env(safe-area-inset-top, 0px);
+    --sar: env(safe-area-inset-right, 0px);
+    --sab: env(safe-area-inset-bottom, 0px);
+    --sal: env(safe-area-inset-left, 0px);
 }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d13; color: var(--text); font-family: var(--font); }
 body { -webkit-user-select: none; user-select: none; touch-action: none; }
@@ -15,7 +20,7 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 /* ---------- HUD ---------- */
 .w-hud { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
 .w-hud > * { pointer-events: auto; }
-.w-hud-tl { position: absolute; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 6px; width: min(270px, 60vw); }
+.w-hud-tl { position: absolute; top: calc(12px + var(--sat)); left: calc(12px + var(--sal)); display: flex; flex-direction: column; gap: 6px; width: min(270px, 60vw); }
 .w-back { align-self: flex-start; padding: 6px 12px; border-radius: 999px; background: rgba(15, 18, 27, 0.8); border: 1px solid var(--border-strong); color: var(--text); text-decoration: none; font-weight: 700; font-size: 13px; }
 .w-back:hover { background: var(--surface-3); }
 .w-bars { display: flex; flex-direction: column; gap: 4px; }
@@ -40,7 +45,10 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-quests span { color: var(--text-dim); white-space: nowrap; }
 .w-quests .is-done span { color: var(--gold); }
 
-.w-hud-tr { position: absolute; top: 12px; right: 12px; display: flex; gap: 6px; align-items: center; }
+.w-hud-tr { position: absolute; top: calc(12px + var(--sat)); right: calc(12px + var(--sar)); display: flex; gap: 6px; align-items: center; }
+/* the buttons behind ⋯ on small screens; here they are simply part of the row */
+.w-more { display: contents; }
+.w-more-btn { display: none; position: relative; }
 .w-rubies { display: flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 999px; background: rgba(15, 18, 27, 0.82); border: 1px solid rgba(255, 61, 94, 0.45); font-weight: 800; font-variant-numeric: tabular-nums; }
 .w-rubies b { color: #ff8da0; min-width: 2ch; text-align: right; }
 .w-rubies.is-bump { animation: w-bump 300ms ease; }
@@ -103,13 +111,13 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-emotes { display: flex; gap: 4px; flex-wrap: wrap; }
 .w-emotes button { min-width: 36px; height: 32px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font: 700 15px var(--font); cursor: pointer; }
 .w-emotes button:hover { background: var(--surface-3); }
-.w-chat-btn { position: absolute; left: 12px; bottom: 30px; }
+.w-chat-btn { position: absolute; left: calc(12px + var(--sal)); bottom: calc(30px + var(--sab)); }
 .w-log { max-height: 220px; overflow: auto; display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); font-size: 13px; }
 .w-log b { color: #9ad7ff; }
 .w-log .mine b { color: var(--gold); }
 .w-players { display: flex; flex-direction: column; gap: 4px; }
 .w-players span { display: flex; justify-content: space-between; padding: 5px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; }
-.w-minimap { position: absolute; top: 58px; right: 12px; width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--border-strong); background: rgba(0, 0, 0, 0.5); image-rendering: pixelated; cursor: zoom-in; }
+.w-minimap { position: absolute; top: calc(58px + var(--sat)); right: calc(12px + var(--sar)); width: 150px; height: 150px; border-radius: 12px; border: 1px solid var(--border-strong); background: rgba(0, 0, 0, 0.5); image-rendering: pixelated; cursor: zoom-in; }
 
 .w-boss { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: min(520px, 54vw); text-align: center; }
 .w-boss-name { font-family: var(--font-display); font-size: 15px; text-shadow: 0 2px 4px #000; margin-bottom: 4px; }
@@ -117,7 +125,7 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-boss-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff3d5e, #ff9a1f); transition: width 150ms linear; }
 .w-boss.is-exposed .w-boss-bar i { background: linear-gradient(90deg, #ffe14d, #fff6cf); }
 
-.w-bottom { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.w-bottom { position: absolute; bottom: calc(12px + var(--sab)); left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
 .w-hotbar { display: flex; gap: 6px; padding: 6px; border-radius: 14px; background: rgba(15, 18, 27, 0.8); border: 1px solid var(--border-strong); }
 .w-slot { position: relative; width: 50px; height: 50px; border-radius: 10px; border: 2px solid rgba(255, 255, 255, 0.12); background: rgba(0, 0, 0, 0.35); color: var(--text); font-size: 24px; cursor: pointer; padding: 0; display: grid; place-items: center; }
 .w-slot.is-sel { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(255, 200, 61, 0.35); }
@@ -137,8 +145,6 @@ body { -webkit-user-select: none; user-select: none; touch-action: none; }
 .w-slot .cd[hidden] { display: none; }
 .w-abil.is-on { border-color: var(--gold); box-shadow: 0 0 10px rgba(255, 200, 61, 0.45); }
 .w-abil .ch { position: absolute; right: 3px; bottom: 2px; font-size: 11px; font-weight: 800; color: var(--gold); text-shadow: 0 1px 2px #000; }
-.w-touch-btns button[hidden] { display: none; }
-.w-touch-btns button.is-cd { opacity: 0.45; }
 .w-class { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px; margin: 4px 0 10px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid; border-left-width: 4px; }
 .w-class-ico { width: 52px; height: 52px; flex: 0 0 52px; border-radius: 12px; display: grid; place-items: center; font-size: 28px; background: rgba(0, 0, 0, 0.3); border: 2px solid; }
 .w-class-text { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -268,11 +274,65 @@ button.w-load:hover { border-color: var(--border-strong); }
 @keyframes w-banner { 0% { opacity: 0; transform: translate(-50%, 10px); } 12%, 75% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
 
 /* ---------- touch ---------- */
-.w-touch { position: fixed; inset: 0; pointer-events: none; z-index: 11; }
-.w-stick { position: absolute; left: 24px; bottom: 90px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255, 255, 255, 0.06); border: 2px solid rgba(255, 255, 255, 0.15); pointer-events: auto; }
-.w-stick i { position: absolute; left: 50%; top: 50%; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; background: rgba(255, 255, 255, 0.25); }
-.w-touch-btns { position: absolute; right: 18px; bottom: 96px; display: flex; flex-direction: column; gap: 10px; pointer-events: auto; }
-.w-touch-btns button { width: 54px; height: 54px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.2); background: rgba(15, 18, 27, 0.7); color: var(--text); font: 800 18px var(--font); }
+/* Touch screens (body.is-touch, set by world-engine.js): the stick appears where the left thumb lands (where it rests is only
+   a hint) and the actions sit in an arc around the right thumb's corner: dash in the corner, the shield and Use beside it,
+   the abilities and the potion further out. Each button is placed by its center (--x, --y from the corner) and its size
+   (--s), all scaled by --k: the size picked in Settings > Touch controls (--ks), a little smaller on the narrowest phones
+   (--fit). --lift is the room kept under them for the hotbar, on screens too narrow to fit it between the stick and the
+   buttons (phones held upright). */
+body.is-touch { --lift: 86px; --ks: 1; --fit: 1; --k: calc(var(--ks) * var(--fit)); }
+body.is-touch.w-touch-s { --ks: 0.85; }
+body.is-touch.w-touch-l { --ks: 1.15; }
+@media (max-width: 379px) { body.is-touch { --fit: 0.9; } }
+@media (min-width: 600px) { body.is-touch { --lift: 0px; } }
+/* under the HUD (z-index 10), so its lists and cards (the ⋯ list, invitations) open over the buttons */
+.w-touch { position: fixed; inset: 0; pointer-events: none; z-index: 9; }
+.w-stick { position: absolute; left: calc(24px + var(--sal)); bottom: calc(var(--lift) + 14px + var(--sab)); width: calc(124px * var(--k)); height: calc(124px * var(--k)); box-sizing: border-box; border-radius: 50%; background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255, 255, 255, 0.16); opacity: 0.45; pointer-events: none; }
+.w-stick.is-on { opacity: 1; background: rgba(255, 255, 255, 0.08); }
+.w-stick i { position: absolute; left: 29%; top: 29%; width: 42%; height: 42%; border-radius: 50%; background: rgba(255, 255, 255, 0.3); }
+.w-touch-btns { position: absolute; right: calc(10px + var(--sar)); bottom: calc(var(--lift) + 8px + var(--sab)); width: calc(228px * var(--k)); height: calc(228px * var(--k)); }
+.w-tb { position: absolute; right: calc((var(--x) - var(--s) / 2) * var(--k)); bottom: calc((var(--y) - var(--s) / 2) * var(--k)); width: calc(var(--s) * var(--k)); height: calc(var(--s) * var(--k)); display: grid; place-items: center; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.22); background: rgba(15, 18, 27, 0.72); color: var(--text); font: 800 calc(var(--s) * var(--k) * 0.4) var(--font); pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; overflow: hidden; }
+.w-tb.is-down { transform: scale(0.9); background: rgba(255, 255, 255, 0.2); }
+.w-tb--dash { --x: 50px; --y: 50px; --s: 70px; background: rgba(36, 64, 120, 0.72); border-color: rgba(150, 195, 255, 0.55); }
+.w-tb--shield { --x: 136px; --y: 54px; --s: 58px; }
+.w-tb--shield.is-down { border-color: #9fd0ff; box-shadow: 0 0 12px rgba(159, 208, 255, 0.6); }
+/* Use shows up only when there is something to use (the prompt above says what) */
+.w-tb--use { --x: 54px; --y: 136px; --s: 58px; background: var(--gold); border-color: #fff4d6; color: #2a1600; box-shadow: 0 0 0 4px rgba(255, 200, 61, 0.28); animation: w-tb-pop 160ms ease-out; }
+.w-tb--use.is-down { background: #ffe08a; }
+.w-tb--ab { --s: 54px; }
+#tAb0 { --x: 193px; --y: 96px; }
+#tAb1 { --x: 158px; --y: 154px; }
+#tAb2 { --x: 101px; --y: 191px; }
+.w-tb--ab.is-on { border-color: var(--gold); box-shadow: 0 0 12px rgba(255, 200, 61, 0.55); }
+.w-tb--potion { --x: 34px; --y: 199px; --s: 48px; }
+.w-tb--potion.is-out { opacity: 0.4; }
+.w-tb .cd { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: calc(14px * var(--k)); }
+.w-tb .ch, .w-tb .n { position: absolute; right: 14%; bottom: 6%; font-size: calc(11px * var(--k)); font-weight: 800; text-shadow: 0 1px 2px #000; }
+.w-tb .ch { color: var(--gold); }
+.w-tb .ch:empty, .w-tb .n:empty { display: none; }
+@keyframes w-tb-pop { from { transform: scale(0.6); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .w-tb--use { animation: none; } }
+/* mirrored for the left hand: the stick on the right, the buttons on the left */
+.w-lefty .w-stick { left: auto; right: calc(24px + var(--sar)); }
+.w-lefty .w-touch-btns { right: auto; left: calc(10px + var(--sal)); }
+.w-lefty .w-tb { right: auto; left: calc((var(--x) - var(--s) / 2) * var(--k)); }
+/* the hotbar keeps to what you hold (the abilities, potion and shield have buttons of their own), with slots big enough for
+   a thumb; the prompt is a button too (tap it to use, hold it to pick), above the controls */
+body.is-touch .w-hotbar .w-abil, body.is-touch .w-hotbar [data-potion], body.is-touch .w-hotbar .w-slot--shield { display: none; }
+body.is-touch .w-slot { width: 46px; height: 46px; font-size: 22px; }
+body.is-touch .w-prompt { bottom: calc(var(--lift) + 244px * var(--k) + var(--sab)); width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box; white-space: normal; text-align: center; pointer-events: none; }
+body.is-touch .w-prompt.is-act { pointer-events: auto; border-color: var(--gold); }
+/* phones held upright but short: above the controls would be on top of you, so just above your head instead */
+@media (max-width: 599px) and (max-height: 779px) { body.is-touch .w-prompt { bottom: auto; top: calc(50% - 66px); } }
+/* wider screens: just above the hotbar, between the stick and the buttons */
+@media (min-width: 600px) { body.is-touch .w-prompt { bottom: calc(90px + var(--sab)); max-width: min(440px, calc(100vw - 36px - 440px * var(--k))); } }
+/* chat opens at the top, clear of the controls and the on-screen keyboard; on screens big enough for the full HUD (tablets)
+   its button sits above where the stick rests (small screens have it by the back button) */
+body.is-touch .w-chat { bottom: auto; top: calc(54px + var(--sat)); }
+@media (min-width: 641px) and (min-height: 501px) {
+    body.is-touch .w-chat-btn { left: calc(24px + var(--sal)); bottom: calc(var(--lift) + 26px + 124px * var(--k) + var(--sab)); }
+    body.is-touch.w-lefty .w-chat-btn { left: auto; right: calc(24px + var(--sar)); }
+}
 
 /* ---------- modals ---------- */
 .w-modal { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center; background: rgba(4, 6, 10, 0.6); backdrop-filter: blur(3px); padding: 16px; }
@@ -410,31 +470,45 @@ button.w-load:hover { border-color: var(--border-strong); }
 .w-cover-card h2 { margin: 0; font-size: 20px; }
 .w-title { font-family: var(--font-display); font-size: 40px; background: linear-gradient(180deg, #e9ffd9, #5fd068 55%, #2e8a3e); -webkit-background-clip: text; background-clip: text; color: transparent; }
 
-@media (max-width: 640px) {
-    .w-minimap { width: 96px; height: 96px; top: 54px; }
+/* small screens (phones either way up): a slimmer HUD. Online, party, map, help, settings and the account fold into the ⋯
+   list (with their names), the minimap shrinks (tap it for the big map) and chat sits beside the back button. */
+@media (max-width: 640px), (max-height: 500px) {
+    .w-minimap { width: 96px; height: 96px; top: calc(54px + var(--sat)); right: calc(8px + var(--sar)); }
     .w-hotbar { gap: 4px; padding: 4px; max-width: calc(100vw - 16px); overflow-x: auto; }
-    .w-chat-btn { bottom: 222px; } /* above the hotbar (full width here) and the touch stick */
+    .w-chat-btn { top: calc(12px + var(--sat)); bottom: auto; left: calc(58px + var(--sal)); width: 32px; height: 32px; font-size: 15px; }
     .w-slot { width: 34px; height: 38px; font-size: 18px; flex: 0 0 auto; }
     .w-slot--cons { width: 32px; }
     .w-power { width: 180px; }
     .w-power span { display: none; }
     .w-prompt { bottom: 110px; }
+    .w-hud-tr { gap: 4px; right: calc(8px + var(--sar)); }
     .w-hud-tr .w-icon-btn { width: 32px; height: 32px; font-size: 15px; }
-    /* room for the account button: tighter spacing, and How to play is in Settings here */
-    .w-hud-tr { gap: 4px; right: 8px; }
-    .w-hud-tr #btnHelp { display: none; }
-    /* the Renown chip needs the room: tapping the minimap opens the map here */
-    .w-hud-tr #btnMap { display: none; }
+    .w-more-btn { display: block; font-size: 18px; line-height: 1; }
+    .w-more { display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 2; flex-direction: column; gap: 2px; min-width: 210px; padding: 6px; border-radius: 14px; background: rgba(15, 18, 27, 0.97); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); }
+    .w-hud-tr.is-more .w-more { display: flex; }
+    .w-hud-tr.is-more .w-more-btn { background: var(--surface-3); border-color: var(--gold); }
+    .w-hud-tr .w-more > * { display: flex; align-items: center; gap: 12px; width: 100%; height: 44px; padding: 0 12px; box-sizing: border-box; border: 0; border-radius: 10px; background: transparent; box-shadow: none; color: var(--text); font: 600 14px var(--font); text-align: left; text-decoration: none; }
+    .w-hud-tr .w-more > *::after { content: attr(aria-label); order: 1; }
+    .w-hud-tr .w-more > *:hover, .w-hud-tr .w-more > *:active { background: var(--surface-3); }
+    .w-more #onlineCount { order: 2; margin-left: auto; color: var(--text-dim); }
+    /* a save to choose (or one that failed), or online play failing, shows on the ⋯ button while the list is closed */
+    .w-hud-tr:has(.w-cloud.is-warn, .w-online.is-error) .w-more-btn::after { content: ''; position: absolute; top: -3px; right: -3px; width: 10px; height: 10px; border-radius: 50%; background: #ffb347; box-shadow: 0 0 0 2px #0b0d13; }
     .w-renown { height: 32px; padding: 0 8px; }
     .w-back { padding: 6px 10px; }
     .w-back span { display: none; }
     .w-rubies { padding: 4px 9px; gap: 5px; font-size: 14px; }
-    .w-online { height: 32px; padding: 0 8px; }
-    .w-boss { top: 100px; width: 80vw; }
 }
-/* touch screens have their own ability and potion buttons, so the hotbar keeps to weapons and the shield */
-@media (max-width: 640px) and (pointer: coarse) {
-    .w-hotbar .w-abil, .w-hotbar [data-potion] { display: none; }
+/* held upright: the boss bar under the minimap, clear of the health bars; the match, wave and tournament bars below them */
+@media (max-width: 640px) {
+    .w-hud-tl { width: 52vw; }
+    .w-boss { top: calc(160px + var(--sat)); right: calc(8px + var(--sar)); left: auto; transform: none; width: 44vw; }
+    .w-boss-name { font-size: 13px; }
+    .w-arena-hud, .w-waves-hud, .w-tour-hud { top: calc(160px + var(--sat)); }
+}
+/* held sideways: the boss bar at the top, between the back and chat buttons and the buttons on the right */
+@media (max-height: 500px) and (min-width: 641px) {
+    .w-boss { top: calc(10px + var(--sat)); left: calc(104px + var(--sal)); right: calc(250px + var(--sar)); width: auto; transform: none; }
+    .w-boss-name { font-size: 13px; margin-bottom: 2px; }
 }
 @media (prefers-reduced-motion: reduce) {
     .w-banner, .w-toast, .w-rubies.is-bump { animation: none; }

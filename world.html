@@ -31,19 +31,23 @@
                 <div class="w-zone" id="zoneName">Wildgate Town</div>
                 <div class="w-quests" id="questTracker" hidden></div>
             </div>
-            <div class="w-hud-tr">
+            <div class="w-hud-tr" id="hudTr">
                 <div class="w-rubies" title="Rubies: the currency of the Wilds"><span class="w-ruby" aria-hidden="true"></span><b id="rubyCount">0</b><span class="sr-only"> rubies</span></div>
                 <!-- Renown: one rank for the game and the Wilds together (core/renown.js) -->
                 <button class="w-renown" id="btnRenown" title="Renown: one rank for the game and the Wilds together" aria-label="Renown">⭐ <b id="renownCount">0</b></button>
-                <button class="w-online" id="btnOnline" title="Online" aria-label="Online play">🌐 <b id="onlineCount">…</b></button>
                 <button class="w-icon-btn" id="btnBag" title="Bag and gear (I)" aria-label="Bag and gear">🎒</button>
                 <button class="w-icon-btn" id="btnSkills" title="Classes and skills (K)" aria-label="Classes and skills">⚔️</button>
-                <button class="w-icon-btn" id="btnParty" title="Party (P)" aria-label="Party">👥</button>
-                <button class="w-icon-btn" id="btnMap" title="Map (M)" aria-label="Map">🗺️</button>
-                <button class="w-icon-btn" id="btnHelp" title="How to play" aria-label="How to play">❔</button>
-                <button class="w-icon-btn" id="btnSettings" title="Settings" aria-label="Settings">⚙️</button>
-                <!-- your account (cloud.js keeps the icon and tooltip current: saved, saving, or a save to choose) -->
-                <a class="w-icon-btn w-cloud" id="cloudBtn" href="account.html" title="Sign in to save your progress and play on any device" aria-label="Save to account">☁️</a>
+                <!-- on small screens the rest fold away behind ⋯ (a list that names each one); elsewhere they sit in the row -->
+                <button class="w-icon-btn w-more-btn" id="btnMore" title="More" aria-label="More" aria-expanded="false" aria-controls="hudMore">⋯</button>
+                <div class="w-more" id="hudMore">
+                    <button class="w-online" id="btnOnline" title="Online" aria-label="Online play">🌐 <b id="onlineCount">…</b></button>
+                    <button class="w-icon-btn" id="btnParty" title="Party (P)" aria-label="Party">👥</button>
+                    <button class="w-icon-btn" id="btnMap" title="Map (M)" aria-label="Map">🗺️</button>
+                    <button class="w-icon-btn" id="btnHelp" title="How to play" aria-label="How to play">❔</button>
+                    <button class="w-icon-btn" id="btnSettings" title="Settings" aria-label="Settings">⚙️</button>
+                    <!-- your account (cloud.js keeps the icon and tooltip current: saved, saving, or a save to choose) -->
+                    <a class="w-icon-btn w-cloud" id="cloudBtn" href="account.html" title="Sign in to save your progress and play on any device" aria-label="Save to account">☁️</a>
+                </div>
             </div>
             <canvas id="minimap" class="w-minimap" width="150" height="150" role="button" tabindex="-1" aria-label="Open the map (M)" title="Open the map (M)"></canvas>
             <div class="w-boss" id="bossBar" hidden>
@@ -67,17 +71,18 @@
             <div class="w-banner" id="banner" hidden></div>
         </div>
 
-        <!-- touch controls (shown on touch devices) -->
+        <!-- touch controls (touch screens): a stick that appears wherever the left thumb lands on the left side, and the actions in
+             an arc around the right thumb. world.css places each button by its center; Settings > Touch controls sizes and mirrors them. -->
         <div class="w-touch" id="touchUi" hidden>
-            <div class="w-stick" id="touchStick"><i id="touchKnob"></i></div>
+            <div class="w-stick" id="touchStick" aria-hidden="true"><i id="touchKnob"></i></div>
             <div class="w-touch-btns">
-                <button id="tDash" aria-label="Dash">💨</button>
-                <button id="tUse" aria-label="Interact">E</button>
-                <button id="tShield" aria-label="Hold to block with your shield">🛡️</button>
-                <button id="tPotion" aria-label="Drink a potion">🧪</button>
-                <button id="tAb0" aria-label="Ability 1" hidden>🌟</button>
-                <button id="tAb1" aria-label="Ability 2" hidden>🌟</button>
-                <button id="tAb2" aria-label="Ability 3" hidden>🌟</button>
+                <button class="w-tb w-tb--dash" id="tDash" aria-label="Dash">💨</button>
+                <button class="w-tb w-tb--shield" id="tShield" aria-label="Hold to block with your shield" hidden>🛡️</button>
+                <button class="w-tb w-tb--use" id="tUse" aria-label="Use" hidden>E</button>
+                <button class="w-tb w-tb--ab" id="tAb0" aria-label="Ability 1" hidden><span class="ic"></span><span class="cd" hidden></span><span class="ch"></span></button>
+                <button class="w-tb w-tb--ab" id="tAb1" aria-label="Ability 2" hidden><span class="ic"></span><span class="cd" hidden></span><span class="ch"></span></button>
+                <button class="w-tb w-tb--ab" id="tAb2" aria-label="Ability 3" hidden><span class="ic"></span><span class="cd" hidden></span><span class="ch"></span></button>
+                <button class="w-tb w-tb--potion" id="tPotion" aria-label="Drink a potion">🧪<span class="n"></span><span class="cd" hidden></span></button>
             </div>
         </div>
 

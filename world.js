@@ -22,8 +22,9 @@
 
     // ---------------- settings (this device only) ----------------
     // graphics: 'auto' (follows the game's Performance setting), 'high', 'medium' or 'low'; resolution: 'auto', 'full', '0.75'
-    // or '0.5'; fpsCap: 30, 60 or 0 (the screen's own rate); showFps: a frame counter in the corner
-    WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false },
+    // or '0.5'; fpsCap: 30, 60 or 0 (the screen's own rate); showFps: a frame counter in the corner; touchSize: 'small', 'normal'
+    // or 'large' touch buttons; touchLefty: the touch controls mirrored (stick on the right)
+    WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false, touchSize: 'normal', touchLefty: false },
         (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) { return {}; } })());
     WHW.saveSettings = () => {
         try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(WHW.settings)); } catch (e) {}
@@ -1433,13 +1434,36 @@
                 enterZone(g.state.zone, { pos: g.state.pos, silent: true });
             });
         });
-        const tb = (id, down, up) => { const el = document.getElementById(id); if (!el) return; el.addEventListener('pointerdown', (e) => { e.preventDefault(); down(); }); if (up) { el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); } };
+        // touch buttons act as the finger lands (is-down shows it pressed until it lifts)
+        const tb = (id, down, up) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('is-down'); down(); });
+            const lift = () => { el.classList.remove('is-down'); if (up) up(); };
+            el.addEventListener('pointerup', lift); el.addEventListener('pointercancel', lift);
+        };
         tb('tDash', () => g.player && A.tryDash(g.player, E.moveInput()));
-        tb('tUse', () => { g.usePressed = true; g.useHeld = true; }, () => { g.useHeld = false; });
+        const use = () => { g.usePressed = true; g.useHeld = true; }, unuse = () => { g.useHeld = false; };
+        tb('tUse', use, unuse);
+        tb('prompt', () => { if (E.isTouch && document.getElementById('prompt').classList.contains('is-act')) use(); }, unuse); // the prompt itself, on touch
         tb('tPotion', () => WHW.actions.usePotion());
         for (let i = 0; i < D.ABILITY_KEYS.length; i++) tb('tAb' + i, () => WHW.actions.castAbility(i));
         tb('tShield', () => { g.touchShield = true; }, () => { g.touchShield = false; });
+        // small screens: ⋯ opens the list of the HUD buttons that don't fit in the row; choosing one, or tapping elsewhere, closes it
+        const tr = document.getElementById('hudTr'), more = document.getElementById('btnMore');
+        const showMore = (open) => { tr.classList.toggle('is-more', open); more.setAttribute('aria-expanded', String(open)); };
+        more.addEventListener('click', () => showMore(!tr.classList.contains('is-more')));
+        document.getElementById('hudMore').addEventListener('click', () => showMore(false));
+        document.addEventListener('pointerdown', (ev) => { if (tr.classList.contains('is-more') && !tr.contains(ev.target)) showMore(false); }, true);
     }
+    // Touch controls: their size and side (Settings > Touch controls)
+    WHW.applyTouch = () => {
+        const S = WHW.settings, b = document.body.classList;
+        b.toggle('w-touch-s', S.touchSize === 'small');
+        b.toggle('w-touch-l', S.touchSize === 'large');
+        b.toggle('w-lefty', !!S.touchLefty);
+        E.touch.lefty = !!S.touchLefty;
+    };
 
     // ---------------- rubies from the game (Golden traded in its Divine menu, rubies codes) ----------------
     const RUBY_SOURCES = { golden: 'trading Golden What Happened', code: 'a code' };
@@ -1531,6 +1555,7 @@
         noticeQuests(true);
         bindButtons();
         WHW.applyGraphics();
+        WHW.applyTouch();
         E.start();
         holdLock(false).then((ok) => {
             if (!ok) { lostToOtherTab(); return; }

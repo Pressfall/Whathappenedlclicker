@@ -27,7 +27,8 @@
         cam: { x: 0, y: 0 }, shake: 0, shakeX: 0, shakeY: 0,
         mouse: { sx: 0, sy: 0, x: 0, y: 0, down: false, rmb: false, pressed: false, released: false, moved: false, type: 'mouse' },
         keys: new Set(), pressedKeys: new Set(),
-        touch: { stickId: null, sx0: 0, sy0: 0, mx: 0, my: 0, aimId: null, ax0: 0, ay0: 0, ax: 0, ay: 0, active: false },
+        // lefty: the controls mirrored (the stick on the right); max: how far the stick's knob travels (px)
+        touch: { stickId: null, sx0: 0, sy0: 0, mx: 0, my: 0, max: 50, lefty: false, aimId: null, ax0: 0, ay0: 0, ax: 0, ay: 0, active: false },
         isTouch: false,
         particles: [], texts: [],
         time: 0, hitStop: 0, paused: false, frames: 0,
@@ -44,7 +45,8 @@
         if (E.resolution === 'auto') dpr = Math.min(dpr, Math.sqrt(AUTO_MAX_PIXELS / Math.max(1, E.w * E.h)));
         else if (E.resolution !== 'full') dpr *= Number(E.resolution) || 1;
         E.dpr = Math.max(0.35, dpr);
-        E.zoom = E.w < 700 ? 0.85 : E.w < 1100 ? 1.1 : 1.25;
+        // small screens see more of the world, either way up (a phone held sideways is wide but short)
+        E.zoom = E.w < 700 || E.h < 500 ? 0.85 : E.w < 1100 ? 1.1 : 1.25;
         c.width = Math.round(E.w * E.dpr); c.height = Math.round(E.h * E.dpr);
         c.style.width = E.w + 'px'; c.style.height = E.h + 'px';
     }
@@ -72,7 +74,7 @@
     function bindInput() {
         window.addEventListener('keydown', onKey(true));
         window.addEventListener('keyup', onKey(false));
-        window.addEventListener('blur', () => { E.keys.clear(); E.mouse.down = false; E.mouse.rmb = false; if (WHW.onRelease) WHW.onRelease(); });
+        window.addEventListener('blur', () => { E.keys.clear(); E.mouse.down = false; E.mouse.rmb = false; if (E.touch.stickId !== null) stickEnd(); if (WHW.onRelease) WHW.onRelease(); });
         const c = E.canvas;
         c.addEventListener('contextmenu', (ev) => ev.preventDefault());
         c.addEventListener('pointerdown', (ev) => {
@@ -99,26 +101,40 @@
         c.addEventListener('pointercancel', up);
         c.addEventListener('wheel', (ev) => { ev.preventDefault(); if (WHW.onWheel) WHW.onWheel(Math.sign(ev.deltaY)); }, { passive: false });
         window.addEventListener('resize', () => { resize(); });
-        // the left stick
-        const stick = document.getElementById('touchStick');
-        if (stick) {
-            stick.addEventListener('pointerdown', (ev) => { ev.preventDefault(); E.touch.stickId = ev.pointerId; const r = stick.getBoundingClientRect(); E.touch.sx0 = r.left + r.width / 2; E.touch.sy0 = r.top + r.height / 2; stickMove(ev); try { stick.setPointerCapture(ev.pointerId); } catch (e) {} });
-            stick.addEventListener('pointermove', (ev) => { if (ev.pointerId === E.touch.stickId) stickMove(ev); });
-            const end = (ev) => { if (ev.pointerId === E.touch.stickId) { E.touch.stickId = null; E.touch.mx = E.touch.my = 0; knob(0, 0); } };
-            stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end);
+    }
+    // The stick: a thumb landing on the lower part of its side of the screen (the left, or the right with the controls
+    // mirrored) brings the stick there and steers from that spot; where it rests otherwise is only a hint
+    function stickZone(x, y) { return y > E.h * 0.3 && (E.touch.lefty ? x > E.w * 0.55 : x < E.w * 0.45); }
+    function stickStart(ev) {
+        const st = document.getElementById('touchStick');
+        E.touch.stickId = ev.pointerId;
+        E.touch.sx0 = ev.clientX; E.touch.sy0 = ev.clientY;
+        E.touch.max = st ? st.offsetWidth * 0.4 : 50;
+        if (st) {
+            const r = st.offsetWidth / 2;
+            Object.assign(st.style, { left: (ev.clientX - r) + 'px', top: (ev.clientY - r) + 'px', right: 'auto', bottom: 'auto' });
+            st.classList.add('is-on');
         }
+        try { E.canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+        stickMove(ev);
+    }
+    function stickEnd() {
+        E.touch.stickId = null; E.touch.mx = E.touch.my = 0; knob(0, 0);
+        const st = document.getElementById('touchStick');
+        if (st) { st.style.left = st.style.top = st.style.right = st.style.bottom = ''; st.classList.remove('is-on'); }
     }
     function knob(x, y) { const k = document.getElementById('touchKnob'); if (k) k.style.transform = `translate(${x}px, ${y}px)`; }
     function stickMove(ev) {
         const dx = ev.clientX - E.touch.sx0, dy = ev.clientY - E.touch.sy0;
-        const len = Math.hypot(dx, dy), max = 50;
+        const len = Math.hypot(dx, dy), max = E.touch.max || 50;
         const f = len > max ? max / len : 1;
         E.touch.mx = dx * f / max; E.touch.my = dy * f / max;
         knob(dx * f, dy * f);
     }
-    // right side of the screen: drag to aim (weapons point along the drag; the bow pulls back with it)
+    // anywhere else on the screen: drag to aim (weapons point along the drag; the bow pulls back with it)
     function touchDown(ev) {
         setTouch(true);
+        if (E.touch.stickId === null && stickZone(ev.clientX, ev.clientY)) { stickStart(ev); return; }
         if (E.touch.aimId !== null) return;
         E.touch.aimId = ev.pointerId;
         E.touch.ax0 = E.touch.ax = ev.clientX; E.touch.ay0 = E.touch.ay = ev.clientY;
@@ -128,8 +144,13 @@
         try { E.canvas.setPointerCapture(ev.pointerId); } catch (e) {}
         if (WHW.onPress) WHW.onPress();
     }
-    function touchMove(ev) { if (ev.pointerId !== E.touch.aimId) return; E.touch.ax = ev.clientX; E.touch.ay = ev.clientY; E.mouse.sx = ev.clientX; E.mouse.sy = ev.clientY; }
+    function touchMove(ev) {
+        if (ev.pointerId === E.touch.stickId) { stickMove(ev); return; }
+        if (ev.pointerId !== E.touch.aimId) return;
+        E.touch.ax = ev.clientX; E.touch.ay = ev.clientY; E.mouse.sx = ev.clientX; E.mouse.sy = ev.clientY;
+    }
     function touchUp(ev) {
+        if (ev.pointerId === E.touch.stickId) { stickEnd(); return; }
         if (ev.pointerId !== E.touch.aimId) return;
         E.touch.aimId = null; E.touch.active = false;
         E.mouse.down = false; E.mouse.released = true;
@@ -140,6 +161,7 @@
         E.isTouch = on;
         const ui = document.getElementById('touchUi');
         if (ui) ui.hidden = !on;
+        document.body.classList.toggle('is-touch', on); // world.css lays the HUD out around the touch controls
     }
     // Where the weapon should point (world px). On touch the drag from where the finger landed sets it.
     function aimPoint(px, py) {
