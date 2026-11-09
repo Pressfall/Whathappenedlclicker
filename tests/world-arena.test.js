@@ -210,3 +210,48 @@ test('the leaderboard: only clean records, best first', () => {
     const s = W.freshState(NOW);
     assert.deepEqual(Object.keys(A.topRecord('Me', s.arena, NOW)), ['n', 'r', 'w', 'l', 'ti', 't']);
 });
+
+// Retest 2026-11-07: connected in town, the Arena panel's Play tab said "Matches need online play" and offered no queue.
+// The gate reads the same status as the online menu, and only says online play is off when it is.
+test('the queue gate: "online play is off" only when it is; connected elsewhere shows the way in; alone says nobody is here', () => {
+    const offWords = /need online play|turn it on/i;
+    // connected, in town (safe): the buttons take the player in, and nothing claims online play is off
+    const town = A.queueGate({ status: 'online', zone: 'town', others: 0, free: 0, canGo: true });
+    assert.equal(town.open, false);
+    assert.equal(town.go, true, 'the queue buttons are shown and lead in through the door');
+    assert.equal(town.why, 'go');
+    assert.doesNotMatch(town.note, offWords);
+    assert.match(town.note, /connected/i);
+    // connected, out in a wild zone: told the way to the Arena, no shortcut out of a fight
+    const wild = A.queueGate({ status: 'online', zone: 'greenwood', others: 3, free: 3, canGo: false });
+    assert.equal(wild.open, false);
+    assert.equal(wild.go, false);
+    assert.doesNotMatch(wild.note, offWords);
+    assert.match(wild.note, /Arena's door/);
+    // connected, in the Arena, nobody else there: the queue is open, and the note says plainly that nobody is available
+    const alone = A.queueGate({ status: 'online', zone: 'arena', others: 0, free: 0, canGo: false });
+    assert.equal(alone.open, true);
+    assert.equal(alone.why, 'alone');
+    assert.match(alone.note, /Nobody else is in the Arena right now/);
+    assert.doesNotMatch(alone.note, offWords);
+    // others there, but all in matches
+    const busy = A.queueGate({ status: 'online', zone: 'arena', others: 2, free: 0 });
+    assert.equal(busy.open, true);
+    assert.equal(busy.why, 'busy');
+    // others free to match: open, nothing to explain
+    const ready = A.queueGate({ status: 'online', zone: 'arena', others: 2, free: 1 });
+    assert.deepEqual([ready.open, ready.why, ready.note], [true, '', '']);
+    // not connected: each status says what it is
+    const off = A.queueGate({ status: 'off', zone: 'arena', others: 0, free: 0 });
+    assert.equal(off.open, false);
+    assert.match(off.note, offWords, 'online play really is off: say so');
+    for (const st of ['connecting', 'reconnecting']) {
+        const c = A.queueGate({ status: st, zone: 'town', canGo: true });
+        assert.deepEqual([c.open, c.go, c.why], [false, false, 'connecting'], st);
+        assert.doesNotMatch(c.note, offWords, st);
+    }
+    const err = A.queueGate({ status: 'error', zone: 'arena' });
+    assert.deepEqual([err.open, err.why], [false, 'error']);
+    assert.doesNotMatch(err.note, offWords);
+    assert.equal(A.queueGate(null).why, 'off', 'no online module at all counts as off');
+});

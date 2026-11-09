@@ -246,6 +246,30 @@
     }
     const toPlayer = (q) => ({ u: q.uid, n: q.n, r: clampRating(q.r) });
 
+    // What the queue can do right now, for the Arena panel's Play tab. It reads the same online status the 🌐 menu shows
+    // (world-online.js: 'off', 'connecting', 'reconnecting', 'error' or 'online'), so "online play is off" is only ever said
+    // when it is. Matches are made among the players inside the Arena zone, so a connected player anywhere else is told the
+    // way in instead; from somewhere safe (canGo: town, the Hall) the queue's buttons take them in through the door.
+    // o: { status, zone (where the player is), others (other players in the Arena), free (those not in a match), canGo }
+    // -> { open: queueing works here and now, go: the buttons first take the player into the Arena, why, note (plain text) }
+    const QUEUE_NOTES = {
+        off: 'Matches need online play: turn it on in the 🌐 menu.',
+        connecting: 'Connecting to online play… The queue opens once you are connected.',
+        error: 'Online play can\'t connect right now (the 🌐 menu says why), so the queue is closed.',
+        go: 'You are connected. Matches are made inside the Arena: pick one below to go in through its door and join the queue.',
+        away: 'You are connected. Matches are made inside the Arena: go back to Wildgate Town and in through the Arena\'s door (north-east of the plaza) to join the queue.',
+        alone: 'Nobody else is in the Arena right now, so there is nobody to match you with. You can still wait in the queue: a match starts on its own if another player joins it.',
+        busy: 'Everyone else in the Arena is in a match right now. You can still wait in the queue: a match starts on its own if another player joins it.',
+    };
+    function queueGate(o) {
+        const s = (o && o.status) || 'off';
+        let why;
+        if (s !== 'online') why = s === 'connecting' || s === 'reconnecting' ? 'connecting' : s === 'error' ? 'error' : 'off';
+        else if (o.zone !== 'arena') why = o.canGo ? 'go' : 'away';
+        else why = !(o.others > 0) ? 'alone' : !(o.free > 0) ? 'busy' : '';
+        return { open: s === 'online' && o.zone === 'arena', go: why === 'go', why, note: QUEUE_NOTES[why] || '' };
+    }
+
     // ---------------- seasons ----------------
     function seasonOf(now) { const d = new Date(now); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0'); }
     function seasonEndsAt(now) { const d = new Date(now); return Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1); }
@@ -389,7 +413,7 @@
     }
 
     return { MODES, RULES, GLORY, RANKS, SHOP, SHOP_BY_ID, inCircle, hitAllowed, clampRating, expected, elo, teamRating, rankFor,
-        teamOf, members, newMatch, reduce, outcome, vsKey, canStake, packAsk, unpackAsk, cleanMsg, KINDS, matchmaker, pickMatches,
+        teamOf, members, newMatch, reduce, outcome, vsKey, canStake, packAsk, unpackAsk, cleanMsg, KINDS, matchmaker, pickMatches, queueGate, QUEUE_NOTES,
         freshArena, cleanArena, titlesOf, refreshDay, giveGlory, topRecord, sanitizeTop, topList, wavesRecord, sanitizeWaves, wavesList, placeOn,
         SEASON, seasonOf, seasonEndsAt, prevSeason, seasonKey, seasonLabel, softReset, seasonTitle, rollSeason, seasonGame, claimSeason, seasonRecord };
 }));

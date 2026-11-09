@@ -698,6 +698,14 @@
             WHW.toast('🔱 The Sunken Vault: start the first room from its ready circle, together.', 'gold');
         },
         leaveVault() { if (g.zoneId === 'vault') enterZone('town'); },
+        // The Arena panel's queue (world-arena.js), opened from somewhere safe (town, the Hall): in through the Arena's door,
+        // as if walked there. Nowhere else, so it is no way out of a fight. true when the player is in the Arena after it
+        enterArena() {
+            if (g.zoneId === 'arena') return true;
+            if (!(D.ZONES[g.zoneId] || {}).safe) return false;
+            enterZone('arena');
+            return true;
+        },
     };
 
     // The far wall of the Hall grinds open: the hidden room is carved into the map for good

@@ -16,7 +16,14 @@
     const WHW = window.WHW, E = WHW.engine;
     const game = () => WHW.game;
     const net = () => WHW.online;
+    // connected, and in the Arena zone: matches can be made (online play itself is net().status, what the 🌐 menu shows)
     const online = () => !!(net() && net().db && net().status === 'online' && net().zone === 'arena');
+    // what the queue can do right now, and what the Play tab says about it (core queueGate)
+    function gate() {
+        const on = net(), g = game(), here = online() ? remotes() : [];
+        return Ar.queueGate({ status: on ? on.status : 'off', zone: on && on.zone ? on.zone : g.zoneId, others: here.length,
+            free: here.filter(r => !r.info.am).length, canGo: !!(D.ZONES[g.zoneId] || {}).safe });
+    }
     const me = () => net() && net().uid;
     const sNow = () => (net() && net().db ? net().db.serverNow() : Date.now());
     const esc = (s) => WHW.ui.esc(s);
@@ -67,7 +74,7 @@
     // ---------------- challenges ----------------
     // Challenge another player: a duel, or (mode t2 / t3) my party against theirs
     AR.challenge = function (r, mode, stake) {
-        if (!online()) { WHW.toast('Matches need online play (the 🌐 menu).', 'bad'); return; }
+        if (!online()) { WHW.toast(gate().note, 'bad'); return; }
         if (busy()) { WHW.toast('You are already in a match or waiting on one.', 'bad'); return; }
         if (WHW.tour && WHW.tour.due()) { WHW.toast('Your tournament duel is up: play that first.', 'bad'); return; }
         if (r.info.am) { WHW.toast(r.info.n + ' is busy with another match.', 'bad'); return; }
@@ -119,7 +126,14 @@
         net().infoKey = '';
     };
     AR.setQueue = function (mode) {
-        if (mode && !online()) { WHW.toast('The queue needs online play (the 🌐 menu).', 'bad'); return; }
+        if (mode && !online()) {
+            const gt = gate();
+            // connected, somewhere safe: in through the Arena's door, then into the queue; the panel closes, because the game
+            // (and with it the queue) only runs while no menu is open
+            if (gt.go && WHW.actions.enterArena && WHW.actions.enterArena() && online()) { WHW.ui.closeModal(); AR.setQueue(mode); return; }
+            WHW.toast(gt.note || 'The queue needs online play (the 🌐 menu).', 'bad');
+            return;
+        }
         if (mode && mode !== 'duel' && partyMembers().length > Ar.MODES[mode].size) { WHW.toast('Your party is too big for that.', 'bad'); return; }
         AR.queue = mode || '';
         net().infoKey = '';
@@ -403,6 +417,13 @@
 
     // ---------------- menus ----------------
     let tab = 'play', board = 'season';
+    const gateKey = (gt) => gt.why + ':' + AR.queue;
+    // While the Play tab is open, keep what it says about the queue current (online play connecting or dropping, players
+    // coming into the Arena or leaving it): the game is paused under a menu, so its own step can't do this
+    setInterval(() => {
+        const box = document.querySelector('#wModalBody [data-argate]');
+        if (box && WHW.ui.isOpen() && game() && game().state && box.dataset.argate !== gateKey(gate())) renderMenu();
+    }, 1000);
     AR.openMenu = function (which) {
         if (which) tab = which;
         WHW.ui.modal('🏟️ The Arena', '', { wide: true, render: renderMenu });
@@ -415,11 +436,11 @@
             <div class="w-arena-me"><span style="color:${rank.color}">● ${esc(rank.name)}</span> · rating <b>${a.rating}</b> · <b>${fmt(a.glory)}</b> Glory${a.title ? ' · title: <b>' + esc(a.title) + '</b>' : ''}</div>
             <div class="w-arena-season">Season <b>${esc(Ar.seasonLabel(a.season.id || Ar.seasonOf(sNow())))}</b>: ends in ${seasonLeft(sNow())} · ${a.season.w + a.season.l + a.season.d} rated matches (${Ar.SEASON.minGames} for a reward) · best <b>${a.season.peak}</b> (${esc(Ar.rankFor(a.season.peak).name)})</div>${seasonCard(a)}`;
         if (tab === 'play') {
-            const party = partyMembers();
+            const party = partyMembers(), gt = gate();
             html += `<p class="w-note"><b>The Pit</b>: walk into the sand circle in the middle and fight anyone else in it. <b>Nothing is ever lost in the Arena</b>: a knockout drops nothing, and you are back up at the Pit's gate a moment later. Each knockout earns Glory.</p>
                 <p class="w-note"><b>Duels and team battles</b> (best of three rounds, rated): walk up to another player in the lobby and press <kbd>E</kbd> to challenge them, optionally for a ruby stake (the winner takes the pot), or wait in the queue below. For a 2v2 or 3v3, make a party first (<kbd>E</kbd> near a player, then <i>Invite to party</i>).</p>
                 <p class="w-note"><b>The Proving Grounds</b> (the gate on the left): co-op waves of monsters, harder with every player who joins.</p>
-                <div class="w-section"><h3>The queue</h3>${online() ? `<div class="w-row">${Object.keys(Ar.MODES).map(m => `<button class="btn btn-sm ${AR.queue === m ? 'btn-gold' : 'btn-primary'}" data-arq="${m}">${AR.queue === m ? '✓ ' : ''}${esc(Ar.MODES[m].name)}</button>`).join('')}${AR.queue ? '<button class="btn btn-sm btn-ghost" data-arq="">Leave the queue</button>' : ''}</div>` : '<p class="muted">Matches need online play: turn it on in the 🌐 menu.</p>'}</div>
+                <div class="w-section" data-argate="${gateKey(gt)}"><h3>The queue</h3>${gt.note ? `<p class="muted" id="arQueueNote">${esc(gt.note)}</p>` : ''}${gt.open || gt.go ? `<div class="w-row">${Object.keys(Ar.MODES).map(m => `<button class="btn btn-sm ${AR.queue === m ? 'btn-gold' : 'btn-primary'}" data-arq="${m}">${AR.queue === m ? '✓ ' : ''}${esc(Ar.MODES[m].name)}</button>`).join('')}${AR.queue ? '<button class="btn btn-sm btn-ghost" data-arq="">Leave the queue</button>' : ''}</div>` : ''}</div>
                 <div class="w-section"><h3>Your party here</h3><p>${party.map(p => esc(p.n)).join(', ')}${WHW.party && WHW.party.id ? ' <button class="btn btn-sm btn-ghost" data-arleave>Leave the party</button>' : ' <span class="muted">(just you: invite someone with <kbd>E</kbd>)</span>'}</p></div>`;
         } else if (tab === 'tour') {
             html += '<div id="arTour"></div>';

@@ -317,6 +317,27 @@ async function main() {
         check('pit: a knockout there is credited to the winner, with Glory', await a.waitFor('WHW.game.state.arena.pitKO === 1', 5000), await a.evalJs('WHW.game.state.arena'));
         check('pit: the loser is back on their feet at the gate soon after', await b.waitFor('!WHW.game.player.dead && Math.hypot(WHW.game.player.x - WHW.game.map.pitGate.x, WHW.game.player.y - WHW.game.map.pitGate.y) < 60', 6000));
 
+        // ---- the queue, from the Arena panel (retest 2026-11-07: connected in town, its Play tab said online play was off) ----
+        for (const p of [a, b]) await p.evalJs('WHWorldDebug.travel("town")');
+        await sleep(600);
+        const queueTab = (p) => p.evalJs('(() => { WHW.arena.openMenu("play"); const box = document.querySelector("#wModalBody [data-argate]"); return { gate: box && box.dataset.argate, text: box ? box.textContent : "", buttons: box ? box.querySelectorAll("[data-arq]").length : 0, status: WHW.online.status }; })()');
+        const inTown = await queueTab(a);
+        check('arena queue: connected in town, the Play tab offers the queue and doesn\'t say online play is off', inTown.status === 'online' && inTown.gate === 'go:' && inTown.buttons === 3 && !/need online play/i.test(inTown.text), inTown);
+        await a.evalJs('document.querySelector("#wModalBody [data-arq=duel]").click()');
+        check('arena queue: picking Duel there takes the player into the Arena and the queue, menu closed', await a.waitFor('WHW.game.zoneId === "arena" && WHW.online.zone === "arena" && WHW.arena.queue === "duel" && document.getElementById("wModal").hidden', 5000));
+        await sleep(800);
+        const alone = await queueTab(a);
+        check('arena queue: with nobody else in the Arena it says nobody is available, not that online play is off', alone.gate === 'alone:duel' && /Nobody else is in the Arena right now/.test(alone.text) && !/need online play/i.test(alone.text), alone);
+        await a.evalJs('WHW.ui.closeModal()');
+        // the other player queues the same way: the queue pairs them on its own
+        await queueTab(b);
+        await b.evalJs('document.querySelector("#wModalBody [data-arq=duel]").click()');
+        check('arena queue: two connected players in the queue are matched by it', await a.waitFor('!!WHW.arena.match', 15000) && await b.waitFor('!!WHW.arena.match', 8000) &&
+            await a.evalJs('WHW.arena.match.id') === await b.evalJs('WHW.arena.match.id'));
+        // ended at once (a forfeit), so nothing after this depends on a fight here
+        await a.evalJs('WHW.arena.forfeit()');
+        await b.waitFor('!WHW.arena.match || !!WHW.arena.match.result', 8000);
+
         // ---- the Proving Grounds: one wave, together ----
         for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("trials"); const g = WHW.game; WHWorldDebug.teleport(g.map.ready.x, g.map.ready.y); g.player.maxHp = 1e6; g.player.hp = 1e6; return true; })()');
         await a.waitFor('WHW.online.here().length === 1', 8000);
