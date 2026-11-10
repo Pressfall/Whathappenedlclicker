@@ -4,7 +4,7 @@
  * - Firestore: the REST API (firestore.googleapis.com/v1), signed in as a service account. The worker makes a JWT with the
  *   service account's private key, trades it for an access token at oauth2.googleapis.com (cached for its hour), and
  *   commits writes in one atomic `documents:commit`. Service accounts are not subject to the Firestore security rules,
- *   which is why the rules can refuse every player write that would add Beans.
+ *   which is why the rules can refuse every player write that would add Holy What Happeneds.
  * - Firebase sign-in: checks a player's ID token (a JWT signed by Google's securetoken service) against Google's
  *   published keys, so the claim page knows which account is asking.
  *

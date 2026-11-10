@@ -1,17 +1,17 @@
-// Firestore security rules for Beans ☕ bought on Ko-fi (core/premium.js, premium-cloud.js, kofi-worker/).
+// Firestore security rules for Holy What Happeneds 👼 bought on Ko-fi (core/premium.js, premium-cloud.js, kofi-worker/).
 //
 // WHO WRITES WHAT
-//   wallets/{uid}                 the account's bought Beans: { balance, total, spent, lastSpend, updatedAt }.
+//   wallets/{uid}                 the account's bought Holy What Happeneds: { balance, total, spent, lastSpend, updatedAt }.
 //                                 Credited ONLY by the Ko-fi worker. The worker signs in as a Google service account, and
-//                                 service accounts are not subject to these rules: that is the one door Beans come in by.
-//                                 A player may only take Beans OFF their own balance, in the same write that logs the spend.
-//   wallets/{uid}/spends/{id}     what bought Beans paid for: { item, cost, at }. Written by the player with the spend; never
+//                                 service accounts are not subject to these rules: that is the one door Holy What Happeneds come in by.
+//                                 A player may only take Holy What Happeneds OFF their own balance, in the same write that logs the spend.
+//   wallets/{uid}/spends/{id}     what bought Holy What Happeneds paid for: { item, cost, at }. Written by the player with the spend; never
 //                                 changed or deleted. Lets a purchase come back on any device signed in to the account.
 //   wallets/{uid}/credits/{txid}  each Ko-fi payment credited: { beans, kind, at, items }. Worker only; the owner can read.
 //   kofi_links/{code}             a player's link code -> { uid, at }. Created by the player; the code must be the first 12
 //                                 hex digits of sha256('kofi-link:' + their uid), so nobody can make a code that points at
 //                                 someone else's account. The worker reads it to know whose payment it is.
-//   kofi_payments/{txid}          every Ko-fi payment that was worth Beans, matched or not, for idempotency and for the owner.
+//   kofi_payments/{txid}          every Ko-fi payment that was worth Holy What Happeneds, matched or not, for idempotency and for the owner.
 //                                 Worker only. No player can read or write it.
 //
 // HOW TO USE: copy the three `match` blocks and the functions below into your rules (Firebase console > Firestore Database >
@@ -21,7 +21,7 @@
 //
 // IMPORTANT: Firestore allows a request if ANY matching rule allows it. With a catch-all such as
 //     match /{document=**} { allow read, write: if true; }
-// or a time-limited test-mode rule, ANY browser could write any wallet a balance of a million Beans, and these rules would
+// or a time-limited test-mode rule, ANY browser could write any wallet a balance of a million Holy What Happeneds, and these rules would
 // not stop it. Buying stays safe only once that catch-all is gone (see docs/trust-boundaries.md and docs/kofi-setup.md).
 //
 // NOT RUN against the Firestore emulator (it needs Java, which was not available here). core/premium.js checkWalletSpend()
@@ -68,7 +68,7 @@ service cloud.firestore {
     function beansOwner(uid) {
       return request.auth != null && request.auth.uid == uid;
     }
-    // a real account (email or Google), not the Wilds' anonymous sign-in: bought Beans belong to an account
+    // a real account (email or Google), not the Wilds' anonymous sign-in: bought Holy What Happeneds belong to an account
     function beansAccount() {
       return request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
@@ -108,12 +108,12 @@ service cloud.firestore {
 // unless it says anonymous. First create, in the console, wallets/U1 = { balance: 500 (number, integer), total: 500 }.
 //   1. get wallets/U1 as U1                                                     ALLOW
 //   2. get wallets/U1 as U2                                                     DENY
-//   3. update wallets/U1 as U1 to { balance: 99999, total: 500 }                DENY (Beans can't be added)
+//   3. update wallets/U1 as U1 to { balance: 99999, total: 500 }                DENY (Holy What Happeneds can't be added)
 //   4. create wallets/U2 as U2 with { balance: 100 }                            DENY
 //   5. update wallets/U1 as U1 to { balance: 400, total: 500, spent: 100, lastSpend: 'abcd1234' } on its own
 //                                                                               DENY (no spend logged with it; the Playground
 //                                                                               can't do a batch, so the ALLOW case is checked
-//                                                                               in the game: buy something with bought Beans)
+//                                                                               in the game: buy something with bought Holy What Happeneds)
 //   6. create wallets/U1/spends/x as U1                                         DENY (the wallet doesn't change with it)
 //   7. update wallets/U1/credits/anything as U1                                 DENY
 //   8. read kofi_payments/anything as U1                                        DENY

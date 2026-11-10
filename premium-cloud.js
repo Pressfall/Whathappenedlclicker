@@ -1,11 +1,11 @@
 /**
- * Beans ☕ bought on Ko-fi: the signed-in account's side (Firestore). Loaded as a module by index.html and world.html after
+ * Holy What Happeneds 👼 bought on Ko-fi: the signed-in account's side (Firestore). Loaded as a module by index.html and world.html after
  * cloud.js; sets window.WHBeansCloud and fires a 'whbeans-cloud' event whenever something here changes.
  *
  * - wallets/{uid}: the balance the Ko-fi worker credits. Read live while signed in (never written here except to spend).
  * - Spending: one transaction that lowers the balance and logs the spend (wallets/{uid}/spends/{id}). firestore-premium.rules
  *   accepts exactly that and nothing that would raise the balance.
- * - The link code: kofi_links/<12 hex> -> { uid }, made the first time the player opens Get Beans while signed in.
+ * - The link code: kofi_links/<12 hex> -> { uid }, made the first time the player opens Get more while signed in.
  * - Claims (a payment sent without the code) go to the worker, with the player's ID token so it knows whose they are.
  * The page side is premium.js (window.WHBeans); core/premium.js explains the two pools.
  */
@@ -85,7 +85,7 @@ function spendId() {
     crypto.getRandomValues(a);
     return Array.from(a, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 20);
 }
-// Take `cost` bought Beans for `item`. { ok, id } or { ok: false, reason: 'short' | 'rules' | 'network' | 'signin' }
+// Take `cost` bought Holy What Happeneds for `item`. { ok, id } or { ok: false, reason: 'short' | 'rules' | 'network' | 'signin' }
 async function spend(item, cost) {
     const u = state.user;
     if (!u) return { ok: false, reason: 'signin' };
@@ -102,7 +102,7 @@ async function spend(item, cost) {
         });
         return { ok: true, id };
     } catch (e) {
-        console.warn('Beans: spend failed', e && e.code);
+        console.warn('Holy What Happeneds: spend failed', e && e.code);
         return { ok: false, reason: why(e) };
     }
 }

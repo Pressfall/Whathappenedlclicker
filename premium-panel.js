@@ -1,8 +1,8 @@
 /**
- * Beans ☕: the panel (index.html and world.html). Three tabs: Shop (looks bought with Beans), Earn (how to get them by
- * playing, and what you got lately), Get Beans (buying them on Ko-fi with your link code, and claiming a payment sent
+ * Holy What Happeneds 👼: the panel (index.html and world.html). Three tabs: Shop (looks bought with Holy What Happeneds), Earn (how to get them by
+ * playing, and what you got lately), Get more (buying them on Ko-fi with your link code, and claiming a payment sent
  * without it). In the game it is its own overlay; in the Wilds it opens in the Wilds' own window, which pauses the game.
- * Opened by the ☕ chip (premium.js) as window.WHBeansPanel.open(tab).
+ * Opened by the 👼 chip (premium.js) as window.WHBeansPanel.open(tab).
  */
 (function () {
     'use strict';
@@ -78,7 +78,7 @@
     }
     function tabsHtml() {
         const t = (id, label) => `<button type="button" class="bn-tab${tab === id ? ' is-on' : ''}" data-bntab="${id}" aria-pressed="${tab === id}">${label}</button>`;
-        return `<div class="bn-tabs" role="group" aria-label="Beans">${t('shop', 'Shop')}${t('earn', 'Earn')}${t('get', 'Get Beans')}</div>`;
+        return `<div class="bn-tabs" role="group" aria-label="Holy What Happeneds">${t('shop', 'Shop')}${t('earn', 'Earn')}${t('get', 'Get more')}</div>`;
     }
     function swatch(it) {
         if (it.kind === 'title') return '<span class="bn-sw bn-sw--title" aria-hidden="true">🏷️</span>';
@@ -176,7 +176,7 @@
     function render() {
         const el = body();
         if (!el || !isOpen()) return;
-        // never redraw under someone typing in the claim form (a Bean arriving would wipe what they typed)
+        // never redraw under someone typing in the claim form (one arriving would wipe what they typed)
         const a = document.activeElement;
         if (a && el.contains(a) && a.tagName === 'INPUT' && !busy) { pendingRender = true; return; }
         pendingRender = false;
@@ -258,7 +258,7 @@
     document.addEventListener('submit', onSubmit);
     // a redraw skipped while someone was typing happens once they leave the field
     document.addEventListener('focusout', () => { if (pendingRender) setTimeout(() => { if (pendingRender) render(); }, 0); });
-    // live: Beans earned or arriving while the panel is open
+    // live: Holy What Happeneds earned or arriving while the panel is open
     B.onChange(() => { if (isOpen() && !busy) render(); });
 
     window.WHBeansPanel = { open, close, isOpen, render };

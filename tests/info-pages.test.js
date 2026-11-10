@@ -188,11 +188,11 @@ test('the privacy policy says where ads can appear, as the code does', () => {
     assert.match(t, /the AdSense code is also loaded on the achievements, casino and leaderboard pages and on this page/);
 });
 
-test('Ko-fi: the address lives only in core/premium-config.js, no page has a placeholder, and payments only ever become Beans', () => {
+test('Ko-fi: the address lives only in core/premium-config.js, no page has a placeholder, and payments only ever become Holy What Happeneds', () => {
     const html = read('index.html');
-    assert.ok(!/ko-fi\.com/i.test(html), 'no Ko-fi link written into the game page (the Beans panel builds it from the config)');
+    assert.ok(!/ko-fi\.com/i.test(html), 'no Ko-fi link written into the game page (the Holy What Happeneds panel builds it from the config)');
     for (const f of PAGES.concat('index.html', 'privacy.html')) assert.ok(!/YOUR_KOFI_NAME|OWNER_KOFI_NAME/.test(read(f)), f + ': no placeholder address');
-    // a Ko-fi payment can only credit Beans (kofi-worker/, premium-cloud.js); the rest of the game doesn't know Ko-fi exists
+    // a Ko-fi payment can only credit Holy What Happeneds (kofi-worker/, premium-cloud.js); the rest of the game doesn't know Ko-fi exists
     for (const f of ['main.js', 'items.js', 'followers.js', 'gamba.js', 'world.js', 'world-ui.js', 'clan.html', 'world.html'])
         assert.ok(!/ko-?fi|support the game/i.test(read(f).replace('<script src="core/kofi.js"></script>', '')), f + ' does not mention Ko-fi'); // ("donated" in clan.html is clan points)
 });

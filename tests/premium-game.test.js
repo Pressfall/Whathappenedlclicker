@@ -1,6 +1,6 @@
 'use strict';
-// Beans ☕ on the real game page (premium.js + premium-panel.js + main.js in jsdom): the chip, earning from the saves,
-// buying with earned Beans and with bought ones (a fake account in place of premium-cloud.js), getting a purchase back
+// Holy What Happeneds 👼 on the real game page (premium.js + premium-panel.js + main.js in jsdom): the chip, earning from the saves,
+// buying with earned Holy What Happeneds and with bought ones (a fake account in place of premium-cloud.js), getting a purchase back
 // from the account, the looks switching on, and the panel.
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -12,7 +12,7 @@ const state = (game) => JSON.parse(game.storage.getItem(KEY) || 'null');
 const chip = (game) => game.window.document.querySelector('#beanChip [data-bean-short]').textContent;
 const seed = (o) => ({ [KEY]: JSON.stringify(Object.assign({ v: 1, started: 1, earned: 0, earnedTotal: 0, owned: {}, equip: {}, grants: {}, log: [] }, o)) });
 
-// an account with bought Beans, standing in for premium-cloud.js
+// an account with bought Holy What Happeneds, standing in for premium-cloud.js
 function fakeAccount(game, balance, spendResult) {
     const calls = [];
     const acct = { ready: true, user: { uid: 'u1' }, live: true, balance, link: 'ready', linkCode: 'WH-AAAA-BBBB-CCCC', error: '',
@@ -43,7 +43,7 @@ test('the chip shows the balance; the first check pays a capped thank-you for wh
     assert.equal(state(game).earned, P.EARN.retroCap + P.EARN.achievement.epic);
 });
 
-test('buying with earned Beans: the theme and click numbers switch on, a title joins the game\'s titles', async () => {
+test('buying with earned Holy What Happeneds: the theme and click numbers switch on, a title joins the game\'s titles', async () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 700, earnedTotal: 700 }) });
     const B = game.window.WHBeans, body = game.window.document.body;
     const r = await B.buy('th_mocha');
@@ -70,7 +70,7 @@ test('buying with earned Beans: the theme and click numbers switch on, a title j
     assert.ok(body.classList.contains('bn-theme-mocha'));
 });
 
-test('buying with bought Beans: earned ones first, the rest taken from the account first; a refusal costs nothing', async () => {
+test('buying with bought Holy What Happeneds: earned ones first, the rest taken from the account first; a refusal costs nothing', async () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 100, earnedTotal: 100 }) });
     const B = game.window.WHBeans;
     const calls = fakeAccount(game, 300);
@@ -92,7 +92,7 @@ test('buying with bought Beans: earned ones first, the rest taken from the accou
     assert.equal(state(refused).owned.th_midnight, undefined);
 });
 
-test('signed out, bought Beans can\'t be spent; a purchase logged in the account comes back on a new device', async () => {
+test('signed out, bought Holy What Happeneds can\'t be spent; a purchase logged in the account comes back on a new device', async () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 20 }) });
     const B = game.window.WHBeans;
     game.window.WHBeansCloud = { ready: true, user: null, live: false, balance: 0 };
@@ -104,7 +104,7 @@ test('signed out, bought Beans can\'t be spent; a purchase logged in the account
     assert.equal(B.restore([{ id: 'spendold0001', item: 'pop_latte' }]).length, 0);
 });
 
-test('the panel: shop, earn and Get Beans tabs; buying from it asks first; buying stays closed while the config is placeholders', async () => {
+test('the panel: shop, earn and Get more tabs; buying from it asks first; buying stays closed while the config is placeholders', async () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 500, earnedTotal: 500 }) });
     const doc = game.window.document;
     game.window.document.getElementById('beanChip').click();
@@ -128,11 +128,11 @@ test('the panel: shop, earn and Get Beans tabs; buying from it asks first; buyin
     assert.ok(overlay.hidden);
 });
 
-test('Get Beans once the owner filled in the config: sign in first; then the link code, the packs on Ko-fi, history and claiming', async () => {
+test('Get more once the owner filled in the config: sign in first; then the link code, the packs on Ko-fi, history and claiming', async () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 5 }) });
     const w = game.window, doc = w.document, C = w.WHPremiumConfig;
     Object.assign(C, { kofiPage: 'https://ko-fi.com/whtest', workerUrl: 'https://wh-kofi.test.workers.dev',
-        packs: [{ code: 'beanbag1', beans: 500, name: 'Bag of Beans', price: '$5' }, { code: 'OWNER_SHOP_ITEM_CODE_2', beans: 0, name: 'x', price: 'x' }] });
+        packs: [{ code: 'beanbag1', beans: 500, name: 'Bag of Holy What Happeneds', price: '$5' }, { code: 'OWNER_SHOP_ITEM_CODE_2', beans: 0, name: 'x', price: 'x' }] });
     const tick = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
     // signed out: asked to sign in, nothing else
     w.WHBeansCloud = { ready: true, user: null, live: false, balance: 0 };
@@ -158,10 +158,10 @@ test('Get Beans once the owner filled in the config: sign in first; then the lin
     form.dispatchEvent(new w.Event('submit', { bubbles: true, cancelable: true }));
     await tick();
     assert.deepEqual(claims, [['aaaa-bbbb-cccc', 'me@example.com']]);
-    assert.match(doc.querySelector('.bn-claim .bn-msg').textContent, /Claimed: 120 Beans/);
+    assert.match(doc.querySelector('.bn-claim .bn-msg').textContent, /Claimed: 120 Holy What Happeneds/);
 });
 
-test('the earned-Beans state is part of the progress that syncs and exports', () => {
+test('the earned-Holy What Happeneds state is part of the progress that syncs and exports', () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 42 }) });
     assert.equal(game.window.WHProgress.isSyncKey(KEY), true);
 });

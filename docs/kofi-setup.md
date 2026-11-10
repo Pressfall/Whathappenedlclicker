@@ -1,7 +1,7 @@
-# Beans ☕ and Ko-fi: owner setup
+# Holy What Happeneds 👼 and Ko-fi: owner setup
 
-Beans are the game's new currency for titles and looks. Players earn a few by playing, or buy them on Ko-fi. This guide
-gets the Ko-fi side running: the shop items, the webhook, the secrets, the Firestore rules and the worker that credits Beans.
+Holy What Happeneds are the game's new currency for titles and looks. Players earn a few by playing, or buy them on Ko-fi. This guide
+gets the Ko-fi side running: the shop items, the webhook, the secrets, the Firestore rules and the worker that credits Holy What Happeneds.
 
 Nothing here needs the Firebase Blaze plan or a payment method on Firebase or Cloudflare.
 
@@ -10,30 +10,30 @@ Nothing here needs the Firebase Blaze plan or a payment method on Firebase or Cl
 ```
  player (game, signed in)          Ko-fi                      Cloudflare Worker (kofi-worker/)          Firestore
  ───────────────────────          ─────                      ─────────────────────────────────          ─────────
- Get Beans tab shows a      ──►   pays for a Beans pack,  ──► POST /kofi  (form field `data` = JSON)
+ Get more tab shows a      ──►   pays for a Holy What Happeneds pack,  ──► POST /kofi  (form field `data` = JSON)
  link code WH-XXXX-XXXX-XXXX      code pasted in message      1. verification_token must match      ──► kofi_payments/{txid}  (once per txid)
-                                                              2. Beans from core/premium-config.js       wallets/{uid}.balance += Beans
+                                                              2. Holy What Happeneds from core/premium-config.js       wallets/{uid}.balance += Holy What Happeneds
                                                               3. link code -> kofi_links/{code}.uid      wallets/{uid}/credits/{txid}
- ☕ chip shows the balance  ◄────────────────────────────────────────────────────────────────────────── wallets/{uid} (read live)
+ 👼 chip shows the balance  ◄────────────────────────────────────────────────────────────────────────── wallets/{uid} (read live)
  buying a look: the game lowers wallets/{uid}.balance and logs wallets/{uid}/spends/{id} in one write (rules allow only that)
 ```
 
-- **Earned Beans** live in the player's save (`whathappened_premium`, synced with their account like the rest of their
+- **Earned Holy What Happeneds** live in the player's save (`whathappened_premium`, synced with their account like the rest of their
   progress). Like gems, the browser is trusted with them.
-- **Bought Beans** live only in Firestore `wallets/{uid}`. Only the worker can add to them: it signs in as a Google service
-  account, which the security rules don't apply to. A player's browser can only take Beans off its own balance, in the same
+- **Bought Holy What Happeneds** live only in Firestore `wallets/{uid}`. Only the worker can add to them: it signs in as a Google service
+  account, which the security rules don't apply to. A player's browser can only take Holy What Happeneds off its own balance, in the same
   write that records what they paid for.
 
 ### Why two pools (the trade-off)
 
-Everything a player earns by playing is decided in their browser (that is how the whole game works), so earned Beans can't be
+Everything a player earns by playing is decided in their browser (that is how the whole game works), so earned Holy What Happeneds can't be
 made cheat-proof without a game server, and a player who edits their save only changes their own game. Real money is
 different: it must be credited only by the server, survive a cleared browser, and be checkable when someone writes in.
 Keeping the two apart gives that without a server deciding gameplay:
 
-- a player can never mint bought Beans or touch anyone else's balance (rules: decrements only, logged);
-- bought Beans and everything bought with them come back on any device signed in to the account (the spends log);
-- the cost: two balances behind one number. The game spends earned Beans first and the rest from the account, and takes
+- a player can never mint bought Holy What Happeneds or touch anyone else's balance (rules: decrements only, logged);
+- bought Holy What Happeneds and everything bought with them come back on any device signed in to the account (the spends log);
+- the cost: two balances behind one number. The game spends earned Holy What Happeneds first and the rest from the account, and takes
   the account's part first, so a refused or failed write costs the player nothing. The rules check that each spend is logged
   with its exact cost, but not what the item should cost: a modified browser could log a cheap price for an expensive look.
   That only affects looks on its own screen, which it could also get by editing its save, so it was not worth a price list
@@ -69,25 +69,25 @@ could not read it. The worker is written defensively (form or JSON body, `curren
 1. That a Shop Order's `shop_items` entries carry `direct_link_code` (the code in the item's `ko-fi.com/s/...` link).
 2. Whether a shop checkout lets the buyer write a message. If it doesn't, shop buyers can't paste their link code, and every
    shop order will arrive "unmatched" (players then claim it in the game, see "Fixing a payment"). In that case, prefer
-   selling Beans as **tips with the code in the message** (`donationRate` in the config), since a tip always has a message box.
+   selling Holy What Happeneds as **tips with the code in the message** (`donationRate` in the config), since a tip always has a message box.
 
 ## Step by step
 
 ### 0. Before you start: the Firestore catch-all
 
 Open Firebase console > Firestore Database > Rules. If you see `match /{document=**} { allow read, write: if true; }` or a
-test-mode rule (`if request.time < timestamp.date(...)`), **any browser could give itself bought Beans**, whatever the new
+test-mode rule (`if request.time < timestamp.date(...)`), **any browser could give itself bought Holy What Happeneds**, whatever the new
 rules say (Firestore allows a request if any rule allows it). Don't open buying until that catch-all is gone. Removing it
 also needs rules for the clan collections first: see `docs/trust-boundaries.md`, "Before you publish firestore-social.rules".
 
-### 1. Ko-fi: the Beans packs
+### 1. Ko-fi: the Holy What Happeneds packs
 
-1. On Ko-fi, make one Shop item per Beans pack (a digital item; no file needed). In its description, tell buyers to paste
-   their link code from the game (Get Beans tab) into the message. Set the price you want.
+1. On Ko-fi, make one Shop item per Holy What Happeneds pack (a digital item; no file needed). In its description, tell buyers to paste
+   their link code from the game (Get more tab) into the message. Set the price you want.
 2. Open each item and copy its code: the part after `ko-fi.com/s/` in its link.
 
-You decide the packs and the prices; none are set in the code. A common rule of thumb is about 100 Beans per US dollar,
-with a little extra on bigger packs. For scale: the cheapest look costs 100 Beans, most cost 200-350, the dearest 600, and
+You decide the packs and the prices; none are set in the code. A common rule of thumb is about 100 Holy What Happeneds per US dollar,
+with a little extra on bigger packs. For scale: the cheapest look costs 100 Holy What Happeneds, most cost 200-350, the dearest 600, and
 all 14 together cost 4,250. `node tools/simulate-beans.js` shows what players earn for free (a regular player about 30-40 a
 month, a dedicated one about 60).
 
@@ -96,14 +96,14 @@ month, a dedicated one about 60).
 Fill in everything marked `OWNER`:
 
 - `kofiPage`: your Ko-fi page, e.g. `https://ko-fi.com/yourname`.
-- `packs`: one row per item from step 1: `{ code: 'the item code', beans: 500, name: 'Bag of Beans', price: '$4.99' }`.
+- `packs`: one row per item from step 1: `{ code: 'the item code', beans: 500, name: 'Bag of Holy What Happeneds', price: '$4.99' }`.
   `beans` is per item (a quantity of 2 gives twice as many). `price` is only the label the game shows.
-- Optional `donationRate`: Beans per 1 unit of a currency for a tip that has a link code, e.g. `{ USD: 100, EUR: 100 }`.
-  Leave it empty and tips stay tips: no Beans, and nothing about them is stored.
-- Optional `subscriptionTiers`: Beans per membership payment, by the tier's exact name on Ko-fi.
+- Optional `donationRate`: Holy What Happeneds per 1 unit of a currency for a tip that has a link code, e.g. `{ USD: 100, EUR: 100 }`.
+  Leave it empty and tips stay tips: no Holy What Happeneds, and nothing about them is stored.
+- Optional `subscriptionTiers`: Holy What Happeneds per membership payment, by the tier's exact name on Ko-fi.
 - `workerUrl`: fill in after step 4.
 
-Until the Ko-fi page, the worker address and at least one way to buy are filled in, the game's Get Beans tab says buying
+Until the Ko-fi page, the worker address and at least one way to buy are filled in, the game's Get more tab says buying
 isn't open yet.
 
 ### 3. A Google service account for the worker
@@ -175,8 +175,8 @@ and codes blocks. Run the Rules Playground checklist at the bottom of that file,
 ### 7. Publish the site and try it
 
 1. Deploy the site with the filled-in config (only after you've reviewed the diff).
-2. In the game, sign in, open ☕ > Get Beans, copy your link code.
-3. Buy the cheapest pack yourself with the code in the message. Within a minute the ☕ chip should go up.
+2. In the game, sign in, open 👼 > Get more, copy your link code.
+3. Buy the cheapest pack yourself with the code in the message. Within a minute the 👼 chip should go up.
 4. In Firestore, `kofi_payments/<transaction id>` should say `status: credited` with your uid, and hold no name or email.
 
 ## Fixing a payment
@@ -184,10 +184,10 @@ and codes blocks. Run the Rules Playground checklist at the bottom of that file,
 **Someone paid without their link code** (or with a typo). The payment is kept as `unmatched` in `kofi_payments`, with a
 keyed hash of the email instead of the email.
 
-- The player can claim it themselves: ☕ > Get Beans > "Paid without your code?", with the Ko-fi transaction ID and the
+- The player can claim it themselves: 👼 > Get more > "Paid without your code?", with the Ko-fi transaction ID and the
   email they paid with.
 - Or you give it to them. Find the payment's transaction ID in your Ko-fi dashboard and ask the player for their link code
-  (Get Beans tab), then:
+  (Get more tab), then:
   ```bash
   curl -X POST https://wh-kofi.yourname.workers.dev/admin/resolve -H "Authorization: Bearer YOUR_ADMIN_TOKEN" -H "content-type: application/json" -d "{\"txid\":\"THE-TRANSACTION-ID\",\"code\":\"WH-XXXX-XXXX-XXXX\"}"
   ```
@@ -198,19 +198,19 @@ to the same command to credit it by hand. It still credits each transaction ID o
 **Refunds and chargebacks**: Ko-fi doesn't send a webhook for them. In the Firebase console, lower that player's
 `wallets/{uid}.balance` by hand (your console edits aren't limited by the rules). `kofi_payments` tells you whose it was.
 
-**The player has no link code yet**: they need to open Get Beans once while signed in; that creates it.
+**The player has no link code yet**: they need to open Get more once while signed in; that creates it.
 
 ## What is kept, and where
 
 | Where | What | Who can read it |
 |---|---|---|
-| `kofi_payments/{txid}` | type, amount, currency, paid/received time, packs and Beans, link code, uid; for an unclaimed payment a keyed email hash (deleted on claim) | only the worker and you (console) |
+| `kofi_payments/{txid}` | type, amount, currency, paid/received time, packs and Holy What Happeneds, link code, uid; for an unclaimed payment a keyed email hash (deleted on claim) | only the worker and you (console) |
 | `wallets/{uid}` | bought balance, lifetime total, lifetime spent, last spend id | the player and you |
-| `wallets/{uid}/credits/{txid}` | Beans, kind, packs, time | the player and you |
+| `wallets/{uid}/credits/{txid}` | Holy What Happeneds, kind, packs, time | the player and you |
 | `wallets/{uid}/spends/{id}` | item, cost, time | the player and you |
 | `kofi_links/{code}` | uid, time made | the player (their own) and the worker |
 
-Never kept: the payer's name, email address, message, shipping address or Discord details. Payments worth no Beans aren't
+Never kept: the payer's name, email address, message, shipping address or Discord details. Payments worth no Holy What Happeneds aren't
 stored. `privacy.html` says the same; update it if you change what the worker keeps.
 
 ## Secrets checklist

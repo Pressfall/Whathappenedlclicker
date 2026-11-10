@@ -1,5 +1,5 @@
 /**
- * Ko-fi payments, the pure part: reading a webhook's payload, working out how many Beans it is worth, and the player's
+ * Ko-fi payments, the pure part: reading a webhook's payload, working out how many Holy What Happeneds it is worth, and the player's
  * link code. Used by the webhook worker (kofi-worker/src/index.js) and by the game (the link code it shows).
  *
  * What Ko-fi sends (help.ko-fi.com, "Does Ko-fi have an API or webhook?", read 2026-11-09): an HTTP POST to the webhook URL
@@ -7,7 +7,7 @@
  *   verification_token  the secret shown on ko-fi.com/manage/webhooks: checked first, anything else is refused
  *   kofi_transaction_id the payment's id: the worker credits each one once (Ko-fi retries until it gets a 200, with the
  *                       same message_id, so the same payment can arrive more than once)
- *   type                'Donation' | 'Subscription' | 'Shop Order' (anything else gives no Beans)
+ *   type                'Donation' | 'Subscription' | 'Shop Order' (anything else gives no Holy What Happeneds)
  *   amount, currency    e.g. "3.00" (a string) and "USD"
  *   message             the supporter's message: where the player pastes their link code
  *   shop_items          for a Shop Order: [{ direct_link_code, variation_name, quantity }], else null
@@ -108,7 +108,7 @@
         };
     }
 
-    // How many Beans a payment is worth under `cfg` (core/premium-config.js). Returns { beans, lines, reason }: lines say where
+    // How many Holy What Happeneds a payment is worth under `cfg` (core/premium-config.js). Returns { beans, lines, reason }: lines say where
     // they came from (one per shop item). reason when it is 0: 'tip' (a tip with no rate set), 'unknown-items',
     // 'no-tier', 'not-a-sale'.
     function creditFor(n, cfg) {

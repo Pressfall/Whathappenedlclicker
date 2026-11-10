@@ -1,17 +1,17 @@
 /**
- * Beans ☕: the premium currency, the pure part (no page, no Firebase). premium.js and premium-panel.js are the pages' side,
- * premium-cloud.js the account's side, kofi-worker/ the server that credits bought Beans.
+ * Holy What Happeneds 👼: the premium currency, the pure part (no page, no Firebase). premium.js and premium-panel.js are the pages' side,
+ * premium-cloud.js the account's side, kofi-worker/ the server that credits bought Holy What Happeneds.
  *
  * TWO POOLS, ONE NAME
- * - Earned Beans come from playing (EARN below). They live in localStorage whathappened_premium with the rest of this
+ * - Earned Holy What Happeneds come from playing (EARN below). They live in localStorage whathappened_premium with the rest of this
  *   state, synced to the account like every other progress key (core/progress.js SYNC_KEYS). Like gems, the browser is
  *   trusted with them: a player who edits their storage only changes their own game.
- * - Bought Beans come only from a Ko-fi payment, credited by the worker into Firestore wallets/{uid}. No browser can add
- *   to that balance (firestore-premium.rules): it can only take Beans off it, in the same write that logs what they paid
+ * - Bought Holy What Happeneds come only from a Ko-fi payment, credited by the worker into Firestore wallets/{uid}. No browser can add
+ *   to that balance (firestore-premium.rules): it can only take Holy What Happeneds off it, in the same write that logs what they paid
  *   for (wallets/{uid}/spends). checkWalletSpend() below is that rule, written out so it can be tested here.
- * - The balance shown is the two together. A purchase takes earned Beans first and the rest from the account; the
+ * - The balance shown is the two together. A purchase takes earned Holy What Happeneds first and the rest from the account; the
  *   account's part is taken first (a Firestore transaction), and only then the earned part and the item, so a failed
- *   or refused write costs nothing. A purchase that used bought Beans is in the account's spends log, so it comes back
+ *   or refused write costs nothing. A purchase that used bought Holy What Happeneds is in the account's spends log, so it comes back
  *   on any device signed in to the account (restoreFromSpends).
  *
  * WHAT BEANS BUY: cosmetics only (CATALOG). Never gems, rubies, Golden, Glory, lootboxes, follower packs or anything with a
@@ -19,7 +19,7 @@
  *
  * WHERE EARNED BEANS COME FROM (EARN): worked out from the saves the game already keeps, never from a hook in the code
  * that pays them, so each one is paid once whichever page notices first (grant ids, e.g. 'ach:x_golden_10', 'boss:tidal',
- * 'wk:2026-W46'). The first time a save sees Beans, what it had already done pays at most EARN.retroCap.
+ * 'wk:2026-W46'). The first time a save sees Holy What Happeneds, what it had already done pays at most EARN.retroCap.
  *
  * Works in a browser (<script src="core/premium.js"> after core/premium-config.js sets window.WHPremium) and in Node.
  */
@@ -33,7 +33,7 @@
     const CUR = Config.currency;
     const LOG_MAX = 30, APPLIED_MAX = 200, EARNED_MAX = 1e7;
 
-    // ---------------- what Beans buy ----------------
+    // ---------------- what Holy What Happeneds buy ----------------
     // kind: title (added to the game's titles; shown next to your name in chat and on the leaderboard), theme (the game
     // page's colours), pop (the "+N" that floats up when you click), trail (behind you in the Wilds; only you see it).
     // Each is owned once and can be switched on and off freely. No item gives anything else.
@@ -57,7 +57,7 @@
     const BY_ID = Object.fromEntries(CATALOG.map((c) => [c.id, c]));
     const EQUIP_KINDS = ['theme', 'pop', 'trail'];
 
-    // ---------------- how Beans are earned ----------------
+    // ---------------- how Holy What Happeneds are earned ----------------
     // Small on purpose (tools/simulate-beans.js prints what each kind of player earns a month against the prices above).
     const EARN = {
         // each achievement, once, by rarity
@@ -68,7 +68,7 @@
         // a finished Arena season you played 5+ rated games in, by the best rank you reached; once a season
         season: { bronze: 2, silver: 4, gold: 6, platinum: 8, diamond: 10, champion: 15 },
         glory: 5,         // Varro's shop in the Arena (core/world-arena.js SHOP 'beans'): 1,500 Glory, once a week
-        retroCap: 40,     // the first time a save sees Beans: what it had already done pays this much at most
+        retroCap: 40,     // the first time a save sees Holy What Happeneds: what it had already done pays this much at most
     };
     // how far back a weekly/daily/season reward still counts, and how long its grant id is kept after that
     const DERIVE_DAYS = 70, PRUNE_DAYS = 120;

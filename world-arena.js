@@ -479,7 +479,7 @@
                 WHW.toast(gd ? gd.crest + ' The chest holds the ' + gd.name + '! ' + gd.hero + ' earns +' + Math.round(G.PER_GUILD * 100 * r.owned) + '% in your game.'
                     : r.item.pack ? 'Bought: ' + r.item.name + '. Open it free on the Followers page in your game.'
                     : r.item.gems || r.item.golden ? 'Bought: ' + r.item.name + '. It arrives the next time you open the game.'
-                    : r.item.beans ? 'Bought: ' + r.item.name + '. Spend them from the ☕ chip.'
+                    : r.item.beans ? 'Bought: ' + r.item.name + '. Spend them from the 👼 chip.'
                     : 'Bought: ' + r.item.name + '.', 'gold');
                 WHW.sfx(gd ? 'gem' : 'craft');
                 WHW.save(); net() && (net().infoKey = '');
