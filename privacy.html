@@ -40,13 +40,13 @@
     <li><strong>Leaderboard entries:</strong> When you save a username and submit a score to the leaderboard, the leaderboard stores the <em>username</em>, your equipped title, your score (a number) and a timestamp, and shows them to everyone. Scores come from players' own browsers and are not verified. If you run the optional leaderboard server, that server will persist these entries.</li>
     <li><strong>Server logs & metadata:</strong> If you submit leaderboard data to a hosted leaderboard server (for example, Firestore/Firestore REST endpoints), that server may also log IP addresses, request metadata, and other technical information necessary to operate and secure the service.</li>
     <li><strong>Chat, clans and profiles:</strong> If you chat, join a clan or play with a username, that username, your messages, your clan membership and some game numbers (your What Happeneds, Golden, clan points and equipped title) are stored in Google Cloud Firestore and are visible to other players. Do not use your real name or other personal details as a username.</li>
-    <li><strong>Buying Beans on Ko-fi (optional):</strong> Beans are the game's currency for titles and looks. They can be earned by playing, or bought with a Ko-fi payment while signed in to an account. Payments are made on Ko-fi (ko-fi.com), not on this site; Ko-fi and its payment providers (such as PayPal or Stripe) handle your payment details under their own privacy policies, and this site never sees your card or PayPal details. When a payment completes, Ko-fi sends this site's payment server (a small program run on Cloudflare) the payment's details, including the name, email address and message you gave Ko-fi. Of that, we keep only what is needed to give you your Beans and to sort out problems, in Google Cloud Firestore:
+    <li><strong>Buying Holy What Happeneds on Ko-fi (optional):</strong> Holy What Happeneds are the game's currency for titles and looks. They can be earned by playing, or bought with a Ko-fi payment while signed in to an account. Payments are made on Ko-fi (ko-fi.com), not on this site; Ko-fi and its payment providers (such as PayPal or Stripe) handle your payment details under their own privacy policies, and this site never sees your card or PayPal details. When a payment completes, Ko-fi sends this site's payment server (a small program run on Cloudflare) the payment's details, including the name, email address and message you gave Ko-fi. Of that, we keep only what is needed to give you your Holy What Happeneds and to sort out problems, in Google Cloud Firestore:
       <ul>
-        <li>for each payment worth Beans: Ko-fi's transaction ID, the kind of payment (shop order, tip or membership), the amount and currency, when it was paid and received, which Beans packs were bought and how many Beans that gave, the link code in the message, and the account the Beans went to;</li>
+        <li>for each payment worth Holy What Happeneds: Ko-fi's transaction ID, the kind of payment (shop order, tip or membership), the amount and currency, when it was paid and received, which Holy What Happeneds packs were bought and how many Holy What Happeneds that gave, the link code in the message, and the account the Holy What Happeneds went to;</li>
         <li>if a payment came without a link code that matches an account: a keyed one-way code made from the email address (an HMAC; the address itself is not kept, and the code can't be turned back into it without a secret only the payment server holds), so that its payer can claim it later by entering that email. This code is deleted once the payment is claimed;</li>
-        <li>for your account: your link code, how many bought Beans you have, and a list of what bought Beans paid for (the item and the price), so purchases come back on any device you sign in on.</li>
+        <li>for your account: your link code, how many bought Holy What Happeneds you have, and a list of what bought Holy What Happeneds paid for (the item and the price), so purchases come back on any device you sign in on.</li>
       </ul>
-      We do <strong>not</strong> keep your name, your email address, your message or any shipping details from Ko-fi. Payments that give no Beans (for example a plain tip) are not stored at all. Ko-fi keeps its own record of every payment, which we can see in our Ko-fi account.</li>
+      We do <strong>not</strong> keep your name, your email address, your message or any shipping details from Ko-fi. Payments that give no Holy What Happeneds (for example a plain tip) are not stored at all. Ko-fi keeps its own record of every payment, which we can see in our Ko-fi account.</li>
     <li><strong>Third-party services:</strong> Ads (Google AdSense) and visit counting (Google Analytics) are loaded <em>only after you choose Accept</em> in the ad and cookie notice (see Advertising below). Google Fonts (the game's text fonts) and Google Firebase (accounts, cloud saves, chat, clans and the leaderboard) are used to run the site, so your browser contacts Google servers for them and Google receives your IP address and ordinary request data. These services may use cookies or similar storage as described in their own policies.</li>
   </ul>
 
@@ -55,7 +55,7 @@
     <li>Store and restore your game progress in <code>localStorage</code> for a better experience.</li>
     <li>If you have an account: sign you in, save your progress to it, and load it on your other devices. Your cloud save can only be read or changed while signed in to your account.</li>
     <li>Publish leaderboard entries (username, score, timestamp) only when you submit them intentionally via the leaderboard UI.</li>
-    <li>If you buy Beans: credit them to the account whose link code was in the Ko-fi message, credit each payment only once, let you claim a payment sent without your code, and answer questions or problems about a purchase.</li>
+    <li>If you buy Holy What Happeneds: credit them to the account whose link code was in the Ko-fi message, credit each payment only once, let you claim a payment sent without your code, and answer questions or problems about a purchase.</li>
     <li>Use third-party content or services that may use cookies or other browser storage to provide or measure their features.</li>
   </ul>
 
@@ -64,7 +64,7 @@
   <ul>
     <li><strong>Performance of a contract / provision of service:</strong> storing and restoring your game progress in <code>localStorage</code> and enabling game functionality.</li>
     <li><strong>Legitimate interests:</strong> operating and securing leaderboard services and preventing abuse.</li>
-    <li><strong>Performance of a contract:</strong> crediting the Beans you bought and keeping the record of that purchase.</li>
+    <li><strong>Performance of a contract:</strong> crediting the Holy What Happeneds you bought and keeping the record of that purchase.</li>
     <li><strong>Consent:</strong> ads and visit counting (Google AdSense, including personalized ads, and Google Analytics) are loaded only if you accept them. You can withdraw consent at any time (see Advertising); declining does not affect the game.</li>
   </ul>
 
@@ -94,7 +94,7 @@
 
   <p><strong>Accounts:</strong> your account and cloud save are kept until you delete them. You can delete your account at any time on the <a href="account.html">Account page</a> (Security → Delete account), which removes the account and its cloud save immediately; the progress on your device is not affected.</p>
 
-  <p><strong>Beans purchases:</strong> payment records and your bought-Beans balance are kept for as long as the game runs, so a purchase can always be checked and restored. Deleting your account removes your cloud save, but not these records (they contain no name or email address); contact us if you want them removed too, and note that any bought Beans left would be lost. The email code on an unclaimed payment is removed when it is claimed, or when we give the payment to its owner by hand.</p>
+  <p><strong>Holy What Happeneds purchases:</strong> payment records and your bought-Holy What Happeneds balance are kept for as long as the game runs, so a purchase can always be checked and restored. Deleting your account removes your cloud save, but not these records (they contain no name or email address); contact us if you want them removed too, and note that any bought Holy What Happeneds left would be lost. The email code on an unclaimed payment is removed when it is claimed, or when we give the payment to its owner by hand.</p>
 
   <p><strong>Suggested default retention:</strong> if you operate a leaderboard server, consider retaining leaderboard entries for a reasonable period (for example, 12 months) unless you are required to keep them longer. Provide users with the ability to request deletion sooner.</p>
 
@@ -112,7 +112,7 @@
   <h2>Children</h2>
   <p>The site is not intended for children under 13. We do not knowingly collect personal information from children under 13. If you believe we have collected such information, please contact us (below) so we can remove it.</p>
 
-  <p>Buying Beans needs an account and a payment on Ko-fi. The game asks players under 18 to get a parent's or guardian's permission first. Beans only buy looks (never lootboxes or anything with a random result), and they can't be used in the casino.</p>
+  <p>Buying Holy What Happeneds needs an account and a payment on Ko-fi. The game asks players under 18 to get a parent's or guardian's permission first. Holy What Happeneds only buy looks (never lootboxes or anything with a random result), and they can't be used in the casino.</p>
 
   <p>If you are a parent or guardian and wish to request removal of data for a child, contact <strong>whathappenedclicker@gmail.com</strong> and include evidence you are the child's parent or guardian and the username or timestamp of the entry to remove.</p>
 

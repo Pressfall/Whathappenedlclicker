@@ -1,7 +1,7 @@
 'use strict';
-// Beans ☕: the pure rules (core/premium.js, core/premium-config.js, core/kofi.js) and the lines they must never cross:
+// Holy What Happeneds 👼: the pure rules (core/premium.js, core/premium-config.js, core/kofi.js) and the lines they must never cross:
 // cosmetics only, never anything random, never the casino, never a paywall on what is free, and no browser write that adds
-// bought Beans (the spend rule in firestore-premium.rules, written out as checkWalletSpend).
+// bought Holy What Happeneds (the spend rule in firestore-premium.rules, written out as checkWalletSpend).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -21,7 +21,7 @@ const Bridge = require('../core/world-bridge.js');
 const NOW = Date.UTC(2026, 10, 9, 12);
 const DAY = 86400000;
 
-// ---------------- what Beans buy ----------------
+// ---------------- what Holy What Happeneds buy ----------------
 test('the shop sells looks only: titles, themes, click numbers, trails; nothing that gives a currency, a box or a pack', () => {
     assert.deepEqual(P.KINDS, ['title', 'theme', 'pop', 'trail']);
     const ids = new Set();
@@ -34,14 +34,14 @@ test('the shop sells looks only: titles, themes, click numbers, trails; nothing 
     }
 });
 
-test('Beans can\'t be used in the casino, and no other game code reads what Beans bought (nothing free gets locked behind them)', () => {
-    for (const f of ['gamba.js', 'gamba.html']) assert.ok(!/WHBeans|WHPremium|whathappened_premium|premium\.js|Beans/i.test(read(f)), f + ' knows nothing of Beans');
-    // only these files touch the Beans state or API; main.js only colours the bought titles, the Wilds only draw the trail and
+test('Holy What Happeneds can\'t be used in the casino, and no other game code reads what Holy What Happeneds bought (nothing free gets locked behind them)', () => {
+    for (const f of ['gamba.js', 'gamba.html']) assert.ok(!/WHBeans|WHPremium|whathappened_premium|premium\.js|Holy What Happeneds/i.test(read(f)), f + ' knows nothing of Holy What Happeneds');
+    // only these files touch the Holy What Happeneds state or API; main.js only colours the bought titles, the Wilds only draw the trail and
     // ask for an earnings check after a Glory purchase
     const allowed = new Set(['premium.js', 'premium-panel.js', 'premium-cloud.js', 'world-actors.js', 'world-arena.js', 'main.js']);
     for (const f of fs.readdirSync(ROOT).filter((x) => /\.(js|html)$/.test(x))) {
         const src = read(f);
-        if (/WHBeans|WHPremium\b|whathappened_premium/.test(src) && !allowed.has(f) && !/^(index|world)\.html$/.test(f)) assert.fail(f + ' uses Beans');
+        if (/WHBeans|WHPremium\b|whathappened_premium/.test(src) && !allowed.has(f) && !/^(index|world)\.html$/.test(f)) assert.fail(f + ' uses Holy What Happeneds');
     }
     assert.match(read('world-actors.js'), /window\.WHBeans\.drawTrail\(ctx, p\)/);
     const mainUse = read('main.js').split('\n').filter((l) => /WHPremium|WHBeans/.test(l));
@@ -60,7 +60,7 @@ test('bought titles don\'t reuse a name the game already gives for free', () => 
     delete global.window; delete global.localStorage;
 });
 
-// ---------------- how Beans are earned ----------------
+// ---------------- how Holy What Happeneds are earned ----------------
 const ach = (key, rarity) => ({ key, rarity, name: key });
 function view(over) {
     return Object.assign({ achievements: [], world: null, challenges: null, bossNames: { tidal: 'Tidal Wyrm' } }, over);
@@ -149,7 +149,7 @@ test('earning stays small: the most a player can earn in a month from repeating 
 });
 
 // ---------------- spending ----------------
-test('a purchase takes earned Beans first, then bought ones', () => {
+test('a purchase takes earned Holy What Happeneds first, then bought ones', () => {
     assert.deepEqual(P.planSpend(500, 0, 350), { ok: true, fromEarned: 350, fromPaid: 0, short: 0 });
     assert.deepEqual(P.planSpend(100, 1000, 350), { ok: true, fromEarned: 100, fromPaid: 250, short: 0 });
     assert.deepEqual(P.planSpend(100, 200, 350), { ok: false, fromEarned: 100, fromPaid: 250, short: 50 });
@@ -163,7 +163,7 @@ test('buying, wearing, and getting a purchase back from the account', () => {
     assert.equal(s.equip.theme, 'th_mocha');
     assert.equal(P.canBuy(s, 'th_mocha').reason, 'owned');
     assert.equal(P.completePurchase(s, 'th_mocha', 0, NOW), false, 'not twice');
-    assert.equal(P.completePurchase(s, 'pop_neon', 200, NOW), false, 'not with Beans it doesn\'t have');
+    assert.equal(P.completePurchase(s, 'pop_neon', 200, NOW), false, 'not with Holy What Happeneds it doesn\'t have');
     assert.equal(P.canBuy(s, 'nope').reason, 'unknown');
     P.equip(s, 'th_mocha');
     assert.equal(s.equip.theme, '', 'equip again takes it off');
@@ -186,7 +186,7 @@ test('a stored state is cleaned: unknown items, looks not owned and nonsense num
 });
 
 // ---------------- the spend rule (firestore-premium.rules) ----------------
-test('the account\'s balance can only go down, by exactly the logged spend; nothing a browser writes can add Beans', () => {
+test('the account\'s balance can only go down, by exactly the logged spend; nothing a browser writes can add Holy What Happeneds', () => {
     const before = { balance: 500, total: 500, updatedAt: 't' };
     const ok = (after, spend, id, existed) => P.checkWalletSpend(before, after, spend, id || 'spend0001', !!existed);
     const spend = (cost, extra) => Object.assign({ item: 'th_mocha', cost, at: 'request.time' }, extra);
@@ -233,7 +233,7 @@ test('link codes: the same code for an account everywhere, the same hash the rul
     for (const msg of ['', 'no code here', 'WH-12', 'WH-ZZZZ-ZZZZ-ZZZZ', code + 'F']) assert.equal(Kofi.findLinkCode(msg), msg === code + 'F' ? '' : '', msg);
 });
 
-test('Ko-fi payloads: normalised, test payment spotted, Beans worked out from the table', () => {
+test('Ko-fi payloads: normalised, test payment spotted, Holy What Happeneds worked out from the table', () => {
     const cfg = Object.assign({}, Config, { packs: [{ code: 'p1', beans: 120 }], donationRate: { USD: 100 }, subscriptionTiers: { Club: 300 } });
     const n = Kofi.normalize({ kofi_transaction_id: 'tx-1234-abcd', type: 'Shop Order', amount: '5.00', currency: 'usd', message: 'm', email: 'A@B.C ',
         shop_items: [{ direct_link_code: 'P1', quantity: 2 }, { direct_link_code: 'other' }, 'junk'] });
@@ -253,7 +253,7 @@ test('Ko-fi payloads: normalised, test payment spotted, Beans worked out from th
     assert.equal(Kofi.sameSecret('', ''), false);
 });
 
-test('the earned-Beans state syncs with the account like other progress', () => {
+test('the earned-Holy What Happeneds state syncs with the account like other progress', () => {
     assert.ok(Progress.SYNC_KEYS.has('whathappened_premium'));
     assert.equal(Progress.isSyncKey('whathappened_premium'), true);
 });

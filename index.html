@@ -261,9 +261,9 @@
             <span id="gemChipCount" class="gem-chip-count" data-gem-balance>0</span><span class="sr-only"> gems, open the Treasury</span>
             <span class="gem-chip-plus" aria-hidden="true">+</span>
         </button>
-        <!-- Beans: bought on Ko-fi or earned by playing, for looks only (core/premium.js); premium-panel.js opens its panel -->
-        <button id="beanChip" class="bean-chip" type="button" title="Beans: earned by playing or bought, for titles and looks">
-            <span class="bean-ico" aria-hidden="true">☕</span><span class="bean-count" data-bean-short>0</span><span class="sr-only"> Beans</span>
+        <!-- Holy What Happeneds: bought on Ko-fi or earned by playing, for looks only (core/premium.js); premium-panel.js opens its panel -->
+        <button id="beanChip" class="bean-chip" type="button" title="Holy What Happeneds: earned by playing or bought, for titles and looks">
+            <span class="bean-ico" aria-hidden="true">👼</span><span class="bean-count" data-bean-short>0</span><span class="sr-only"> Holy What Happeneds</span>
         </button>
         <!-- Renown: one rank for the game and the Wilds together (core/renown.js); renown-panel.js opens its panel -->
         <button id="renownChip" class="renown-chip" type="button" title="Renown: one rank for the game and the Wilds together">
@@ -305,11 +305,11 @@
                     </span>
                     <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
                 </button>
-                <!-- Beans (premium-panel.js); the top-bar chip is hidden on the narrowest phones, so the balance is here too -->
+                <!-- Holy What Happeneds (premium-panel.js); the top-bar chip is hidden on the narrowest phones, so the balance is here too -->
                 <button id="beanMenuBtn" class="nav-btn nav-sidebar-btn" onclick="closeNavSideBar(); window.WHBeansPanel && WHBeansPanel.open();">
-                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">☕</span>
+                    <span class="nav-ico nav-sidebar-ico" aria-hidden="true">👼</span>
                     <span class="nav-sidebar-meta">
-                        <span class="nav-txt nav-sidebar-name">Beans <span class="bean-menu-count" data-bean-balance>0</span></span>
+                        <span class="nav-txt nav-sidebar-name">Holy What Happeneds <span class="bean-menu-count" data-bean-balance>0</span></span>
                         <span class="nav-sidebar-desc">Titles and looks, earned or bought</span>
                     </span>
                     <span class="nav-sidebar-arrow" aria-hidden="true">›</span>
@@ -982,7 +982,7 @@
         // WHCloud.saveNow() saves to the signed-in account right away (it only ever writes that account's own save)
         window.WHCloud = startGameSync();
     </script>
-    <!-- Beans bought on Ko-fi: the signed-in account's balance, spending it, the link code (premium-cloud.js) -->
+    <!-- Holy What Happeneds bought on Ko-fi: the signed-in account's balance, spending it, the link code (premium-cloud.js) -->
     <script type="module" src="premium-cloud.js"></script>
     <!-- ========== Firebase (Firestore, Analytics): exposes db, doc, setDoc, getDoc, updateDoc, etc. for main.js ========== -->
     <script type="module">

@@ -1,12 +1,12 @@
 /**
- * Beans ☕ on the page (index.html and world.html): the balance chip, paying earned Beans, buying and wearing cosmetics.
- * The rules are in core/premium.js; the account's bought Beans in premium-cloud.js (window.WHBeansCloud, loaded as a
+ * Holy What Happeneds 👼 on the page (index.html and world.html): the balance chip, paying earned Holy What Happeneds, buying and wearing cosmetics.
+ * The rules are in core/premium.js; the account's bought Holy What Happeneds in premium-cloud.js (window.WHBeansCloud, loaded as a
  * module once Firebase is there); the panel in premium-panel.js.
  *
  * - The state is localStorage whathappened_premium. Both pages write it, always read fresh and written straight back in one
  *   go (mutate), so neither page ever writes an old copy over the other's; purchases and the earning check also take a
  *   Web Lock, so two tabs take turns.
- * - Earned Beans are worked out from the saves every few seconds (core/premium.js sources), so nothing in main.js or the
+ * - Earned Holy What Happeneds are worked out from the saves every few seconds (core/premium.js sources), so nothing in main.js or the
  *   Wilds has to report them, and each is paid once whichever page sees it first.
  * - Looks: the theme and click-number style are classes on <body> (premium.css); the Wilds trail is drawn by drawTrail,
  *   called from world-actors.js drawPlayer.
@@ -42,7 +42,7 @@
         for (const fn of listeners) { try { fn(); } catch (e) {} }
     }
 
-    // ---------------- the account's bought Beans (premium-cloud.js) ----------------
+    // ---------------- the account's bought Holy What Happeneds (premium-cloud.js) ----------------
     const cloud = () => window.WHBeansCloud || null;
     // { signedIn, live, balance }: live is the account's own number; until it arrives, the last one this device saw for that
     // account (shown, never spent: spending always asks the account)
@@ -123,7 +123,7 @@
                 spendId = r.id;
             }
             let done = mutate((st) => P.completePurchase(st, id, plan.fromEarned, Date.now(), spendId));
-            // the account already paid but this device's earned Beans changed meanwhile: the item still arrives (it is logged)
+            // the account already paid but this device's earned Holy What Happeneds changed meanwhile: the item still arrives (it is logged)
             if (!done && spendId) done = mutate((st) => P.restoreFromSpends(st, [{ id: spendId, item: id }]).length > 0);
             if (!done) return { ok: false, reason: 'short' };
             giveTitles();

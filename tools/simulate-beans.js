@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 /**
- * How many Beans ☕ a free player earns, month by month, against what the Beans shop costs.
+ * How many Holy What Happeneds 👼 a free player earns, month by month, against what the Holy What Happeneds shop costs.
  * Run: node tools/simulate-beans.js      (re-run after changing EARN or CATALOG in core/premium.js)
  *
  * Uses the real tables: EARN and CATALOG (core/premium.js), the achievements and their rarities (achievements-data.js),
  * the Wilds bosses (core/world-data.js BOSSES) and the Arena ranks (core/world-arena.js). The players are models: how
- * often each kind of player finishes the weekly challenges, keeps a daily streak, buys Beans with Glory, and how far
+ * often each kind of player finishes the weekly challenges, keeps a daily streak, buys Holy What Happeneds with Glory, and how far
  * through each rarity of achievement they get in a year. Change the PLAYERS table to try other habits.
  */
 'use strict';
@@ -19,7 +19,7 @@ const P = require(path.join(ROOT, 'core/premium.js'));
 const D = require(path.join(ROOT, 'core/world-data.js'));
 const BOSSES = Object.keys(D.BOSSES);
 
-// achievements of each rarity, and the Beans they are worth together
+// achievements of each rarity, and the Holy What Happeneds they are worth together
 const byRarity = {};
 for (const a of ACH) byRarity[a.rarity] = (byRarity[a.rarity] || 0) + 1;
 
@@ -57,9 +57,9 @@ function simulate(pl) {
 }
 const firstAt = (months, n) => { const x = months.find((r) => r.total >= n); return x ? 'month ' + x.m : 'over a year'; };
 
-console.log('Beans shop: ' + P.CATALOG.length + ' items, ' + prices[0] + '-' + prices[prices.length - 1] + ' each (median ' + median + '), ' + catalogTotal + ' for everything.');
-console.log('Achievements worth Beans: ' + Object.entries(byRarity).map(([r, n]) => n + ' ' + r + ' x ' + (P.EARN.achievement[r] || 0)).join(', ')
-    + ' = ' + Object.entries(byRarity).reduce((a, [r, n]) => a + n * (P.EARN.achievement[r] || 0), 0) + ' Beans in all, once.');
+console.log('Holy What Happeneds shop: ' + P.CATALOG.length + ' items, ' + prices[0] + '-' + prices[prices.length - 1] + ' each (median ' + median + '), ' + catalogTotal + ' for everything.');
+console.log('Achievements worth Holy What Happeneds: ' + Object.entries(byRarity).map(([r, n]) => n + ' ' + r + ' x ' + (P.EARN.achievement[r] || 0)).join(', ')
+    + ' = ' + Object.entries(byRarity).reduce((a, [r, n]) => a + n * (P.EARN.achievement[r] || 0), 0) + ' Holy What Happeneds in all, once.');
 console.log('Bosses: ' + BOSSES.length + ' x ' + P.EARN.boss + '. Recurring: weekly bonus ' + P.EARN.weekly + ', 7-day streak ' + P.EARN.streak
     + ', Glory ' + P.EARN.glory + '/week, season ' + Object.values(P.EARN.season).join('/') + '. First-visit catch-up capped at ' + P.EARN.retroCap + '.');
 console.log('');
@@ -69,7 +69,7 @@ for (const [name, pl] of Object.entries(PLAYERS)) {
     console.log(name);
     console.log('  earned in month 1: ' + r(0) + ', month 3: ' + r(2) + ', month 6: ' + r(5) + ', month 12: ' + r(11)
         + ' (recurring part ' + Math.round(ms[11].recurring) + '/month)');
-    console.log('  after a year: ' + Math.round(ms[11].total) + ' Beans = ' + (100 * ms[11].total / catalogTotal).toFixed(0) + '% of the whole shop'
+    console.log('  after a year: ' + Math.round(ms[11].total) + ' Holy What Happeneds = ' + (100 * ms[11].total / catalogTotal).toFixed(0) + '% of the whole shop'
         + '; cheapest item (' + prices[0] + ') by ' + firstAt(ms, prices[0]) + ', a median one (' + median + ') by ' + firstAt(ms, median)
         + ', the dearest (' + prices[prices.length - 1] + ') by ' + firstAt(ms, prices[prices.length - 1]));
 }

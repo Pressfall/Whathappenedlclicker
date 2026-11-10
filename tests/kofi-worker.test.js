@@ -179,7 +179,7 @@ async function setup(envOver) {
         EMAIL_PEPPER: 'pepper-for-tests', ADMIN_TOKEN: 'admin-secret', FIREBASE_PROJECT_ID: PROJECT, ALLOWED_ORIGINS: ORIGIN,
     }, envOver);
     const call = (req, cfg) => worker.handle(req, env, { fetch: g.fetch, config: cfg || CFG });
-    // a player who opened Get Beans while signed in: their link doc exists
+    // a player who opened Get more while signed in: their link doc exists
     const linkFor = async (uid) => { const id = await Kofi.linkIdForUid(uid, subtle); g.put('kofi_links/' + id, { uid, at: 'x' }); return Kofi.formatLinkCode(id); };
     return { g, env, call, linkFor };
 }
@@ -259,7 +259,7 @@ test('Ko-fi\'s test payment (the example transaction id) is answered 200 and cre
     assert.equal(g.calls.commits, 0);
 });
 
-test('tips: no Beans and nothing stored unless the owner set a rate; with a rate, amount x rate', async () => {
+test('tips: no Holy What Happeneds and nothing stored unless the owner set a rate; with a rate, amount x rate', async () => {
     const { g, call, linkFor } = await setup();
     const code = await linkFor('uid_erin');
     const noRate = await call(kofiPost(payload({ kofi_transaction_id: TX(7), message: code })), Object.assign({}, CFG, { donationRate: {} }));
@@ -284,7 +284,7 @@ test('memberships pay by tier name; commissions and unknown tiers pay nothing', 
     assert.equal(g.plain('wallets/uid_fay').balance, 300);
 });
 
-test('a shop order of items that are not Beans is ignored; one payment never credits more than the cap', async () => {
+test('a shop order of items that are not Holy What Happeneds is ignored; one payment never credits more than the cap', async () => {
     const { g, call, linkFor } = await setup();
     const code = await linkFor('uid_gus');
     const shirt = await call(kofiPost(payload({ type: 'Shop Order', kofi_transaction_id: TX(13), message: code, shop_items: [{ direct_link_code: 'tshirt', quantity: 3 }] })));

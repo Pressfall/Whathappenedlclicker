@@ -1,10 +1,10 @@
 /**
- * The Ko-fi webhook for What Happened Clicker: a Cloudflare Worker that credits Beans ☕ when someone pays on Ko-fi.
+ * The Ko-fi webhook for What Happened Clicker: a Cloudflare Worker that credits Holy What Happeneds 👼 when someone pays on Ko-fi.
  * Setup, secrets and deploying: docs/kofi-setup.md. Tests: tests/kofi-worker.test.js (fake Ko-fi, fake Google).
  *
  * Routes
  *   POST /kofi            Ko-fi's webhook. Answers 200 once the payment is safely handled (credited, kept as unmatched, a
- *                         duplicate, a test, or not worth Beans); anything else makes Ko-fi try again later.
+ *                         duplicate, a test, or not worth Holy What Happeneds); anything else makes Ko-fi try again later.
  *   POST /claim           a signed-in player claims a payment that came without a link code: { txid, email }, with their
  *                         Firebase ID token as "Authorization: Bearer ...". Only from the game's own site (ALLOWED_ORIGINS).
  *   POST /admin/resolve   the owner gives an unmatched payment to a player: { txid, code: 'WH-XXXX-XXXX-XXXX' }, with
@@ -15,8 +15,8 @@
  * Plain settings (wrangler.toml [vars]): FIREBASE_PROJECT_ID, ALLOWED_ORIGINS.
  *
  * What is kept about a payment (kofi_payments/{kofi_transaction_id}): its type, amount, currency, time, the shop items and
- * Beans, the link code and account it went to, and for a payment nobody has claimed yet a keyed hash of the payer's email.
- * Never the name, the email itself or the message. Payments worth no Beans (a plain tip) are not stored at all.
+ * Holy What Happeneds, the link code and account it went to, and for a payment nobody has claimed yet a keyed hash of the payer's email.
+ * Never the name, the email itself or the message. Payments worth no Holy What Happeneds (a plain tip) are not stored at all.
  */
 import Config from '../../core/premium-config.js';
 import Kofi from '../../core/kofi.js';
@@ -113,7 +113,7 @@ async function webhook(request, env, deps) {
         if (await db.getDoc('kofi_payments/' + n.txid)) return json(200, { ok: true, duplicate: true });
         throw new Error('commit failed (' + r.status + ' ' + r.error + ')');
     }
-    console.log('kofi-worker: payment', uid ? 'credited' : 'kept as unmatched', credit.beans, 'Beans');
+    console.log('kofi-worker: payment', uid ? 'credited' : 'kept as unmatched', credit.beans, 'Holy What Happeneds');
     return json(200, { ok: true, beans: credit.beans, matched: !!uid });
 }
 
@@ -134,7 +134,7 @@ async function giveUnmatched(db, txid, pay, uid, by) {
         ...creditWrites(db, uid, txid, Number(f.beans) || 0, f.type || 'Payment', Array.isArray(f.items) ? f.items : []),
     ];
     const r = await db.commit(writes);
-    if (!r.ok) return { status: 409, body: { error: 'That payment was just claimed or changed. Check your Beans, then try again if they are missing.' } };
+    if (!r.ok) return { status: 409, body: { error: 'That payment was just claimed or changed. Check your Holy What Happeneds, then try again if they are missing.' } };
     return { status: 200, body: { ok: true, beans: Number(f.beans) || 0 } };
 }
 
@@ -184,7 +184,7 @@ async function resolve(request, env, deps) {
     if (!Kofi.TXID_RE.test(txid) || !linkId) return json(400, { error: 'send { "txid": "...", "code": "WH-XXXX-XXXX-XXXX" } (and "beans": N for a payment that was not stored)' });
     const db = createFirestore(env, deps);
     const link = await db.getDoc('kofi_links/' + linkId);
-    if (!link || typeof link.fields.uid !== 'string') return json(404, { error: 'no player has that link code (they must open Get Beans once while signed in)' });
+    if (!link || typeof link.fields.uid !== 'string') return json(404, { error: 'no player has that link code (they must open Get more once while signed in)' });
     const uid = link.fields.uid;
     const pay = await db.getDoc('kofi_payments/' + txid);
     if (!pay) {

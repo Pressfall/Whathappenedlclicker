@@ -41,9 +41,9 @@
                 <!-- on small screens the rest fold away behind ⋯ (a list that names each one); elsewhere they sit in the row -->
                 <button class="w-icon-btn w-more-btn" id="btnMore" title="More" aria-label="More" aria-expanded="false" aria-controls="hudMore">⋯</button>
                 <div class="w-more" id="hudMore">
-                    <!-- Beans: earned by playing or bought, for looks only (premium.js; the panel is premium-panel.js). Next to the
+                    <!-- Holy What Happeneds: earned by playing or bought, for looks only (premium.js; the panel is premium-panel.js). Next to the
                          rubies on a wide screen (premium.css), the first line of the ⋯ list on a small one -->
-                    <button class="w-beans" id="beanChip" title="Beans: earned by playing or bought, for titles and looks" aria-label="Beans">☕ <b data-bean-short>0</b></button>
+                    <button class="w-beans" id="beanChip" title="Holy What Happeneds: earned by playing or bought, for titles and looks" aria-label="Holy What Happeneds">👼 <b data-bean-short>0</b></button>
                     <button class="w-online" id="btnOnline" title="Online" aria-label="Online play">🌐 <b id="onlineCount">…</b></button>
                     <button class="w-icon-btn" id="btnParty" title="Party (P)" aria-label="Party">👥</button>
                     <button class="w-icon-btn" id="btnMap" title="Map (M)" aria-label="Map">🗺️</button>
@@ -159,7 +159,7 @@
             import { startGameSync } from './cloud.js';
             window.WHCloud = startGameSync({ compact: true });
         </script>
-        <!-- bought Beans: the signed-in account's balance (premium-cloud.js) -->
+        <!-- bought Holy What Happeneds: the signed-in account's balance (premium-cloud.js) -->
         <script type="module" src="premium-cloud.js"></script>
     </body>
 </html>

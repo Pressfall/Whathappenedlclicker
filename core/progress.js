@@ -47,7 +47,7 @@
         'whathappened_upgrade_best', 'whathappened_renown',
         // the daily and weekly challenges (core/challenges.js)
         'whathappened_challenges',
-        // Beans: earned Beans, the looks owned and worn, which rewards were paid (core/premium.js). Bought Beans live in the
+        // Holy What Happeneds: earned Holy What Happeneds, the looks owned and worn, which rewards were paid (core/premium.js). Bought Holy What Happeneds live in the
         // account itself (Firestore wallets/{uid}), not in here.
         'whathappened_premium',
     ]);
