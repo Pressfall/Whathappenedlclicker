@@ -906,7 +906,7 @@
         if (!prompt && WHW.party && WHW.online && !map.pit) {
             let best = null, bd = 60;
             for (const r of WHW.online.here()) { const d = dist(p, r); if (d < bd) { bd = d; best = r; } }
-            if (best) { prompt = `<kbd>E</kbd>👤 ${esc(best.info.n)}${WHW.party.isMate(best.uid) ? ' (your party)' : ': invite to your party'}`; if (press) WHW.party.openPlayer(best); }
+            if (best) { prompt = `<kbd>E</kbd>👤 ${isClanmate(best) ? '🛡️ ' : ''}${esc(best.info.n)}${WHW.party.isMate(best.uid) ? ' (your party)' : isClanmate(best) ? ' (your clan): invite to your party' : ': invite to your party'}`; if (press) WHW.party.openPlayer(best); }
         }
         WHW.ui.setPrompt(prompt);
     }
@@ -945,6 +945,7 @@
         return rule === 'open' || (rule === 'arena' && !!WHW.arena && !!r.info && WHW.arena.canHit(r));
     }
     const isMate = (r) => !!WHW.party && WHW.party.isMate(r.uid);
+    const isClanmate = (r) => !!WHW.online && !!WHW.online.clanmate && WHW.online.clanmate(r);
     // is any zone past the Waystone open? (it wakes when Frozen WH falls)
     function farOpen() { return D.ZONE_ORDER.some(z => D.ZONES[z].via === 'waystone' && g.state.unlocked.zones[z]); }
     // which god a statue in the Hall is: the hidden one says so, the others by their place
@@ -1239,7 +1240,7 @@
         items.sort((x, y) => x.y - y.y);
         const it = W.findGear(g.state, p.weaponUid), b = W.baseOf(it);
         for (const o of items) {
-            if (o.rp) { A.drawRemote(ctx, o.rp, hostileTo(o.rp), isMate(o.rp)); continue; }
+            if (o.rp) { A.drawRemote(ctx, o.rp, hostileTo(o.rp), isMate(o.rp), isClanmate(o.rp)); continue; }
             if (o.npc) { A.drawNpc(ctx, o.npc, D.NPCS[o.npc.id], npcMark(o.npc.id)); continue; }
             if (o.statue) { const id = statueGod(o.statue); if (id) A.drawStatue(ctx, o.statue, Gods.GODS[id], g.state.gods[id] || 0); continue; }
             if (o.altar) { A.drawAltar(ctx, o.altar, D.HIDDEN_SHOP[o.altar.id], !!g.state.secrets[o.altar.id]); continue; }
@@ -1399,7 +1400,7 @@
         for (const st of m.stations) dot(st.door.x, st.door.y, D.STATIONS[st.id].color, 3);
         if (g.state.grave && g.state.grave.zone === g.zoneId) dot(g.state.grave.x, g.state.grave.y, '#ffc83d', 4);
         if (big) for (const a of g.actors) if (!a.dead && (a.elite || a.kind === 'rival')) dot(a.x, a.y, a.kind === 'rival' ? '#ff9a3d' : '#ffe14d', 2.5);
-        if (WHW.online) for (const rp of WHW.online.drawables()) dot(rp.x, rp.y, isMate(rp) ? '#7dffb0' : hostileTo(rp) ? '#ff6b7a' : '#9ad7ff', big ? 3 : 2.5);
+        if (WHW.online) for (const rp of WHW.online.drawables()) dot(rp.x, rp.y, isMate(rp) ? '#7dffb0' : isClanmate(rp) ? '#ffd27a' : hostileTo(rp) ? '#ff6b7a' : '#9ad7ff', big ? 3 : 2.5);
         if (m.arena) dot(m.arena.door.x, m.arena.door.y, '#ffb347', 3);
         dot(g.player.x, g.player.y, '#ffffff', big ? 4 : 3);
     };

@@ -35,7 +35,7 @@
     const ON = WHW.online = {
         status: 'off', error: '', db: null, uid: null, zone: null, wantZone: null, connectedOnce: false,
         remotes: new Map(), loot: new Map(), log: [], subs: [],
-        lastSent: '', lastPos: null, sentAt: 0, sendT: 0, infoKey: '', infoT: 0, chipT: 0, parked: new Map(),
+        lastSent: '', lastPos: null, sentAt: 0, sendT: 0, infoKey: '', infoT: 0, chipT: 0, parked: new Map(), clanSeen: new Set(),
         // position updates counted for the ?whdebug overlay (out: mine by kind, in: everyone else's), rates over the last few seconds
         net: { out: { event: 0, move: 0, beat: 0, hit: 0 }, outBytes: 0, inN: 0, inBytes: 0, since: performance.now(), rate: null },
         lastHitAt: {}, abRate: {}, sayAt: -99, myBubble: null, seenKills: new Set(), claiming: new Set(), lockHintAt: 0,
@@ -56,6 +56,11 @@
         return n;
     }
     ON.name = myName;
+    // the clan I am in, in the game (clan.html): shared with my look so clanmates see a badge by my name (and I by theirs)
+    function myClan() { try { return O.clanId(localStorage.getItem('player_clanId')); } catch (e) { return ''; } }
+    ON.myClan = myClan;
+    // is this other player in my clan? (a badge only: it never changes who can hurt whom)
+    ON.clanmate = function (r) { return !!r && O.sameClan(r.info, myClan()); };
     ON.setName = function (n) {
         const s = O.sanitizeName(n);
         if (!s) return false;
@@ -254,12 +259,17 @@
         const prevW = r.info && r.info.w;
         r.info = info;
         if (prevW !== info.w) r.weapon = C.newWeapon(D.GEAR_BY_ID[info.w].cls, r.weapon.theta);
+        // a clanmate turns up: say so once a visit
+        if (ON.clanmate(r) && !ON.clanSeen.has(uid)) {
+            ON.clanSeen.add(uid);
+            WHW.toast('🛡️ ' + info.n + ' from your clan is here.');
+        }
         if (info.say && info.say.t !== r.sayT) {
             const fresh = !r.sayT || (ON.db && ON.db.serverNow() - info.say.t < 15000);
             r.sayT = info.say.t;
             if (fresh) {
                 r.bubble = { m: info.say.m, e: info.say.e, until: E.time + O.CHAT.bubbleSec };
-                logLine(info.n, info.say.m, false);
+                logLine((ON.clanmate(r) ? '🛡️ ' : '') + info.n, info.say.m, false);
             }
         }
     }
@@ -310,7 +320,7 @@
     }
     function sendInfo(force) {
         if (!ON.db || !ON.zone) return;
-        const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {}, WHW.party ? WHW.party.infoExtra() : {});
+        const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {}, WHW.party ? WHW.party.infoExtra() : {}, { cn: myClan() });
         const key = JSON.stringify(info);
         if (!force && key === ON.infoKey) return;
         ON.infoKey = key;
@@ -318,8 +328,12 @@
         // it must not take the name and look down with them
         const extra = {};
         for (const k of ['cl', 'r', 'ti', 'wb', 'am', 'aq', 'pt']) if (k in info) { extra[k] = info[k]; delete info[k]; }
+        // the clan badge too, in a write of its own for the same reason (it came later still)
+        const clan = { cn: info.cn };
+        delete info.cn;
         ON.db.update(Z('i/' + ON.uid), Object.assign(info, { t: ON.db.serverNow() }));
         ON.db.update(Z('i/' + ON.uid), extra);
+        ON.db.update(Z('i/' + ON.uid), clan);
     }
     function trail(r, P) {
         const len = C.hasReach(r.weapon.cls) ? r.weapon.r : P.len || 0;

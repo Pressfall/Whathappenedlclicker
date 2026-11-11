@@ -517,7 +517,7 @@
         const stakes = R.stakes.filter(x => x <= s.rubies);
         const theirParty = partyOf(r), mine = partyMembers();
         const teamMode = mine.length === theirParty.length && mine.length >= 2 ? (mine.length === 2 ? 't2' : 't3') : '';
-        const body = WHW.ui.modal('⚔️ ' + r.info.n, `<p>Rating <b>${r.info.r || R.elo.start}</b> (${esc(Ar.rankFor(r.info.r || R.elo.start).name)})${r.info.ti ? ' · ' + esc(r.info.ti) : ''}${r.info.pt ? ' · in a party of ' + theirParty.length : ''}</p>
+        const body = WHW.ui.modal('⚔️ ' + r.info.n, `<p>Rating <b>${r.info.r || R.elo.start}</b> (${esc(Ar.rankFor(r.info.r || R.elo.start).name)})${r.info.ti ? ' · ' + esc(r.info.ti) : ''}${r.info.pt ? ' · in a party of ' + theirParty.length : ''}</p>${WHW.party && WHW.party.clanLine ? WHW.party.clanLine(r) : ''}
             <div class="w-section"><h3>Challenge</h3><label>Stake (rubies each, the winner takes the pot): <select id="arStake">${stakes.map(x => `<option value="${x}">${x ? fmt(x) : 'No stake'}</option>`).join('')}</select></label>
             <div class="w-card-actions"><button class="btn btn-primary" id="arDuel">Challenge to a duel</button>
             ${teamMode ? `<button class="btn btn-primary" id="arTeam">Challenge their party (${Ar.MODES[teamMode].name})</button>` : `<span class="muted">Team battles: a party of 2 or 3 on each side.</span>`}</div></div>

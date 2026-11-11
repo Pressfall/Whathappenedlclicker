@@ -234,11 +234,19 @@
     // Another player, anywhere: invite them to your party (the Arena's lobby has its own card, with challenges too)
     P.openPlayer = function (r) {
         const mate = P.isMate(r.uid);
-        const body = WHW.ui.modal('👤 ' + r.info.n, `<p>${r.info.ti ? esc(r.info.ti) + ' · ' : ''}Rating <b>${r.info.r || 1000}</b>${r.info.wb ? ' · best wave <b>' + r.info.wb + '</b>' : ''}</p>
+        const body = WHW.ui.modal('👤 ' + r.info.n, `<p>${r.info.ti ? esc(r.info.ti) + ' · ' : ''}Rating <b>${r.info.r || 1000}</b>${r.info.wb ? ' · best wave <b>' + r.info.wb + '</b>' : ''}</p>${clanLine(r)}
             <div class="w-section"><h3>Party</h3>${mate ? '<p class="muted">In your party.</p>' : `<p class="muted">Party members can't hurt each other, see where each other are and have their own chat.</p><button class="btn btn-primary" id="ptInvite">Invite to your party</button>`}</div>`);
         const b = body.querySelector('#ptInvite');
         if (b) b.addEventListener('click', () => { WHW.ui.closeModal(); P.invitePlayer(r); });
     };
+    // "In your clan" on a player's card (the badge by their name says the same)
+    function clanLine(r) {
+        if (!WHW.online || !WHW.online.clanmate || !WHW.online.clanmate(r)) return '';
+        let name = '';
+        try { name = localStorage.getItem('player_clanName') || ''; } catch (e) {}
+        return `<p class="w-clan-line">🛡️ In your clan${name ? ', <b>' + esc(name) + '</b>' : ''}.</p>`;
+    }
+    P.clanLine = clanLine;
     P.openMenu = function () { WHW.ui.modal('👥 Party', '', { render: renderMenu }); renderMenu(); };
     function membersHtml() {
         const leader = Pt.leaderOf(P.members);

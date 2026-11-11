@@ -320,7 +320,7 @@ test('database.rules.json is valid and covers every place the game writes', () =
     // arena messages work like hits: signed by the sender, read only by who they are for
     assert.match(zone.d.$to['.read'], /auth\.uid === \$to/);
     assert.match(zone.d.$to.$mid['.write'], /newData\.child\('from'\)\.val\(\) === auth\.uid/);
-    for (const f of ['r', 'ti', 'cl', 'am', 'aq', 'pt', 'wb']) assert.ok(zone.i.$uid[f], 'info field ' + f);
+    for (const f of ['r', 'ti', 'cl', 'am', 'aq', 'pt', 'wb', 'cn']) assert.ok(zone.i.$uid[f], 'info field ' + f);
     // the leaderboard: everyone writes only their own record
     assert.match(rules.wilds.v1.arena.top.$uid['.write'], /auth\.uid === \$uid/);
     assert.match(zone.p.$uid['.write'], /auth\.uid === \$uid/, 'only you write your position');
@@ -340,4 +340,20 @@ test('nobody can hurt a player standing in a camp, and the camp is a sensible si
     assert.equal(O.validateHit(O.makeHit('firestaff_2', 'spell', 30, 0, false), ctx({ me: { x: 140, y: 100, protected: false, safe: true } })).reason, 'camp');
     assert.equal(O.validateHit(hit, ctx({ me: { x: 140, y: 100, protected: false, safe: false } })).ok, true, 'outside the camp as ever');
     assert.ok(D.CAMP.r >= 100 && D.CAMP.r <= 200 && D.CAMP.lockSec >= 3, 'a small ring, and attacking from it lifts it for a while');
+});
+
+test('the clan badge: a player shares their clan id, and only someone in the same clan sees them as a clanmate', () => {
+    const info = O.sanitizeInfo({ n: 'Ok Name', cn: 'AbC123xyz_-9' });
+    assert.equal(info.cn, 'AbC123xyz_-9');
+    assert.equal(O.sameClan(info, 'AbC123xyz_-9'), true);
+    assert.equal(O.sameClan(info, 'other'), false);
+    assert.equal(O.sameClan(info, ''), false, 'not in a clan: nobody is a clanmate');
+    assert.equal(O.sameClan(O.sanitizeInfo({ n: 'Ok Name' }), ''), false, 'two players in no clan are not clanmates');
+    for (const bad of ['<b>x</b>', 'a/b', 'x'.repeat(41), 'undefined', 'null', {}, null]) assert.equal(O.sanitizeInfo({ n: 'Ok Name', cn: bad }).cn, '', String(bad));
+    const rules = JSON.parse(require('fs').readFileSync(require('path').join(__dirname, '..', 'database.rules.json'), 'utf8')).rules;
+    assert.match(rules.wilds.v1.zones.$zone.i.$uid.cn['.validate'], /length <= 40/, 'the rules take a clan id');
+    // the badge is only a badge: who can be hit never depends on it
+    const page = require('fs').readFileSync(require('path').join(__dirname, '..', 'world-online.js'), 'utf8');
+    const targets = page.slice(page.indexOf('ON.targets = function'), page.indexOf('ON.targets = function') + 600);
+    assert.ok(targets.length > 100 && !/clanmate/.test(targets), 'clanmates are still targets where PvP is on');
 });

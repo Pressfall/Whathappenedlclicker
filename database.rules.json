@@ -32,6 +32,7 @@
                 "aq": { ".validate": "newData.isString() && newData.val().length <= 8" },
                 "pt": { ".validate": "newData.isString() && newData.val().length <= 24" },
                 "wb": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 9999" },
+                "cn": { ".validate": "newData.isString() && newData.val().length <= 40" },
                 "say": {
                   ".validate": "newData.hasChildren(['m', 't'])",
                   "m": { ".validate": "newData.isString() && newData.val().length <= 60" },

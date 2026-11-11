@@ -125,3 +125,22 @@ test('a clan from before: its owner claims it with an account; until then only p
     assert.equal(R.claimed(old), false);
     assert.equal(R.claimed(claim(OWNER, 'Olive')), true);
 });
+
+test('who is in a clan by name (the game checks it to notice a kick or a deleted clan) and their role', () => {
+    const c = clan();
+    assert.equal(R.memberByName(c, 'Mia'), true);
+    assert.equal(R.memberByName(c, 'Nobody'), false);
+    assert.equal(R.memberByName({ name: 'x' }, 'Mia'), null, 'a document that lists nobody can\'t tell');
+    assert.equal(R.memberByName(c, ''), null);
+    // kicked: the sign-in entry and the old name list both lose them
+    const kicked = Object.assign({}, c, { members: c.members.filter((m) => m !== 'Mia') });
+    delete kicked.roles[MEM]; delete kicked.names[MEM];
+    assert.equal(R.memberByName(kicked, 'Mia'), false);
+    // a member of an old clan that has since been claimed, who hasn't been back to put their entry in
+    assert.equal(R.memberByName(Object.assign({}, c, { members: c.members.concat('Late') }), 'Late'), true);
+    assert.equal(R.roleOfName(c, 'Olive'), 'leader');
+    assert.equal(R.roleOfName(c, 'Ezra'), 'elder');
+    assert.equal(R.roleOfName(c, 'Nobody'), null);
+    const old = { owner: 'Olive', members: ['Olive', 'Cole', 'Mia'], leaders: ['Olive', 'Cole'] };
+    assert.deepEqual(['Olive', 'Cole', 'Mia'].map((n) => R.roleOfName(old, n)), ['leader', 'co-leader', null], 'old clans kept lower ranks in profiles');
+});

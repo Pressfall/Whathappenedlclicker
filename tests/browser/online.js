@@ -97,6 +97,13 @@ async function main() {
         await a.evalJs('WHW.online.say("hello there", false)');
         check('chat reaches the other player', await b.waitFor('WHWorldDebug.online().players.some(p => p.bubble === "hello there")', 5000));
         check('names come across', await a.waitFor('WHWorldDebug.online().players.some(p => p.name === "Bobby")', 5000));
+        // ---- the clan badge: two players in the same clan (the game's player_clanId) see each other as clanmates ----
+        await a.evalJs('localStorage.setItem("player_clanId", "clanAbc123")'); await b.evalJs('localStorage.setItem("player_clanId", "clanAbc123")');
+        check('clan: someone in your clan gets the badge, both ways', await b.waitFor('[...WHW.online.remotes.values()].some(r => r.info && r.info.n === "Alice" && WHW.online.clanmate(r))', 8000)
+            && await a.waitFor('[...WHW.online.remotes.values()].some(r => WHW.online.clanmate(r))', 8000));
+        await a.evalJs('localStorage.setItem("player_clanId", "otherClan9")');
+        check('clan: and loses it once they are in another clan', await b.waitFor('![...WHW.online.remotes.values()].some(r => WHW.online.clanmate(r))', 8000));
+        await a.evalJs('localStorage.removeItem("player_clanId")'); await b.evalJs('localStorage.removeItem("player_clanId")');
         // chat safety: a new visitor (nothing stored) sees rude words hidden in bubbles and in the chat log; the toggle shows them
         const drawn = (p) => p.evalJs(`new Promise(r => { const C = CanvasRenderingContext2D.prototype, f = C.fillText, seen = []; C.fillText = function (t) { seen.push(String(t)); return f.apply(this, arguments); };
             setTimeout(() => { C.fillText = f; r(seen.filter(s => /what the/.test(s))); }, 400); })`);

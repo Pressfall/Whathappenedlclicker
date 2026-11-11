@@ -223,9 +223,9 @@ test('no save reminder for a player who already downloaded a save file or syncs 
 
 test('the clan page explains the lock (first prestige) and shows how far the player is, without changing it', () => {
     const fs = require('fs'), path = require('path');
-    const clan = fs.readFileSync(path.join(__dirname, '..', 'clan.html'), 'utf8');
+    const clan = fs.readFileSync(path.join(__dirname, '..', 'clan.html'), 'utf8'), page = fs.readFileSync(path.join(__dirname, '..', 'clan-page.js'), 'utf8');
     assert.match(clan, /Clans unlock after your first prestige\. To prestige, raise <b>CR lurker<\/b> to level 150 in the game, then press <b>Prestige<\/b>/);
     assert.match(clan, /<a href="how-to-play\.html#prestige">How prestige works<\/a>/);
-    assert.match(clan, /Number\(s\.upgrade12Level\)/, 'reads CR lurker from the save');
-    assert.match(clan, /function clansUnlocked\(\)\{ return \(Number\(localStorage\.getItem\('whathappened_prestige_times'\) \|\| 0\) \|\| 0\) >= 1/, 'the lock itself is unchanged');
+    assert.match(page, /\(readSave\(\) \|\| \{\}\)\.upgrade12Level/, 'reads CR lurker from the save');
+    assert.match(page, /function clansUnlocked\(\) \{ return num\(ls\.get\('whathappened_prestige_times'\)\) >= 1 \|\| num\(\(readSave\(\) \|\| \{\}\)\.prestigeTimes\) >= 1; \}/, 'the lock itself is unchanged');
 });

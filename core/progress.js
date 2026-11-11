@@ -42,6 +42,8 @@
         'whathappened_specials_owned', 'whathappened_specials_total', 'whathappened_specials_fullsets',
         'player_username', 'player_clanId', 'player_clanName', 'player_clanRole',
         'whathappened_clan_level', 'whathappened_clan_donated', 'whathappened_clan_checkin',
+        // when the player joined their clan (events that ended before that aren't theirs to collect: core/clan-events.js)
+        'whathappened_clan_joined',
         'whathappened_world', 'whathappened_world_ack', 'whathappened_world_inbox', 'whathappened_world_owed', 'whathappened_golden_trades',
         // the best level each upgrade ever reached (the crew in the Wilds) and the game's Renown milestone claims
         'whathappened_upgrade_best', 'whathappened_renown',

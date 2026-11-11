@@ -128,8 +128,9 @@
     const tierOf = (id, slot) => { const b = D.GEAR_BY_ID[id]; return b && b.slot === slot ? b.tier : 0; };
     // A player's look and gear as shown to others: { n, f, w, q, sh, c, h, b, say }, and for the arena: r (rating), ti (title),
     // cl (class: lets the player hit check the Mystic-only staff rule), am (the match they are in: id:ring), aq (the queue they
-    // wait in), pt (their party), wb (their best wave). The newer fields are '' / 0 from pages made before them.
-    const TITLE_RE = /^[A-Za-z0-9 '\-]{1,24}$/, MATCH_RE = /^[A-Za-z0-9]{4,24}:\d$/, PARTY_RE = /^[A-Za-z0-9]{4,24}$/;
+    // wait in), pt (their party), wb (their best wave); cn: the clan they are in (its id in the game's clans), so clanmates
+    // see each other's badge. The newer fields are '' / 0 from pages made before them.
+    const TITLE_RE = /^[A-Za-z0-9 '\-]{1,24}$/, MATCH_RE = /^[A-Za-z0-9]{4,24}:\d$/, PARTY_RE = /^[A-Za-z0-9]{4,24}$/, CLAN_RE = /^[A-Za-z0-9_-]{1,40}$/;
     function sanitizeInfo(raw) {
         if (!isObj(raw)) return null;
         const w = D.GEAR_BY_ID[raw.w] && D.GEAR_BY_ID[raw.w].slot === 'weapon' ? raw.w : 'sword_0';
@@ -141,9 +142,14 @@
             w, q: int(raw.q, 0, D.QUALITY.length - 1), sh, c: int(raw.c, 0, D.MAX_TIER), h: int(raw.h, 0, D.MAX_TIER), b: int(raw.b, 0, D.MAX_TIER), say,
             r: int(raw.r, 0, 5000), ti: TITLE_RE.test(String(raw.ti || '')) ? raw.ti : '', cl: D.CLASSES[raw.cl] ? raw.cl : '',
             am: MATCH_RE.test(String(raw.am || '')) ? raw.am : '', aq: ['duel', 't2', 't3'].includes(raw.aq) ? raw.aq : '',
-            pt: PARTY_RE.test(String(raw.pt || '')) ? raw.pt : '', wb: int(raw.wb, 0, 9999),
+            pt: PARTY_RE.test(String(raw.pt || '')) ? raw.pt : '', wb: int(raw.wb, 0, 9999), cn: clanId(raw.cn),
         };
     }
+    // a clan id as shared (the game's player_clanId), or '' for none / anything else
+    function clanId(v) { const s = String(v == null ? '' : v); return CLAN_RE.test(s) && s !== 'undefined' && s !== 'null' ? s : ''; }
+    // is the player with this (sanitized) info in my clan? Shown as a badge only: anyone can say they are in any clan, so it
+    // never changes who can hurt whom
+    function sameClan(info, myClan) { const mine = clanId(myClan); return !!mine && !!info && info.cn === mine; }
     function infoFor(state, name, face) {
         const s = state, find = (u) => s.gear.find(g => g.uid === u);
         const wpn = find(s.hotbar[s.sel]), q = wpn ? D.QUALITY.indexOf(D.QUALITY.slice().reverse().find(t => wpn.score >= t.min)) : 0;
@@ -361,7 +367,7 @@
 
     return {
         ROOT, RATE, PVP, LOOT, BOSS, CHAT, EMOTES, FLAGS, SAFE_WORDS,
-        packPos, unpackPos, posChange, sendDue, interpDelay, nextGap, addSample, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor, pvpRule,
+        packPos, unpackPos, posChange, sendDue, interpDelay, nextGap, addSample, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor, clanId, sameClan, pvpRule,
         maxHit, reachFor, validateHit, makeHit, abilityById, abilityReach, abilityBurst, abilityMaxHit, playerStun, sanitizeLoot, canClaim, lootExpired,
         sanitizeBoss, bossNeedsReset, bossDeadFor, earnedReward, hostOf, sanitizeHost, lerpAngle, interpolate,
     };

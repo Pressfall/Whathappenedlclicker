@@ -68,13 +68,41 @@ test('missing or junk documents give no buffs and never throw', () => {
     }
 });
 
-test('the table in core/clan-buffs.js matches the shop in clan.html', () => {
-    const html = fs.readFileSync(path.join(__dirname, '..', 'clan.html'), 'utf8');
-    const block = html.slice(html.indexOf('const CLAN_BUFFS = ['), html.indexOf('];', html.indexOf('const CLAN_BUFFS = [')));
-    const shop = [...block.matchAll(/\{ id: '([^']+)'.*?cpCost: (\d+), durationMs: ([^,]+), cpsMult: (\d+), clickMult: (\d+) \}/g)]
-        .map((m) => ({ id: m[1], cpCost: Number(m[2]), durationMs: Function('return ' + m[3])(), cpsMult: Number(m[4]), clickMult: Number(m[5]) }));
-    assert.equal(shop.length, BUFFS.length);
-    assert.deepEqual(shop, BUFFS.map(({ id, cpCost, durationMs, cpsMult, clickMult }) => ({ id, cpCost, durationMs, cpsMult, clickMult })));
+test('the clan shop shows this table: it keeps no copy of its own', () => {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'clan-page.js'), 'utf8');
+    assert.match(page, /Buffs\.BUFFS/);
+    assert.ok(!/cpCost:\s*800/.test(page), 'no buff prices written in the page');
+    assert.ok(BUFFS.every((b) => b.icon && b.description), 'every buff has what the shop shows');
+});
+
+test('putting Clan Points in: the bar fills, the buff starts (or runs longer), donors are counted', () => {
+    const { contribute } = require('../core/clan-buffs');
+    const half = contribute({}, 'cps_double_1h', 500, 'Ann', NOW);
+    assert.equal(half.ok, true);
+    assert.equal(half.activated, false);
+    assert.deepEqual(half.updates, { buffProgress: { cps_double_1h: 500 }, cpDonated: { Ann: 500 } });
+    const doc = Object.assign({}, half.updates);
+    const full = contribute(doc, 'cps_double_1h', 400, 'Bo', NOW);
+    assert.equal(full.activated, true);
+    assert.equal(full.updates.buffProgress.cps_double_1h, 100, 'what spills over starts the next bar');
+    assert.equal(full.updates.activeBuffs.cps_double_1h.expiresAt, NOW + HOUR);
+    assert.deepEqual(full.updates.cpDonated, { Ann: 500, Bo: 400 });
+    const again = contribute(Object.assign({}, doc, full.updates, { buffProgress: { cps_double_1h: 700 } }), 'cps_double_1h', 100, 'Ann', NOW + 1000);
+    assert.equal(again.updates.activeBuffs.cps_double_1h.expiresAt, NOW + 2 * HOUR, 'a running buff gets its hour added on top');
+});
+
+test('a buff can not be queued past a day ahead, and junk is refused', () => {
+    const { contribute, roomToQueue } = require('../core/clan-buffs');
+    const doc = { activeBuffs: { cps_double_1h: { expiresAt: NOW + 23.5 * HOUR } }, buffProgress: { cps_double_1h: 799 } };
+    assert.equal(roomToQueue(doc, 'cps_double_1h', NOW), false);
+    assert.equal(contribute(doc, 'cps_double_1h', 1, 'A', NOW).reason, 'queue');
+    assert.equal(contribute(doc, 'click_double_30m', 1, 'A', NOW).ok, true, 'another buff still can');
+    assert.equal(contribute({}, 'free_money', 10, 'A', NOW).reason, 'buff');
+    assert.equal(contribute({}, 'cps_double_1h', 0, 'A', NOW).reason, 'amount');
+    assert.equal(contribute({}, 'cps_double_1h', 'lots', 'A', NOW).reason, 'amount');
+    // a forged running buff with a huge multiplier is copied without it
+    const forged = contribute({ activeBuffs: { both_triple_20m: { expiresAt: NOW + HOUR, cpsMult: 1e30 } }, buffProgress: { cps_double_1h: 799 } }, 'cps_double_1h', 1, 'A', NOW);
+    assert.deepEqual(forged.updates.activeBuffs.both_triple_20m, { expiresAt: NOW + HOUR });
 });
 
 // ---- on the real game page ----

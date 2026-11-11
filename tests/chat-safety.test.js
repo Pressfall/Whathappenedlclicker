@@ -75,12 +75,14 @@ test('repeats in a row from one sender show once with a count; the newest copy i
 // Every place a chat message or a chatter's name is put on screen goes through the filter (these pages need Firebase,
 // so tests/browser/chat.js checks them working; this keeps a new render path from skipping the filter)
 test('every chat render path uses the filter, and nothing reads the setting its own way', () => {
-    const index = read('index.html'), clan = read('clan.html');
-    for (const [name, src] of [['index.html', index], ['clan.html', clan]]) {
+    // the clan page's script is clan-page.js (clan.html loads it)
+    const index = read('index.html'), clan = read('clan.html') + read('clan-page.js');
+    for (const [name, src] of [['index.html', index], ['clan page', clan]]) {
         assert.ok(src.includes('<script src="core/chat-safety.js"></script>'), name + ' loads the filter');
-        assert.deepEqual(src.match(/escapeHtml\([^)]*\.message/g) || [], [], name + ': a message shown without the filter');
-        assert.deepEqual(src.match(/escapeHtml\((nameRaw|name|m\.name[^)]*)\)\}?<\/(b|span)>/g) || [], [], name + ': a chatter name shown without the filter');
+        assert.deepEqual(src.match(/(escapeHtml|esc)\([^)]*\.message/g) || [], [], name + ': a message shown without the filter');
+        assert.deepEqual(src.match(/(escapeHtml|esc)\((nameRaw|name|who|m\.name[^)]*)\)\}?<\/(b|span)>/g) || [], [], name + ': a chatter name shown without the filter');
     }
+    assert.ok(/chatName\(who\)/.test(clan) && /chatText\(m\.message\)/.test(clan), 'clan page: names and messages go through the filter');
     assert.equal((index.match(/chatText\(d\.message\)/g) || []).length, 6, 'index.html: 4 global + 2 clan render paths');
     assert.equal((index.match(/chatAllowed\('(global|clan)', txt\)/g) || []).length, 3, 'index.html: every send is limited');
     assert.ok(/chatAllowed\(txt\)/.test(clan), 'clan.html: sending is limited');
@@ -88,6 +90,6 @@ test('every chat render path uses the filter, and nothing reads the setting its 
     assert.ok(/text = CS\.display\(text, CS\.isOn\(localStorage\)\)/.test(read('world-actors.js')), 'Wilds speech bubbles (all of them)');
     assert.ok(/chatLimits\.check\(/.test(read('world-online.js')), 'Wilds sending is limited');
     // the setting is only ever read through core/chat-safety.js (so the default is the same everywhere)
-    for (const f of ['index.html', 'clan.html', 'main.js', 'world-online.js', 'world-ui.js', 'world-actors.js', 'world.js'])
+    for (const f of ['index.html', 'clan.html', 'clan-page.js', 'main.js', 'world-online.js', 'world-ui.js', 'world-actors.js', 'world.js'])
         assert.ok(!/getItem\(\s*['"]chat_safe_mode['"]\s*\)/.test(read(f)), f + ' reads chat_safe_mode directly');
 });

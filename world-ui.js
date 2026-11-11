@@ -104,7 +104,7 @@
         html += '<div class="w-section"><h3>Your name</h3><div class="w-row"><input id="onName" maxlength="16" value="' + esc(on.name()) + '" aria-label="Your name online">' +
             '<button class="btn btn-sm btn-primary" id="onNameSave">Save</button></div><p class="muted" style="margin:6px 0 0">2 to 16 letters, numbers and spaces.</p></div>';
         if (on.status === 'online') {
-            const list = here.length ? '<div class="w-players">' + here.map(r => '<span>' + esc(r.info.n) + '<b>' + (r.dead ? 'knocked out' : Math.ceil(r.hp) + ' HP') + '</b></span>').join('') + '</div>'
+            const list = here.length ? '<div class="w-players">' + here.map(r => '<span' + (on.clanmate(r) ? ' class="is-clan" title="In your clan"' : '') + '>' + (on.clanmate(r) ? '🛡️ ' : '') + esc(r.info.n) + '<b>' + (r.dead ? 'knocked out' : Math.ceil(r.hp) + ' HP') + '</b></span>').join('') + '</div>'
                 : '<p class="muted">Nobody else in this zone right now.</p>';
             html += '<div class="w-section"><h3>Here with you (' + here.length + ')</h3>' + list + '</div>';
             const CS = window.WHChatSafety, safe = CS.isOn(localStorage);

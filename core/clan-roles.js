@@ -56,6 +56,28 @@
     function canTransferOwnership(actorRole) { return rank(actorRole) >= rank('leader'); }
     function canPinMessages(actorRole) { return rank(actorRole) >= rank('elder'); }
     function size(c) { return isObj(c && c.roles) ? Object.keys(c.roles).length : 0; }
+    // Is the player called `name` in this clan? By their sign-in entry, or by the old name list (a member of a clan that was
+    // claimed is put back in by the clan page the next time they open it). null when the document lists nobody at all, so a
+    // caller can't tell.
+    function memberByName(c, name) {
+        if (!isObj(c) || !name) return null;
+        const names = isObj(c.names) ? c.names : {}, list = Array.isArray(c.members) ? c.members : [];
+        if (!Object.keys(names).length && !list.length) return null;
+        const u = uidOfName(c, name);
+        if (u && roleOf(c, u)) return true;
+        return list.includes(name);
+    }
+    // the role of the player called `name`: from their sign-in entry, or for an old (unclaimed) clan the owner and co-leaders
+    // from its name lists; null when the document doesn't say (old clans kept lower ranks in the players' profiles)
+    function roleOfName(c, name) {
+        if (!isObj(c) || !name) return null;
+        const u = uidOfName(c, name);
+        if (u && roleOf(c, u)) return roleOf(c, u);
+        if (claimed(c)) return null;
+        if (c.owner === name) return 'leader';
+        if (Array.isArray(c.leaders) && c.leaders.includes(name)) return 'co-leader';
+        return null;
+    }
 
     // the keys of a and b whose values differ (JSON-equal counts as the same)
     function changedKeys(a, b) {
@@ -153,5 +175,5 @@
     }
 
     return { RANK_PRIORITY, ROLES, MEMBER_FIELDS, MANAGE_FIELDS, rank, roleOf, claimed, uidOfName, canAssignRole, canKick, canEditDescription, canChangeName,
-        canTransferOwnership, canPinMessages, size, changedKeys, classifyClanUpdate };
+        canTransferOwnership, canPinMessages, size, memberByName, roleOfName, changedKeys, classifyClanUpdate };
 }));

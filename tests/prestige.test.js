@@ -124,14 +124,18 @@ test('the casino daily spin and win count survive a prestige (they cannot be re-
     assert.equal(after.casino_total_wins, 7);
 });
 
-test('prestige in a clan queues one Prestige Party credit, and none without a clan', () => {
+test('prestige in a clan notes its time for the Prestige Party (sent after the reload), and nothing without a clan', () => {
     const solo = midGame(fresh());
     solo.eval('buyPrestige()');
     assert.equal(solo.storage.getItem('whathappened_prestige_party_pending'), null);
 
-    const clan = midGame(fresh({ storage: { player_clanId: 'clan123', whathappened_prestige_party_pending: '2' } }));
+    const clan = midGame(fresh({ storage: { player_clanId: 'clan123', whathappened_prestige_party_pending: JSON.stringify([NOW - 60000]) } }));
     clan.eval('buyPrestige()');
-    assert.equal(clan.storage.getItem('whathappened_prestige_party_pending'), '3');
+    assert.deepEqual(JSON.parse(clan.storage.getItem('whathappened_prestige_party_pending')), [NOW - 60000, NOW]);
+    // an older page kept a bare count, which can't be placed in an event: it is dropped, not counted again and again
+    const old = midGame(fresh({ storage: { player_clanId: 'clan123', whathappened_prestige_party_pending: '2' } }));
+    old.eval('buyPrestige()');
+    assert.deepEqual(JSON.parse(old.storage.getItem('whathappened_prestige_party_pending')), [NOW]);
 });
 
 test('prestige resets the per-run counters', () => {

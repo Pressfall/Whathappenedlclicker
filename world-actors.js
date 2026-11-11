@@ -2161,7 +2161,7 @@
         ctx.restore();
     };
     // Another player (world-online.js): same look as the player, from what their page shares
-    A.drawRemote = function (ctx, rp, hostile, mate) {
+    A.drawRemote = function (ctx, rp, hostile, mate, clan) {
         const info = rp.info || {};
         const tc = (t) => (t ? tierColor(t) : null);
         shadow(ctx, rp.x, rp.y, rp.r);
@@ -2180,7 +2180,8 @@
         const sb = D.GEAR_BY_ID[info.sh];
         if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false);
         ctx.globalAlpha = 1;
-        E.label(ctx, (mate ? '👥 ' : '') + (info.n || 'Adventurer'), rp.x, rp.y - rp.r - 16, { font: '700 11px Inter, sans-serif', fill: hostile ? '#ffb3bb' : mate ? '#8dffb8' : '#e6f0ff', stroke: 'rgba(0,0,0,0.75)' });
+        // 👥 my party, 🛡️ my clan (a clanmate in a PvP zone keeps the red name: they still can hurt you)
+        E.label(ctx, (mate ? '👥 ' : '') + (clan ? '🛡️ ' : '') + (info.n || 'Adventurer'), rp.x, rp.y - rp.r - 16, { font: '700 11px Inter, sans-serif', fill: hostile ? '#ffb3bb' : mate ? '#8dffb8' : clan ? '#ffe08a' : '#e6f0ff', stroke: 'rgba(0,0,0,0.75)' });
         const w = 40, x = rp.x - w / 2, y = rp.y - rp.r - 12;
         ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(x - 1, y - 1, w + 2, 5);
         ctx.fillStyle = hostile ? '#ff5b6b' : '#5fd068'; ctx.fillRect(x, y, w * Math.max(0, Math.min(1, rp.hp / rp.maxHp)), 3);

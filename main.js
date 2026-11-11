@@ -91,11 +91,12 @@ async function syncClanStats() {
         const clanId = localStorage.getItem('player_clanId');
         const username = localStorage.getItem('player_username');
 
-        // If the player isn't in a clan, do nothing
+        // If the player isn't in a clan, do nothing (nor once the clan document says they left it: clan-game.js)
         if (!clanId || !username || clanId === 'undefined') {
             console.debug('syncClanStats: abort — missing clanId/username', { clanId, username });
             return;
         }
+        if (window.WHClanGame && WHClanGame.member() === false) return;
 
         // Ensure we are sending Numbers, not Decimal objects
         const ptsValue = (typeof count !== 'undefined') ? (isDecimalInstance(count) ? count.toNumber() : Number(count)) : 0;
@@ -1937,44 +1938,12 @@ function showNormalMenu() {
     updateDisplays();
 }
 
-// Clan level perks: % bonus to CPS, click power and event gem rewards.
-// Keep in sync with CLAN_LEVEL_BONUSES (the text shown on clan.html).
-const CLAN_LEVEL_PERKS = [
-    null,
-    { cps: 0, click: 0, event: 0 },
-    { cps: 2, click: 0, event: 0 },
-    { cps: 2, click: 2, event: 0 },
-    { cps: 4, click: 2, event: 1 },
-    { cps: 5, click: 2, event: 1 },
-    { cps: 6, click: 3, event: 2 },
-    { cps: 8, click: 4, event: 2 },
-    { cps: 10, click: 5, event: 3 },
-    { cps: 12, click: 6, event: 3 },
-    { cps: 15, click: 8, event: 5 },
-    { cps: 18, click: 10, event: 5 },
-    { cps: 20, click: 12, event: 6 },
-    { cps: 24, click: 14, event: 6 },
-    { cps: 28, click: 16, event: 8 },
-    { cps: 32, click: 18, event: 8 },
-    { cps: 36, click: 20, event: 10 },
-    { cps: 40, click: 22, event: 10 },
-    { cps: 45, click: 25, event: 12 },
-    { cps: 50, click: 28, event: 12 },
-    { cps: 55, click: 30, event: 15 }
-];
-// Same curve as clan.html: level 2 needs 200 XP, each further level costs 1.55x the previous one, max level 20
-function clanLevelFromXp(clanXp) {
-    let need = 200, total = 0, level = 1;
-    const xp = Number(clanXp) || 0;
-    while (level < 20 && xp >= total + need) { total += need; need *= 1.55; level++; }
-    return level;
-}
+// Clan level perks (% CPS, % click power, % event gems) and the XP curve live in core/clan-levels.js, shared with the clan
+// page; clan-game.js knows the player's clan level (read from the clan document, cached for offline gains on the next load)
+const CLAN_LEVEL_PERKS = WHClanLevels.PERKS;
+function clanLevelFromXp(clanXp) { return WHClanLevels.levelFromXp(clanXp); }
 function getClanLevelPerk() {
-    try {
-        if (!localStorage.getItem('player_clanId')) return CLAN_LEVEL_PERKS[1];
-        const lvl = Number(window.clanLevel || localStorage.getItem('whathappened_clan_level')) || 1;
-        return CLAN_LEVEL_PERKS[Math.max(1, Math.min(20, Math.floor(lvl)))];
-    } catch (e) { return CLAN_LEVEL_PERKS[1]; }
+    try { return window.WHClanGame ? WHClanGame.levelPerk() : WHClanLevels.perk(1); } catch (e) { return WHClanLevels.perk(1); }
 }
 
 // The casino page records the active daily-spin buff in the save. Re-read it at most every 2s
@@ -3067,14 +3036,9 @@ function increment(opts) {
         if (_memAchClicks === 1000) unlockAchievement('somethingHappened');
     } catch (e) {}
 
-    // Clan events: count the click locally. flushClanClicks() sends the total to Firestore every few seconds
-    // (one write per click was slow, costly, and over Firestore's ~1 write/sec per-document limit).
-    try {
-        if (_memClanId && _memClanUsername) {
-            window._pendingClanClicks = (window._pendingClanClicks || 0) + 1;
-            window._bossfightPending = (window._bossfightPending || 0) + 1;
-        }
-    } catch (e) {}
+    // Clan events: count the click; clan-game.js sends them every few seconds to the event running now (clicks for Clan v
+    // Clan, damage for the bosses). One write per click was slow, costly, and over Firestore's ~1 write/sec per-document limit.
+    try { if (_memClanId && _memClanUsername && window.WHClanGame) WHClanGame.noteClick(); } catch (e) {}
 }
 
 // ========== The Auto Clicker (a Hidden charm from the room behind the Hall of Gods, in The Wilds) ==========
@@ -3148,30 +3112,8 @@ function renderAutoClicker() {
 }
 setInterval(autoClickTick, 100);
 
-// Add the clicks counted since the last flush to this member's `mainClicks` (used by clan-v-clan events)
-async function flushClanClicks() {
-    const pending = window._pendingClanClicks || 0;
-    if (pending <= 0) return;
-    const clanId = localStorage.getItem('player_clanId');
-    const username = localStorage.getItem('player_username');
-    if (!clanId || !username) { window._pendingClanClicks = 0; return; }
-    if (typeof doc !== 'function' || typeof db === 'undefined' || typeof setDoc !== 'function') return;
-    window._pendingClanClicks = 0;
-    try {
-        const memberRef = doc(db, 'clans', String(clanId), 'members', String(username));
-        if (typeof window.firestoreIncrement === 'function') {
-            await setDoc(memberRef, { mainClicks: window.firestoreIncrement(pending) }, { merge: true });
-        } else {
-            const s = await getDoc(memberRef);
-            const cur = (s && s.exists() && Number(s.data().mainClicks)) || 0;
-            await setDoc(memberRef, { mainClicks: cur + pending }, { merge: true });
-        }
-    } catch (e) {
-        // keep the clicks so the next flush retries them
-        window._pendingClanClicks = (window._pendingClanClicks || 0) + pending;
-        console.warn('flushClanClicks failed', e);
-    }
-}
+// Send the clan event clicks counted so far (clan-game.js)
+function flushClanClicks() { return window.WHClanGame ? WHClanGame.flush() : Promise.resolve(); }
 
 // create a falling image from a random x at the top to the bottom, then remove it
 function spawnFallingImage(isCrit = false) {
@@ -5174,14 +5116,9 @@ function buyPrestige() {
     totalGoldenEver = prestigeSave.totalGoldenEver;
     if (goldenWhat >= 1) divineUnlocked = true;
 
-    // Prestige Party: always increment pending; clan page flushes to Firestore when you open Events (avoids Firebase timing on game page)
-    try {
-        var clanId = localStorage.getItem('player_clanId');
-        if (clanId) {
-            var pending = Math.max(0, parseInt(localStorage.getItem('whathappened_prestige_party_pending') || '0', 10)) + 1;
-            try { localStorage.setItem('whathappened_prestige_party_pending', String(pending)); } catch (e) {}
-        }
-    } catch (e) {}
+    // Prestige Party: the page reloads in a moment, so the prestige is noted with its time and sent on the next load, into the
+    // Prestige Party it happened in (clan-game.js)
+    try { if (window.WHClanGame) WHClanGame.notePrestige(); } catch (e) {}
 
     try {
         // no autosave may overwrite the prestige save before the page reloads
@@ -6168,33 +6105,13 @@ function buyPhonk5() {
     } else { notify('Not enough What Happeneds — need ' + needText(phonk5Cost) + '.'); }
 }
 
-// Fetch active clan buff from Firestore and set window.clanBuffCpsMult / clanBuffClickMult for updateDisplays
-async function refreshClanBuff() {
-    try {
-        var clanId = localStorage.getItem('player_clanId');
-        if (!clanId) { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
-        var dbVal = typeof window !== 'undefined' && window.db;
-        var docFn = typeof window !== 'undefined' && window.doc;
-        var getDocFn = typeof window !== 'undefined' && window.getDoc;
-        if (!dbVal || !docFn || typeof getDocFn !== 'function') return;
-        var snap = await getDocFn(docFn(dbVal, 'clans', clanId));
-        if (!snap.exists()) { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; return; }
-        var d = snap.data();
-        // clan level perks (applied in updateDisplays); cache the level so offline gains can use it on the next load
-        window.clanLevel = clanLevelFromXp(d.clanXp);
-        try { localStorage.setItem('whathappened_clan_level', String(window.clanLevel)); } catch (e) {}
-        // Several clan buffs can run at once. The clan document is written by every member's browser, so it only says WHICH buffs
-        // are on and until when: what they multiply comes from the fixed table in core/clan-buffs.js, never from the document.
-        window.clanActiveBuffs = WHClanBuffs.resolveActive(d, Date.now());
-        applyClanBuffMults();
-    } catch (e) { try { window.clanActiveBuffs = []; window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; } catch (e2) {} }
-}
-// Multiply every clan buff that hasn't expired yet (re-run each frame so a buff stops exactly when it runs out)
+// The clan's level perks and buffs: clan-game.js reads the clan document (and notices when the player has left it);
+// what each buff multiplies comes from core/clan-buffs.js, never from the document
+function refreshClanBuff() { return window.WHClanGame ? WHClanGame.refresh() : Promise.resolve(); }
+// every clan buff that hasn't run out yet (re-run with each display update so a buff stops exactly when it ends)
 function applyClanBuffMults() {
-    var cpsM = 1, clickM = 1, now = Date.now();
-    (window.clanActiveBuffs || []).forEach(function (b) { if (b.expiresAt > now) { cpsM *= b.cpsMult; clickM *= b.clickMult; } });
-    window.clanBuffCpsMult = cpsM;
-    window.clanBuffClickMult = clickM;
+    if (window.WHClanGame) WHClanGame.applyBuffs();
+    else { window.clanBuffCpsMult = 1; window.clanBuffClickMult = 1; }
 }
 
 // Ensure buttons and displays show initial values on load
@@ -6207,8 +6124,10 @@ function initApp() {
     try { syncUpgradeCostsFromLevels(); } catch (e) {}
     // saves are only allowed once the real save has been read, so an early click can't overwrite it
     window._saveLoaded = true;
-    // the Firebase module may still be downloading (it no longer delays startup), so wait for it
-    whenFirebaseReady(() => { try { refreshClanBuff(); } catch (e) {} });
+    window._saveLoadedAt = Date.now();
+    // the Firebase module may still be downloading (it no longer delays startup), so wait for it: then the clan (its perks,
+    // buffs, event sends and rewards: clan-game.js)
+    whenFirebaseReady(() => { try { if (window.WHClanGame) WHClanGame.start(); } catch (e) {} });
     updateDisplays();
     try { updateShopUI(); } catch (e) {}
     // initialize hover tooltips for upgrades
@@ -6418,73 +6337,6 @@ function initApp() {
             try { flushClanClicks(); } catch (e) {}
         }
     });
-    // clan-event clicks are batched; send them every 3s
-    setInterval(() => { try { flushClanClicks(); } catch (e) {} }, 3000);
-    // Bossfight event: flush pending damage to Firestore every 3s (runTransaction so we don't overwrite other clans/members)
-    try {
-        var runTransactionFn = typeof window !== 'undefined' && window.runTransaction;
-        setInterval(async function () {
-            try {
-                var pending = (typeof window !== 'undefined' && window._bossfightPending) ? window._bossfightPending : 0;
-                if (pending <= 0) return;
-                var clanId = localStorage.getItem('player_clanId');
-                var username = localStorage.getItem('player_username');
-                if (!clanId || !username) return;
-                var getDocFn = typeof window !== 'undefined' && window.getDoc;
-                var docFn = typeof window !== 'undefined' && window.doc;
-                var dbVal = typeof window !== 'undefined' && window.db;
-                if (typeof getDocFn !== 'function' || !docFn || !dbVal || typeof runTransactionFn !== 'function') return;
-                var stateSnap = await getDocFn(docFn(dbVal, 'events', 'state'));
-                var state = stateSnap && stateSnap.exists() ? stateSnap.data() : {};
-                var upcoming = state.upcoming || [];
-                var now = Date.now();
-                var current = upcoming.find(function (it) { return (it.start || 0) <= now && (it.end || 0) > now; });
-                var nameLow = current ? String(current.name || '').toLowerCase() : '';
-                var isBossfight = nameLow.indexOf('bossfight') !== -1 && nameLow.indexOf('endless') === -1;
-                var isEndlessBoss = nameLow.indexOf('endless') !== -1 && nameLow.indexOf('boss') !== -1;
-                if (!current || (!isBossfight && !isEndlessBoss)) return;
-                window._bossfightPending = 0;
-                var cpVal = 0, cpsVal = 0;
-                try { cpVal = (typeof isDecimalInstance !== 'undefined' && isDecimalInstance(clickPower)) ? clickPower.toNumber() : Number(clickPower) || 0; } catch (e) {}
-                try { cpsVal = (typeof isDecimalInstance !== 'undefined' && isDecimalInstance(cps)) ? cps.toNumber() : Number(cps) || 0; } catch (e) {}
-                var perClick = 1 + Math.min(Math.max(0, cpVal), 100000);
-                var damage = Math.floor(pending * perClick + cpsVal * 3);
-                if (damage <= 0) return;
-                var eventStartKey = String(Number(current.start || 0));
-                var cid = String(clanId);
-                var progressRef = docFn(dbVal, 'events', 'bossfight_progress');
-                await runTransactionFn(dbVal, async function (tx) {
-                    var bossSnap = await tx.get(progressRef);
-                    var prog = bossSnap && bossSnap.exists() ? bossSnap.data() : {};
-                    var eventsMap = prog.events && typeof prog.events === 'object' ? Object.assign({}, prog.events) : {};
-                    if (!eventsMap[eventStartKey] || typeof eventsMap[eventStartKey] !== 'object') eventsMap[eventStartKey] = {};
-                    var clanData = eventsMap[eventStartKey][cid];
-                    if (typeof clanData !== 'object' || clanData === null) clanData = { total: 0, members: {} };
-                    clanData = { total: (Number(clanData.total) || 0) + damage, members: Object.assign({}, clanData.members || {}) };
-                    clanData.members[String(username)] = (Number(clanData.members[String(username)]) || 0) + damage;
-                    eventsMap[eventStartKey] = Object.assign({}, eventsMap[eventStartKey] || {});
-                    eventsMap[eventStartKey][cid] = clanData;
-                    tx.set(progressRef, { events: eventsMap });
-                });
-                if (isEndlessBoss) {
-                    var endlessRef = docFn(dbVal, 'events', 'endless_boss_progress');
-                    await runTransactionFn(dbVal, async function (tx) {
-                        var endlessSnap = await tx.get(endlessRef);
-                        var endlessProg = endlessSnap && endlessSnap.exists() ? endlessSnap.data() : {};
-                        var endlessMap = endlessProg.events && typeof endlessProg.events === 'object' ? Object.assign({}, endlessProg.events) : {};
-                        if (!endlessMap[eventStartKey] || typeof endlessMap[eventStartKey] !== 'object') endlessMap[eventStartKey] = {};
-                        var endlessClan = endlessMap[eventStartKey][cid];
-                        if (typeof endlessClan !== 'object' || endlessClan === null) endlessClan = { total: 0, members: {} };
-                        endlessClan = { total: (Number(endlessClan.total) || 0) + damage, members: Object.assign({}, endlessClan.members || {}) };
-                        endlessClan.members[String(username)] = (Number(endlessClan.members[String(username)]) || 0) + damage;
-                        endlessMap[eventStartKey] = Object.assign({}, endlessMap[eventStartKey] || {});
-                        endlessMap[eventStartKey][cid] = endlessClan;
-                        tx.set(endlessRef, { events: endlessMap });
-                    });
-                }
-            } catch (e) {}
-        }, 3000);
-    } catch (e) {}
     // restore bulk select UI if present
     try {
         const sel = document.getElementById('bulkSelect');
