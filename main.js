@@ -1967,6 +1967,11 @@ const NO_ITEM_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, bo
 function getItemBonuses() {
     try { return (window.WHI && window.WHI.bonuses()) || NO_ITEM_BONUS; } catch (e) { return NO_ITEM_BONUS; }
 }
+// ---------- Gear for the game (gear-panel.js, forged in the Wilds' Crucible): worn pieces' boosts, their own multiplier ----------
+const NO_GEAR_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, boxRate: 0, offline: 0 };
+function getGearBonuses() {
+    try { return (window.WHGearPanel && window.WHGearPanel.bonuses()) || NO_GEAR_BONUS; } catch (e) { return NO_GEAR_BONUS; }
+}
 // ---------- The Hall of Gods (The Wilds): statues raised there bless this game (core/world-gods.js) ----------
 // Their levels live in the Wilds save, which this page only reads: re-read at most every 3s, and whenever it changes.
 const NO_GOD_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, offline: 0, gems: 0, golden: 0, divine: 0, gods: 0 };
@@ -2400,6 +2405,13 @@ function updateDisplays() {
             clickPower = clickPower * iClick;
         }
     } catch (e) {}
+    // Gear for the game (forged in the Wilds' Crucible): worn pieces, their own multiplier
+    try {
+        const gear = getGearBonuses();
+        const gCps = 1 + (gear.cps || 0) / 100, gClick = 1 + (gear.click || 0) / 100;
+        if (hasDecimal) { cps = cps.times(D(gCps)); clickPower = clickPower.times(D(gClick)); }
+        else { cps = cps * gCps; clickPower = clickPower * gClick; }
+    } catch (e) {}
     // The Hall of Gods: statue blessings from The Wilds
     try {
         const gb = getGodBonuses();
@@ -2817,9 +2829,9 @@ function updateDisplays() {
             const cEl = document.getElementById('statsCritChance');
             const mEl = document.getElementById('statsCritMultiplier');
             try {
-                const fb = getFollowerBonuses(), ib = getItemBonuses(), gb = getGodBonuses();
-                const chance = Math.min(1, getDivineCritChance() + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100 + (gb.critChance || 0) / 100);
-                const critMult = chance > 0 ? getDivineCritMult() * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) * (1 + (gb.critDmg || 0) / 100) : 0;
+                const fb = getFollowerBonuses(), ib = getItemBonuses(), gb = getGodBonuses(), gear = getGearBonuses();
+                const chance = Math.min(1, getDivineCritChance() + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100 + (gb.critChance || 0) / 100 + (gear.critChance || 0) / 100);
+                const critMult = chance > 0 ? getDivineCritMult() * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) * (1 + (gb.critDmg || 0) / 100) * (1 + (gear.critDmg || 0) / 100) : 0;
                 if (cEl) cEl.innerText = `${(chance * 100).toFixed(2)}%`;
                 if (mEl) mEl.innerText = `x${formatNumber(critMult)}`;
             } catch (e) {
@@ -2842,10 +2854,11 @@ function updateDisplays() {
 
     // apply equipped shop image to main image (if set)
     try {
+        // (only when it differs: setting an image's src, even to the same picture, makes the browser load it again)
         const img = document.querySelector('.main-image');
-        if (img && equippedShopImage) img.src = equippedShopImage;
+        if (img && equippedShopImage && img.getAttribute('src') !== equippedShopImage) img.src = equippedShopImage;
         const preview = document.getElementById('shopPreviewImage');
-        if (preview) preview.src = 'mainimage/whathappened.jpeg';
+        if (preview && preview.getAttribute('src') !== 'mainimage/whathappened.jpeg') preview.src = 'mainimage/whathappened.jpeg';
         // apply equipped background as well
         try { applyEquippedBackground(); } catch (e) {}
     } catch (e) {}
@@ -2927,6 +2940,7 @@ function increment(opts) {
         chance += (getFollowerBonuses().critChance || 0) / 100;
         chance += (getItemBonuses().critChance || 0) / 100;
         chance += (getGodBonuses().critChance || 0) / 100; // the Hall of Gods (Fortuna)
+        chance += (getGearBonuses().critChance || 0) / 100; // gear for the game (Keen)
         chance = Math.min(1, chance);
         if (chance > 0 && Math.random() < chance) {
                 // compute crit multiplier: base 10x, each Divine Spirit level doubles it (level 1 = x20)
@@ -2935,6 +2949,7 @@ function increment(opts) {
                 critMult *= 1 + (getFollowerBonuses().critDmg || 0) / 100;
                 critMult *= 1 + (getItemBonuses().critDmg || 0) / 100;
                 critMult *= 1 + (getGodBonuses().critDmg || 0) / 100;
+                critMult *= 1 + (getGearBonuses().critDmg || 0) / 100; // gear for the game (Ember)
                 if (hasDecimal) reward = (isDecimalInstance(reward) ? reward : D(reward)).times(D(critMult));
                 else reward *= critMult;
                 // optional visual feedback: spawn extra falling image with crit effects (skipped on Low performance)
@@ -2986,7 +3001,7 @@ function increment(opts) {
     }
     // rare gem drop: 1 in 2500 chance per click (Glitch followers and gem charms raise it); the gem flies into the top-bar counter
     if (!auto) try {
-        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100) * (1 + (getItemBonuses().gems || 0) / 100) * (1 + (getGodBonuses().gems || 0) / 100)) addGems(1);
+        if (Math.random() < (1/2500) * (1 + (getFollowerBonuses().gems || 0) / 100) * (1 + (getItemBonuses().gems || 0) / 100) * (1 + (getGodBonuses().gems || 0) / 100) * (1 + (getGearBonuses().gems || 0) / 100)) addGems(1);
     } catch (e) {}
     try {
         const str = formatNumber(count);
@@ -3194,6 +3209,10 @@ function spawnFallingImage(isCrit = false) {
             const sel = '#leftBar button, #divineLeftBar button, #specialMenu button, .section-content button, .special-menu button';
             document.querySelectorAll(sel).forEach(btn => {
                 try {
+                    // only buttons whose state changed are touched (this runs after every click: rewriting every button's
+                    // style each time made the browser restyle the whole page)
+                    if (btn._wasDisabled === btn.disabled) return;
+                    btn._wasDisabled = btn.disabled;
                     if (btn.disabled) {
                         btn.classList.add('upgrade-disabled');
                         try { btn.style.opacity = '0.6'; } catch (e) {}
@@ -6767,6 +6786,8 @@ function applyWorldRewards() {
             const hasBoxes = t.boxes.some(n => n > 0);
             const hasItems = Object.keys(t.items || {}).some(id => t.items[id] > 0); // consumables from crew quests
             const hasPacks = Object.keys(t.packs || {}).some(id => t.packs[id] > 0); // follower packs from the Arena's Glory shop
+            const hasGear = !!(t.gear && t.gear.length); // gear forged in the Wilds' Crucible (gear-panel.js)
+            if (t.gearUnknown || (hasGear && !(window.WHGearPanel && typeof window.WHGearPanel.receive === 'function'))) return false;
             if ((hasBoxes || t.buys.length) && !(window.WHI && typeof window.WHI.grantBoxes === 'function')) return false;
             if (hasItems && !(window.WHI && typeof window.WHI.grantItems === 'function')) return false;
             if (hasPacks && !(window.WHF && typeof window.WHF.grantFreePacks === 'function')) return false;
@@ -6786,6 +6807,7 @@ function applyWorldRewards() {
             if (hasBoxes) { try { window.WHI.grantBoxes(t.boxes, { quiet: true }); } catch (e) {} }
             if (hasItems) { try { window.WHI.grantItems(t.items, { quiet: true, fromWorld: true }); } catch (e) {} }
             if (hasPacks) { try { window.WHF.grantFreePacks(t.packs); } catch (e) {} }
+            if (hasGear) { try { window.WHGearPanel.receive(t.gear); } catch (e) {} }
             B.writeAck(localStorage, plan.lastSeq);
             if (t.buys.length) settleWorldPurchases(true);
             const msg = B.describe(t);
@@ -6806,6 +6828,16 @@ function applyWorldRewards() {
     return run();
 }
 
+// Gear for the game sent back to the Wilds (to trade it or auction it there): the same inbox, which only this page writes.
+// gear-panel.js calls this and takes the pieces off only once they are queued. Resolves to true once queued.
+function queueWorldGear(pieces, src) {
+    const B = window.WHWorldBridge;
+    if (!B || !Array.isArray(pieces) || !pieces.length) return Promise.resolve(false);
+    const run = () => !!B.sendToWilds(localStorage, { gear: pieces }, src || 'gear', Date.now());
+    if (navigator.locks && typeof navigator.locks.request === 'function') return navigator.locks.request('whathappened_world_inbox', run).catch(() => false);
+    return Promise.resolve(run());
+}
+window.queueWorldGear = queueWorldGear;
 // Rubies for the Wilds (core/world-bridge.js inbox: this page writes it, the Wilds collects). Resolves to true once queued.
 // Two game tabs take turns, so neither overwrites the other's entry.
 function queueWorldRubies(amount, src) {
@@ -7204,10 +7236,14 @@ function equipShopItem(filename) {
     try { updateShopUI(); } catch (e) {}
 }
 
-// Apply equipped background image to the page body
+// Apply equipped background image to the page body (updateDisplays calls this on every click: setting the same background
+// again still made the browser restyle the whole page each time, so it is only set when it changes)
+let shownBgImage = null;
 function applyEquippedBackground() {
     try {
         const bg = (typeof equippedBgImage === 'string' && equippedBgImage) ? equippedBgImage : DEFAULT_BG_IMAGE;
+        if (bg === shownBgImage && document.body.style.backgroundImage) return;
+        shownBgImage = bg;
         document.body.style.backgroundImage = "url('" + bg + "')";
     } catch (e) {}
 }
@@ -8159,16 +8195,19 @@ function loadGame() {
                         try { const ib = getItemBonuses(); totalCps = totalCps.times(D((1 + ib.cps / 100) * (1 + ib.offline / 100))); } catch (e) {}
                         // the Hall of Gods: CPS and offline blessings
                         try { const gb = getGodBonuses(); totalCps = totalCps.times(D((1 + gb.cps / 100) * (1 + gb.offline / 100))); } catch (e) {}
+                        // gear for the game: its CPS and offline boosts
+                        try { const gear = getGearBonuses(); totalCps = totalCps.times(D((1 + gear.cps / 100) * (1 + gear.offline / 100))); } catch (e) {}
                         const gainedD = totalCps.times(D(seconds));
                         if (gainedD && (typeof gainedD.gt === 'function' ? gainedD.gt(0) : Number(gainedD) > 0)) {
                             addToCount(gainedD);
                             try { showWelcomeBackModal(gainedD, seconds); } catch (e) {}
                         }
                     } else {
-                        let fb = {}, ib = {}, gb = {};
+                        let fb = {}, ib = {}, gb = {}, gear = NO_GEAR_BONUS;
                         try { fb = getFollowerBonuses() || {}; } catch (e) {}
                         try { ib = getItemBonuses() || {}; } catch (e) {}
                         try { gb = getGodBonuses() || {}; } catch (e) {}
+                        try { gear = getGearBonuses() || NO_GEAR_BONUS; } catch (e) {}
                         const totalCps = calc.offlineCps({
                             pirateEffective, otherEffective: parts.otherEffective, jonathanEffective: parts.jonathanEffective, crEffective: parts.crEffective,
                             phonkBaseCps,
@@ -8184,6 +8223,7 @@ function loadGame() {
                             followerCpsPercent: fb.cps, followerOfflinePercent: fb.offline,
                             itemCpsPercent: ib.cps, itemOfflinePercent: ib.offline,
                             godCpsPercent: gb.cps, godOfflinePercent: gb.offline,
+                            gearCpsPercent: gear.cps, gearOfflinePercent: gear.offline,
                         });
                         const gained = totalCps * seconds;
                         if (gained > 0) {
@@ -8216,6 +8256,7 @@ function resetGame() {
     try { localStorage.removeItem(WORLD_OWED_KEY); localStorage.removeItem(AUTO_CLICK_KEY); localStorage.removeItem('whathappened_golden_trades'); } catch (e) {}
     // the crew's best levels and the game's Renown claims
     try { localStorage.removeItem('whathappened_upgrade_best'); localStorage.removeItem('whathappened_renown'); } catch (e) {}
+    try { localStorage.removeItem('whathappened_gear'); } catch (e) {} // gear for the game (gear-panel.js)
     // give browser a moment to persist removal and allow delete to reach server, then reload
     setTimeout(() => location.reload(), 400);
 }

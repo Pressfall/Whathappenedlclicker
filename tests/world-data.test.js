@@ -12,8 +12,10 @@ test('every recipe, drop and stock item names a real material', () => {
     for (const r of D.BOX_RECIPES) check(Object.keys(r.in), r.id);
     for (const [id, n] of Object.entries(D.NODES)) check(n.drops.map(d => d[0]), id);
     for (const [id, m] of Object.entries(D.MONSTERS)) check(m.drops.map(d => d[0]), id);
-    // every boss opens the next zone with its sigil, except the Sunken Vault's (it opens nothing)
-    for (const [id, b] of Object.entries(D.BOSSES)) { check(b.drops.map(d => d[0]), id); if (b.vault) assert.equal(b.sigil, undefined, id); else check([b.sigil], id); }
+    // every boss opens the next zone with its sigil, except the hidden dungeons' (they open nothing)
+    for (const [id, b] of Object.entries(D.BOSSES)) { check(b.drops.map(d => d[0]), id); if (b.dungeon) assert.equal(b.sigil, undefined, id); else check([b.sigil], id); }
+    for (const [node, list] of Object.entries(D.NODE_ESSENCES)) { assert.ok(D.NODES[node], node); check(list.map(e => e[0]), node); }
+    for (const dd of Object.values(D.DUNGEONS)) check([dd.essence, dd.heart], dd.name);
     for (const s of D.TRADER_STOCK) { if (s.give) check(Object.keys(s.give), s.id); if (s.gear) assert.ok(D.GEAR_BY_ID[s.gear], s.id); }
     for (const z of Object.values(D.ZONES)) {
         for (const t of Object.keys(z.nodes || {})) assert.ok(D.NODES[t], z.id + ' node ' + t);

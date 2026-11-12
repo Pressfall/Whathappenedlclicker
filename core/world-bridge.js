@@ -11,9 +11,10 @@
  * in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory();
-    else root.WHWorldBridge = factory();
-}(typeof self !== 'undefined' ? self : this, function () {
+    // core/gear.js checks gear for the game; looked up when used, so the pages may load it after this file
+    if (typeof module === 'object' && module.exports) module.exports = factory(() => require('./gear'));
+    else root.WHWorldBridge = factory(() => root.WHGear || null);
+}(typeof self !== 'undefined' ? self : this, function (gearRules) {
     'use strict';
 
     const WORLD_KEY = 'whathappened_world';
@@ -21,7 +22,7 @@
     // items.js BOXES, by tier
     const BOX_NAMES = ['Wooden Crate', 'Iron Chest', 'Golden Chest', 'Diamond Chest', 'Mythic Vault'];
     // the most one entry may carry (the world's own caps are far lower; this only bounds a damaged or edited save)
-    const LIMITS = { gems: 50, golden: 3, box: 20, item: 20, pack: 10 };
+    const LIMITS = { gems: 50, golden: 3, box: 20, item: 20, pack: 10, gear: 10 };
     // items.js consumables the Wilds may send (crew quests, Renown milestones): timed boosts and saved-up time only. Gem
     // Pouch, Gem Geode and Golden Ticket are left out on purpose: gems and Golden from the Wilds only ever come through
     // CAPS (core/world-data.js). Anything else in an entry's items is dropped.
@@ -55,6 +56,14 @@
     }
     function cleanItems(raw, max) { return cleanMap('items', raw, max); }
     const hasItems = (items) => !!items && Object.keys(items).some(id => items[id] > 0);
+    // Gear for the game (core/gear.js pieces, forged in the Wilds' Crucible): checked piece by piece, at most max.
+    // { list, unknown }: unknown when gear came but this page can't check it (no core/gear.js): the caller must then wait.
+    function cleanGear(raw, max) {
+        if (!Array.isArray(raw) || !raw.length) return { list: [], unknown: false };
+        const G = gearRules();
+        if (!G) return { list: [], unknown: true };
+        return { list: raw.map(G.cleanPiece).filter(Boolean).slice(0, max), unknown: false };
+    }
     // A reward entry with every amount a whole number within LIMITS, or null when it has no valid sequence number
     function clampEntry(e) {
         if (!e || typeof e !== 'object') return null;
@@ -65,9 +74,12 @@
         if (isBuy(e.buy)) out.buy = e.buy;
         // only entries that carry items or packs have those fields, so every other entry looks the same as before
         for (const k of MAP_KINDS) { const m = cleanMap(k, e[k], MAPS[k].limit); if (hasItems(m)) out[k] = m; }
+        const g = cleanGear(e.gear, LIMITS.gear);
+        if (g.list.length) out.gear = g.list;
+        if (g.unknown) out.gearUnknown = true;
         return out;
     }
-    function isEmpty(r) { return !r || (!r.buy && !r.gems && !r.golden && !(r.boxes || []).some(n => n > 0) && !MAP_KINDS.some(k => hasItems(r[k]))); }
+    function isEmpty(r) { return !r || (!r.buy && !r.gems && !r.golden && !(r.boxes || []).some(n => n > 0) && !MAP_KINDS.some(k => hasItems(r[k])) && !(r.gear && r.gear.length) && !r.gearUnknown); }
 
     function readAck(store) { try { return count(store.getItem(ACK_KEY), Number.MAX_SAFE_INTEGER); } catch (e) { return 0; } }
     function writeAck(store, seq) {
@@ -81,11 +93,13 @@
         const w = readJSON(store, WORLD_KEY);
         const list = (w && Array.isArray(w.outbox)) ? w.outbox : [];
         const entries = list.map(clampEntry).filter(e => e && e.seq > ack).sort((a, b) => a.seq - b.seq);
-        const totals = { gems: 0, golden: 0, boxes: BOX_NAMES.map(() => 0), buys: [], items: {}, packs: {} };
+        const totals = { gems: 0, golden: 0, boxes: BOX_NAMES.map(() => 0), buys: [], items: {}, packs: {}, gear: [], gearUnknown: false };
         let lastSeq = ack;
         for (const e of entries) {
             totals.gems += e.gems; totals.golden += e.golden;
             if (e.buy) totals.buys.push(e.buy);
+            if (e.gear) totals.gear.push(...e.gear);
+            if (e.gearUnknown) totals.gearUnknown = true;
             e.boxes.forEach((n, i) => { totals.boxes[i] += n; });
             for (const k of MAP_KINDS) for (const id in e[k] || {}) totals[k][id] = (totals[k][id] || 0) + e[k][id];
             lastSeq = Math.max(lastSeq, e.seq);
@@ -115,15 +129,18 @@
             state.outbox.push(e);
             return e;
         }
-        if (isEmpty(r)) return null;
+        // gear for the game: whole pieces, LIMITS.gear an entry (checked; never split or merged)
+        const gear = cleanGear(reward && reward.gear, BIG).list;
+        if (isEmpty(r) && !gear.length) return null;
         let first = null;
-        while (!isEmpty(r)) {
+        while (!isEmpty(r) || gear.length) {
             if (state.outbox.length >= MAX_OUTBOX) {
                 // the game hasn't been opened in a long time: hold the rest until there is room
                 const o = state.overflow || (state.overflow = { gems: 0, golden: 0, boxes: BOX_NAMES.map(() => 0) });
                 o.gems += r.gems; o.golden += r.golden;
                 r.boxes.forEach((n, i) => { o.boxes[i] = (o.boxes[i] || 0) + n; });
                 for (const k of MAP_KINDS) if (hasItems(r[k])) { o[k] = o[k] || {}; for (const id in r[k]) if (r[k][id]) o[k][id] = (o[k][id] || 0) + r[k][id]; }
+                if (gear.length) o.gear = (o.gear || []).concat(gear.splice(0));
                 break;
             }
             const part = { gems: Math.min(r.gems, LIMITS.gems), golden: Math.min(r.golden, LIMITS.golden), boxes: r.boxes.map(n => Math.min(n, LIMITS.box)) };
@@ -137,6 +154,7 @@
             state.outSeq = seq;
             const e = { seq, gems: part.gems, golden: part.golden, boxes: part.boxes, src, at: Number(now) || 0 };
             for (const k of MAP_KINDS) if (hasItems(part[k])) e[k] = part[k];
+            if (gear.length) e.gear = gear.splice(0, LIMITS.gear);
             state.outbox.push(e);
             if (!first) first = e;
         }
@@ -172,11 +190,16 @@
     const MAX_RUBIES = 10000000; // the most one entry carries; more is split over several
     const MAX_INBOX = 200;
 
+    // an entry: { seq, rubies, src, at } and, for gear sent back from the game (to trade it or put it up for auction), gear: [pieces]
     function clampInEntry(e) {
         if (!e || typeof e !== 'object') return null;
         const seq = Math.floor(Number(e.seq)), rubies = count(e.rubies, MAX_RUBIES);
-        if (!Number.isFinite(seq) || seq < 1 || !rubies) return null;
-        return { seq, rubies, src: typeof e.src === 'string' ? e.src.slice(0, 40) : '', at: Number(e.at) || 0 };
+        const g = cleanGear(e.gear, LIMITS.gear);
+        if (!Number.isFinite(seq) || seq < 1 || (!rubies && !g.list.length && !g.unknown)) return null;
+        const out = { seq, rubies, src: typeof e.src === 'string' ? e.src.slice(0, 40) : '', at: Number(e.at) || 0 };
+        if (g.list.length) out.gear = g.list;
+        if (g.unknown) out.gearUnknown = true;
+        return out;
     }
     function readInbox(store) {
         const raw = readJSON(store, INBOX_KEY);
@@ -188,15 +211,19 @@
 
     // Game side: queue rubies for the Wilds. Returns the first new entry, or null when nothing was queued (nothing to send,
     // too much already waiting, or storage refused the write); then nothing at all was queued.
-    function sendRubies(store, rubies, src, now) {
-        let left = count(rubies, BIG);
-        if (!left) return null;
+    function sendRubies(store, rubies, src, now) { return sendToWilds(store, { rubies }, src, now); }
+    // Game side: queue rubies and/or gear for the Wilds (what: { rubies, gear: [pieces] }), the same way
+    function sendToWilds(store, what, src, now) {
+        let left = count(what && what.rubies, BIG);
+        const gear = cleanGear(what && what.gear, BIG).list;
+        if (!left && !gear.length) return null;
         const ack = readInAck(store), box = readInbox(store);
         const entries = box.entries.filter(e => e.seq > ack);
         let seq = Math.max(box.seq, ack), first = null;
-        while (left > 0) {
+        while (left > 0 || gear.length) {
             if (entries.length >= MAX_INBOX) return null;
             const e = { seq: ++seq, rubies: Math.min(left, MAX_RUBIES), src: typeof src === 'string' ? src.slice(0, 40) : '', at: Number(now) || 0 };
+            if (gear.length) e.gear = gear.splice(0, LIMITS.gear);
             left -= e.rubies;
             entries.push(e);
             if (!first) first = e;
@@ -204,11 +231,14 @@
         try { store.setItem(INBOX_KEY, JSON.stringify({ seq, entries })); } catch (err) { return null; }
         return first;
     }
-    // World side: what is waiting above its ack, oldest first, with the total and the last sequence number
+    // World side: what is waiting above its ack, oldest first, with the total and the last sequence number. gearUnknown: gear is
+    // waiting that this page can't check yet (it must not ack past it)
     function inbox(store, inAck) {
         const ack = count(inAck, BIG);
         const entries = readInbox(store).entries.filter(e => e.seq > ack).sort((a, b) => a.seq - b.seq);
-        return { entries, rubies: entries.reduce((n, e) => n + e.rubies, 0), lastSeq: entries.length ? entries[entries.length - 1].seq : ack };
+        const gear = [];
+        for (const e of entries) if (e.gear) gear.push(...e.gear);
+        return { entries, rubies: entries.reduce((n, e) => n + e.rubies, 0), gear, gearUnknown: entries.some(e => e.gearUnknown), lastSeq: entries.length ? entries[entries.length - 1].seq : ack };
     }
     // Game side: rubies sent that the Wilds hasn't collected yet
     function rubiesWaiting(store) { return inbox(store, readInAck(store)).rubies; }
@@ -256,6 +286,7 @@
         if (t.gems) parts.push('+' + plural(t.gems, 'gem'));
         if (t.golden) parts.push('+' + t.golden + ' Golden What Happened');
         (t.boxes || []).forEach((n, i) => { if (n) parts.push(plural(n, BOX_NAMES[i])); });
+        if (t.gear && t.gear.length) parts.push(plural(t.gear.length, 'piece of gear', 'pieces of gear') + ' (wear it in Items › Gear)');
         for (const k of MAP_KINDS) for (const id in t[k] || {}) {
             if (Object.prototype.hasOwnProperty.call(MAPS[k].names, id) && t[k][id] > 0) parts.push(plural(t[k][id], MAPS[k].names[id], MAPS[k].plurals[id]));
         }
@@ -266,6 +297,6 @@
     }
 
     return { WORLD_KEY, ACK_KEY, BOX_NAMES, LIMITS, MAX_OUTBOX, BUYS, ITEMS, isItem, cleanItems, PACKS, isPack, MAP_KINDS, cleanMap, clampEntry, isEmpty, readAck, writeAck, pending, push, prune, describe, mainBalance,
-        INBOX_KEY, GOLDEN_RUBIES, MAX_RUBIES, MAX_INBOX, clampInEntry, readInAck, sendRubies, inbox, rubiesWaiting,
+        INBOX_KEY, GOLDEN_RUBIES, MAX_RUBIES, MAX_INBOX, clampInEntry, readInAck, sendRubies, sendToWilds, inbox, rubiesWaiting, cleanGear,
         GOLDEN_TRADES_KEY, GOLDEN_TRADE_WEEKLY, weekKey, goldenTradeLeft, noteGoldenTrade, unnoteGoldenTrade, nextWeekAt };
 }));

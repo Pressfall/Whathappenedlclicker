@@ -22,8 +22,20 @@
     // otherwise at most moveHz while it moves or aims (fightHz with another player close by outside town, so swings still
     // read), and a heartbeat every beatSec while nothing changes. Receivers smooth between updates (interpDelay, addSample).
     // A remote unseen for staleSec is hidden; after pruneSec it is forgotten until it sends again.
-    const RATE = { moveHz: 3, fightHz: 8, beatSec: 2.5, eventGapSec: 0.1, checkSec: 0.05, fightRange: 600, moveEps: 3, angEps: 0.12, reachEps: 4,
-        staleSec: 6, pruneSec: 30, hiddenLeaveSec: 20, interpMinMs: 120, interpMaxMs: 650, gapMs: 333 };
+    // Real fights send faster still (sendMode): duelHz in a live Arena match or the Pit, coopHz while a co-op wave or dungeon
+    // room is being fought, and those are drawn closer behind (fightInterpMinMs), so blows land where they look like landing.
+    const RATE = { moveHz: 3, fightHz: 8, duelHz: 15, coopHz: 10, beatSec: 2.5, eventGapSec: 0.1, checkSec: 0.016, fightRange: 600, moveEps: 3, angEps: 0.12, reachEps: 4,
+        staleSec: 6, pruneSec: 30, hiddenLeaveSec: 20, interpMinMs: 120, fightInterpMinMs: 90, interpMaxMs: 650, gapMs: 333 };
+    const MODE_HZ = { move: RATE.moveHz, fight: RATE.fightHz, duel: RATE.duelHz, coop: RATE.coopHz };
+    // How fast this page sends: 'duel' (a live Arena match or the Pit), 'coop' (a co-op wave or dungeon room being fought),
+    // 'fight' (another player close by where players can fight) or 'move'
+    function sendMode(ctx) {
+        const c = ctx || {};
+        if (c.duel) return 'duel';
+        if (c.coop) return 'coop';
+        return c.near ? 'fight' : 'move';
+    }
+    const modeOf = (m) => (m === true ? 'fight' : MODE_HZ[m] ? m : 'move');
     const PVP = {
         mult: 0.5,          // players hit each other at half strength (gear makes one-shots too easy otherwise)
         protectSec: 5,      // after arriving in a zone or waking up
@@ -90,19 +102,26 @@
             || ((cur.fl & FLAGS.shield) && angDiff(cur.sa, prev.sa) >= RATE.angEps) || Math.ceil(cur.hp || 0) !== Math.ceil(prev.hp || 0)) return 'move';
         return null;
     }
-    // Should a page send its position now? sinceSec: since its last send; fighting: another player is close outside town.
+    // Should a page send its position now? sinceSec: since its last send; mode: sendMode's answer (true/false still mean
+    // 'fight'/'move'). Sends are checked every checkSec, so half a check of slack keeps the real rate at the mode's rate.
     // Returns 'event', 'move', 'beat' (heartbeat) or null.
-    function sendDue(prev, cur, sinceSec, fighting) {
+    function sendDue(prev, cur, sinceSec, mode) {
         if (!prev) return 'event'; // just arrived
         const c = posChange(prev, cur);
         if (c === 'event' && sinceSec >= RATE.eventGapSec) return 'event';
-        if (c && sinceSec >= 1 / (fighting ? RATE.fightHz : RATE.moveHz)) return 'move';
+        if (c && sinceSec + RATE.checkSec / 2 >= 1 / MODE_HZ[modeOf(mode)]) return 'move';
         if (sinceSec >= RATE.beatSec) return 'beat';
         return null;
     }
     // How far behind a remote player is drawn (ms), from the usual time between its updates: far enough back that the next
-    // update has nearly always arrived, so it glides instead of stopping and jumping
-    function interpDelay(gapMs) { return Math.max(RATE.interpMinMs, Math.min(RATE.interpMaxMs, (gapMs || RATE.gapMs) * 1.3 + 60)); }
+    // update has nearly always arrived, so it glides instead of stopping and jumping. In a duel or a co-op fight (mode) the
+    // floor is lower, since both sides send fast there.
+    function interpDelay(gapMs, mode) {
+        const m = modeOf(mode), g = gapMs || RATE.gapMs;
+        // a fight: about one and a fifth updates behind (100 ms at the duel rate); elsewhere a wider margin for slow senders
+        if (m === 'duel' || m === 'coop') return Math.max(RATE.fightInterpMinMs, Math.min(RATE.interpMaxMs, g * 1.2 + 20));
+        return Math.max(RATE.interpMinMs, Math.min(RATE.interpMaxMs, g * 1.3 + 60));
+    }
     // Keep the usual gap between a remote's updates (ignoring heartbeat-length pauses)
     function nextGap(gapMs, intervalMs) { return intervalMs > 0 && intervalMs < 1000 ? (gapMs || RATE.gapMs) * 0.7 + intervalMs * 0.3 : (gapMs || RATE.gapMs); }
     // Add an update to a remote's buffer. After a long quiet spell (standing still) it was where it last was until just
@@ -142,8 +161,32 @@
             w, q: int(raw.q, 0, D.QUALITY.length - 1), sh, c: int(raw.c, 0, D.MAX_TIER), h: int(raw.h, 0, D.MAX_TIER), b: int(raw.b, 0, D.MAX_TIER), say,
             r: int(raw.r, 0, 5000), ti: TITLE_RE.test(String(raw.ti || '')) ? raw.ti : '', cl: D.CLASSES[raw.cl] ? raw.cl : '',
             am: MATCH_RE.test(String(raw.am || '')) ? raw.am : '', aq: ['duel', 't2', 't3'].includes(raw.aq) ? raw.aq : '',
-            pt: PARTY_RE.test(String(raw.pt || '')) ? raw.pt : '', wb: int(raw.wb, 0, 9999), cn: clanId(raw.cn),
+            pt: PARTY_RE.test(String(raw.pt || '')) ? raw.pt : '', wb: int(raw.wb, 0, 9999), cn: clanId(raw.cn), lk: unpackLooks(raw.lk),
         };
+    }
+    // The looks of a player's relics (core/world-relics.js lookOf), shared as one short string lk so others draw them in their
+    // own colours and shapes: per piece (w weapon, c chest, h helmet, b boots, s shield) its relic tier, its unique's shape,
+    // and two colours. Looks only: nothing about how strong it is travels or is trusted.
+    const LOOK_RE = /^([wchbs])([0-6])(?:\.([a-z]{2,14}))?:([0-9a-f]{6}):([0-9a-f]{6})$/;
+    const LOOK_MAX = 200;
+    function packLooks(looks) {
+        const out = [];
+        for (const k of ['w', 'c', 'h', 'b', 's']) {
+            const l = looks && looks[k];
+            if (!l || !/^#[0-9a-f]{6}$/i.test(l.main || '') || !/^#[0-9a-f]{6}$/i.test(l.trim || '')) continue;
+            const shape = /^[a-z]{2,14}$/.test(l.shape || '') ? '.' + l.shape : '';
+            out.push(k + Math.max(0, Math.min(6, Math.floor(l.tier) || 0)) + shape + ':' + l.main.slice(1).toLowerCase() + ':' + l.trim.slice(1).toLowerCase());
+        }
+        return out.join(';').slice(0, LOOK_MAX);
+    }
+    function unpackLooks(str) {
+        const out = {};
+        if (typeof str !== 'string' || !str || str.length > LOOK_MAX) return out;
+        for (const part of str.split(';')) {
+            const m = LOOK_RE.exec(part);
+            if (m && !out[m[1]]) out[m[1]] = { tier: Number(m[2]), shape: m[3] || '', main: '#' + m[4], trim: '#' + m[5] };
+        }
+        return out;
     }
     // a clan id as shared (the game's player_clanId), or '' for none / anything else
     function clanId(v) { const s = String(v == null ? '' : v); return CLAN_RE.test(s) && s !== 'undefined' && s !== 'null' ? s : ''; }
@@ -175,10 +218,21 @@
         const sm = b && D.STAFF_MAGIC[b.magic];
         return sm ? Math.max(sm.thrust.dmg, sm.swing.dmg) * sm.charge.full * (1 + D.STAFF_OVER.bonus) * AMP_MAX : 0;
     }
-    function maxHit(weaponId, kind) {
+    // The most a weapon's relic tier (core/gear.js TIERS wilds, and its best Might and Ember boosts at +5) and socketed
+    // essences (core/world-relics.js: four Mythic ones and a combo) can add to a hit, on top of PVP.capMult. relicTier: the
+    // tier the attacker's page shows for its weapon (info lk: a relic, or a socketed plain weapon as tier 0), -1 for none:
+    // plain weapons keep the old cap.
+    const RELIC_WILDS = [1, 1.06, 1.12, 1.19, 1.27, 1.36, 1.45], RELIC_LINE = [4, 6, 8, 11, 15, 20, 28];
+    function relicCap(relicTier) {
+        const t = Math.floor(Number(relicTier));
+        if (!(t >= 0 && t <= 6)) return 1;
+        const sockets = 1 + (4 * 18 * 1.3 + 4) / 100, line = RELIC_LINE[t] * 1.15 * 1.4 / 100;
+        return RELIC_WILDS[t] * (sockets + line) * (1 + (4 * 18 * 1.3 / 100 + line) / 3);
+    }
+    function maxHit(weaponId, kind, relicTier) {
         const b = D.GEAR_BY_ID[weaponId];
         if (!b || b.slot !== 'weapon') return 0;
-        const cap = b.dmg * PVP.capMult, P = D.WEAPON_CLASSES[b.cls];
+        const cap = b.dmg * PVP.capMult * relicCap(relicTier === undefined ? -1 : relicTier), P = D.WEAPON_CLASSES[b.cls];
         if (kind === 'bash') return cap * (P.bashDmg || 0) * 2;
         if (kind === 'spell') return cap * spellMult(b);
         return P.melee ? cap * P.melee : cap; // a staff's own blows are weak
@@ -232,9 +286,9 @@
         return { n: 1, span: 1 };
     }
     // The most one hit of this ability can be worth, from the weapon the caster is showing
-    function abilityMaxHit(a, weaponId) {
+    function abilityMaxHit(a, weaponId, relicTier) {
         const b = D.GEAR_BY_ID[weaponId];
-        const wd = b && b.slot === 'weapon' ? b.dmg : D.GEAR_BY_ID.sword_0.dmg;
+        const wd = (b && b.slot === 'weapon' ? b.dmg : D.GEAR_BY_ID.sword_0.dmg) * relicCap(relicTier === undefined ? -1 : relicTier);
         const mult = a.kind === 'ignite' ? a.dmg + a.perSec * a.maxSec : (a.dmg || 0); // Burning Stick: after the longest burn
         return wd * mult * PVP.abilityCap * (a.momentum === true ? 3 : 1) * (a.execute ? 2 : 1) * (1 + (a.desperate || 0)) * (a.elem ? AMP_MAX : 1);
     }
@@ -257,7 +311,7 @@
         // Smoke Bomb only dazes; everything else must hurt
         if (!a.dmg) return Number.isFinite(dmg) && dmg === 0 ? { ok: true, dmg: 0, ability: a, rate } : { ok: false, reason: 'dmg' };
         if (!Number.isFinite(dmg) || dmg <= 0) return { ok: false, reason: 'dmg' };
-        return { ok: true, dmg: Math.min(dmg, abilityMaxHit(a, ctx.weapon)) * PVP.mult, ability: a, rate };
+        return { ok: true, dmg: Math.min(dmg, abilityMaxHit(a, ctx.weapon, ctx.relicTier)) * PVP.mult, ability: a, rate };
     }
     // How long an ability's stun holds a player (shorter than on monsters)
     function playerStun(sec) { return Math.min(PVP.stunMax, sec * PVP.stunMult); }
@@ -295,7 +349,7 @@
         if (ctx.lastAt !== undefined && ctx.now - ctx.lastAt < gap) return { ok: false, reason: 'rate' };
         const dmg = Number(hit.dmg);
         if (!Number.isFinite(dmg) || dmg <= 0) return { ok: false, reason: 'dmg' };
-        return { ok: true, dmg: Math.min(dmg, maxHit(hit.w, kind)) * PVP.mult };
+        return { ok: true, dmg: Math.min(dmg, maxHit(hit.w, kind, ctx.relicTier)) * PVP.mult };
     }
     // A hit to send: { w, k, dmg, ang (direction it pushes), pf (Perfect) }
     function makeHit(weaponId, kind, dmg, ang, perfect) {
@@ -367,8 +421,8 @@
 
     return {
         ROOT, RATE, PVP, LOOT, BOSS, CHAT, EMOTES, FLAGS, SAFE_WORDS,
-        packPos, unpackPos, posChange, sendDue, interpDelay, nextGap, addSample, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor, clanId, sameClan, pvpRule,
-        maxHit, reachFor, validateHit, makeHit, abilityById, abilityReach, abilityBurst, abilityMaxHit, playerStun, sanitizeLoot, canClaim, lootExpired,
+        packPos, unpackPos, posChange, sendMode, sendDue, interpDelay, packLooks, unpackLooks, LOOK_MAX, nextGap, addSample, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor, clanId, sameClan, pvpRule,
+        maxHit, relicCap, reachFor, validateHit, makeHit, abilityById, abilityReach, abilityBurst, abilityMaxHit, playerStun, sanitizeLoot, canClaim, lootExpired,
         sanitizeBoss, bossNeedsReset, bossDeadFor, earnedReward, hostOf, sanitizeHost, lerpAngle, interpolate,
     };
 }));

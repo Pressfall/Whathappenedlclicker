@@ -71,6 +71,12 @@ async function connect() {
         set: (p, v) => set(r(p), v).catch((e) => denied(p, e)),
         update: (p, v) => update(r(p), fix(v)).catch((e) => denied(p, e)),
         remove: (p) => remove(r(p)).catch(() => {}),
+        // a write that says whether the database took it (trades and auctions must not go on after a refused one):
+        // value null removes. Resolves true or false, never rejects.
+        // (an object is merged in; a single value is set)
+        commit: (p, v) => (v === null ? remove(r(p)) : v && typeof v === 'object' ? update(r(p), fix(v)) : set(r(p), v)).then(() => true).catch((e) => { denied(p, e); return false; }),
+        // a value read once (null when there is none, or it can't be read)
+        once: (p) => new Promise((resolve) => { let done = false; const off = onValue(r(p), (s) => { if (done) return; done = true; resolve(s.val()); setTimeout(() => off(), 0); }, () => { if (!done) { done = true; resolve(null); } }); }),
         push: (p, v) => { const k = push(r(p)); return set(k, v).then(() => k.key).catch((e) => { denied(p, e); return null; }); },
         // remove and return, atomically: only one player can pick up a loot bag
         take(p) {

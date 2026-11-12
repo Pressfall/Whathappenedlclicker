@@ -215,12 +215,13 @@
         const chip = $('beanChip');
         if (chip) chip.title = full + ' ' + P.plural(n) + ': earned by playing or bought, for titles and looks';
     }
+    // the animation starts again on the next frame: reading offsetWidth to restart it made the browser lay out the whole page
+    // there and then (150 ms on a slow phone, in the middle of a fight in the Wilds)
     function bumpChip() {
         const chip = $('beanChip');
         if (!chip) return;
         chip.classList.remove('is-bump');
-        void chip.offsetWidth;
-        chip.classList.add('is-bump');
+        requestAnimationFrame(() => requestAnimationFrame(() => chip.classList.add('is-bump')));
     }
 
     // ---------------- start ----------------

@@ -191,14 +191,15 @@
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', bindChat); else bindChat();
 
     // ---------------- toasts, hints, banners ----------------
-    function toast(msg, kind) {
+    // ms: how long it stays (an explanation needs longer than the usual few seconds)
+    function toast(msg, kind, ms) {
         const box = $('toasts');
         const el = document.createElement('div');
         el.className = 'w-toast' + (kind ? ' w-toast--' + kind : '');
         el.textContent = msg;
         box.appendChild(el);
         while (box.children.length > 4) box.firstChild.remove();
-        setTimeout(() => { el.classList.add('is-out'); setTimeout(() => el.remove(), 420); }, kind === 'gem' || kind === 'gold' ? 4200 : 2800);
+        setTimeout(() => { el.classList.add('is-out'); setTimeout(() => el.remove(), 420); }, ms || (kind === 'gem' || kind === 'gold' ? 4200 : 2800));
     }
     const hintAt = new Map();
     // ---------------- achievements unlocked here (world.js noticeAchievements) ----------------
@@ -283,7 +284,8 @@
         if (s.rubies !== lastRubies) {
             const el = $('rubyCount');
             el.textContent = fmt(s.rubies);
-            if (lastRubies >= 0 && s.rubies > lastRubies && !E.reducedMotion) { const pill = el.parentElement; pill.classList.remove('is-bump'); void pill.offsetWidth; pill.classList.add('is-bump'); }
+            // the bump starts again a frame later (forcing a layout to restart it stalled the game each time rubies came in)
+            if (lastRubies >= 0 && s.rubies > lastRubies && !E.reducedMotion) { const pill = el.parentElement; pill.classList.remove('is-bump'); requestAnimationFrame(() => requestAnimationFrame(() => pill.classList.add('is-bump'))); }
             lastRubies = s.rubies;
         }
         const sl = $('shieldSlot');
@@ -303,11 +305,14 @@
         const boss = g.actors.find(a => a.kind === 'boss' && !a.dead && a.active);
         const bb = $('bossBar');
         if (boss) {
-            bb.hidden = false;
-            $('bossName').textContent = boss.def.name + (boss.phase ? ' · ' + (boss.phase === 1 ? 'Enraged' : 'Furious') : '');
-            $('bossFill').style.width = (100 * Math.max(0, boss.hp) / boss.maxHp).toFixed(1) + '%';
+            if (bb.hidden) bb.hidden = false;
+            // a dungeon boss's frenzy (world-actors.js): the last minute counted down, then shown while it lasts
+            const fr = boss.def.enrage && boss.fightAt ? boss.def.enrage.sec - (E.time - boss.fightAt) : Infinity;
+            const frenzy = boss.enraged ? ' · in a frenzy (×' + boss.def.enrage.mult + ' damage)' : fr <= 60 ? ' · frenzy in ' + Math.ceil(fr) + 's' : '';
+            setText($('bossName'), boss.def.name + (boss.phase ? ' · ' + (boss.phase === 1 ? 'Enraged' : 'Furious') : '') + frenzy);
+            setStyle($('bossFill'), 'width', (100 * Math.max(0, boss.hp) / boss.maxHp).toFixed(1) + '%');
             bb.classList.toggle('is-exposed', boss.exposedUntil > E.time);
-        } else bb.hidden = true;
+        } else if (!bb.hidden) bb.hidden = true;
     }
     function bestPotion(s) { return ['potion_small', 'potion_big', 'potion_max'].find(id => s.cons[id] > 0) || 'potion_small'; }
     function renderHotbar() {
@@ -319,7 +324,7 @@
             const q = it ? W.qualityOf(it.score) : null;
             const extra = b && b.cls === 'bow' ? `<span class="n">${fmt(s.cons.arrow)}</span>` : '';
             html += `<button class="w-slot${i === s.sel ? ' is-sel' : ''}" data-slot="${i}" title="${b ? esc(W.gearName(it)) : 'Empty slot'}" aria-label="Slot ${i + 1}: ${b ? esc(W.gearName(it)) : 'empty'}">
-                <span class="k">${i + 1}</span>${b ? iconFor(b) : ''}${extra}${q ? `<i class="q" style="background:${q.color}"></i>` : ''}</button>`;
+                <span class="k">${i + 1}</span>${b ? iconFor(b, it) : ''}${extra}${q ? `<i class="q" style="background:${q.color}"></i>` : ''}</button>`;
         }
         const pot = bestPotion(s);
         const potions = (s.cons.potion_small || 0) + (s.cons.potion_big || 0) + (s.cons.potion_max || 0);
@@ -493,6 +498,7 @@
     function openNpc(id) {
         if (D.NPCS[id] && D.NPCS[id].guild) return openGuilds();
         if (D.NPCS[id] && D.NPCS[id].vaultShop) return openVaultShop();
+        if (D.NPCS[id] && D.NPCS[id].auction && WHW.market) return WHW.market.openAuction(); // world-market.js
         npcOpen = id;
         modal(D.NPCS[id].name, '', { render: renderNpc });
         renderNpc();
@@ -502,6 +508,14 @@
         const o = W.questOffer(s, id, Date.now()), rec = s.quests[id] || { step: 0 };
         let html = `<div class="w-npc"><img class="w-npc-face" src="${npc.face}" alt="" style="border-color:${npc.color}"><div><div class="w-card-name">${esc(npc.name)}</div><div class="w-card-sub">${esc(npc.role)}</div><p class="w-npc-say">"${esc(npc.greet)}"</p></div></div>`;
         if (npc.rumor) html += `<p class="w-npc-rumor"><b>They mention:</b> "${esc(npc.rumor)}"</p>`;
+        // a camp's NPC knows roughly where the zone's hidden dungeon is, once its boss has fallen to you
+        const dmap = game().map, dg = dmap && dmap.dungeon;
+        if (dg && npc.zone === game().zoneId && W.dungeonOpen(s, dg.id) && dmap.camp) {
+            const dd = D.DUNGEONS[dg.id], ang = Math.atan2(dg.y - dmap.camp.y, dg.x - dmap.camp.x);
+            const dir = ['east', 'south-east', 'south', 'south-west', 'west', 'north-west', 'north', 'north-east'][((Math.round(ang / (Math.PI / 4)) % 8) + 8) % 8];
+            const far = Math.hypot(dg.x - dmap.camp.x, dg.y - dmap.camp.y) > 40 * D.TILE ? 'a long walk' : 'not far';
+            html += `<p class="w-npc-rumor"><b>${dd.icon} They lean in:</b> "${s.dungeons.found[dg.id] ? 'You found the way down to ' + esc(dd.name) + '. Mind the dark.' : 'Since the boss fell, the ground groans. There is a split boulder ' + far + ' to the ' + dir + ' of here, off the roads. Something is down there.'}"</p>`;
+        }
         if (npc.arena) html += '<div class="w-card-actions" style="margin-bottom:10px"><button class="btn btn-gold" data-arenamenu>🏟️ The Arena: play, ranking, Glory shop</button></div>';
         // the crew from the game: what they do besides quests
         const SERVICES = { shop: id === 'grape' ? '🍷 Buy potions' : '🏴‍☠️ See the smuggled goods', trade: '🔁 Trading Hall', jukebox: '🎵 The jukebox', ledger: '⭐ Your Renown' };
@@ -640,7 +654,7 @@
         const g = game(), s = g.state, body = document.getElementById('wModalBody');
         if (!body) return;
         const seals = W.count(s, 'vault_seal'), now = Date.now(), npc = D.NPCS.vaultkeeper;
-        body.innerHTML = `<p class="w-note">${esc(npc.greet)}</p><p>You have <b>🔱 ${seals}</b> Vault Seal${seals === 1 ? '' : 's'}. The Drowned King gives ${window.WHWorldVault.REWARDS.king.seals} the first time he falls to you each week.</p>
+        body.innerHTML = `<p class="w-note">${esc(npc.greet)}</p><p>You have <b>🔱 ${seals}</b> Vault Seal${seals === 1 ? '' : 's'}. The Drowned King gives ${window.WHWorldDungeons.REWARDS.vaultKing.seals} the first time he falls to you each week.</p>
             <div class="w-grid">${D.VAULT_SHOP.map(it => {
                 const owned = it.title && s.arena.titles[it.title], left = it.perWeek ? W.vaultWeekLeft(s, it.id, now) : null;
                 const sub = '🔱 ' + it.seals + (it.box !== undefined ? ' · counts toward your lootbox allowance' : '') + (left !== null ? ' · ' + left + ' of ' + it.perWeek + ' left this week' : '');
@@ -933,8 +947,27 @@
             if (base.fireResist) out.push('<span>Fire resist</span>');
         }
         if (it && it.aff && it.aff.length) out.push(...it.aff.map(a => `<span style="color:#ffe7a3">${esc(D.AFFIXES[a].name)}: ${esc(D.AFFIXES[a].desc)}</span>`));
+        if (it && (it.r || it.k)) out.push(relicLine(it));
         return `<div class="w-card-stats">${out.join('')}</div>`;
     }
+    // a relic's tier, boosts, sockets, combos and (a unique's) words; any gear's socketed essences
+    function relicLine(it) {
+        const Gr = window.WHGear, R = window.WHWorldRelics, out = [];
+        const { aspects, combos } = R.wildsAspects(it);
+        if (it.r) {
+            const t = Gr.TIERS[it.r.t], u = it.r.q && Gr.UNIQUES_BY_ID[it.r.q];
+            out.push(`<span style="color:${t.color}"><b>${esc(t.name)} relic</b>${it.r.lv ? ' +' + it.r.lv : ''} · stats x${t.wilds.toFixed(2)}${it.r.by ? ' · forged by ' + esc(it.r.by) : ''}${it.r.n ? ' · traded ' + it.r.n + 'x' : ''}</span>`);
+            if (u) out.push(`<span class="w-relic-desc">“${esc(u.desc)}”</span>`);
+        }
+        // each boost kept in one piece (a line break never splits "Ember +32.5%" from what it does)
+        const asp = Object.entries(aspects).map(([a, v]) => `<span class="w-asp">${D.ASPECTS[a].icon} ${esc(D.ASPECTS[a].name)} <b>+${v}%</b> <span class="w-asp-why">${esc(D.ASPECTS[a].wilds)}</span></span>`);
+        if (asp.length) out.push(`<span class="w-asps">${asp.join('')}</span>`);
+        if (it.k && it.k.some(Boolean)) out.push(`<span class="w-sockets">Sockets ${Array.from({ length: Math.max(R.socketCount(it), it.k.length) }, (_, i) => it.k[i]).map(k => (k ? `<i class="w-sock is-full" style="--c:${D.MATERIALS_BY_ID[k[0]].color}" title="${esc(D.MATERIALS_BY_ID[k[0]].name)}">${D.MATERIALS_BY_ID[k[0]].icon}</i>` : '<i class="w-sock" title="Empty socket"></i>')).join('')}</span>`);
+        if (combos.length) out.push(`<span style="color:#ffd27a">Combo: ${combos.map(esc).join(', ')}</span>`);
+        return out.join('');
+    }
+    // a relic's name colour: its tier's (plain gear: its quality's)
+    function nameColor(it) { return it && it.r ? window.WHGear.TIERS[it.r.t].color : W.qualityOf(it.score).color; }
     function tabs(list, cur, onPick, labels) {
         return `<div class="w-tabs" role="tablist">${list.map(t => `<button class="w-tab${t === cur ? ' is-on' : ''}" role="tab" aria-selected="${t === cur}" data-tab="${t}">${esc(labels[t] || t)}</button>`).join('')}</div>`;
     }
@@ -956,7 +989,9 @@
         lightning: (c) => `<path d="M19.5 0.8 13.4 9h3.6l-2.2 6.2 6.4-8.6h-3.7z" fill="${c}" stroke="#7a5a00" stroke-width="0.6" stroke-linejoin="round"/>`,
         frost: (c) => `<path d="M17.5 0.8 21.2 6.6 17.5 13.4 13.8 6.6z" fill="${c}" stroke="#ffffff" stroke-width="0.8" stroke-linejoin="round"/><path d="M17.5 2.6v8.8" stroke="#ffffff" stroke-width="0.8"/>`,
     };
-    function iconFor(b) {
+    function iconFor(b, it) {
+        // a relic: its own picture, its shape and its essences' colours, edged by its tier (core/gear.js iconSvg)
+        if (it && it.r && window.WHWorldRelics) return `<span class="w-relic-ico">${window.WHGear.iconSvg(window.WHWorldRelics.lookOf(it))}</span>`;
         const sm = b && b.cls === 'staff' && D.STAFF_MAGIC[b.magic];
         if (!sm) return b ? ICONS[b.cls] : '';
         const head = STAFF_HEADS[b.magic] ? STAFF_HEADS[b.magic](sm.color) : `<circle cx="17.5" cy="6.5" r="3.4" fill="${sm.color}"/>`;
@@ -965,7 +1000,7 @@
     }
     const TYPE_ORDER = ['sword', 'dagger', 'spear', 'staff', 'bow', 'axe', 'pickaxe', 'helmet', 'chest', 'boots', 'offhand', 'ring'];
     const MAT_SORTS = { kind: 'Kind', amount: 'Amount', name: 'Name', value: 'Sell value' };
-    const MAT_KINDS = { raw: 'Gathered', bar: 'Bars', plank: 'Planks', part: 'Monster parts and crafted parts', trophy: 'Boss trophies (the Trader pays well)', key: 'Keys' };
+    const MAT_KINDS = { raw: 'Gathered', bar: 'Bars', plank: 'Planks', part: 'Monster parts and crafted parts', trophy: 'Boss trophies (the Trader pays well)', essence: 'Essences (for the Crucible; never lost)', key: 'Keys' };
     const gearGroup = (b) => (b.slot === 'weapon' ? (b.cls === 'axe' || b.cls === 'pickaxe' ? 'tool' : 'weapon') : b.slot === 'helmet' || b.slot === 'chest' || b.slot === 'boots' ? 'armor' : b.slot);
     const typeKey = (b) => (b.slot === 'weapon' ? b.cls : b.slot);
     function sortGear(list, by) {
@@ -1003,8 +1038,8 @@
     function slotRow(s, slot) {
         const it = W.findGear(s, s.equip[slot]), b = W.baseOf(it), q = it ? W.qualityOf(it.score) : null;
         return `<div class="w-slotrow${it ? '' : ' is-empty'}" style="--q:${q ? q.color : 'var(--border-strong)'}">
-            <div class="w-slotrow-ico">${it ? iconFor(b) : `<span class="ghost">${ICONS[slot]}</span>`}</div>
-            <div class="w-slotrow-main"><small>${SLOT_NAMES[slot]}</small>${it ? `<b style="color:${q.color}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
+            <div class="w-slotrow-ico">${it ? iconFor(b, it) : `<span class="ghost">${ICONS[slot]}</span>`}</div>
+            <div class="w-slotrow-main"><small>${SLOT_NAMES[slot]}</small>${it ? `<b style="color:${nameColor(it)}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
             ${it ? `<button class="btn btn-sm btn-ghost" data-equip="${it.uid}">Take off</button>`
                 : `<button class="btn btn-sm btn-ghost" data-show="${slot === 'offhand' || slot === 'ring' ? slot : 'armor'}">Find one</button>`}
         </div>`;
@@ -1012,8 +1047,8 @@
     function hotbarRow(s, i) {
         const it = W.findGear(s, s.hotbar[i]), b = W.baseOf(it), q = it ? W.qualityOf(it.score) : null;
         return `<div class="w-slotrow${it ? '' : ' is-empty'}${s.sel === i ? ' is-sel' : ''}" style="--q:${q ? q.color : 'var(--border-strong)'}">
-            <div class="w-slotrow-ico"><span class="k">${i + 1}</span>${it ? iconFor(b) : ''}</div>
-            <div class="w-slotrow-main"><small>Slot ${i + 1}${s.sel === i ? ' · in hand' : ''}</small>${it ? `<b style="color:${q.color}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
+            <div class="w-slotrow-ico"><span class="k">${i + 1}</span>${it ? iconFor(b, it) : ''}</div>
+            <div class="w-slotrow-main"><small>Slot ${i + 1}${s.sel === i ? ' · in hand' : ''}</small>${it ? `<b style="color:${nameColor(it)}">${esc(W.gearName(it))}</b>${statLine(b, it)}` : '<span class="muted">Empty</span>'}</div>
             ${it ? `<button class="btn btn-sm btn-ghost" data-equip="${it.uid}">Off hotbar</button>` : ''}
         </div>`;
     }
@@ -1037,8 +1072,8 @@
         html += `<div class="w-grid">${shown.map(it => {
             const b = W.baseOf(it), q = W.qualityOf(it.score), weapon = b.slot === 'weapon';
             return `<div class="w-card w-item" style="--q:${q.color}">
-                <div class="w-card-top"><div class="w-card-ico">${iconFor(b)}</div>
-                <div><div class="w-card-name" style="color:${q.color}">${esc(W.gearName(it))}</div><div class="w-card-sub"><span class="w-qual">${esc(q.name)}</span> · tier ${b.tier} · score ${it.score}</div></div></div>
+                <div class="w-card-top"><div class="w-card-ico">${iconFor(b, it)}</div>
+                <div><div class="w-card-name" style="color:${nameColor(it)}">${esc(W.gearName(it))}</div><div class="w-card-sub"><span class="w-qual">${esc(q.name)}</span> · tier ${b.tier} · score ${it.score}</div></div></div>
                 ${statLine(b, it)}
                 <div class="w-cmps">${compareHtml(s, it)}</div>
                 <div class="w-card-actions">
@@ -1148,6 +1183,7 @@
         if (id === 'trader') return openTrader();
         if (id === 'board') return openHelp();
         if (id === 'depot') return openDepot();
+        if (id === 'crucible') return WHW.relics.open(); // world-relics.js
         const st = D.STATIONS[id];
         stationTab[id] = stationTab[id] || STATION_TABS[id][0];
         const render = () => renderStation(id);
@@ -1332,26 +1368,56 @@
                 <div class="w-card-actions"><button class="btn btn-sm btn-primary" data-go="${id}" ${open ? '' : 'disabled'}>Travel</button>
                 ${camp ? `<button class="btn btn-sm btn-ghost" data-camp="${id}">To the camp</button>` : ''}</div></div>`;
         }).join('');
-        const V = window.WHWorldVault, reached = V && W.vaultReached(s), kingDone = V && s.raid && s.raid.week === W.weekKey(Date.now());
-        const vaultCard = V ? `<div class="w-card w-vault-card${reached ? '' : ' is-locked'}"><div class="w-zone-card"><img src="${D.ZONES.vault.bg}" alt=""><div>
-                <div class="w-card-name">${reached ? '🔱 ' : '🔒 '}${esc(D.ZONES.vault.name)}</div>
-                <div class="w-card-sub">A dungeon for a party of ${V.PARTY.min} to ${V.PARTY.max}: three rooms, then ${esc(D.BOSSES[V.BOSS].name)}. Built for Skyreach gear; nothing is lost in it.</div>
-                <div class="w-card-sub" style="color:${reached ? '#bff6ff' : '#ffb3bb'}">${!reached ? 'Opens once you have been to the Far Reaches.' : kingDone ? 'The King fell to you this week: rubies only until Monday.' : 'This week\'s King is still waiting for you: Vault Seals, Glory and a Golden Chest.'}</div></div></div>
-                <div class="w-card-actions"><button class="btn btn-sm btn-gold" data-vault ${reached ? '' : 'disabled'}>Go in with your party</button></div></div>` : '';
+        // the Sunken Vault used to be reached from here; it is the Saltspray Coast's hidden dungeon now
+        const vaultCard = `<div class="w-card w-vault-card"><div class="w-zone-card"><img src="${D.ZONES.vault.bg}" alt=""><div>
+                <div class="w-card-name">🔱 ${esc(D.ZONES.vault.name)}</div>
+                <div class="w-card-sub">The stone no longer reaches the Vault. Its way down is hidden on ${esc(D.ZONES.coast.name)}, and opens once ${esc(D.BOSSES[D.ZONES.coast.boss].name)} has fallen to you. Every zone hides a dungeon like it.</div></div></div></div>`;
         const body = modal('🗿 The Waystone', `<p class="w-note">The old stone hums. It carries you past the four gates into <b>the Far Reaches</b>, where everything is harder: monsters are built for that zone's own gear, its best ore needs the last zone's pickaxe, and each boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, wake a ward, and beat its guardian to break it.</p>
             <div style="display:flex;flex-direction:column;gap:8px">${cards}${vaultCard}</div>`, { wide: true });
         on(body, '[data-go]', (d) => { closeModal(); WHW.actions.travel(d.go, false); });
-        on(body, '[data-vault]', () => { closeModal(); WHW.actions.enterVault(); });
         on(body, '[data-camp]', (d) => { closeModal(); WHW.actions.travel(d.camp, true); });
+    }
+    // the map's note on a zone's hidden dungeon: nothing until its boss has fallen, then whether you found the way down
+    function dungeonLine(s, zone) {
+        const id = window.WHWorldDungeons && window.WHWorldDungeons.underZone(zone);
+        if (!id || !W.dungeonOpen(s, id)) return '';
+        const dd = D.DUNGEONS[id], wk = s.dungeons.weeks[id] === W.weekKey(Date.now());
+        return s.dungeons.found[id] ? ' · ' + dd.icon + ' ' + esc(dd.name) + (wk ? ' (boss beaten this week)' : '') : ' · 🕳️ a way down is hidden here';
+    }
+    // Inside a dungeon, the map's list is its rooms: cleared, being fought, next, still shut, and the boss at the far end
+    function dungeonRoomsHtml(id) {
+        const Dg = window.WHWorldDungeons, dd = D.DUNGEONS[id], run = WHW.waves && WHW.waves.run;
+        const now = WHW.online && WHW.online.db ? WHW.online.db.serverNow() : Date.now();
+        const live = run && !Dg.runNeedsReset(run, now) ? run : null;
+        const cleared = Dg.cleared(live), next = live ? Dg.nextRoom(live) : 1;
+        const card = (icon, name, sub, cls) => `<div class="w-card w-room${cls ? ' ' + cls : ''}"><div class="w-card-top"><div class="w-room-ico">${icon}</div><div><div class="w-card-name">${esc(name)}</div><div class="w-card-sub">${sub}</div></div></div></div>`;
+        const rows = dd.rooms.map((r, i) => {
+            const n = i + 1;
+            if (n <= cleared) return card('✅', r.name, 'Cleared', 'is-done');
+            if (live && live.st === 'fight' && live.wave === n) return card('⚔️', r.name, 'Being fought now', 'is-now');
+            if (live && live.st === 'ready' && live.wave === n) return card('⏳', r.name, 'Starting…', 'is-now');
+            if (n === next) return card('➡️', r.name, 'Next: start it from its ready circle', 'is-next');
+            return card('🔒', r.name, 'Opens once the room before is cleared', 'is-locked');
+        });
+        const boss = D.BOSSES[dd.boss];
+        rows.push(live && live.st === 'over' ? card('🏆', boss.name, 'Beaten', 'is-done') : Dg.kingOpen(live) ? card('👑', boss.name, 'Waiting in its chamber', 'is-next') : card('👑', boss.name, 'Behind the last room', 'is-locked'));
+        return `<div class="w-card-sub" style="margin-bottom:2px">${dd.icon} <b>${esc(dd.name)}</b>, under ${esc(D.ZONES[dd.zone].name)}</div>${rows.join('')}`;
     }
     function openMap() {
         const g = game(), s = g.state;
+        if (D.DUNGEONS[g.zoneId]) {
+            const body = modal('Map', `<div class="w-row" style="align-items:flex-start;gap:16px"><canvas id="bigMap" width="320" height="320" style="border-radius:12px;border:1px solid var(--border-strong);image-rendering:pixelated;max-width:100%"></canvas>
+                <div style="flex:1;min-width:240px;display:flex;flex-direction:column;gap:8px">${dungeonRoomsHtml(g.zoneId)}</div></div>
+                <p class="w-note">The way back up is at the bottom of the entry hall. Rooms you clear stay cleared until nobody has been down here for ${Math.round(window.WHWorldDungeons.RUN.idleResetMs / 60000)} minutes.</p>`, { wide: true });
+            WHW.drawMinimap && WHW.drawMinimap(body.querySelector('#bigMap'), true);
+            return;
+        }
         const zones = D.ZONE_ORDER.map(id => {
             const z = D.ZONES[id], open = !!s.unlocked.zones[id];
             const boss = s.bosses[z.boss];
             const seal = z.wards ? ' · wards ' + W.wardsBroken(s, id) + '/' + z.wards : '';
             return `<div class="w-card${open ? '' : ' is-locked'}"><div class="w-zone-card"><img src="${z.bg}" alt=""><div><div class="w-card-name">${open ? '' : '🔒 '}${esc(z.name)}${z.via ? ' <span class="muted">(Waystone)</span>' : ''}</div>
-                <div class="w-card-sub">Tier ${z.tier} · ${boss && boss.kills ? '✅ ' + esc(D.BOSSES[z.boss].name) + ' defeated' : esc(D.BOSSES[z.boss].name) + ' awaits'}${seal}${s.unlocked.camps[id] ? ' · camp found' : ''}</div>
+                <div class="w-card-sub">Tier ${z.tier} · ${boss && boss.kills ? '✅ ' + esc(D.BOSSES[z.boss].name) + ' defeated' : esc(D.BOSSES[z.boss].name) + ' awaits'}${seal}${s.unlocked.camps[id] ? ' · camp found' : ''}${dungeonLine(s, id)}</div>
                 <div class="w-card-stats">${Object.keys(z.nodes).map(n => `<span>${esc(D.NODES[n].name)}</span>`).join('')}</div></div></div></div>`;
         }).join('');
         const body = modal('Map', `<div class="w-row" style="align-items:flex-start;gap:16px"><canvas id="bigMap" width="320" height="320" style="border-radius:12px;border:1px solid var(--border-strong);image-rendering:pixelated;max-width:100%"></canvas>
@@ -1361,6 +1427,35 @@
     }
 
     // ---------------- help, settings, death ----------------
+    // How the hidden dungeons work, for the Help and for the first time down one (id: that dungeon, for its boss's numbers).
+    // The numbers come from the rules (core/world-dungeons.js, the bosses' data), so the words never drift from the game.
+    function dungeonHelpHtml(id) {
+        const Dg = window.WHWorldDungeons, R = Dg.REWARDS, pots = D.RULES.potionsPerMatch;
+        const boss = id && D.DUNGEONS[id] ? D.BOSSES[D.DUNGEONS[id].boss] : null;
+        const mins = (b) => Math.round(b.enrage.sec / 60);
+        const fromPhase = boss ? boss.phases.findIndex(p => p.includes('burden')) : 1;
+        const when = fromPhase === 0 ? 'from the start, the boss' : boss ? 'once it is down to two thirds of its health, the boss' : 'once it is down to two thirds of its health, a dungeon boss';
+        const frenzy = boss && boss.enrage ? `${esc(boss.name)} goes into a <b>frenzy</b> after ${mins(boss)} minutes of fighting and hits ${boss.enrage.mult} times as hard (a warning comes a minute before, and the boss bar counts it down)`
+            : 'Every dungeon boss goes into a <b>frenzy</b> after 6 minutes of fighting (7 in the Far Reaches\' dungeons) and hits far harder (a warning comes a minute before, and the boss bar counts it down)';
+        return `<ul>
+            <li><b>Getting in</b>: every zone hides a way down, a boulder that splits open once you have beaten that zone's boss (the camp's keeper says roughly where). Go down alone or with a party of up to ${Dg.PARTY.max}: a party online shares one copy, alone it is all yours (offline too).</li>
+            <li><b>${Dg.ROOM_COUNT} rooms, then the boss</b>: walk to a room's <b>ready circle</b> and press <kbd>E</kbd>. A few seconds later the room <b>seals</b> with everyone inside and its monsters pour in; clear them all to open the way on. After the last room, the boss waits in its chamber. Monsters and the boss grow with every player in the party.</li>
+            <li><b style="color:#7fe8ff">The Shared Burden</b>: ${when} marks one player with a <b>blue circle</b> that follows them and bursts when its count reaches 0. Its damage is <b>split between everyone standing inside</b>: four players take a quarter each. Alone you take all of it: most of your health, and in the deeper dungeons enough to knock you out even at full health. So with a party, <b>gather in the marked player's circle</b>; alone, <b>dash just as it bursts</b> (a dash makes you untouchable for a moment) and keep your health up in case you miss. Shields can't block it.</li>
+            <li><b>The frenzy</b>: ${frenzy}. Don't drag the fight out.</li>
+            <li><b>Going down</b>: if everyone in a room is knocked out, only that room is lost: start it again from its ready circle. Rooms you cleared stay cleared, even if the page reloads, until nobody has been in the dungeon for ${Math.round(Dg.RUN.idleResetMs / 60000)} minutes. Knocked out outside a room fight, you are back on your feet at the entrance in a moment. Nothing you carry is ever lost in a dungeon. You may drink <b>${pots} potions</b> in each room and ${pots} in the boss fight.</li>
+            <li><b>Rewards</b>: each room cleared pays rubies (${R.roomPaysPerDay} rooms a day, all dungeons together), and the first ${R.essRoomsPerDay} a day also open a chest of <b>essences</b> for the Crucible (rarer ones in later rooms and deeper dungeons; luck and a bigger party help). The room monsters drop nothing. Each boss's <b>first kill of the week</b> gives its <b>Heart</b>, rubies and sometimes a Crucible Catalyst; after that, a few rubies until Monday.</li>
+        </ul>`;
+    }
+    // The first time down any dungeon: how they work (the game waits while it is open; the first room only starts from its circle)
+    function openDungeonIntro(id) {
+        const s = game().state, dd = D.DUNGEONS[id];
+        if (!dd || s.tutorial.dungeons) return;
+        s.tutorial.dungeons = true;
+        const body = modal(dd.icon + ' ' + esc(dd.name) + ': how dungeons work', `<div class="w-help">${dungeonHelpHtml(id)}
+            <p class="w-note">This is in the Help (📜) too, any time.</p>
+            <div class="w-row" style="margin-top:12px"><button class="btn btn-primary" id="dgIntroOk">Got it</button></div></div>`, { wide: true });
+        body.querySelector('#dgIntroOk').addEventListener('click', () => closeModal());
+    }
     function openHelp() {
         modal('📜 How the Wilds work', `<div class="w-help">
             <h3>Moving and fighting</h3>
@@ -1392,10 +1487,16 @@
             <p>Other players in the same zone appear live (🌐 at the top shows how many). Press <kbd>Enter</kbd> to chat or send an emote. <b>Outside town, players can fight each other</b> with the same swings, shields and parries; you're protected for a few seconds after arriving. A player knocked out by another drops part of what they carry: the winner gets first pick, then anyone can grab it. Bosses are shared: everyone in the arena fights the same one, and everyone who did enough damage gets the reward. Other monsters are shared too: the same ones in the same places, a kill falls for everyone, damage adds up, and whoever fought one gets its loot. Each zone's camp (the dashed ring) is safe ground: monsters ignore you and nobody can hurt you there, until you hit something from inside it. <b>Parties</b>: walk up to another player and press <kbd>E</kbd> to invite them (up to 4). Party members can't hurt each other, see where each other are (top left), and have their own chat: start a line with <kbd>/p</kbd>, or press <kbd>P</kbd>. In the Arena you can open or join <b>tournaments</b> (a knockout of duels: the entry fees are the prize, and the host can lock everyone's gear to one tier), and see the <b>leaderboards</b> for the highest rating and the highest wave. You can play offline from the 🌐 menu.</p>
             <h3>The Arena</h3>
             <p>The round building north-east of the plaza. Nothing is ever lost there. Step into <b>the Pit</b> to fight anyone else in it, or press <kbd>E</kbd> next to another player in the lobby to challenge them to a <b>duel</b> (best of three, rated, optionally for a ruby stake: the winner takes the pot), or your party against theirs in a <b>2v2 or 3v3</b>. Varro, the Arena Master, runs the queue, the ranking and a shop paid in <b>Glory</b>, which every fight earns. Through the gate on the left, the <b>Proving Grounds</b>: co-op waves of monsters that get harder with every player who joins.</p>
+            <h3>Hidden dungeons</h3>
+            ${dungeonHelpHtml(D.ZONES[game().zoneId] && D.ZONES[game().zoneId].dungeon)}
+            <h3>Essences and the Crucible</h3>
+            <p><b>Essences</b> are rare materials: any rock or ore vein you mine can hold one (hitting the glowing crack and luck help), and dungeon chests and bosses give them too. They are always kept safe in town. At the <b>Crucible</b>, east of the Rune Altar, put in 3 to 8 essences, choose <b>Wilds gear</b> or <b>gear for the clicker</b>, and play its minigame: pour each essence to its mark, press as the needle crosses each rune, then seal it. You get one random <b>relic</b>, from Common to Primordial: rarer essences count most, then how many you used, your score, your luck, all of one aspect (Resonance) and a Catalyst. Its boosts follow the essences' aspects, and its colours are theirs. The Crucible can also <b>infuse</b> an essence into a socket of your gear and <b>upgrade</b> a relic up to +5. Gear for the clicker waits in the <b>Relic Satchel</b> until you send it home; wear it there under Items › Gear.</p>
+            <h3>Trading and the Auction Hall</h3>
+            <p>Walk up to another player, press <kbd>E</kbd> and choose <b>Offer a trade</b>: each of you puts in up to 4 items and some rubies, accepts, then confirms; it goes through only when you both confirmed the same deal, and anything you offered comes back if it is called off. <b>Ottoline the Auctioneer</b> on the plaza runs the Auction Hall: list up to 5 items with a starting price, an optional buy-now price and a length, or bid on others' (beat the top bid by 5%; your rubies come back if you are outbid). The winner claims the piece, the seller is paid less 5%. Both need online play; worn gear and the starter kit can't be traded.</p>
             <h3>The Far Reaches</h3>
             <p>Beat Frozen WH and the <b>Waystone</b> south of the plaza wakes: it carries you to four more zones, Saltspray Coast, Stormspire Heights, the Cinder Capital and the Skyreach Isles. They are built to take longer: monsters there are tuned for that zone's own gear (tiers 6 to 9), each zone's best ore needs the previous zone's pickaxe, bars are alloys that need monster parts, and every boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, press <kbd>E</kbd> at a ward to wake it, and beat its guardian; the key is only used up when you win. Watch your footing: tide flats slow you, lightning strikes on the heights (never at the camp), and on the isles the wind can blow you off an edge (a dash can carry you over a narrow gap).</p>
             <h3>Danger</h3>
-            <p>Watch for <b style="color:#ff6b7a">red shapes</b>: that's where an attack is about to land. Dash out of them. If you're knocked out, part of what you've carried since leaving town drops where you fell; go back and pick it up. Rubies and gear are never lost. Rival adventurers roam each zone and fight with the same weapons you do.</p>
+            <p>Watch for <b style="color:#ff6b7a">red shapes</b>: that's where an attack is about to land. Dash out of them (a dash also carries you safely <i>through</i> a ring sweeping across the ground). A boss that charges into a wall is stunned for a moment; a gold glow after the Gilded Golem's or the Gold Tyrant's slam is its core, which takes double damage. Swirling rings pull you in: walk out before they burst. A copy of a boss does nothing to the real one when beaten. A <b style="color:#7fe8ff">blue circle</b> with a count is a dungeon boss's Shared Burden (see Hidden dungeons above). If you're knocked out, part of what you've carried since leaving town drops where you fell; go back and pick it up. Rubies and gear are never lost. Rival adventurers roam each zone and fight with the same weapons you do.</p>
         </div>`, { wide: true });
     }
     function openSettings() {
@@ -1451,6 +1552,7 @@
     WHW.toast = toast;
     WHW.hint = hint;
     WHW.banner = banner;
-    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openWaystone, openMap, openHelp, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged,
-        openDepot, openRenown, openCrewShop, openCrewTrade, openJukebox, openGuilds, openVaultShop, gameItemsText, ICONS, esc };
+    WHW.ui = { showAchievements, modal, closeModal, isOpen, refresh, handleKey, renderHud, renderHotbar, renderPower, setPrompt, setZone, openBag, openSkills, renderAbilities, openNpc, openStatue, openAltar, openCarving, goalText, openStation, openTrader, openPortal, openWaystone, openMap, openHelp, openDungeonIntro, dungeonHelpHtml, openSettings, openDeath, showResult, setOnline, openOnline, openChat, chatLogChanged,
+        openDepot, openRenown, openCrewShop, openCrewTrade, openJukebox, openGuilds, openVaultShop, gameItemsText, ICONS, esc,
+        tabs, wireTabs, on, needHtml, iconFor, statLine, nameColor, matTile };
 })();

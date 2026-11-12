@@ -149,14 +149,48 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     assert.deepEqual(rows(read('wilds-guide.html'), 'ranks-table').map(r => [Number(r[2].replace(/,/g, '')), r[3] === 'Yes']),
         Ar.RANKS.map(r => [Ar.SEASON.rewards[r.id].glory, !!Ar.SEASON.rewards[r.id].title]));
     assert.match(read('wilds-guide.html'), new RegExp('at least <b>' + Ar.SEASON.minGames + ' rated matches</b>'));
-    // the Sunken Vault's numbers
-    const V = require('../core/world-vault'), guide = read('wilds-guide.html');
-    assert.match(guide, new RegExp('party of ' + V.PARTY.min + ' to ' + V.PARTY.max));
-    assert.match(guide, new RegExp('up to <b>' + V.REWARDS.roomPaysPerDay + ' rooms a day</b>'));
-    assert.match(guide, new RegExp('<b>' + V.REWARDS.king.glory + ' Glory</b>, <b>' + V.REWARDS.king.seals + ' Vault Seals</b>'));
-    assert.match(guide, new RegExp('more than ' + Math.round(D.BOSSES[V.BOSS].enrage.sec / 60) + ' minutes'));
+    // essences' aspects, the relic tiers, and trading's limits
+    const Gr = require('../core/gear'), Rl = require('../core/world-relics'), Mk = require('../core/world-market');
+    const g2 = read('wilds-guide.html');
+    assert.deepEqual(rows(g2, 'aspects-table'), Object.values(D.ASPECTS).map(a => [a.name, a.wilds, a.game]));
+    assert.deepEqual(rows(g2, 'relic-table'), Gr.TIERS.map((t, i) => [t.name, String(t.lines), Gr.MAIN[i] + '%', '×' + t.wilds.toFixed(2)]));
+    assert.match(g2, new RegExp('<b>' + Rl.FORGE.min + ' to ' + Rl.FORGE.max + ' essences</b>'));
+    assert.match(g2, new RegExp('at most <b>' + Rl.FORGE.caps[5] * 100 + '%</b> and <b>' + Rl.FORGE.caps[6] * 100 + '%</b>'));
+    assert.match(g2, new RegExp('up to <b>' + Mk.TRADE.maxItems + ' items</b> and up to <b>' + Mk.TRADE.maxRubies.toLocaleString('en-US') + ' rubies</b>'));
+    assert.match(g2, new RegExp('Up to <b>' + Mk.TRADE.perDay + ' trades a day</b>'));
+    assert.match(g2, new RegExp('List up to <b>' + Mk.AUCTION.maxListings + ' items</b>'));
+    assert.match(g2, new RegExp('beat the top bid by <b>' + Math.round((Mk.AUCTION.step - 1) * 100) + '%</b>'));
+    assert.match(g2, new RegExp("less the Hall's <b>" + Math.round(Mk.AUCTION.fee * 100) + '%</b>'));
+    assert.match(g2, new RegExp('within ' + Mk.AUCTION.claimMs / 86400000 + ' days'));
+    // the hidden dungeons' numbers, and the table of them
+    const Dg = require('../core/world-dungeons'), guide = read('wilds-guide.html');
+    assert.match(guide, new RegExp('alone or with a party of up to ' + Dg.PARTY.max));
+    assert.match(guide, new RegExp('up to <b>' + Dg.REWARDS.roomPaysPerDay + ' rooms a day</b>'));
+    assert.match(guide, new RegExp('first <b>' + Dg.REWARDS.essRoomsPerDay + ' rooms a day</b>'));
+    assert.match(guide, new RegExp('<b>' + Dg.REWARDS.vaultKing.glory + ' Glory</b>, <b>' + Dg.REWARDS.vaultKing.seals + ' Vault Seals</b>'));
+    const enrage = [...new Set(Dg.IDS.map(id => Math.round(D.BOSSES[D.DUNGEONS[id].boss].enrage.sec / 60)))].sort();
+    assert.match(guide, new RegExp('more than <b>' + enrage[0] + ' minutes</b> \\(' + enrage[1] + ' in'));
+    const mult = [...new Set(Dg.IDS.map(id => D.BOSSES[D.DUNGEONS[id].boss].enrage.mult))];
+    assert.deepEqual(mult, [2.5]);
+    assert.ok(guide.includes('hits ' + mult[0] + ' times as hard'), 'the frenzy\'s strength');
+    // the Shared Burden: from the second phase (two thirds of its health), the Drowned King from the start
+    for (const id of Dg.IDS) {
+        const b = D.BOSSES[D.DUNGEONS[id].boss], from = b.phases.findIndex(p => p.includes('burden'));
+        assert.equal(from, id === 'vault' ? 0 : 1, b.name + ': the guide says when the Burden starts');
+    }
+    assert.ok(guide.includes('down to two thirds of its health (the Drowned King from the start)'));
+    // every boss attack in the game is in the Boss attacks section (a new one has to be explained there)
+    const atk = text(guide.slice(guide.indexOf('<h2 id="boss-attacks">'), guide.indexOf('<h2 id="arena">')));
+    const SAYS = { sweep: 'sweeping blow', ring: 'ring of shots', charge: 'charge', summon: 'Summoned', roots: 'Roots', boulders: 'rocks', slam: 'slam',
+        stalactites: 'icicles', breath: 'Fire breath', meteors: 'meteors', clone: 'copy', spikes: 'Ice spikes', tide: 'tide', whirlpool: 'whirlpool',
+        lightning: 'lightning', gust: 'gust', orbs: 'orbs', starfall: 'stars', burden: 'The Shared Burden' };
+    for (const m of new Set(Object.values(D.BOSSES).flatMap(b => b.phases.flat()))) {
+        assert.ok(SAYS[m], 'a boss attack the guide does not explain yet: ' + m);
+        assert.ok(atk.includes(SAYS[m]), m + ': "' + SAYS[m] + '" in Boss attacks');
+    }
     assert.match(guide, new RegExp('<b>' + D.RULES.potionsPerMatch + ' potions</b> per room'));
-    for (const r of V.ROOMS) assert.ok(guide.includes(r.name.replace(/^The /, 'the ')), r.name);
+    for (const r of D.DUNGEONS.vault.rooms) assert.ok(guide.includes(r.name.replace(/^The /, 'the ')), r.name);
+    assert.deepEqual(rows(guide, 'dungeons-table'), Dg.IDS.map(id => { const dd = D.DUNGEONS[id]; return [D.ZONES[dd.zone].name, dd.name, D.BOSSES[dd.boss].name, D.MATERIALS_BY_ID[dd.essence].name + ', ' + D.MATERIALS_BY_ID[dd.heart].name]; }));
     for (const it of D.VAULT_SHOP.filter(x => x.title)) assert.ok(guide.includes(it.title.replace("'", "'")), it.title);
     const stakes = Ar.RULES.stakes.filter(Boolean);
     assert.ok(g.includes(`${stakes[0].toLocaleString('en-US')} to ${stakes.at(-1).toLocaleString('en-US')} rubies each`), 'stakes');

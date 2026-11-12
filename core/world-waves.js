@@ -18,7 +18,9 @@
     const SCALE = { count: 0.5, hp: 0.3, dmg: 0.1 };
     // a wave: base + (its place in its five) monsters, more every five; every 5th wave adds elites, every 10th a champion
     const WAVES = { perTier: 5, base: 4, eliteEvery: 5, championEvery: 10, championHp: 3, hpRamp: 0.08, dmgRamp: 0.04, batch: 6, batchSec: 3, maxAlive: 24 };
-    const RATE = { hostHz: 4.5, flushSec: 0.25, hostQuietMs: 1500, readySec: 5, breakSec: 8, idleResetSec: 60, overResetSec: 10, maxPlayers: 8, maxSnap: 1000 };
+    // hostHz / flushSec while a wave is fought; idleHostHz / idleFlushSec between waves (the snapshot then only says the host
+    // is still there). touchSec: how often the host refreshes the run's time during a long fight, so it never looks idle.
+    const RATE = { hostHz: 10, idleHostHz: 2, flushSec: 0.1, idleFlushSec: 0.25, hostQuietMs: 1500, touchSec: 15, readySec: 5, breakSec: 8, idleResetSec: 60, overResetSec: 10, maxPlayers: 8, maxSnap: 1000 };
     const MILESTONES = [10, 20, 30, 40];
     const STATES = ['ready', 'fight', 'break', 'over'];
     const MID_RE = /^w\d{1,3}_\d{1,3}$/;
@@ -104,6 +106,28 @@
     }
     // the player who runs the waves: the lowest id in the room (every page works out the same one)
     function hostOf(uids) { return uids.filter(Boolean).sort()[0] || null; }
+    // Who runs the waves, as seen from page me: down the list from the lowest id, the first that is me, or that has sent a
+    // snapshot within hostQuietMs (quietMs: { uid: ms since its last snapshot }; none yet counts as quiet). A page that went
+    // quiet (a menu open, a hidden tab) is passed over, and so is the next if it is quiet too, so the wave always has someone
+    // running it; once a lower page is back, it runs it again.
+    function hostAmong(uids, me, quietMs) {
+        const list = uids.filter(Boolean).sort(), q = quietMs || {};
+        for (const u of list) if (u === me || (q[u] !== undefined && q[u] <= RATE.hostQuietMs)) return u;
+        return list[0] || null;
+    }
+    // how often the host shares its snapshot and every page sends its damage, for a run in state st
+    const hostRate = (st) => (st === 'fight' ? RATE.hostHz : RATE.idleHostHz);
+    const flushRate = (st) => (st === 'fight' ? RATE.flushSec : RATE.idleFlushSec);
+    // Which of a page's wave monsters (their mids) no longer belong: all of them when no wave is being fought (it was cleared,
+    // lost or the run is over), else those of another wave or room (ids are 'w<wave>_<i>' for waves and dungeon rooms alike).
+    // A page that does not run the wave only learns of the last kills through this: the host clears the wave and changes the
+    // run's state in the same step, before any snapshot without those monsters.
+    function staleMids(run, mids) {
+        if (!run || run.st !== 'fight') return mids.slice();
+        const pre = 'w' + run.wave + '_';
+        return mids.filter(mid => String(mid).indexOf(pre) !== 0);
+    }
 
-    return { SCALE, WAVES, RATE, MILESTONES, STATES, tierFor, zoneFor, composition, startWave, rewardFor, sanitizeRun, runNeedsReset, packSnap, unpackSnap, hostOf };
+    return { SCALE, WAVES, RATE, MILESTONES, STATES, tierFor, zoneFor, composition, startWave, rewardFor, sanitizeRun, runNeedsReset, packSnap, unpackSnap, hostOf,
+        hostAmong, hostRate, flushRate, staleMids };
 }));

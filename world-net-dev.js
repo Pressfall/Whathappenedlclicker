@@ -56,6 +56,10 @@
             set: (path, value) => op({ op: 'set', path, value }),
             update: (path, value) => op({ op: 'update', path, value }),
             remove: (path) => op({ op: 'remove', path }),
+            // a write that says whether it was taken (value null removes); the relay checks no rules, so only a failed
+            // request is a refusal here
+            commit: (path, value) => op(value === null ? { op: 'remove', path } : value && typeof value === 'object' ? { op: 'update', path, value } : { op: 'set', path, value }).then(r => !!(r && r.ok)),
+            once: (path) => Promise.resolve(T.clone(T.get(tree, path))),
             push: (path, value) => { const key = pushKey(); return op({ op: 'set', path: path + '/' + key, value }).then(() => key); },
             take: (path) => op({ op: 'take', path }).then(r => (r && r.ok ? r.value : null)),
             onChild(path, cbs) { const s = { kind: 'child', path, cbs }; subs.add(s); fire(s, null); return () => subs.delete(s); },

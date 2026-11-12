@@ -1,0 +1,39 @@
+/* Gear for the game: the Items menu's Gear tab (gear-panel.js). Colours come from theme.css; each piece's own colours are in
+   its picture (core/gear.js pieceSvg) and --gc is its tier's colour. */
+.gear-intro { margin: 0 0 12px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); color: var(--text-dim); font-size: 13px; line-height: 1.5; }
+.gear-intro b { color: var(--text); }
+.gear-slots { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-bottom: 10px; }
+.gear-slot { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 4px 6px; border-radius: var(--radius); border: 1px dashed var(--gc);
+    background: var(--surface-2); color: var(--text-dim); font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+.gear-slot.is-full { border-style: solid; background: color-mix(in srgb, var(--gc) 12%, var(--surface-2)); color: var(--text); }
+.gear-slot .gear-svg { width: 48px; height: 48px; }
+.gear-slot-ghost { opacity: 0.45; }
+.gear-slot-tier { font-style: normal; font-size: 10px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--gc); }
+.gear-slot:not(.is-full) .gear-slot-tier { color: var(--text-dim); font-weight: 600; }
+.gear-worn { margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; vertical-align: 2px;
+    color: var(--gc); border: 1px solid var(--gc); background: color-mix(in srgb, var(--gc) 14%, transparent); }
+.gear-total { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.gear-total span { padding: 4px 10px; border-radius: 999px; background: var(--surface-3); color: var(--text); font-size: 12px; font-weight: 700; }
+.gear-total .muted { background: none; color: var(--text-dim); font-weight: 600; }
+.gear-total .gear-attune { background: color-mix(in srgb, #ffc83d 22%, var(--surface-3)); color: #ffe7a3; }
+.gear-tools { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; color: var(--text-dim); font-size: 13px; }
+.gear-tools select { margin-left: 6px; }
+.gear-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.gear-card { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); border: 1px solid var(--border); }
+.gear-card.is-on { border-color: var(--gc); box-shadow: 0 0 0 1px var(--gc) inset; }
+.gear-card-top { display: flex; gap: 10px; align-items: center; }
+.gear-pic { flex: 0 0 52px; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--gc) 12%, rgba(0, 0, 0, 0.3)); border: 2px solid var(--gc); }
+.gear-pic .gear-svg { width: 44px; height: 44px; }
+.gear-name { font-weight: 800; font-size: 14px; }
+.gear-sub { color: var(--text-dim); font-size: 12px; }
+.gear-desc { margin: 0; font-style: italic; color: #e8dcc0; font-size: 12px; }
+.gear-lines { margin: 0; padding: 0 0 0 18px; font-size: 13px; color: var(--text); }
+.gear-lines .is-main { font-weight: 800; }
+.gear-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.gear-empty { color: var(--text-dim); text-align: center; padding: 24px 8px; }
+@media (max-width: 520px) {
+    .gear-slots { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
+    .gear-slot .gear-svg { width: 36px; height: 36px; }
+    .gear-slot small { font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) { .gear-svg animate, .gear-svg animateTransform { display: none; } }

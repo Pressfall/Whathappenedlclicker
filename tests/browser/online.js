@@ -365,6 +365,12 @@ async function main() {
         }
         check('waves: clearing it pays both players', await a.waitFor('WHW.game.state.arena.waveBest >= 1', 8000) && await b.waitFor('WHW.game.state.arena.waveBest >= 1', 8000),
             { a: await a.evalJs('WHW.waves.run && WHW.waves.run.st'), b: await b.evalJs('WHW.waves.run && WHW.waves.run.st') });
+        // the old glitch: the page that doesn't run the wave kept the last monsters, frozen at no health and unkillable
+        check('waves: no monster is left standing on the page that does not run them', await other.waitFor('WHW.game.actors.filter(x => x.wave && !x.dead).length === 0', 4000),
+            await other.evalJs('WHW.game.actors.filter(x => x.wave && !x.dead).map(x => x.wave.mid + ":" + Math.round(x.hp)).join(",")'));
+        check('waves: and none carry over into the next wave', await other.waitFor('!!WHW.waves.run && WHW.waves.run.st === "fight" && WHW.waves.run.wave === 2', 15000) &&
+            await other.evalJs('WHW.game.actors.filter(x => x.wave && !x.dead).every(x => x.wave.mid.startsWith("w2_"))'));
+        check('waves: during the fight both pages send at the co-op rate', await a.evalJs('WHW.online.sendMode()') === 'coop' && await b.evalJs('WHW.online.sendMode()') === 'coop');
 
         // ---- the leaderboards ----
         const board = (p, kind) => p.evalJs(`new Promise(r => WHW.online.readBoard("${kind}", t => r(Object.keys(t || {}).sort().join(","))))`);
@@ -398,10 +404,13 @@ async function main() {
         await b.evalJs('WHW.engine.time += 5; WHW.party.say("in town now")');
         check('party: and its chat too', await a.waitFor('WHW.online.log.some(l => l.ch === "party" && l.m === "in town now")', 5000));
 
-        // ---- the Sunken Vault: the party's own copy, a room fought together, the King's health for two ----
-        for (const p of [a, b]) await p.evalJs('(() => { WHW.game.state.unlocked.zones.coast = true; WHW.actions.enterVault(); return true; })()');
+        // ---- the Sunken Vault (the coast's hidden dungeon): the party's own copy, a room fought together, the King's health for two ----
+        for (const p of [a, b]) await p.evalJs('(() => { const s = WHW.game.state; s.unlocked.zones.coast = true; s.bosses.tidal = { kills: 1, lastKillDay: "", lastKillWeek: "", mythicWeek: "" }; WHWorldDebug.travel("coast"); WHW.actions.enterDungeon("vault"); return true; })()');
         check('vault: both go in, into the party\'s own copy (vault_ and the party id)', await a.waitFor('WHW.game.zoneId === "vault" && WHW.online.zone === "vault" && WHW.online.key === "vault_" + WHW.party.id', 8000) &&
             await b.waitFor('WHW.game.zoneId === "vault" && WHW.online.key === "vault_" + WHW.party.id', 8000), await a.evalJs('[WHW.game.zoneId, WHW.online.key, WHW.party.id]'));
+        // the first time down a dungeon, how dungeons work opens (the Shared Burden among it); once, then not again
+        check('vault: the first time down, how dungeons work is explained (the Shared Burden too)', await a.evalJs('WHW.ui.isOpen() && /Shared Burden/.test(document.getElementById("wModalBody").textContent) && WHW.game.state.tutorial.dungeons === true'));
+        for (const p of [a, b]) await p.evalJs('WHW.ui.closeModal(); true');
         check('vault: they see each other there', await a.waitFor('WHW.online.here().length === 1', 8000) && await b.waitFor('WHW.online.here().length === 1', 8000));
         check('vault: only the first door is open', await a.evalJs('(() => { const m = WHW.game.map; return !!m.rooms && m.rooms[0].door.open && !m.rooms[1].door.open && !m.rooms[2].door.open && !m.kingDoor.open; })()'));
         await a.evalJs('(() => { const r = WHW.waves.vaultReady(); WHWorldDebug.teleport(r.x, r.y); WHW.waves.start(); return true; })()');
@@ -413,8 +422,9 @@ async function main() {
             for (const p of [a, b]) await p.evalJs('WHW.game.actors.filter(x => x.wave && !x.dead).forEach(x => WHW.actors.damage(x, 1e9, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }))');
             await sleep(700);
         }
-        check('vault: clearing it pays both and opens the next door on both pages', await a.waitFor('WHW.waves.run.st === "break" && WHW.game.map.rooms[1].door.open && WHW.game.state.raid.roomsToday.n === 1', 10000) &&
-            await b.waitFor('WHW.game.map.rooms[1].door.open && WHW.game.state.raid.roomsToday.n === 1', 10000), await a.evalJs('[WHW.waves.run.st, WHW.waves.run.wave, WHW.game.state.raid.roomsToday.n]'));
+        check('vault: clearing it pays both (rubies and a chest of essences) and opens the next door on both pages', await a.waitFor('WHW.waves.run.st === "break" && WHW.game.map.rooms[1].door.open && WHW.game.state.dungeons.rooms === 1 && WHW.game.state.dungeons.ess === 1', 10000) &&
+            await b.waitFor('WHW.game.map.rooms[1].door.open && WHW.game.state.dungeons.rooms === 1', 10000), await a.evalJs('[WHW.waves.run.st, WHW.waves.run.wave, WHW.game.state.dungeons.rooms]'));
+        check('vault: no room monster is left standing on either page', await a.waitFor('WHW.game.actors.filter(x => x.wave && !x.dead).length === 0', 4000) && await b.waitFor('WHW.game.actors.filter(x => x.wave && !x.dead).length === 0', 4000));
         // the King: as if the other two rooms were cleared too
         await a.evalJs('WHW.online.db.update(WHW.online.Z("w"), { st: "break", wave: 3, t: WHW.online.db.serverNow() })');
         check("vault: after the third room the King's chamber opens and he is there", await a.waitFor('WHW.game.map.kingDoor.open && WHW.game.actors.some(x => x.kind === "boss" && x.type === "drowned_king" && !x.dead)', 8000) &&
@@ -422,17 +432,68 @@ async function main() {
         await a.evalJs('(() => { const k = WHW.game.map.boss; WHWorldDebug.teleport(k.x - 40, k.y + k.r - 70); return true; })()');
         await b.evalJs('(() => { const k = WHW.game.map.boss; WHWorldDebug.teleport(k.x + 40, k.y + k.r - 70); return true; })()');
         await sleep(1500); await a.shot('vault-king');
-        check('vault: his health is for a party of two', await a.waitFor('(() => { const s = WHW.online.boss; return !!s && s.max === WHWorldVault.bossHp(WHWorldData.BOSSES.drowned_king.hp, 2); })()', 15000), await a.evalJs('WHW.online.boss && WHW.online.boss.max'));
+        check('vault: his health is for a party of two', await a.waitFor('(() => { const s = WHW.online.boss; return !!s && s.max === WHWorldDungeons.bossHp(WHWorldData.BOSSES.drowned_king.hp, 2); })()', 15000), await a.evalJs('WHW.online.boss && WHW.online.boss.max'));
         // both hit him, in rounds (each needs a share of the damage to be paid)
         for (let i = 0; i < 4 && await a.evalJs('WHW.game.actors.some(x => x.kind === "boss" && !x.dead)'); i++) {
             for (const p of [a, b]) await p.evalJs('(() => { const k = WHW.game.actors.find(x => x.kind === "boss" && !x.dead); if (k) WHW.actors.damage(k, 1.2e5, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return !!k; })()');
             await sleep(900);
         }
-        check("vault: the King falls and pays both their week's reward (3 Vault Seals)", await a.waitFor('WHWorld.count(WHW.game.state, "vault_seal") === 3 && WHW.game.state.raid.kills === 1', 15000) &&
+        check("vault: the King falls and pays both their week's reward (3 Vault Seals and his Heart)", await a.waitFor('WHWorld.count(WHW.game.state, "vault_seal") === 3 && WHW.game.state.raid.kills === 1 && WHWorld.count(WHW.game.state, "heart_vault") === 1', 15000) &&
             await b.waitFor('WHWorld.count(WHW.game.state, "vault_seal") === 3', 15000), [await a.evalJs('WHWorld.count(WHW.game.state, "vault_seal")'), await b.evalJs('WHWorld.count(WHW.game.state, "vault_seal")')]);
         check('vault: the run is done', await a.waitFor('!!WHW.waves.run && WHW.waves.run.st === "over"', 8000));
-        for (const p of [a, b]) await p.evalJs('WHW.actions.leaveVault()');
-        check('vault: back out in town', await a.waitFor('WHW.game.zoneId === "town" && WHW.online.key === "town"', 6000) && await b.waitFor('WHW.game.zoneId === "town"', 6000));
+        for (const p of [a, b]) await p.evalJs('WHW.actions.leaveDungeon()');
+        check('vault: back up on the coast, by the way down', await a.waitFor('WHW.game.zoneId === "coast" && WHW.online.key === "coast" && Math.hypot(WHW.game.player.x - WHW.game.map.dungeon.x, WHW.game.player.y - WHW.game.map.dungeon.y) < 80', 6000) && await b.waitFor('WHW.game.zoneId === "coast"', 6000));
+
+        // ---- a trade, face to face: a relic for rubies ----
+        for (const p of [a, b]) await p.evalJs('WHWorldDebug.travel("town")');
+        await sleep(600);
+        const townSpot = (dx) => `(() => { const e = WHW.game.map.entry; WHWorldDebug.teleport(e.x + ${dx}, e.y); return true; })()`;
+        await a.evalJs(townSpot(-25)); await b.evalJs(townSpot(25));
+        await a.waitFor('WHW.online.here().length === 1 && !!WHW.online.here()[0].info', 8000);
+        await a.evalJs(`(() => { const s = WHW.game.state; window.__relic = WHWorld.addGear(s, 'sword_3', 88, [], Date.now(), { r: { t: 4, l: [['might', 1], ['keen', 1], ['ember', 1]], m: ['titan_ruby'], c: ['#ff2d55', '#ffe14d'], q: '', by: 'Ann', n: 0, lv: 0 } }); return window.__relic.uid; })()`);
+        await b.evalJs('WHW.game.state.rubies = 5000');
+        const rubiesA0 = await a.evalJs('WHW.game.state.rubies');
+        await a.evalJs('WHW.market.inviteTrade(WHW.online.here()[0])');
+        check('trade: the invitation arrives', await b.waitFor('!!WHW.market.invite', 8000));
+        await b.shot('trade-invite');
+        await b.evalJs('document.getElementById("tYes").click()');
+        check('trade: both are in it', await a.waitFor('!!WHW.game.state.market.trade && !!WHW.market.trade', 8000) && await b.waitFor('!!WHW.game.state.market.trade && !!WHW.market.trade', 8000));
+        await a.evalJs('WHW.market.setOffer([{ kind: "w", uid: window.__relic.uid }], 0)');
+        await b.evalJs('WHW.market.setOffer([], 1200)');
+        check('trade: what is offered is set aside', await a.waitFor('!WHW.game.state.gear.some(g => g.uid === window.__relic.uid)', 3000) && await b.evalJs('WHW.game.state.rubies') === 3800);
+        check('trade: each sees the other\'s offer', await a.waitFor('WHWorldMarket.tradeView(WHW.market.trade, WHW.online.uid, WHW.online.db.serverNow()).theirs.r === 1200', 8000) &&
+            await b.waitFor('WHWorldMarket.tradeView(WHW.market.trade, WHW.online.uid, WHW.online.db.serverNow()).theirs.o.length === 1', 8000));
+        await sleep(400); await a.shot('trade'); await b.shot('trade');
+        for (const p of [a, b]) await p.evalJs('WHW.market.accept(false)');
+        await sleep(600); await a.shot('trade-accepted');
+        await a.waitFor('(() => { const v = WHWorldMarket.tradeView(WHW.market.trade, WHW.online.uid, WHW.online.db.serverNow()); return v.accepted.me && v.accepted.them; })()', 8000);
+        await b.waitFor('(() => { const v = WHWorldMarket.tradeView(WHW.market.trade, WHW.online.uid, WHW.online.db.serverNow()); return v.accepted.me && v.accepted.them; })()', 8000);
+        for (const p of [a, b]) await p.evalJs('WHW.market.accept(true)');
+        check('trade: once both confirm, each gets exactly the other\'s offer', await b.waitFor('WHW.game.state.gear.some(g => g.r && g.r.by === "Ann" && g.r.n === 1 && g.base === "sword_3")', 10000) &&
+            await a.waitFor(`WHW.game.state.rubies === ${rubiesA0} + 1200`, 10000), { a: await a.evalJs('WHW.game.state.rubies'), aWas: rubiesA0, b: await b.evalJs('WHW.game.state.gear.filter(g => g.r).map(g => g.r.by)') });
+        check('trade: it is over on both pages, and counted', await a.waitFor('!WHW.game.state.market.trade && WHW.game.state.market.traded === 1', 6000) && await b.waitFor('!WHW.game.state.market.trade && WHW.game.state.market.traded === 1', 6000));
+
+        // ---- the Auction Hall: list, bid, the winner claims, the seller is paid ----
+        await b.evalJs('(() => { const it = WHW.game.state.gear.find(g => g.r && g.r.by === "Ann"); window.__lid = null; WHW.market.list({ kind: "w", uid: it.uid }, { min: 300, buy: 0, hours: 1 }); return true; })()');
+        check('auction: the item is listed and set aside', await b.waitFor('Object.keys(WHW.game.state.market.listed).length === 1 && !WHW.game.state.gear.some(g => g.r && g.r.by === "Ann")', 8000));
+        const lid = await b.evalJs('Object.keys(WHW.game.state.market.listed)[0]');
+        await a.waitFor(`new Promise(r => WHW.online.db.once(WHWorldMarket.ahPath("${lid}")).then(l => r(!!l)))`, 8000);
+        const aRubies = await a.evalJs('WHW.game.state.rubies');
+        if (process.env.ONLINE_SHOTS) { await a.evalJs('WHW.market.openAuction(); true'); await sleep(1500); await a.shot('auction-browse'); await a.evalJs('WHW.ui.closeModal(); true'); }
+        await a.evalJs(`WHW.online.db.once(WHWorldMarket.ahPath("${lid}")).then(l => WHW.market.bid(Object.assign({ id: "${lid}" }, l), 300, false))`);
+        if (process.env.ONLINE_SHOTS) { await sleep(800); await b.evalJs('WHW.market.openAuction(); true'); await sleep(1500); await b.evalJs('(() => { const t = document.querySelector("#wModalBody [data-tab=mine]"); if (t) t.click(); return true; })()'); await sleep(600); await b.shot('auction-mine'); await b.evalJs('WHW.ui.closeModal(); true'); }
+        check('auction: the bid sets the rubies aside', await a.waitFor(`WHW.game.state.market.bids["${lid}"] === 300 && WHW.game.state.rubies === ${aRubies} - 300`, 8000));
+        // (the seller's page may settle on its own loop before the test asks it to: what it had before the sale counts)
+        const bRubies = await b.evalJs('WHW.game.state.rubies');
+        // (a test-only shortcut: the listing ends now; the local relay checks no rules)
+        await b.evalJs(`WHW.online.db.commit(WHWorldMarket.ahPath("${lid}"), { end: WHW.online.db.serverNow() + 1500 })`);
+        await sleep(2500);
+        await a.evalJs('WHW.market.tick()');
+        check('auction: the winner claims it', await a.waitFor('WHW.game.state.gear.some(g => g.r && g.r.by === "Ann" && g.r.n === 2)', 10000), await a.evalJs('JSON.stringify(WHW.game.state.market)'));
+        await sleep(600);
+        await b.evalJs('WHW.market.tick()');
+        check('auction: the seller is paid, less the Hall\'s fee', await b.waitFor(`WHW.game.state.rubies === ${bRubies} + WHWorldMarket.sellerTakes(300) && Object.keys(WHW.game.state.market.listed).length === 0`, 10000), { was: bRubies, now: await b.evalJs('WHW.game.state.rubies') });
+        check('auction: the listing is cleared away', await b.waitFor(`new Promise(r => WHW.online.db.once(WHWorldMarket.ahPath("${lid}")).then(l => r(!l)))`, 8000));
 
         // ---- a tournament: entry fees, a locked-tier kit, the winner takes the pot ----
         for (const p of [a, b]) await p.evalJs('(() => { WHWorldDebug.travel("arena"); const g = WHW.game; g.state.rubies = 1000; return true; })()');

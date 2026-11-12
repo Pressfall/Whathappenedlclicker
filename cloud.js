@@ -312,19 +312,25 @@ export function startGameSync(opts = {}) {
         setState('conflict');
         return chooseProgress(localSummary, cloud);
     };
-    const handle = async res => {
+    let quietTold = false;
+    const handle = async (res, quiet) => {
         if (res.state === 'loaded') { reload(res.backedUp); return; }
-        if (res.state === 'conflict') { conflictCloud = res.cloud; setState('conflict'); return; }
+        if (res.state === 'conflict') {
+            conflictCloud = res.cloud; setState('conflict');
+            if (quiet && !quietTold) { quietTold = true; toast('☁️ Your account was saved from another device or tab. Your progress keeps saving here; choose which to keep with the ☁️ button when it suits you.'); }
+            return;
+        }
         conflictCloud = null;
         lastSyncedAt = Date.now();
         setState('synced');
     };
-    // full check: on sign-in, on opening the game, and after a conflict
-    const reconcileNow = async () => {
+    // full check: on sign-in, on opening the game, and from the button after a conflict. quiet: a save during play found
+    // the account changed: never replace progress (that reloads the page) or ask in the middle of play; show the conflict
+    const reconcileNow = async (quiet) => {
         if (!user || busy) return;
         busy = true;
         setState('checking');
-        try { flushGame(); await handle(await reconcile(user, ask)); lastUpload = Date.now(); }
+        try { flushGame(); await handle(await reconcile(user, quiet ? null : ask, { quiet: !!quiet }), quiet); lastUpload = Date.now(); }
         catch (e) { console.warn('cloud sync failed', e); setState('error', errorMessage(e)); }
         finally { busy = false; }
     };
@@ -339,7 +345,7 @@ export function startGameSync(opts = {}) {
         setState('saving');
         try { await uploadLocal(user); lastUpload = lastSyncedAt = Date.now(); setState('synced'); }
         catch (e) {
-            if (e instanceof SyncConflict) { busy = false; await reconcileNow(); return; }
+            if (e instanceof SyncConflict) { busy = false; await reconcileNow(true); return; }
             console.warn('cloud save failed', e);
             setState('error', errorMessage(e));
         } finally { busy = false; }

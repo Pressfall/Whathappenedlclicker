@@ -37,9 +37,21 @@
             return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
         };
     }
-    // Smooth value noise in [0, 1): two octaves over a random lattice
+    // Smooth value noise in [0, 1): two octaves over a random lattice.
+    // Each lattice point's value is worked out once and remembered: hashing its "seed:x,y" string on every lookup was most of
+    // the time a map took to build (a big zone took half a second, a freeze on walking in). Same values, so the same maps.
     function valueNoise(seed, scale) {
-        const rnd = (x, y) => { let h = hashStr(seed + ':' + x + ',' + y); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995) >>> 0; return (h >>> 8) / 16777216; };
+        const seen = new Map();
+        const rnd = (x, y) => {
+            const k = x * 1048576 + y; // whole-number lattice points, far less than 2^20 apart
+            let v = seen.get(k);
+            if (v === undefined) {
+                let h = hashStr(seed + ':' + x + ',' + y); h ^= h >>> 13; h = Math.imul(h, 0x5bd1e995) >>> 0;
+                v = (h >>> 8) / 16777216;
+                seen.set(k, v);
+            }
+            return v;
+        };
         const smooth = (t) => t * t * (3 - 2 * t);
         const layer = (x, y) => {
             const x0 = Math.floor(x), y0 = Math.floor(y), fx = smooth(x - x0), fy = smooth(y - y0);
@@ -148,6 +160,8 @@
             { id: 'trader', x: cx + 4, y: cy - 12, w: 6, h: 4 },
             { id: 'board', x: cx + 10, y: cy - 5, w: 3, h: 2 },
             { id: 'depot', x: cx + 3, y: cy + 7, w: 7, h: 4 },
+            // the Crucible, east of the Rune Altar
+            { id: 'crucible', x: cx + 19, y: cy + 5, w: 6, h: 5 },
         ];
         const stations = [];
         for (const b of B) {
@@ -385,7 +399,28 @@
         m.stations = []; m.portals = []; m.deco = [];
         m.npcs = npcsIn(def.id, camp.x, camp.y);
         if (def.wards) placeWards(m, def, rng, { entry, camp, boss }, nodes);
+        placeEntrance(m, def, { entry, camp, boss }, nodes);
         return m;
+    }
+    // The way down into the zone's hidden dungeon (core/world-data.js DUNGEONS): somewhere off the roads, far from the entry,
+    // the camp and the boss, in open ground (its own tile is solid, so all eight tiles around it must be free or it could cut
+    // a passage). It has its own random numbers and comes last, so nothing else in the zone moved when it was added.
+    // m.dungeon = { id, x, y, tx, ty }: world.js draws it (a boulder until the zone's boss is beaten) and lets you in.
+    function placeEntrance(m, def, key, nodes) {
+        const id = Object.keys(D.DUNGEONS || {}).find(d => D.DUNGEONS[d].zone === def.id);
+        if (!id) return;
+        const rng = mulberry32(hashStr(D.WORLD_SEED + ':' + def.id + ':dungeon'));
+        const isFree = (t) => t === T.FLOOR || t === T.FLOOR2;
+        const tileOf = (p) => ({ tx: Math.floor(p.x / TILE), ty: Math.floor(p.y / TILE) });
+        const taken = nodes.concat(m.spawns.map(tileOf), m.elites.map(tileOf), (m.wards || []).map(tileOf), [tileOf(m.rival)]);
+        const avoid = [{ x: key.entry.x, y: key.entry.y, r: 26 }, { x: key.camp.x, y: key.camp.y, r: 12 }, { x: key.boss.x, y: key.boss.y, r: 16 }];
+        const open = (p) => { for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (!isFree(get(m, p.tx + dx, p.ty + dy))) return false; return true; };
+        let pick = null;
+        for (let gap = 3; !pick && gap >= 1.5; gap -= 0.5) pick = scatter(m, rng, 40, { minGap: 1, takenGap: gap, avoid, allow: isFree, taken }).find(open) || null;
+        if (!pick) pick = scatter(m, rng, 1, { avoid, allow: isFree, taken })[0];
+        if (!pick) return;
+        set(m, pick.tx, pick.ty, T.BUILDING);
+        m.dungeon = { id, x: px(pick.tx), y: px(pick.ty), tx: pick.tx, ty: pick.ty };
     }
     // A sealed lair (the Far Reaches): ward stones spread far apart across the zone, and a barrier across the arena's mouth
     // (m.lair.tiles) until openLair. Placed last, so the zone's other rolls don't depend on it.
@@ -462,15 +497,16 @@
         return m;
     }
 
-    // ---------------- the Sunken Vault ----------------
-    // A chain going north from the entry hall (the door back out at the bottom, the Vault Keeper): three round rooms, then
-    // the Drowned King's chamber, joined by short corridors. Each room's door (rooms[i].door.tiles) is a barrier across the
-    // corridor into it, shut until setVaultDoor opens it (the run decides: core/world-vault.js doorOpen). rooms[i]: its
+    // ---------------- the hidden dungeons (the Sunken Vault and the rest) ----------------
+    // A chain going north from the entry hall (the way back out at the bottom; the Vault Keeper in the Vault): three round
+    // rooms, then the boss's chamber, joined by short corridors. Each room's door (rooms[i].door.tiles) is a barrier across
+    // the corridor into it, shut until setVaultDoor opens it (the run decides: core/world-dungeons.js doorOpen). rooms[i]: its
     // floor (x, y, r), its four gates (where its monsters come in) and its ready circle (in the corridor before its door).
-    function buildVault(def) {
+    // The same plan for every dungeon; each has its own colours (its zone's palette) and floor pattern.
+    function buildDungeon(def) {
         const m = { id: def.id, w: def.w, h: def.h, tiles: grid(def.w, def.h, T.WALL) };
         const cx = Math.floor(m.w / 2);
-        const n = valueNoise(D.WORLD_SEED + ':vault:n', 4);
+        const n = valueNoise(D.WORLD_SEED + ':' + def.id + ':n', 4);
         const fl = (x, y) => (n(x, y) > 0.55 ? T.FLOOR2 : T.FLOOR);
         // the entry hall
         const hallY = m.h - 10;
@@ -499,11 +535,33 @@
         m.kingDoor = door(K.y, K.r);
         m.boss = { x: px(cx), y: px(K.y), r: K.r * TILE };
         m.entry = { x: px(cx), y: px(hallY + 2) };
-        m.exit = { x: px(cx), y: px(m.h - 3), to: 'town' };
+        m.exit = { x: px(cx), y: px(m.h - 3), to: def.from || 'town' }; // back up into the zone above, by the way down
         m.npcs = npcsIn(def.id, cx, hallY);
         m.nodes = []; m.spawns = []; m.elites = []; m.stations = []; m.portals = []; m.deco = [];
         m.camp = null; m.rival = null;
+        dungeonLights(m, def, cx, hallY, R, K);
         return m;
+    }
+    // Light in a dungeon's dark: braziers around each room's edge (clear of the gates monsters come through), at the corners
+    // of the entry hall and around the boss's chamber, and a dim glow along the corridors. Cold fire in the frozen, sunken and
+    // sky dungeons. Only things drawn: no tile changes, so every page's map stays the same.
+    function dungeonLights(m, def, cx, hallY, rooms, king) {
+        const cold = ['frost', 'coast', 'sky'].includes(def.from);
+        const braziers = [];
+        const ring = (cy, r, angles) => { for (const a of angles) braziers.push({ x: px(cx) + Math.cos(a) * (r - 0.9) * TILE, y: px(cy) + Math.sin(a) * (r - 0.9) * TILE, cold }); };
+        const deg = (d) => d * Math.PI / 180;
+        rooms.forEach(c => ring(c.y, c.r, [deg(60), deg(120), deg(-120), deg(-60)]));
+        ring(king.y, king.r, [deg(35), deg(145), deg(-145), deg(-35), deg(-90)]);
+        for (const [dx, dy] of [[-8, -4], [8, -4], [-8, 4], [8, 4]]) braziers.push({ x: px(cx + dx), y: px(hallY + dy), cold });
+        m.braziers = braziers;
+        m.lights = braziers.map(b => ({ x: b.x, y: b.y, r: 190, flicker: true, cold }));
+        // a soft, steady light over each room's floor and the boss's, so monsters can be seen across the room
+        for (const c of rooms.concat([king])) m.lights.push({ x: px(cx), y: px(c.y), r: c.r * TILE * 0.95 });
+        // the corridors between: a faint glow every few tiles
+        const glow = (y0, y1) => { for (let y = Math.min(y0, y1) + 2; y < Math.max(y0, y1) - 1; y += 5) m.lights.push({ x: px(cx), y: px(y), r: 110 }); };
+        glow(rooms[0].y + rooms[0].r, hallY - 5);
+        for (let i = 1; i < rooms.length; i++) glow(rooms[i].y + rooms[i].r, rooms[i - 1].y - rooms[i - 1].r);
+        glow(king.y + king.r, rooms[rooms.length - 1].y - rooms[rooms.length - 1].r);
     }
     // Open or shut a Vault door: i = 1-3 the rooms, 4 the King's chamber. Returns whether anything changed.
     function setVaultDoor(m, i, open) {
@@ -518,7 +576,7 @@
         const def = D.ZONES[zoneId];
         if (!def) throw new Error('unknown zone ' + zoneId);
         return def.gen === 'town' ? buildTown(def) : def.gen === 'hall' ? buildHall(def) : def.gen === 'arena' ? buildArena(def) : def.gen === 'trials' ? buildTrials(def)
-            : def.gen === 'vault' ? buildVault(def) : buildWild(def);
+            : def.gen === 'dungeon' ? buildDungeon(def) : buildWild(def);
     }
     // A fingerprint of a map (for the determinism test)
     function mapHash(m) {

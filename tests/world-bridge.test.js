@@ -36,7 +36,7 @@ test('pending lists entries above the ack, oldest first, with totals', () => {
     const store = memStore({ [WORLD_KEY]: JSON.stringify(w), [ACK_KEY]: '1' });
     const p = Bridge.pending(store);
     assert.deepEqual(p.entries.map(e => e.seq), [2, 3]);
-    assert.deepEqual(p.totals, { gems: 3, golden: 1, boxes: [1, 2, 0, 0, 0], buys: [], items: {}, packs: {} });
+    assert.deepEqual(p.totals, { gems: 3, golden: 1, boxes: [1, 2, 0, 0, 0], buys: [], items: {}, packs: {}, gear: [], gearUnknown: false });
     assert.equal(p.lastSeq, 3);
     assert.equal(Bridge.pending(store, 3).entries.length, 0, 'minAck hides what this page already applied');
 });
@@ -175,13 +175,13 @@ test('sendRubies numbers entries above the world\'s ack, never merges them, and 
     const store = memStore({ [WORLD_KEY]: JSON.stringify({ v: 1, inAck: 0 }) });
     assert.equal(Bridge.sendRubies(store, 100, 'golden', NOW).seq, 1);
     assert.equal(Bridge.sendRubies(store, 50.9, 'code', NOW).seq, 2);
-    assert.deepEqual(Bridge.inbox(store, 0), { entries: [{ seq: 1, rubies: 100, src: 'golden', at: NOW }, { seq: 2, rubies: 50, src: 'code', at: NOW }], rubies: 150, lastSeq: 2 });
+    assert.deepEqual(Bridge.inbox(store, 0), { entries: [{ seq: 1, rubies: 100, src: 'golden', at: NOW }, { seq: 2, rubies: 50, src: 'code', at: NOW }], rubies: 150, gear: [], gearUnknown: false, lastSeq: 2 });
     // the world collected the first one and saved its ack
     store.setItem(WORLD_KEY, JSON.stringify({ v: 1, inAck: 1 }));
     assert.equal(Bridge.rubiesWaiting(store), 50);
     Bridge.sendRubies(store, 10, 'code', NOW);
     assert.deepEqual(inboxOf(store).entries.map(e => e.seq), [2, 3], 'collected entries are forgotten when the game writes next');
-    assert.deepEqual(Bridge.inbox(store, 2), { entries: [{ seq: 3, rubies: 10, src: 'code', at: NOW }], rubies: 10, lastSeq: 3 });
+    assert.deepEqual(Bridge.inbox(store, 2), { entries: [{ seq: 3, rubies: 10, src: 'code', at: NOW }], rubies: 10, gear: [], gearUnknown: false, lastSeq: 3 });
     assert.equal(Bridge.sendRubies(store, 0, 'code', NOW), null);
     assert.equal(Bridge.sendRubies(store, -5, 'code', NOW), null);
     // the inbox was cleared (e.g. by hand) but the world remembers 7: never reuse a number

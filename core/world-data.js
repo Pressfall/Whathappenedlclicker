@@ -137,10 +137,95 @@
         { id: 'halo_of_vrill', name: 'Halo of Vrill', color: '#ffe98a', icon: '😇', sell: 30000, kind: 'trophy' },
         // Frozen WH's rarest drop, for the hidden god and the hidden room: can't be sold, never lost on death
         { id: 'hidden_shard', name: 'Shard of the Hidden', color: '#3dffb4', icon: '🌑', sell: 0, kind: 'key' },
-        // the Sunken Vault's (core/world-vault.js): the Drowned King's first kill of each week, for the Vault Keeper's shop
+        // the Sunken Vault's (core/world-dungeons.js): the Drowned King's first kill of each week, for the Vault Keeper's shop
         { id: 'vault_seal', name: 'Vault Seal', color: '#4fd8d0', icon: '🔱', sell: 0, kind: 'key' },
+        // a dungeon boss's rare gift (core/world-dungeons.js): put into the Crucible, a relic is never Common
+        { id: 'catalyst', name: 'Crucible Catalyst', color: '#ffe66b', icon: '⚗️', sell: 0, kind: 'key' },
     ];
+
+    // ---------------- essences (core/world-relics.js) ----------------
+    // Rare materials for the Crucible: forged into relics (Wilds gear, or gear for the game) and set into gear's sockets.
+    // rar: 0 common, 1 uncommon, 2 rare, 3 epic, 4 mythic. asp: what an essence lends (ASPECTS). Found rarely in stone and
+    // ore (NODE_ESSENCES) and in the hidden dungeons (DUNGEONS). Banked like keys: never carried, never lost, never sold.
+    const ESSENCE_RARITY = [
+        { id: 'common', name: 'Common', color: '#b4bccd' },
+        { id: 'uncommon', name: 'Uncommon', color: '#4fd27a' },
+        { id: 'rare', name: 'Rare', color: '#4fa8ff' },
+        { id: 'epic', name: 'Epic', color: '#b07dff' },
+        { id: 'mythic', name: 'Mythic', color: '#ff4d6d' },
+    ];
+    const ASPECTS = {
+        might: { name: 'Might', icon: '🗡️', color: '#ff5a5a', wilds: 'weapon damage', game: 'click power' },
+        swift: { name: 'Swift', icon: '💨', color: '#7df9ff', wilds: 'speed and swing', game: 'income per second' },
+        ward: { name: 'Ward', icon: '🛡️', color: '#c8d4e6', wilds: 'armor and health', game: 'offline earnings' },
+        keen: { name: 'Keen', icon: '🎯', color: '#ffd24a', wilds: 'critical hits', game: 'critical clicks' },
+        vigor: { name: 'Vigor', icon: '💚', color: '#3dff9a', wilds: 'life steal and stamina', game: 'income and click power' },
+        fortune: { name: 'Fortune', icon: '🍀', color: '#9fe07a', wilds: 'luck and yield', game: 'lootboxes and gems' },
+        ember: { name: 'Ember', icon: '🔥', color: '#ff8a3d', wilds: 'burning blows', game: 'critical damage' },
+        frost: { name: 'Frost', icon: '❄️', color: '#9fdcff', wilds: 'chilling blows', game: 'offline earnings and income' },
+    };
+    // [id, name, aspect, rarity, colour]
+    const ESSENCES = [
+        // common: the first zones' stone
+        ['flint_shard', 'Flint Shard', 'might', 0, '#c9b8a0'], ['copper_spark', 'Copper Spark', 'swift', 0, '#e08a4a'],
+        ['quartz_dust', 'Quartz Dust', 'ward', 0, '#ece8f4'], ['whetgrit', 'Whetgrit', 'keen', 0, '#9aa6b8'],
+        ['moss_agate', 'Moss Agate', 'vigor', 0, '#6fbf73'], ['lucky_pebble', 'Lucky Pebble', 'fortune', 0, '#9fe07a'],
+        ['coal_ember', 'Coal Ember', 'ember', 0, '#ff8a3d'], ['salt_crystal', 'Salt Crystal', 'frost', 0, '#dff4ff'],
+        // uncommon
+        ['garnet_chip', 'Garnet Chip', 'might', 1, '#c43b4a'], ['silver_mote', 'Silver Mote', 'swift', 1, '#d9e2ef'],
+        ['onyx_flake', 'Onyx Flake', 'ward', 1, '#5a5478'], ['tiger_eye', "Tiger's Eye", 'keen', 1, '#d49a2a'],
+        ['bloodstone', 'Bloodstone', 'vigor', 1, '#a8323f'], ['gold_fleck', 'Gold Fleck', 'fortune', 1, '#ffd44a'],
+        ['sulfur_bloom', 'Sulfur Bloom', 'ember', 1, '#e9e04a'], ['rime_shard', 'Rime Shard', 'frost', 1, '#9fdcff'],
+        // rare
+        ['sunstone', 'Sunstone', 'might', 2, '#ff9a2a'], ['quicksilver', 'Quicksilver', 'swift', 2, '#b8c8d8'],
+        ['mithril_bead', 'Mithril Bead', 'ward', 2, '#a8d8ff'], ['star_sapphire', 'Star Sapphire', 'keen', 2, '#3f6fff'],
+        ['heartwood_amber', 'Heartwood Amber', 'vigor', 2, '#e8a33a'], ['clover_emerald', 'Clover Emerald', 'fortune', 2, '#27c26b'],
+        ['magma_pearl', 'Magma Pearl', 'ember', 2, '#ff4d1f'], ['glacial_core', 'Glacial Core', 'frost', 2, '#5fd0ff'],
+        // epic
+        ['titan_ruby', 'Titan Ruby', 'might', 3, '#ff2d55'], ['storm_opal', 'Storm Opal', 'swift', 3, '#c7a8ff'],
+        ['aegis_diamond', 'Aegis Diamond', 'ward', 3, '#f2fbff'], ['void_eye', 'Void Eye', 'keen', 3, '#9b59ff'],
+        ['lifebloom_jade', 'Lifebloom Jade', 'vigor', 3, '#3dff9a'], ['fate_stone', 'Fate Stone', 'fortune', 3, '#ffd700'],
+        ['dragon_coal', 'Dragon Coal', 'ember', 3, '#ff5e00'], ['winter_heart', 'Winter Heart', 'frost', 3, '#b8f0ff'],
+        // mythic: once in a very long while, from the deepest stone
+        ['heartstone', 'Heartstone', 'might', 4, '#ff3b6b'], ['chrono_shard', 'Chrono Shard', 'swift', 4, '#7df9ff'],
+        ['abyssal_core', 'Abyssal Core', 'ward', 4, '#2f3cff'], ['starseed', 'Starseed', 'fortune', 4, '#fff2a8'],
+        // the hidden dungeons' own: one rare essence each (room chests) and its boss's Heart (epic, the first kill each week)
+        ['rootsap', 'Rootsap', 'vigor', 2, '#7bd65a'], ['heart_roots', 'Heart of the Roots', 'vigor', 3, '#4fe36a'],
+        ['gilded_vein', 'Gilded Vein', 'fortune', 2, '#ffcf4a'], ['heart_deep', 'Heart of the Deep', 'fortune', 3, '#ffb82e'],
+        ['cinder_ash', 'Cinder Ash', 'ember', 2, '#ff6a3a'], ['heart_crypt', 'Heart of the Crypt', 'ember', 3, '#ff3d1f'],
+        ['tomb_frost', 'Tomb Frost', 'frost', 2, '#bfefff'], ['heart_tomb', 'Heart of the Tomb', 'frost', 3, '#8fe3ff'],
+        ['drowned_pearl', 'Drowned Pearl', 'ward', 2, '#5fd3e0'], ['heart_vault', 'Heart of the Vault', 'ward', 3, '#4fd8d0'],
+        ['thunder_slag', 'Thunder Slag', 'swift', 2, '#9fb4ff'], ['heart_forge', 'Heart of the Forge', 'swift', 3, '#c7d4ff'],
+        ['ink_of_ages', 'Ink of Ages', 'keen', 2, '#c9a2ff'], ['heart_archive', 'Heart of the Archive', 'keen', 3, '#b07dff'],
+        ['starwater', 'Starwater', 'might', 2, '#fff2a8'], ['heart_cistern', 'Heart of the Cistern', 'might', 3, '#ffe98a'],
+    ];
+    for (const [id, name, asp, rar, color] of ESSENCES) MATERIALS.push({ id, name, color, icon: ASPECTS[asp].icon, sell: 0, kind: 'essence', asp, rar });
+    const ESSENCE_IDS = ESSENCES.map(e => e[0]);
     const MATERIALS_BY_ID = Object.fromEntries(MATERIALS.map(m => [m.id, m]));
+    // Stone and ore: what each pickaxe node can rarely give besides its own drop, [essence, chance]. Hitting the crack raises
+    // the chances (core/world-logic.js nodeLoot), and so does luck; deeper stone holds rarer essences.
+    const NODE_ESSENCES = {
+        rock: [['flint_shard', 0.04], ['quartz_dust', 0.02], ['heartstone', 0.0002]],
+        coal: [['coal_ember', 0.04], ['sulfur_bloom', 0.006]],
+        copper: [['copper_spark', 0.04], ['garnet_chip', 0.006]],
+        sulfur: [['lucky_pebble', 0.03], ['sulfur_bloom', 0.012]],
+        iron: [['whetgrit', 0.04], ['onyx_flake', 0.01], ['tiger_eye', 0.006]],
+        ruby_vein: [['garnet_chip', 0.05], ['bloodstone', 0.03], ['sunstone', 0.01]],
+        silver: [['moss_agate', 0.04], ['silver_mote', 0.02], ['quicksilver', 0.003]],
+        gold: [['lucky_pebble', 0.04], ['gold_fleck', 0.025], ['clover_emerald', 0.003]],
+        obsidian: [['onyx_flake', 0.02], ['tiger_eye', 0.01], ['void_eye', 0.0006]],
+        ember: [['sulfur_bloom', 0.02], ['magma_pearl', 0.006]],
+        frost_crystal: [['salt_crystal', 0.04], ['rime_shard', 0.025], ['glacial_core', 0.005]],
+        mithril: [['rime_shard', 0.02], ['mithril_bead', 0.008], ['star_sapphire', 0.003]],
+        coral: [['bloodstone', 0.03], ['heartwood_amber', 0.008]],
+        orichalcum: [['sunstone', 0.01], ['quicksilver', 0.006], ['titan_ruby', 0.0008]],
+        storm_glass: [['silver_mote', 0.03], ['quicksilver', 0.01], ['storm_opal', 0.001]],
+        adamant: [['mithril_bead', 0.012], ['aegis_diamond', 0.0012], ['abyssal_core', 0.0002]],
+        rubble: [['magma_pearl', 0.012], ['star_sapphire', 0.006], ['dragon_coal', 0.0012]],
+        soulsteel: [['heartwood_amber', 0.012], ['lifebloom_jade', 0.0015], ['void_eye', 0.001]],
+        celestite: [['glacial_core', 0.012], ['winter_heart', 0.0015], ['chrono_shard', 0.0003]],
+        starmetal: [['clover_emerald', 0.015], ['fate_stone', 0.002], ['starseed', 0.0004]],
+    };
 
     // consumables (kept in state.cons)
     const CONSUMABLES = [
@@ -637,9 +722,50 @@
             sigil: 'sigil_sky', rubiesFirst: 7000, rubies: [1400, 2000], gems: [2, 3], golden: 0.15,
             drops: [['starmetal_ore', 4, 6, 1], ['celestite', 3, 5, 1], ['seraph_feather', 2, 3, 1], ['aether_core', 1, 2, 0.8], ['vrill_eye', 1, 1, 0.35], ['halo_of_vrill', 1, 1, 0.04]],
         },
-        // ---- the Sunken Vault (core/world-vault.js): a party's boss. vault: pays through world-logic.js vaultKingLoot (no
-        // drops of his own); partyScale: his health grows with the players in the fight (Vault.bossHp); enrage: after sec of
-        // fighting he hits mult times as hard. burden: a mark on one player that bursts, its damage shared by everyone in it.
+        // ---- the hidden dungeons' bosses (core/world-dungeons.js), one deep under each zone. dungeon: which one (they pay
+        // through world-logic.js dungeonBossLoot, no drops of their own); partyScale: health grows with the players in the fight
+        // (bossHp); enrage: after sec of fighting they hit mult times as hard. burden: a mark on one player that bursts, its
+        // damage shared by everyone standing in it. vault: the Drowned King, who also pays the Vault Keeper's seals.
+        root_mother: {
+            name: 'The Root Mother', zone: 'roots', face: 'mainimage/thumbs/whnature.webp', hp: 2000, dmg: 18, r: 44, speed: 62, armor: 0, color: '#2f9a4a',
+            phases: [
+                ['sweep', 'ring', 'roots'],
+                ['sweep', 'roots', 'summon', 'burden'],
+                ['sweep', 'ring', 'roots', 'charge', 'summon', 'burden'],
+            ],
+            summon: 'slime', axeBonus: 1.25, dungeon: 'roots', partyScale: true, enrage: { sec: 360, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        gold_tyrant: {
+            name: 'The Gold Tyrant', zone: 'deep', face: 'mainimage/thumbs/moneyman.webp', hp: 4800, dmg: 30, r: 46, speed: 48, armor: 45, color: '#e0a92a',
+            phases: [
+                ['boulders', 'slam', 'charge'],
+                ['boulders', 'slam', 'stalactites', 'burden'],
+                ['boulders', 'slam', 'stalactites', 'charge', 'burden'],
+            ],
+            exposeAfterSlam: 4, exposeMult: 2, dungeon: 'deep', partyScale: true, enrage: { sec: 360, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        crypt_lord: {
+            name: 'The Cinder Lich', zone: 'crypt', face: 'mainimage/thumbs/divineassassin.webp', hp: 11000, dmg: 39, r: 44, speed: 72, armor: 32, color: '#ff5a3a',
+            phases: [
+                ['breath', 'meteors', 'ring'],
+                ['breath', 'meteors', 'clone', 'burden'],
+                ['breath', 'meteors', 'ring', 'charge', 'clone', 'burden'],
+            ],
+            burn: true, dungeon: 'crypt', partyScale: true, enrage: { sec: 360, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        glacier_queen: {
+            name: 'The Glacier Queen', zone: 'tomb', face: 'mainimage/thumbs/divinecollector.webp', hp: 22000, dmg: 50, r: 46, speed: 70, armor: 55, color: '#bfefff',
+            phases: [
+                ['spikes', 'ring', 'slam'],
+                ['spikes', 'ring', 'summon', 'burden'],
+                ['spikes', 'ring', 'summon', 'charge', 'slam', 'burden'],
+            ],
+            aura: { radius: 140, slow: 0.35 }, summon: 'wolf', emberStrips: true, dungeon: 'tomb', partyScale: true, enrage: { sec: 360, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
         drowned_king: {
             name: 'The Drowned King', zone: 'vault', face: 'mainimage/thumbs/whblackandwhite.webp', hp: 90000, dmg: 430, r: 52, speed: 74, armor: 115, color: '#5fd3e0',
             phases: [
@@ -647,7 +773,37 @@
                 ['tide', 'whirlpool', 'lightning', 'summon', 'burden'],
                 ['starfall', 'whirlpool', 'lightning', 'orbs', 'burden', 'charge'],
             ],
-            summon: 'drowned', vault: true, partyScale: true, enrage: { sec: 420, mult: 2.5 },
+            summon: 'drowned', vault: true, dungeon: 'vault', partyScale: true, enrage: { sec: 420, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        forge_titan: {
+            name: 'The Stormforge Titan', zone: 'forge', face: 'mainimage/thumbs/WHboss.webp', hp: 100000, dmg: 195, r: 50, speed: 76, armor: 90, color: '#9fb4ff',
+            phases: [
+                ['lightning', 'ring', 'charge'],
+                ['lightning', 'gust', 'ring', 'clone', 'burden'],
+                ['lightning', 'gust', 'ring', 'charge', 'clone', 'burden'],
+            ],
+            dungeon: 'forge', partyScale: true, enrage: { sec: 420, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        archivist: {
+            name: 'The Ash Archivist', zone: 'archive', face: 'mainimage/thumbs/divinesomalian.webp', hp: 125000, dmg: 320, r: 48, speed: 70, armor: 110, color: '#c9a2ff',
+            phases: [
+                ['meteors', 'breath', 'orbs'],
+                ['meteors', 'orbs', 'summon', 'burden'],
+                ['meteors', 'orbs', 'summon', 'clone', 'breath', 'burden'],
+            ],
+            summon: 'ghoul', burn: true, dungeon: 'archive', partyScale: true, enrage: { sec: 420, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        fallen_seraph: {
+            name: 'The Fallen Seraph', zone: 'cistern', face: 'mainimage/thumbs/divinewh.webp', hp: 160000, dmg: 540, r: 50, speed: 82, armor: 130, color: '#fff2a8',
+            phases: [
+                ['spikes', 'ring', 'gust'],
+                ['starfall', 'spikes', 'whirlpool', 'ring', 'burden'],
+                ['starfall', 'spikes', 'whirlpool', 'gust', 'ring', 'charge', 'burden'],
+            ],
+            dungeon: 'cistern', partyScale: true, enrage: { sec: 420, mult: 2.5 },
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
         },
     };
@@ -737,12 +893,7 @@
         trials: { id: 'trials', name: 'Proving Grounds', gen: 'trials', w: 46, h: 46, pvp: 'off', coop: true, sub: 'Co-op waves', banner: 'Hold the ring, alone or together',
             bg: 'bgimages/thumbs/stonghengebg.webp',
             palette: { floor: '#6d6152', floor2: '#665a4c', path: '#8c7350', wall: '#2f2820', plaza: '#7d6f5c' } },
-        // The Sunken Vault, through the Waystone: a dungeon for a party of 2 to 4 (core/world-vault.js). instance: every party
-        // has its own copy online (world-online.js zone key vault_<party>). coop: its rooms are fought like the Proving
-        // Grounds' waves (world-waves.js). Nobody can hurt another player here, and a knockout drops nothing.
-        vault: { id: 'vault', name: 'The Sunken Vault', gen: 'vault', w: 40, h: 124, pvp: 'off', coop: 'vault', instance: true, boss: 'drowned_king', via: 'waystone', dark: 170,
-            sub: 'A dungeon for a party', banner: 'Three rooms, then the Drowned King', bg: 'bgimages/thumbs/oceanviewbg.webp',
-            palette: { floor: '#34484c', floor2: '#2f4246', path: '#4f6870', wall: '#17242a', plaza: '#41575d', water: '#1d5a74' } },
+        // (the hidden dungeons are added below, from DUNGEONS)
         // inside the Hall of Gods, a building in town (world-gen.js buildHall). interior: entered by its door, no monsters, and
         // nobody else online in there. dark: how far the player's own light reaches; the braziers light the rest.
         hall: { id: 'hall', name: 'Hall of Gods', gen: 'hall', w: 26, h: 56, safe: true, interior: true, dark: 170,
@@ -750,6 +901,58 @@
             palette: { floor: '#16131d', floor2: '#1a1622', path: '#2b1a24', wall: '#0b090f', plaza: '#2b1a24' } },
     };
     const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost', 'coast', 'storm', 'ruins', 'sky'];
+
+    // ---------------- the hidden dungeons (core/world-dungeons.js) ----------------
+    // One under each zone, its way in hidden somewhere off the roads (world-gen.js placeEntrance) until that zone's boss has
+    // fallen to you. Alone or with a party of up to 4; each party gets its own copy online. Three rooms of the zone's monsters,
+    // then the dungeon's boss. Ids are short lowercase words: a party member's zone must fit /^[a-z]{2,12}$/ (world-party.js).
+    // rooms: [{ name, zones (whose monsters), count, elites, champion, hp }]. essence: its rare room-chest essence, heart: its
+    // boss's Heart (epic, the first kill each week). theme: the floor's colours.
+    const dRooms = (zone, names) => [
+        { name: names[0], zones: [zone], count: 8, elites: 0, hp: 1.1 },
+        { name: names[1], zones: [zone], count: 10, elites: 1, hp: 1.25 },
+        { name: names[2], zones: [zone], count: 10, elites: 1, champion: true, hp: 1.4 },
+    ];
+    const DUNGEONS = {
+        roots: { zone: 'greenwood', name: 'The Hollow Roots', boss: 'root_mother', essence: 'rootsap', heart: 'heart_roots', color: '#4fe36a', icon: '🌳',
+            rooms: dRooms('greenwood', ['The Tangled Gate', 'The Sap Wells', 'The Heartwood Hollow']),
+            theme: { floor: '#3d4a2c', floor2: '#36432a', path: '#5a4a32', wall: '#1a2414', plaza: '#4a5636', water: '#2a5a4a' } },
+        deep: { zone: 'mines', name: 'The Gilded Deep', boss: 'gold_tyrant', essence: 'gilded_vein', heart: 'heart_deep', color: '#ffcf4a', icon: '⛏️',
+            rooms: dRooms('mines', ['The Dripping Shaft', 'The Treasure Seam', 'The Molten Vein']),
+            theme: { floor: '#4a4036', floor2: '#433a31', path: '#6a5a40', wall: '#1f1a15', plaza: '#5a4c38', water: '#1f4d73' } },
+        crypt: { zone: 'ember', name: 'The Cinder Crypt', boss: 'crypt_lord', essence: 'cinder_ash', heart: 'heart_crypt', color: '#ff6a3a', icon: '⚱️',
+            rooms: dRooms('ember', ['The Ash Stair', 'The Ossuary', 'The Burning Nave']),
+            theme: { floor: '#4a2f2a', floor2: '#42292a', path: '#6a4438', wall: '#1f1210', plaza: '#55362c', water: '#5a2a1a' } },
+        tomb: { zone: 'frost', name: 'The Glacier Tomb', boss: 'glacier_queen', essence: 'tomb_frost', heart: 'heart_tomb', color: '#bfefff', icon: '🧊',
+            rooms: dRooms('frost', ['The Frozen Steps', 'The Hall of Statues', 'The Rime Throne']),
+            theme: { floor: '#a9bcc9', floor2: '#9fb2c0', path: '#c3d2dc', wall: '#4f6575', plaza: '#b6c7d2', water: '#7fb6d6' } },
+        // the Sunken Vault (it was reached from the Waystone; its way in is now hidden on the Saltspray Coast): the Far
+        // Reaches' monsters, and the Drowned King, who also pays Vault Seals for the Vault Keeper
+        vault: { zone: 'coast', name: 'The Sunken Vault', boss: 'drowned_king', essence: 'drowned_pearl', heart: 'heart_vault', color: '#4fd8d0', icon: '🔱',
+            rooms: [
+                { name: 'The Flooded Hall', zones: ['coast', 'storm'], count: 9, elites: 1, hp: 1.0 },
+                { name: 'The Broken Gallery', zones: ['ruins'], count: 10, elites: 2, hp: 1.1 },
+                { name: 'The Sky Breach', zones: ['sky'], count: 10, elites: 1, champion: true, hp: 1.15 },
+            ],
+            theme: { floor: '#34484c', floor2: '#2f4246', path: '#4f6870', wall: '#17242a', plaza: '#41575d', water: '#1d5a74' } },
+        forge: { zone: 'storm', name: 'The Stormforge', boss: 'forge_titan', essence: 'thunder_slag', heart: 'heart_forge', color: '#9fb4ff', icon: '⚒️',
+            rooms: dRooms('storm', ['The Bellows', 'The Anvil Floor', 'The Lightning Rod']),
+            theme: { floor: '#4a4f5c', floor2: '#434856', path: '#6a6f7c', wall: '#1c1f26', plaza: '#555a68', water: '#2f4f6e' } },
+        archive: { zone: 'ruins', name: 'The Buried Archive', boss: 'archivist', essence: 'ink_of_ages', heart: 'heart_archive', color: '#c9a2ff', icon: '📜',
+            rooms: dRooms('ruins', ['The Stacks', 'The Scriptorium', 'The Sealed Index']),
+            theme: { floor: '#4a3f36', floor2: '#43392f', path: '#6b5a48', wall: '#1f1914', plaza: '#57493c', water: '#3a2a1a' } },
+        cistern: { zone: 'sky', name: 'The Star Cistern', boss: 'fallen_seraph', essence: 'starwater', heart: 'heart_cistern', color: '#fff2a8', icon: '✨',
+            rooms: dRooms('sky', ['The Falling Steps', 'The Mirror Pool', 'The Starwell']),
+            theme: { floor: '#2a2f55', floor2: '#262a4d', path: '#4a5088', wall: '#0f1230', plaza: '#363c6a', water: '#1d2a6a' } },
+    };
+    // each dungeon is a zone of its own (world-gen.js buildDungeon): instance: one copy per party online (world-online.js);
+    // coop: its rooms are fought like the Proving Grounds' waves (world-waves.js). Nobody can hurt another player there, and a
+    // knockout drops nothing.
+    for (const [id, d] of Object.entries(DUNGEONS)) {
+        const zone = ZONES[d.zone];
+        ZONES[id] = { id, name: d.name, gen: 'dungeon', w: 40, h: 124, pvp: 'off', coop: 'dungeon', instance: true, dungeon: id, boss: d.boss, from: d.zone,
+            tier: zone.tier, dark: 170, sub: 'A hidden dungeon · ' + zone.name, banner: 'Three rooms, then ' + BOSSES[d.boss].name, bg: zone.bg, palette: d.theme };
+    }
     // a ward guardian: the zone's elite, this much tougher, with adds from the zone around it
     const WARD = { hpMult: 1.6, dmgMult: 1.2, adds: 3 };
     // A zone's camp is safe ground: within r px of it nothing hurts you (monsters, rivals, hazards, other players) and
@@ -767,6 +970,8 @@
         board: { name: 'Notice Board', icon: '📜', desc: 'How the Wilds work', color: '#d8c79a' },
         // the clicker's crew moves in here (core/world-crew.js): who has come, and who is still on the way
         depot: { name: 'WH Depot', icon: '🏭', desc: 'The factory crew from your game set up shop here', color: '#ffc83d' },
+        // essences into relics, sockets and upgrades (core/world-relics.js; its screens are world-relics.js)
+        crucible: { name: 'Crucible', icon: '⚗️', desc: 'Forge relics from essences, set essences into your gear, and upgrade relics', color: '#ff4d6d' },
     };
 
     // ---------------- townsfolk, wanderers and their quests ----------------
@@ -849,6 +1054,10 @@
     // guild he stocks has a contract to finish before it can be bought.
     NPCS.guildmaster = { name: 'Guildmaster Aurelio', role: 'Keeper of the Hero Guilds', face: 'mainimage/thumbs/moneyman.webp', color: '#c9a34a', spot: [16, 11], guild: true,
         greet: 'Every hero of your factory has a guild out here, and every guild wants proof before it takes your coin. Six charters on my table, new ones every other day.',
+        chain: [], daily: [] };
+    // The Auctioneer, on the plaza: the Auction Hall (core/world-market.js, world-market.js), no quest chain
+    NPCS.auctioneer = { name: 'Ottoline the Auctioneer', role: 'Runs the Auction Hall', face: 'mainimage/thumbs/casinoDeal.webp', color: '#ffd27a', spot: [6, -3], zone: 'town', auction: true,
+        greet: 'Gear, relics, little trinkets for your game: whatever you found out there, someone wants it more than you do. List it with me, or outbid them.',
         chain: [], daily: [] };
     // The Vault Keeper, in the Sunken Vault's entry hall: the Vault Seal shop (VAULT_SHOP)
     NPCS.vaultkeeper = { name: 'Maren the Vault Keeper', role: 'Keeper of the Sunken Vault', face: 'mainimage/thumbs/divinespirit.webp', color: '#4fd8d0', spot: [-5, 0], zone: 'vault', vaultShop: true,
@@ -1257,6 +1466,6 @@
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
         ELITE_RESPAWN_SEC, WARD, CAMP, MAX_TIER, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,
-        VAULT_SHOP,
+        VAULT_SHOP, ESSENCE_RARITY, ASPECTS, ESSENCES, ESSENCE_IDS, NODE_ESSENCES, DUNGEONS,
     };
 }));

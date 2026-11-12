@@ -173,6 +173,8 @@
             cps = cps * (1 + (p.followerCpsPercent || 0) / 100) * (1 + (p.followerOfflinePercent || 0) / 100);
             cps = cps * (1 + (p.itemCpsPercent || 0) / 100) * (1 + (p.itemOfflinePercent || 0) / 100);
             if (p.godCpsPercent || p.godOfflinePercent) cps = cps * (1 + (p.godCpsPercent || 0) / 100) * (1 + (p.godOfflinePercent || 0) / 100);
+            // gear for the game (gear-panel.js): its CPS and offline boosts
+            if (p.gearCpsPercent || p.gearOfflinePercent) cps = cps * (1 + (p.gearCpsPercent || 0) / 100) * (1 + (p.gearOfflinePercent || 0) / 100);
             return cps;
         }
 

@@ -173,6 +173,12 @@
         { key: 'w_vault1', cat: 'The Wilds', name: 'Into the Deep', desc: 'Beat the Drowned King at the bottom of the Sunken Vault.', title: 'Vault Diver', rarity: 'epic', badge: '🔱', stat: 'wildsVaultKills', target: 1 },
         { key: 'w_vault_duo', cat: 'The Wilds', name: 'Just the Two of Us', desc: 'Beat the Drowned King with a party of exactly two.', title: 'Dynamic Duo', rarity: 'legendary', badge: '🫂', stat: 'wildsVaultDuo', target: 1 },
         { key: 'w_vault10', cat: 'The Wilds', name: 'Regular at the Bottom', desc: 'Beat the Drowned King 10 times.', title: 'Deep Regular', rarity: 'legendary', badge: '🌊', stat: 'wildsVaultKills', target: 10 },
+        // the hidden dungeons, the Crucible and the market (core/world-dungeons.js, core/world-relics.js, core/world-market.js)
+        { key: 'w_dungeons_all', cat: 'The Wilds', name: 'Under Every Stone', desc: 'Beat the boss of every hidden dungeon, one under each zone.', title: 'Delver of the Deep Places', rarity: 'legendary', badge: '🕳️', stat: 'wildsDungeonBosses', target: 8 },
+        { key: 'w_relic1', cat: 'The Wilds', name: 'Out of the Crucible', desc: 'Forge a relic at the Crucible.', title: 'Relic Smith', rarity: 'uncommon', badge: '⚗️', stat: 'wildsRelicBest', target: 1 },
+        { key: 'w_relic_mythic', cat: 'The Wilds', name: 'Once in a Blue Moon', desc: 'Forge a Mythic relic or better.', title: 'Mythsmith', rarity: 'mythic', badge: '🌙', stat: 'wildsRelicBest', target: 6 },
+        { key: 'w_trade1', cat: 'The Wilds', name: 'Fair Exchange', desc: 'Trade with another player.', title: 'Trader', rarity: 'uncommon', badge: '🤝', stat: 'wildsTrades', target: 1 },
+        { key: 'w_sold1', cat: 'The Wilds', name: 'Going, Going, Gone', desc: 'Sell something in the Auction Hall.', title: 'Auctioneer\'s Friend', rarity: 'rare', badge: '🔨', stat: 'wildsSold', target: 1 },
         { key: 'w_pit10', cat: 'The Wilds', name: 'King of the Pit', desc: 'Knock out 10 players in the Pit.', title: 'Pit Fighter', rarity: 'rare', badge: '🕳️', stat: 'wildsPitKOs', target: 10 },
         { key: 'w_wager', cat: 'The Wilds', name: 'High Roller', desc: 'Win a duel played for rubies.', title: 'High Roller', rarity: 'rare', badge: '🎲', stat: 'wildsWagerWins', target: 1 },
         { key: 'w_wave10', cat: 'The Wilds', name: 'Holding the Line', desc: 'Clear wave 10 in the Proving Grounds.', title: 'Line Holder', rarity: 'rare', badge: '🌊', stat: 'wildsWaveBest', target: 10 },
@@ -294,6 +300,10 @@
             wildsArenaWins: wc(wa.w), wildsTeamWins: wc(wa.teamW), wildsRating: wc(wa.rating), wildsPitKOs: wc(wa.pitKO),
             wildsWagerWins: wc(wa.wagerWins), wildsWaveBest: wc(wa.waveBest), wildsSeasonBest: wc(wa.seasonBest),
             wildsVaultKills: wc((w.raid || {}).kills), wildsVaultDuo: wc((w.raid || {}).duo),
+            // the hidden dungeons whose boss has fallen; the best relic forged (its tier + 1: Mythic 6); trades and auction sales
+            wildsDungeonBosses: Object.values(((w.dungeons || {}).kills) || {}).filter(n => wc(n) > 0).length,
+            wildsRelicBest: Math.max(0, wc(((w.relics || {}).best) + 1)),
+            wildsTrades: wc((w.market || {}).traded), wildsSold: wc((w.market || {}).sold),
             // hero guilds owned: all of them, and the most of any one hero
             wildsGuilds: Object.values((w.guilds && w.guilds.owned) || {}).reduce((a, n) => a + wc(n), 0),
             wildsGuildTop: Math.max(0, ...Object.values((w.guilds && w.guilds.owned) || {}).map(wc)),

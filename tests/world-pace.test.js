@@ -82,9 +82,9 @@ test('each zone\'s best ore needs the pickaxe from the zone before it', () => {
 });
 
 test('the Drowned King: about as long for each player in a party as Vrill alone, and the Shared Burden needs company', () => {
-    const V = require('../core/world-vault');
-    const g = gear('sky'), K = D.BOSSES[V.BOSS], vrill = hits(D.BOSSES.vrill, g);
-    for (let n = V.PARTY.min; n <= V.PARTY.max; n++) {
+    const V = require('../core/world-dungeons');
+    const g = gear('sky'), K = D.BOSSES.drowned_king, vrill = hits(D.BOSSES.vrill, g);
+    for (let n = 2; n <= V.PARTY.max; n++) {
         const each = hits(Object.assign({}, K, { hp: V.bossHp(K.hp, n) }), g) / n;
         assert.ok(each >= vrill * 0.9 && each <= vrill * 1.4, n + ' players: ' + each.toFixed(0) + ' hits each (Vrill alone ' + vrill.toFixed(0) + ')');
     }
@@ -93,6 +93,28 @@ test('the Drowned King: about as long for each player in a party as Vrill alone,
     const burden = share(K, g) * 8.5;
     assert.ok(burden >= 0.7 && burden < 1, 'alone: ' + (burden * 100).toFixed(0) + '%');
     assert.ok(burden / 2 <= 0.45 && burden / 4 <= 0.25, 'shared: ' + (burden * 50).toFixed(0) + '% for two');
+    // what the help and the guide say of it alone, with gear made for the zone above each dungeon: most of your health under
+    // the first four zones; under the Far Reaches (not the Vault, tuned above) enough to knock you out even at full health
+    for (const id of V.IDS.filter(x => x !== 'vault')) {
+        const dd = D.DUNGEONS[id], alone = share(D.BOSSES[dd.boss], gear(dd.zone)) * 8.5;
+        if (D.ZONES[dd.zone].via === 'waystone') assert.ok(alone >= 1, id + ': ' + (alone * 100).toFixed(0) + '% (the guide: knocks you out alone)');
+        else assert.ok(alone >= 0.5 && alone < 1, id + ': ' + (alone * 100).toFixed(0) + '% (the guide: most of your health)');
+    }
     // and the rooms' monsters stay those of their zones, scaled up a little with the party
     assert.ok(V.SCALE.hp <= 0.4 && V.SCALE.dmg <= 0.1);
+});
+
+test('every other dungeon boss is a step up from its zone\'s boss, for that zone\'s gear, alone or in a party', () => {
+    const V = require('../core/world-dungeons');
+    for (const id of V.IDS.filter(x => x !== 'vault')) {
+        const dd = D.DUNGEONS[id], zone = dd.zone, g = gear(zone), B = D.BOSSES[dd.boss], zb = D.BOSSES[D.ZONES[zone].boss];
+        const solo = hits(B, g), zoneBoss = hits(zb, g);
+        assert.ok(solo >= zoneBoss * 1.6 && solo <= zoneBoss * 3.2, id + ': ' + solo.toFixed(0) + ' hits alone (' + zb.name + ' ' + zoneBoss.toFixed(0) + ')');
+        for (let n = 2; n <= V.PARTY.max; n++) {
+            const each = hits(Object.assign({}, B, { hp: V.bossHp(B.hp, n) }), g) / n;
+            assert.ok(each < solo, id + ': ' + n + ' players finish it sooner each');
+        }
+        // it hits about as hard as its zone's boss, a little harder
+        assert.ok(share(B, g) >= share(zb, g) * 0.95 && share(B, g) <= share(zb, g) * 1.4, id + ' hits for ' + (share(B, g) * 100).toFixed(1) + '%');
+    }
 });

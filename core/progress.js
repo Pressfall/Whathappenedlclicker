@@ -48,7 +48,7 @@
         // the best level each upgrade ever reached (the crew in the Wilds) and the game's Renown milestone claims
         'whathappened_upgrade_best', 'whathappened_renown',
         // the daily and weekly challenges (core/challenges.js)
-        'whathappened_challenges',
+        'whathappened_challenges', 'whathappened_gear',
         // Holy What Happeneds: earned Holy What Happeneds, the looks owned and worn, which rewards were paid (core/premium.js). Bought Holy What Happeneds live in the
         // account itself (Firestore wallets/{uid}), not in here.
         'whathappened_premium',
@@ -174,9 +174,16 @@
         // ---------------- sync bookkeeping ----------------
         function readMeta() {
             const m = readJSON(store, META_KEY);
-            if (!m || typeof m !== 'object') return { uid: '', rev: 0, hash: '', at: 0, play: null, prestiges: 0 };
+            if (!m || typeof m !== 'object') return { uid: '', rev: 0, hash: '', at: 0, play: null, prestiges: 0, pending: '' };
             return { uid: String(m.uid || ''), rev: Number(m.rev) || 0, hash: String(m.hash || ''), at: Number(m.at) || 0,
-                play: m.play == null ? null : Number(m.play) || 0, prestiges: Number(m.prestiges) || 0 };
+                play: m.play == null ? null : Number(m.play) || 0, prestiges: Number(m.prestiges) || 0, pending: String(m.pending || '') };
+        }
+        // An upload about to start: its hash, so that if the page closes before the account's answer comes back (the game
+        // page saves as you leave it for the Wilds), the next sync knows that save is this device's own and not another's.
+        function markPending(uid, h) {
+            const m = readJSON(store, META_KEY);
+            if (!m || typeof m !== 'object' || m.uid !== uid) return;
+            try { store.setItem(META_KEY, JSON.stringify(Object.assign({}, m, { pending: h }))); } catch (e) {}
         }
         // rev and hash of what was synced, plus its play time and prestiges (see SMALL_PLAY_SEC)
         function writeMeta(uid, rev, synced) {
@@ -208,6 +215,7 @@
             if (local.json.length > MAX_PAYLOAD) throw syncError('sync/too-large', 'Your progress is too large to save to an account.');
             const meta = readMeta();
             const known = meta.uid === user.uid ? meta.rev : -1;
+            markPending(user.uid, local.hash);
             const rev = await remote.transaction(user.uid, (current) => {
                 const cur = current ? current.rev : 0;
                 if (!force && current && cur !== known) throw new SyncConflict(current);
@@ -283,17 +291,33 @@
 
         // Bring this device and the account in line after signing in or opening the game.
         // askUser(localSummary, cloud) resolves 'local', 'cloud' or 'later' when both sides changed.
+        // opts.quiet: a save while playing found the account changed. Then nothing is replaced and nobody is asked: the
+        // answer is 'conflict' (the page shows it, and the player chooses when it suits them). Replacing progress reloads the
+        // page, and a reload in the middle of a dungeon run or a fight is the last thing a player wants; with the game open on
+        // two devices, each one's saves used to reload the other every few minutes.
         // Returns { state: 'synced' | 'uploaded' | 'loaded' | 'conflict', cloud, backedUp }.
-        async function reconcile(user, askUser) {
-            const local = collectLocal(), meta = readMeta();
+        async function reconcile(user, askUser, opts) {
+            const quiet = !!(opts && opts.quiet);
+            // the account first, then this device: another tab of this browser that just saved has written its record by then
             const cloud = await fetchCloud(user.uid);
-            switch (planReconcile(user, local, meta, cloud)) {
+            const local = collectLocal();
+            let meta = readMeta();
+            // the account's save is this device's own upload whose answer never came back (the page closed): it is in step
+            if (cloud && cloud.payload && meta.uid === user.uid && meta.pending && cloud.rev > meta.rev && hash(cloud.payload) === meta.pending) {
+                let data = {};
+                try { data = parsePayload(cloud.payload); } catch (e) { data = {}; }
+                writeMeta(user.uid, cloud.rev, { data, hash: meta.pending });
+                meta = readMeta();
+            }
+            const plan = planReconcile(user, local, meta, cloud);
+            if (quiet && (plan === 'load' || plan === 'ask')) return { state: 'conflict', cloud };
+            switch (plan) {
                 case 'upload-new': await uploadLocal(user); return { state: 'uploaded', cloud: null };
                 case 'record': writeMeta(user.uid, cloud.rev, local); return { state: 'synced', cloud };
                 case 'synced': return { state: 'synced', cloud };
                 case 'upload':
                     try { await uploadLocal(user); return { state: 'uploaded', cloud }; }
-                    catch (e) { if (!(e instanceof SyncConflict)) throw e; return reconcile(user, askUser); }
+                    catch (e) { if (!(e instanceof SyncConflict)) throw e; return reconcile(user, askUser, opts); }
                 case 'load': return { state: 'loaded', cloud, backedUp: loadCloudIntoDevice(user, cloud) };
                 default: {
                     const choice = askUser ? await askUser(summarize(local.data), cloud) : 'later';

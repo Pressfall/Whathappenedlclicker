@@ -248,6 +248,49 @@ test('a save that lands between reconcile reading and writing leads to a fresh l
     assert.equal(JSON.parse(JSON.parse(account.peek('u1').payload).whathappened_save).count, 900000);
 });
 
+test('a save during play that finds the account changed replaces nothing and asks nothing (quiet): no reload mid-game', async () => {
+    const { pc, phone } = setup();
+    pc.play({ count: 5000, goldenWhat: 1 }, PLAY);
+    await pc.reconcile();
+    await phone.reconcile();
+    // the game open on both: the PC saves, then the phone's routine save finds the account changed
+    phone.play({ count: 5100 }, { whathappened_playtime_seconds: '1100' }); // barely played: on opening this would load
+    pc.play({ count: 900000, goldenWhat: 1 }, { whathappened_playtime_seconds: '1200' });
+    await pc.reconcile();
+    const asked = [], before = phone.events.length;
+    const res = await phone.engine.reconcile(phone.user, async (l, c) => { asked.push(c); return 'cloud'; }, { quiet: true });
+    assert.equal(res.state, 'conflict');
+    assert.equal(asked.length, 0, 'nobody is asked in the middle of play');
+    assert.equal(count(phone), 5100, 'the phone keeps its own progress');
+    assert.equal(phone.events.length, before, 'nothing was replaced, so the page does not reload');
+    // the player chooses later, from the button: the usual rules then
+    const later = await phone.reconcile('cloud');
+    assert.equal(later.state, 'loaded');
+    assert.equal(count(phone), 900000);
+});
+
+test('an upload whose answer never came back (the page closed) is known as this device\'s own next time', async () => {
+    const { account, pc } = setup();
+    pc.play({ count: 5000, goldenWhat: 1 }, PLAY);
+    await pc.reconcile();
+    // leaving the game for the Wilds: the save reaches the account, but the page is gone before the answer arrives
+    pc.play({ count: 8000 }, { whathappened_playtime_seconds: '1050' });
+    const real = account.remoteFor('u1');
+    const closing = Progress.create({ store: pc.store, now: () => 0, deviceLabel: () => 'x',
+        remote: { fetch: real.fetch, transaction: async (u, decide) => { await real.transaction(u, decide); throw new Error('page closed'); } } });
+    await assert.rejects(closing.uploadLocal(pc.user));
+    assert.equal(account.peek('u1').rev, 2);
+    assert.equal(pc.engine.readMeta().rev, 1, 'this device never heard back');
+    // the Wilds open in that tab and save a little
+    pc.play({ count: 8001 }, { whathappened_playtime_seconds: '1060' });
+    const before = pc.events.length;
+    const res = await pc.reconcile();
+    assert.equal(res.state, 'uploaded', 'its own save is not "newer progress from another device"');
+    assert.equal(pc.events.length, before, 'so nothing is replaced and the page does not reload');
+    assert.equal(account.peek('u1').rev, 3);
+    assert.equal(JSON.parse(JSON.parse(account.peek('u1').payload).whathappened_save).count, 8001);
+});
+
 test('the fake enforces the real rules: a write with the wrong revision is denied', async () => {
     const account = new FakeAccountStore();
     const remote = account.remoteFor('u1');

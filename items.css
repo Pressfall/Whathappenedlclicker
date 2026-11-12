@@ -654,3 +654,9 @@
     .loot-drop .box-svg, .lr-chest .box-svg { animation: none; }
     .lr-card { animation-duration: 1ms; animation-delay: 0ms; }
 }
+
+/* the narrowest phones: all four of the Items tabs (Gear came last) fit on one row, with no tab hidden off the edge */
+@media (max-width: 420px) {
+    .items-menu .shop-tab-btn { padding: 7px 8px; font-size: 12px; }
+    .items-menu .shop-tabs { gap: 2px; }
+}

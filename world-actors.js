@@ -238,10 +238,10 @@
             WHW.sfx('boss');
             WHW.save();
         } else if (t.kind === 'boss') {
-            // the Drowned King pays through the Vault (once a week the most); every other boss through bossLoot
-            const vault = !!(D.BOSSES[t.type] && D.BOSSES[t.type].vault);
-            const r = vault ? W.vaultKingLoot(g.state, at, g.ack, WHW.waves ? WHW.waves.players() : 1) : W.bossLoot(g.state, t.type, Math.random, at, g.ack);
-            if (vault && WHW.waves) WHW.waves.kingDown();
+            // a dungeon's boss pays through its dungeon (once a week the most); every other boss through bossLoot
+            const dungeon = D.BOSSES[t.type] && D.BOSSES[t.type].dungeon;
+            const r = dungeon ? W.dungeonBossLoot(g.state, dungeon, Math.random, at, g.ack, WHW.waves ? WHW.waves.players() : 1) : W.bossLoot(g.state, t.type, Math.random, at, g.ack);
+            if (dungeon && WHW.waves) WHW.waves.kingDown();
             g.bossDeadUntil[g.zoneId] = E.time + 90;
             g.actors.filter(a => a.kind === 'clone' || a.summoned).forEach(a => { a.dead = true; });
             g.hazards.length = 0;
@@ -921,6 +921,16 @@
         owner.trail.push({ x, y, kind, t: E.time });
         if (owner.trail.length > 9) owner.trail.shift();
     }
+    // The held weapon's numbers, asked 120 times a second: worked out again every half second of play (or for another
+    // weapon) instead of each time. An upgrade or an infusion shows within that half second.
+    const stepStats = new WeakMap();
+    function heldStats(it) {
+        const m = stepStats.get(it);
+        if (m && E.time >= m.at && E.time - m.at < 0.5) return m.st;
+        const st = W.gearStats(it);
+        stepStats.set(it, { at: E.time, st });
+        return st;
+    }
     A.updatePlayerWeapon = function (p, dt) {
         const g = game();
         // pouring out Ice Beam: no weapon at all
@@ -930,7 +940,7 @@
         if (!b) { p.weapon = null; return; }
         if (!p.weapon || p.weapon.cls !== b.cls) p.weapon = C.newWeapon(b.cls, p.weapon ? p.weapon.theta : p.facing);
         const w = p.weapon, P = D.WEAPON_CLASSES[b.cls];
-        const st = W.gearStats(it);
+        const st = heldStats(it);
         const mods = { wMult: st.wMult, aMult: st.aMult, winded: p.stam.winded };
         const aim = E.aimPoint(p.x, p.y);
         let target = p.aimHold;
@@ -1385,9 +1395,17 @@
     }
     // A wave monster run on another page (world-waves.js): it goes where that page says, and its attacks play out here
     // against this page's player, aimed where they were aimed there
+    // It heads for where the last snapshot put it plus a little of the way it was moving (at most 0.15 s ahead, so a monster
+    // that stops doesn't overshoot by much), which keeps it level with the host's copy instead of trailing behind.
+    const FOLLOW_LEAD = 0.15;
     function followMonster(m, dt) {
-        const f = 1 - Math.exp(-12 * dt);
-        if (m.netX !== undefined) { m.x += (m.netX - m.x) * f; m.y += (m.netY - m.y) * f; if (!m.atk) m.facing = m.netFa || m.facing; }
+        const f = 1 - Math.exp(-18 * dt);
+        if (m.netX !== undefined) {
+            const lead = m.netAt ? Math.max(0, Math.min(FOLLOW_LEAD, (performance.now() - m.netAt) / 1000)) : 0;
+            const tx = m.netX + (m.netVx || 0) * lead, ty = m.netY + (m.netVy || 0) * lead;
+            m.x += (tx - m.x) * f; m.y += (ty - m.y) * f;
+            if (!m.atk) m.facing = m.netFa || m.facing;
+        }
         const k = m.atk;
         if (!k) return;
         k.t += dt;
@@ -1553,7 +1571,10 @@
     function statusTick(t, dt) {
         if (t.dead) return;
         if (E.time < t.status.burnUntil && t.status.burnDps) {
-            t.hp -= t.status.burnDps * elemAmp(t) * dt; // burns are fire: a rift makes them worse
+            const burn = t.status.burnDps * elemAmp(t) * dt; // burns are fire: a rift makes them worse
+            t.hp -= burn;
+            // a co-op wave's monster: the burn adds to everyone's shared damage too, like a blow (or this page's copy drifts)
+            if (t.wave && WHW.waves) WHW.waves.shareDamage(t, burn);
             if (E.perf !== 'low' && rnd() < dt * 8) E.burst(t.x, t.y - t.r * 0.5, '#ff9a3d', 1, 40, { life: 0.5, grav: -80 });
             if (t.hp <= 0 && t.kind !== 'dummy') A.kill(t, game().player);
             if (t.kind === 'dummy') t.hp = t.maxHp;
@@ -1592,6 +1613,13 @@
         return b.plan[b.planI++];
     }
     function hazard(h) { game().hazards.push(Object.assign({ t: 0 }, h)); }
+    // The first Shared Burden a player ever sees: what it is and what to do about it (the circle's own label then reminds)
+    function explainBurden() {
+        const s = game().state;
+        if (!s || s.tutorial.burden) return;
+        s.tutorial.burden = true;
+        WHW.toast('🔵 The Shared Burden: the blue circle follows the player it marks and bursts when its count reaches 0. Its damage is split between everyone standing inside, so the party should gather in it. Alone you take the whole hit, which can knock you out even at full health: dash just as it bursts (a dash makes you untouchable for a moment). Shields can\'t block it.', 'gold', 12000);
+    }
     function bossBegin(b, k, p) {
         const a = k.a, g = game();
         const scale = 1 + b.phase * 0.15;
@@ -1630,7 +1658,9 @@
         } else if (a.type === 'burden') {
             // on the host, aimUid is '' when it aimed at its own player; on everyone else it says who (world-online.js)
             const target = k.aimUid || (WHW.online && WHW.online.uid) || '';
-            hazard({ kind: 'burden', target, x: p.x, y: p.y, r: a.radius, windup: a.delay, dmg: b.dmg * (a.dmg || 1), owner: b.id });
+            const mine = !target || !!(WHW.online && target === WHW.online.uid);
+            hazard({ kind: 'burden', target, mine, x: p.x, y: p.y, r: a.radius, windup: a.delay, dmg: b.dmg * (a.dmg || 1), owner: b.id });
+            explainBurden();
         } else if (a.type === 'clone') {
             if (!g.actors.some(x => x.kind === 'clone' && !x.dead)) {
                 const ang = rnd() * TAU;
@@ -1669,7 +1699,7 @@
                 if (b.leaveT > (p.dead ? 2 : 6)) {
                     // the player left: reset the fight
                     b.active = false; b.hp = b.maxHp; b.atk = null; b.x = b.home.x; b.y = b.home.y; b.leaveT = 0; b.phase = 0;
-                    b.fightAt = 0; if (b.enraged) { b.enraged = false; b.dmg = b.baseDmg; }
+                    b.fightAt = 0; b.enrageWarned = false; if (b.enraged) { b.enraged = false; b.dmg = b.baseDmg; }
                     g.actors.filter(a => a.kind === 'clone' || a.summoned).forEach(a => { a.dead = true; });
                     g.hazards.length = 0;
                     WHW.onBossReset && WHW.onBossReset(b);
@@ -1677,13 +1707,19 @@
                 }
             } else b.leaveT = 0;
         }
-        // the Drowned King: fought too long, he hits much harder (def.enrage: after sec, mult times)
+        // a dungeon boss fought too long goes into a frenzy and hits much harder (def.enrage: after sec, mult times). A minute
+        // before, the player is warned, and the boss bar counts the last minute down (world-ui.js)
         if (b.def.enrage && b.kind === 'boss') {
             if (!b.fightAt) b.fightAt = E.time;
-            if (!b.enraged && E.time - b.fightAt > b.def.enrage.sec) {
+            const left = b.def.enrage.sec - (E.time - b.fightAt);
+            if (!b.enrageWarned && !b.enraged && left <= 60) {
+                b.enrageWarned = true;
+                WHW.toast('⏳ ' + b.name + ' goes into a frenzy in a minute and will hit ' + b.def.enrage.mult + ' times as hard. Finish the fight before then!', 'bad', 7000);
+            }
+            if (!b.enraged && left <= 0) {
                 b.enraged = true; b.baseDmg = b.dmg; b.dmg = b.dmg * b.def.enrage.mult;
-                E.floatText(b.x, b.y - b.r - 40, 'THE TIDE RISES', '#5fd3e0', 20, 2.2); E.addShake(10);
-                WHW.toast(b.name + ' is enraged and hits far harder: finish him!', 'bad');
+                E.floatText(b.x, b.y - b.r - 40, b.def.vault ? 'THE TIDE RISES' : 'FRENZY', '#5fd3e0', 20, 2.2); E.addShake(10);
+                WHW.toast(b.name + ' is in a frenzy and hits ' + b.def.enrage.mult + ' times as hard: finish the fight!', 'bad', 6000);
             }
         }
         const ph = bossPhase(b);
@@ -1905,6 +1941,7 @@
                 // follow the marked player until it bursts; then whoever stands in it shares the damage
                 const net = WHW.online, mine = !h.target || (net && h.target === net.uid);
                 const t = mine ? p : net && net.remotes.get(h.target);
+                h.mine = mine;
                 if (!h.done && t && !t.dead) { h.x = t.x; h.y = t.y; }
                 if (!h.done && h.t >= h.windup) {
                     h.done = true;
@@ -1912,7 +1949,8 @@
                     const meIn = !p.dead && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + p.r;
                     if (meIn) A.hurtPlayer(h.dmg / (1 + others), { from: h, kb: 160, unblockable: true });
                     E.burst(h.x, h.y, '#5fd3e0', 26, 220, { life: 0.6 }); E.addShake(5);
-                    E.floatText(h.x, h.y - h.r - 10, meIn || others ? 'Shared by ' + ((meIn ? 1 : 0) + others) : 'Nobody shared it', '#bff6ff', 13, 1.2);
+                    const n = (meIn ? 1 : 0) + others;
+                    E.floatText(h.x, h.y - h.r - 10, n > 1 ? 'Split ' + n + ' ways' : n === 1 ? 'Taken alone: the full hit' : 'Nobody was in it', '#bff6ff', 13, 1.4);
                 }
                 if (h.done && h.t > h.windup + 0.4) h.gone = true;
             } else if (h.kind === 'wave') {
@@ -1999,17 +2037,35 @@
 
     // Tier colour of a weapon / armour piece
     const tierColor = (t) => (D.TIERS[t] ? D.TIERS[t].color : '#aaa');
+    // A relic's look (core/world-relics.js lookOf, or a remote player's shared one): its essences' colours, its unique's
+    // shape, and from Epic up a glow in its tier's colour. Shapes change the picture only, never the reach or hit.
+    const relicGlow = (ctx, look) => {
+        if (!look || look.tier < 3 || E.perf === 'low') return;
+        ctx.shadowColor = window.WHGear.TIERS[look.tier].color;
+        ctx.shadowBlur = 4 + 3 * (look.tier - 3) + (look.tier >= 5 ? Math.sin(E.time * 4) * 2 : 0);
+    };
     A.drawWeapon = function (ctx, x, y, w, cls, tier, opts = {}) {
         if (!w) return;
         const P = D.WEAPON_CLASSES[cls];
-        const col = tierColor(tier);
+        const look = opts.look || null, shape = look ? look.shape : '';
+        const col = look ? look.main : tierColor(tier), trim = look ? look.trim : null;
         const th = w.theta;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(th);
         ctx.lineCap = 'round';
+        relicGlow(ctx, look);
         const wood = '#7a5230';
-        if (cls === 'bow') {
+        if (cls === 'bow' && shape === 'hornbow') {
+            // Seraph's Arc: a recurve with a feathered horn at each end
+            const pull = (w.draw || 0) * 14;
+            ctx.strokeStyle = col; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.moveTo(4, -24); ctx.quadraticCurveTo(22, -16, 14, 0); ctx.quadraticCurveTo(22, 16, 4, 24); ctx.stroke();
+            ctx.fillStyle = trim; ctx.beginPath(); ctx.moveTo(4, -24); ctx.lineTo(-6, -30); ctx.lineTo(2, -18); ctx.fill(); ctx.beginPath(); ctx.moveTo(4, 24); ctx.lineTo(-6, 30); ctx.lineTo(2, 18); ctx.fill();
+            ctx.shadowBlur = 0; ctx.strokeStyle = '#efe6cc'; ctx.lineWidth = 1.2;
+            ctx.beginPath(); ctx.moveTo(4, -24); ctx.lineTo(14 - pull, 0); ctx.lineTo(4, 24); ctx.stroke();
+            if (w.drawing) { ctx.strokeStyle = '#d8c7a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14 - pull, 0); ctx.lineTo(40 - pull, 0); ctx.stroke(); }
+        } else if (cls === 'bow') {
             const pull = (w.draw || 0) * 14;
             ctx.strokeStyle = col; ctx.lineWidth = 3.5;
             ctx.beginPath(); ctx.arc(10, 0, 18, -1.15, 1.15); ctx.stroke();
@@ -2023,17 +2079,27 @@
             }
         } else if (cls === 'spear') {
             const tip = w.r;
-            ctx.strokeStyle = wood; ctx.lineWidth = 3.5;
+            ctx.strokeStyle = trim || wood; ctx.lineWidth = 3.5;
             ctx.beginPath(); ctx.moveTo(tip - 66, 0); ctx.lineTo(tip - 8, 0); ctx.stroke();
             ctx.fillStyle = col;
-            ctx.beginPath(); ctx.moveTo(tip + 6, 0); ctx.lineTo(tip - 10, -5); ctx.lineTo(tip - 10, 5); ctx.closePath(); ctx.fill();
+            if (shape === 'trident') {
+                // Tidecaller's Trident: three prongs on a crossbar
+                ctx.fillRect(tip - 12, -8, 3, 16);
+                for (const yy of [-7, 0, 7]) { ctx.beginPath(); ctx.moveTo(tip + (yy ? 2 : 7), yy); ctx.lineTo(tip - 10, yy - 2.5); ctx.lineTo(tip - 10, yy + 2.5); ctx.closePath(); ctx.fill(); }
+            } else if (shape === 'bolt') {
+                // Stormpiercer: a zigzag bolt for a head
+                ctx.beginPath(); ctx.moveTo(tip + 8, 0); ctx.lineTo(tip - 2, -6); ctx.lineTo(tip - 1, -1); ctx.lineTo(tip - 12, -5); ctx.lineTo(tip - 3, 3); ctx.lineTo(tip - 4, 0); ctx.closePath(); ctx.fill();
+            } else { ctx.beginPath(); ctx.moveTo(tip + 6, 0); ctx.lineTo(tip - 10, -5); ctx.lineTo(tip - 10, 5); ctx.closePath(); ctx.fill(); }
         } else if (cls === 'staff') {
             // a gnarled shaft with a metal collar and an orb in its magic's colour that swells as it charges
             const tip = w.r, sm = D.STAFF_MAGIC[opts.magic], glow = sm ? sm.color : '#bfe3ff', ch = w.charge || 0;
-            ctx.strokeStyle = '#6b4a2e'; ctx.lineWidth = 3.5;
+            ctx.strokeStyle = trim || '#6b4a2e'; ctx.lineWidth = 3.5;
             ctx.beginPath(); ctx.moveTo(tip - 62, 1); ctx.quadraticCurveTo(tip - 34, -2, tip - 9, 0); ctx.stroke();
             ctx.strokeStyle = col; ctx.lineWidth = 2;
-            ctx.beginPath(); ctx.moveTo(tip - 9, -5); ctx.quadraticCurveTo(tip - 2, -7, tip + 1, -3); ctx.moveTo(tip - 9, 5); ctx.quadraticCurveTo(tip - 2, 7, tip + 1, 3); ctx.stroke();
+            if (shape === 'forked') {
+                // Starweave: two branches that never quite meet
+                ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(tip - 10, 0); ctx.quadraticCurveTo(tip - 2, -12, tip + 6, -9); ctx.moveTo(tip - 10, 0); ctx.quadraticCurveTo(tip - 2, 12, tip + 6, 9); ctx.stroke();
+            } else { ctx.beginPath(); ctx.moveTo(tip - 9, -5); ctx.quadraticCurveTo(tip - 2, -7, tip + 1, -3); ctx.moveTo(tip - 9, 5); ctx.quadraticCurveTo(tip - 2, 7, tip + 1, 3); ctx.stroke(); }
             if (ch > 0) { ctx.globalAlpha = 0.25 + 0.3 * ch; ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(tip - 2, 0, 6 + 9 * ch + (ch >= 1 ? Math.sin(E.time * 18) * 1.5 : 0), 0, TAU); ctx.fill(); ctx.globalAlpha = 1; }
             ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(tip - 2, 0, 4 + 1.5 * ch, 0, TAU); ctx.fill();
             ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.beginPath(); ctx.arc(tip - 3.5, -1.5, 1.5, 0, TAU); ctx.fill();
@@ -2043,13 +2109,33 @@
             if (cls === 'sword' || cls === 'dagger') {
                 ctx.strokeStyle = '#5a3d22'; ctx.lineWidth = 4;
                 ctx.beginPath(); ctx.moveTo(2, 0); ctx.lineTo(P.r0, 0); ctx.stroke();
-                ctx.strokeStyle = '#8a7a5a'; ctx.lineWidth = 3;
+                ctx.strokeStyle = trim || '#8a7a5a'; ctx.lineWidth = 3;
                 ctx.beginPath(); ctx.moveTo(P.r0, -6); ctx.lineTo(P.r0, 6); ctx.stroke();
                 ctx.fillStyle = col;
-                const bw = cls === 'dagger' ? 3 : 4;
-                ctx.beginPath(); ctx.moveTo(P.r0 + 1, -bw); ctx.lineTo(len - 6, -bw * 0.7); ctx.lineTo(len, 0); ctx.lineTo(len - 6, bw * 0.7); ctx.lineTo(P.r0 + 1, bw); ctx.closePath(); ctx.fill();
-                ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
+                const bw = cls === 'dagger' ? 3 : 4, a = P.r0 + 1, L = len - a;
+                ctx.beginPath();
+                if (shape === 'flamberge' || shape === 'kris') {
+                    // a wavy blade (Wyrmtongue, the Whisper of Ink)
+                    const waves = shape === 'kris' ? 3 : 5;
+                    ctx.moveTo(a, -bw);
+                    for (let i = 1; i <= waves * 2; i++) ctx.lineTo(a + L * i / (waves * 2) * 0.92, -bw * (i % 2 ? 1.6 : 0.6));
+                    ctx.lineTo(len, 0);
+                    for (let i = waves * 2; i >= 1; i--) ctx.lineTo(a + L * i / (waves * 2) * 0.92, bw * (i % 2 ? 0.6 : 1.6));
+                    ctx.lineTo(a, bw);
+                } else if (shape === 'crystal') {
+                    // Glacier's Edge: jagged ice
+                    ctx.moveTo(a, -bw); ctx.lineTo(a + L * 0.3, -bw * 1.8); ctx.lineTo(a + L * 0.45, -bw * 0.8); ctx.lineTo(a + L * 0.7, -bw * 1.6); ctx.lineTo(len, 0);
+                    ctx.lineTo(a + L * 0.6, bw * 1.5); ctx.lineTo(a + L * 0.4, bw * 0.7); ctx.lineTo(a + L * 0.2, bw * 1.6); ctx.lineTo(a, bw);
+                } else if (shape === 'leafblade') {
+                    ctx.moveTo(a, 0); ctx.quadraticCurveTo(a + L * 0.5, -bw * 2.6, len, 0); ctx.quadraticCurveTo(a + L * 0.5, bw * 2.6, a, 0);
+                } else if (shape === 'fang') {
+                    ctx.moveTo(a, -bw); ctx.quadraticCurveTo(a + L * 0.6, -bw * 2.4, len, -bw * 1.2); ctx.quadraticCurveTo(a + L * 0.5, bw * 0.4, a, bw);
+                } else { ctx.moveTo(a, -bw); ctx.lineTo(len - 6, -bw * 0.7); ctx.lineTo(len, 0); ctx.lineTo(len - 6, bw * 0.7); ctx.lineTo(a, bw); }
+                ctx.closePath(); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.strokeStyle = trim ? trim : 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1;
                 ctx.beginPath(); ctx.moveTo(P.r0 + 3, 0); ctx.lineTo(len - 6, 0); ctx.stroke();
+                if (shape === 'runeblade') { ctx.fillStyle = '#e6d4ff'; for (let i = 0; i < 4; i++) ctx.fillRect(a + 4 + i * (L - 12) / 4, -1, 2.5, 2); }
             } else if (cls === 'axe') {
                 ctx.strokeStyle = wood; ctx.lineWidth = 4;
                 ctx.beginPath(); ctx.moveTo(4, 0); ctx.lineTo(len, 0); ctx.stroke();
@@ -2091,18 +2177,15 @@
         if (window.WHBeans) { try { window.WHBeans.drawTrail(ctx, p); } catch (e) {} }
         const g = game();
         const it = weaponItem(), b = W.baseOf(it);
+        const looks = A.myLooks();
         const chest = W.baseOf(W.findGear(g.state, g.state.equip.chest));
         const helm = W.baseOf(W.findGear(g.state, g.state.equip.helmet));
         const boots = W.baseOf(W.findGear(g.state, g.state.equip.boots));
         shadow(ctx, p.x, p.y, p.r);
         if (p.iframes > 0 && p.dashT <= 0 && Math.floor(E.time * 20) % 2) ctx.globalAlpha = 0.6;
-        if (boots) { circle(ctx, p.x - 6, p.y + 11, 4, tierColor(boots.tier)); circle(ctx, p.x + 6, p.y + 11, 4, tierColor(boots.tier)); }
-        circle(ctx, p.x, p.y, p.r + 2, chest ? tierColor(chest.tier) : '#3a4a66', 'rgba(0,0,0,0.5)', 1.5);
+        drawArmor(ctx, p.x, p.y, p.r, { b: boots && boots.tier, c: chest && chest.tier, h: helm && helm.tier }, looks, 'rgba(0,0,0,0.5)', 1.5);
         faceImg(ctx, g.faceSrc, p.x, p.y - 1, p.r - 1);
-        if (helm) {
-            ctx.strokeStyle = tierColor(helm.tier); ctx.lineWidth = 5;
-            ctx.beginPath(); ctx.arc(p.x, p.y - 1, p.r - 1, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
-        }
+        drawHelm(ctx, p.x, p.y, p.r, helm && helm.tier, looks.h);
         if (p.flash > 0) circle(ctx, p.x, p.y, p.r + 2, 'rgba(255,80,90,0.45)');
         for (const a of activeBuffs(p)) {
             if (a.reduce) circle(ctx, p.x, p.y, p.r + 5, 'rgba(185,169,138,0.22)', 'rgba(210,195,160,0.9)', 2.5);
@@ -2132,16 +2215,57 @@
         ctx.globalAlpha = 1;
         if (b) {
             drawTrail(ctx, p);
-            A.drawWeapon(ctx, p.x, p.y, p.weapon, b.cls, b.tier, { magic: b.magic, fire: !!p.ignite });
+            A.drawWeapon(ctx, p.x, p.y, p.weapon, b.cls, b.tier, { magic: b.magic, fire: !!p.ignite, look: looks.w });
         }
         const shb = W.baseOf(shieldItem());
-        if (shb) A.drawShield(ctx, p.x, p.y, p.shield.theta, p.shield.up, shb.tier, p.shield.brokenUntil > E.time);
+        if (shb) A.drawShield(ctx, p.x, p.y, p.shield.theta, p.shield.up, shb.tier, p.shield.brokenUntil > E.time, looks.s);
     };
+    // The looks of what this player has on (relics only; plain gear draws by its tier): { w, c, h, b, s }. Shared online
+    // as the info field lk (core/world-online.js packLooks).
+    A.myLooks = function () {
+        const g = game(), R = window.WHWorldRelics, s = g.state;
+        if (!R) return {};
+        const of = (it) => (it && it.r ? R.lookOf(it) : null);
+        // a plain weapon with essences in its sockets: shown as tier 0 in its own colour (others' pages allow for its harder hits)
+        const wi = weaponItem(), wb = W.baseOf(wi);
+        const w = of(wi) || (wi && wi.k && wb ? { tier: 0, shape: '', main: tierColor(wb.tier), trim: tierColor(wb.tier) } : null);
+        return { w, c: of(W.findGear(s, s.equip.chest)), h: of(W.findGear(s, s.equip.helmet)), b: of(W.findGear(s, s.equip.boots)), s: of(shieldItem()) };
+    };
+    // the body (chest) and feet (boots): a relic's own colours, its tier's glow; tiers: { b, c, h } gear tiers
+    function drawArmor(ctx, x, y, r, tiers, looks, edge, edgeW) {
+        const bc = looks.b ? looks.b.main : tiers.b ? tierColor(tiers.b) : null;
+        if (bc) {
+            ctx.save(); relicGlow(ctx, looks.b);
+            circle(ctx, x - 6, y + 11, 4, bc); circle(ctx, x + 6, y + 11, 4, bc);
+            if (looks.b && looks.b.shape === 'wings') { ctx.fillStyle = looks.b.trim; for (const sx of [-1, 1]) { ctx.beginPath(); ctx.moveTo(x + sx * 9, y + 10); ctx.lineTo(x + sx * 17, y + 4); ctx.lineTo(x + sx * 10, y + 13); ctx.fill(); } }
+            ctx.restore();
+        }
+        ctx.save(); relicGlow(ctx, looks.c);
+        circle(ctx, x, y, r + 2, looks.c ? looks.c.main : tiers.c ? tierColor(tiers.c) : '#3a4a66', looks.c ? looks.c.trim : edge, looks.c ? 2.5 : edgeW);
+        if (looks.c && looks.c.shape === 'spikes') { ctx.fillStyle = looks.c.trim; for (const a of [-2.4, -0.7, 2.6, 0.5]) { ctx.beginPath(); ctx.moveTo(x + Math.cos(a) * (r + 1), y + Math.sin(a) * (r + 1)); ctx.lineTo(x + Math.cos(a) * (r + 8), y + Math.sin(a) * (r + 8)); ctx.lineTo(x + Math.cos(a + 0.25) * (r + 1), y + Math.sin(a + 0.25) * (r + 1)); ctx.fill(); } }
+        ctx.restore();
+    }
+    function drawHelm(ctx, x, y, r, tier, look) {
+        if (!tier && !look) return;
+        ctx.save(); relicGlow(ctx, look);
+        ctx.strokeStyle = look ? look.main : tierColor(tier); ctx.lineWidth = 5;
+        ctx.beginPath(); ctx.arc(x, y - 1, r - 1, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke();
+        if (look && (look.shape === 'hornhelm' || look.shape === 'thorncrown')) {
+            ctx.fillStyle = look.trim;
+            const n = look.shape === 'hornhelm' ? 2 : 5;
+            for (let i = 0; i < n; i++) {
+                const a = Math.PI * (n === 2 ? (i ? 1.82 : 1.18) : 1.15 + i * 0.175), h = n === 2 ? 10 : 5;
+                ctx.beginPath(); ctx.moveTo(x + Math.cos(a - 0.08) * r, y - 1 + Math.sin(a - 0.08) * r); ctx.lineTo(x + Math.cos(a) * (r + h), y - 1 + Math.sin(a) * (r + h)); ctx.lineTo(x + Math.cos(a + 0.08) * r, y - 1 + Math.sin(a + 0.08) * r); ctx.fill();
+            }
+        }
+        ctx.restore();
+    }
     // A shield: held out in front toward the mouse when raised, slung at the side when not
-    A.drawShield = function (ctx, x, y, theta, up, tier, broken) {
-        const col = tier === 0 ? '#9a7a55' : tierColor(tier);
+    A.drawShield = function (ctx, x, y, theta, up, tier, broken, look) {
+        const col = look ? look.main : tier === 0 ? '#9a7a55' : tierColor(tier);
         ctx.save();
         ctx.translate(x, y);
+        relicGlow(ctx, look);
         if (up) {
             ctx.rotate(theta);
             ctx.lineCap = 'round';
@@ -2166,19 +2290,19 @@
         const tc = (t) => (t ? tierColor(t) : null);
         shadow(ctx, rp.x, rp.y, rp.r);
         if (rp.dead) ctx.globalAlpha = 0.35;
-        if (info.b) { circle(ctx, rp.x - 6, rp.y + 11, 4, tc(info.b)); circle(ctx, rp.x + 6, rp.y + 11, 4, tc(info.b)); }
-        circle(ctx, rp.x, rp.y, rp.r + 2, tc(info.c) || '#3a4a66', hostile ? 'rgba(255,90,100,0.85)' : 'rgba(0,0,0,0.5)', hostile ? 2 : 1.5);
+        const looks = info.lk || {}; // their relics' looks (core/world-online.js unpackLooks)
+        drawArmor(ctx, rp.x, rp.y, rp.r, { b: info.b, c: info.c, h: info.h }, looks, hostile ? 'rgba(255,90,100,0.85)' : 'rgba(0,0,0,0.5)', hostile ? 2 : 1.5);
         faceImg(ctx, info.f || 'mainimage/whathappened.jpeg', rp.x, rp.y - 1, rp.r - 1);
-        if (info.h) { ctx.strokeStyle = tierColor(info.h); ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(rp.x, rp.y - 1, rp.r - 1, Math.PI * 1.08, Math.PI * 1.92); ctx.stroke(); }
+        drawHelm(ctx, rp.x, rp.y, rp.r, info.h, looks.h);
         if (rp.flash > 0) circle(ctx, rp.x, rp.y, rp.r + 2, 'rgba(255,255,255,0.5)');
         if (rp.protected && hostile) circle(ctx, rp.x, rp.y, rp.r + 7, 'rgba(120,200,255,0.12)', 'rgba(150,215,255,0.6)', 1.5);
         const wb = D.GEAR_BY_ID[info.w];
         if (wb && !rp.dead) {
             drawTrail(ctx, rp);
-            A.drawWeapon(ctx, rp.x, rp.y, rp.weapon, wb.cls, wb.tier, { rival: true, magic: wb.magic });
+            A.drawWeapon(ctx, rp.x, rp.y, rp.weapon, wb.cls, wb.tier, { rival: true, magic: wb.magic, look: looks.w });
         }
         const sb = D.GEAR_BY_ID[info.sh];
-        if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false);
+        if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false, looks.s);
         ctx.globalAlpha = 1;
         // 👥 my party, 🛡️ my clan (a clanmate in a PvP zone keeps the red name: they still can hurt you)
         E.label(ctx, (mate ? '👥 ' : '') + (clan ? '🛡️ ' : '') + (info.n || 'Adventurer'), rp.x, rp.y - rp.r - 16, { font: '700 11px Inter, sans-serif', fill: hostile ? '#ffb3bb' : mate ? '#8dffb8' : clan ? '#ffe08a' : '#e6f0ff', stroke: 'rgba(0,0,0,0.75)' });
@@ -2478,7 +2602,13 @@
                     ctx.strokeStyle = 'rgba(160,240,255,0.95)'; ctx.lineWidth = 3;
                     ctx.beginPath(); ctx.arc(h.x, h.y, h.r * (1 - f) + 6, 0, TAU); ctx.stroke();
                     ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.stroke();
-                    E.label(ctx, 'Share it! ' + Math.max(0, Math.ceil(h.windup - h.t)), h.x, h.y - h.r - 8, { font: '800 12px Inter, sans-serif', fill: '#dffaff', stroke: 'rgba(0,0,0,0.75)' });
+                    // what to do about it, from where this player stands: the marked one gathers the party in (alone: a dash
+                    // as it bursts, or full health); anyone else steps in to take part of the hit
+                    const secs = Math.max(0, Math.ceil(h.windup - h.t));
+                    const party = WHW.waves && WHW.waves.players && WHW.waves.players() > 1;
+                    const say = !h.mine ? 'Stand in it to share the hit · ' : party ? 'Burden on you: get your party in · ' : 'Burden on you: dash as it bursts · ';
+                    // under the circle: the messages along the top of the screen would cover it above
+                    E.label(ctx, say + secs, h.x, h.y + h.r + 18, { font: '800 13px Inter, sans-serif', fill: '#dffaff', stroke: 'rgba(0,0,0,0.75)' });
                 }
             } else if (h.kind === 'wave') {
                 ctx.strokeStyle = h.color || 'rgba(120,200,90,0.85)'; ctx.lineWidth = h.width;

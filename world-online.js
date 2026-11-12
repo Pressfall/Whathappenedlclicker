@@ -71,13 +71,16 @@
     // chat is kept as sent and filtered when shown (core/chat-safety.js), so the swear filter toggle applies at once
     const CS = window.WHChatSafety;
     const chatLimits = CS.limiter();
-    // a zone's place in the database: its id, or for an instance (the Sunken Vault) one per party (vault_<party id>)
+    // a zone's place in the database: its id, or for an instance (a hidden dungeon) one per party (<dungeon>_<party id>).
+    // Alone in a dungeon there is none: the page plays it offline (world-waves.js runs the rooms itself).
     const Z = (sub) => O.ROOT + '/' + (ON.key || ON.zone) + (sub ? '/' + sub : '');
     ON.Z = (sub) => Z(sub);
+    // (the party: the one this page is in, or after a reload the one it was in, which joining the zone brings it back into)
     function keyFor(zone) {
         const zd = D.ZONES[zone] || {};
         if (!zd.instance) return zone;
-        return window.WHWorldVault ? window.WHWorldVault.instanceKey(WHW.party && WHW.party.id) : null;
+        const pid = WHW.party && (WHW.party.id || (WHW.party.savedId && WHW.party.savedId()));
+        return window.WHWorldDungeons ? window.WHWorldDungeons.instanceKey(zone, pid) : null;
     }
 
     // ---------------- connecting ----------------
@@ -167,7 +170,7 @@
         // inside a building (the Hall of Gods) you are out of sight: leave the zone you were in, join none
         if (D.ZONES[zone] && D.ZONES[zone].interior) { leave(); ON.wantZone = zone; return; }
         const key = keyFor(zone);
-        if (!key) { leave(); ON.wantZone = zone; return; } // the Vault without a party: nobody to share it with
+        if (!key) { leave(); ON.wantZone = zone; return; } // a dungeon without a party: nobody to share it with
         if (ON.zone === zone && ON.key === key && !force) return;
         leave();
         ON.zone = zone;
@@ -294,11 +297,20 @@
         for (const r of ON.remotes.values()) if (!r.stale && !r.dead && Math.abs(r.x - p.x) < R && Math.abs(r.y - p.y) < R) return true;
         return false;
     }
+    // how fast to send (core/world-online.js sendMode): fastest in a live Arena match or the Pit, then a co-op wave or dungeon
+    // room being fought, then another player close by
+    function sendMode() {
+        const AR = WHW.arena, WV = WHW.waves, z = D.ZONES[game().zoneId];
+        const duel = !!(AR && AR.match && !AR.match.result && AR.match.state === 'live') || !!(WHW.inPit && WHW.inPit());
+        const coop = !duel && !!(z && z.coop && WV && WV.run && WV.run.st === 'fight');
+        return O.sendMode({ duel, coop, near: !duel && !coop && fighting() });
+    }
+    ON.sendMode = sendMode;
     // Send my position if it's due (core/world-online.js sendDue); force: right now if anything changed (before a hit, so
     // the player hit checks it against where I really am)
     function sendPos(force) {
         const pos = myPos(), since = (performance.now() - ON.sentAt) / 1000;
-        const kind = force ? (O.posChange(ON.lastPos, pos) && 'hit') : O.sendDue(ON.lastPos, pos, since, fighting());
+        const kind = force ? (O.posChange(ON.lastPos, pos) && 'hit') : O.sendDue(ON.lastPos, pos, since, sendMode());
         if (!kind) return;
         const str = O.packPos(pos);
         if (str === ON.lastSent) return;
@@ -320,7 +332,8 @@
     }
     function sendInfo(force) {
         if (!ON.db || !ON.zone) return;
-        const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {}, WHW.party ? WHW.party.infoExtra() : {}, { cn: myClan() });
+        const looks = WHW.actors && WHW.actors.myLooks ? O.packLooks(WHW.actors.myLooks()) : '';
+        const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {}, WHW.party ? WHW.party.infoExtra() : {}, { cn: myClan(), lk: looks });
         const key = JSON.stringify(info);
         if (!force && key === ON.infoKey) return;
         ON.infoKey = key;
@@ -331,9 +344,13 @@
         // the clan badge too, in a write of its own for the same reason (it came later still)
         const clan = { cn: info.cn };
         delete info.cn;
+        // and the relics' looks (they came later still)
+        const lk = { lk: info.lk };
+        delete info.lk;
         ON.db.update(Z('i/' + ON.uid), Object.assign(info, { t: ON.db.serverNow() }));
         ON.db.update(Z('i/' + ON.uid), extra);
         ON.db.update(Z('i/' + ON.uid), clan);
+        ON.db.update(Z('i/' + ON.uid), lk);
     }
     function trail(r, P) {
         const len = C.hasReach(r.weapon.cls) ? r.weapon.r : P.len || 0;
@@ -346,11 +363,11 @@
     // ---------------- each step ----------------
     ON.update = function (dt) {
         if (!ON.db || !ON.zone) return;
-        const t = performance.now();
+        const t = performance.now(), mode = ON.remotes.size ? sendMode() : 'move';
         for (const r of ON.remotes.values()) {
             if (r.last && t - r.last > O.RATE.pruneSec * 1000) { pruneRemote(r); continue; }
             r.stale = !r.buf.length || t - r.last > O.RATE.staleSec * 1000;
-            const s = O.interpolate(r.buf, t - O.interpDelay(r.gap));
+            const s = O.interpolate(r.buf, t - O.interpDelay(r.gap, mode));
             if (!s) continue;
             r.vx = (s.x - r.x) / dt; r.vy = (s.y - r.y) / dt;
             if (Math.abs(r.vx) > 2000 || Math.abs(r.vy) > 2000) r.vx = r.vy = 0;
@@ -400,6 +417,7 @@
         if (!msg || ON.db.serverNow() - msg.t > 30000) return;
         if (msg.m === 'ko') { onKO(msg); return; }
         if (WHW.party && (msg.m === 'party' || msg.m === 'pyes' || msg.m === 'pno')) { WHW.party.onMessage(msg); return; }
+        if (WHW.market && (msg.m === 'trade' || msg.m === 'tyes' || msg.m === 'tno')) { WHW.market.onMessage(msg); return; }
         if (WHW.arena) WHW.arena.onMessage(msg);
     }
     // someone I hit told me I knocked them out: the win counts even when they carried nothing
@@ -470,7 +488,8 @@
         const rateKey = raw.from + '|' + raw.w;
         const arenaOk = O.pvpRule(ON.zone) === 'arena' && !!last && !!WHW.arena && WHW.arena.hitFrom(raw.from, last, r);
         const v = O.validateHit(raw, { zone: ON.zone, attacker: last, me: { x: p.x, y: p.y, protected: p.protectedUntil > E.time, safe: A.playerSafe() }, now: E.time, lastAt: ON.lastHitAt[raw.from],
-            weapon: r && r.info ? r.info.w : null, abRate: ON.abRate[rateKey], arenaOk, cls: r && r.info ? r.info.cl : '', mate: ON.mate(raw.from) });
+            weapon: r && r.info ? r.info.w : null, abRate: ON.abRate[rateKey], arenaOk, cls: r && r.info ? r.info.cl : '', mate: ON.mate(raw.from),
+            relicTier: r && r.info && r.info.lk && r.info.lk.w ? r.info.lk.w.tier : -1 });
         if (!v.ok) return;
         if (raw.k === 'ab') { ON.abRate[rateKey] = v.rate; takeAbility(raw, v, r, last); return; }
         if (raw.k === 'parry') {
@@ -688,7 +707,7 @@
             // the Drowned King: stronger for every player of the party in the Vault (not only those already in his chamber:
             // the first one in would start the fight on their own) (core/world-vault.js bossHp)
             const party = Math.max(fs.length, WHW.waves && WHW.waves.players ? WHW.waves.players() : 1);
-            const max = b.def.partyScale && window.WHWorldVault ? window.WHWorldVault.bossHp(b.def.hp, party) : b.def.hp;
+            const max = b.def.partyScale && window.WHWorldDungeons ? window.WHWorldDungeons.bossHp(b.def.hp, party) : b.def.hp;
             ON.db.set(Z('b'), { hp: max, max, gen: Math.random().toString(36).slice(2, 10), t: now, killedAt: 0 });
         }
         if (!ON.bossShared(b)) { ON.isHost = false; return; }

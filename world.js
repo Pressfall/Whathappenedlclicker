@@ -194,10 +194,11 @@
         const AR = WHW.arena, WV = WHW.waves;
         if (AR && AR.match && !AR.match.result) return 'match:' + AR.match.id;
         if (g.zoneId === 'trials' && WV && WV.run && WV.run.st !== 'over') return 'waves:' + WV.run.gen;
-        if (g.zoneId === 'vault' && WV && WV.run) return 'vault:' + WV.run.gen + ':' + (WV.run.st === 'fight' ? WV.run.wave : 'king');
+        if (D.ZONES[g.zoneId] && D.ZONES[g.zoneId].dungeon && WV && WV.run) return g.zoneId + ':' + WV.run.gen + ':' + (WV.run.st === 'fight' ? WV.run.wave : 'king');
         if (inPit()) return 'pit:' + (g.pitStay || 0);
         return null;
     }
+    WHW.inPit = inPit; // world-online.js: the Pit is fought at the duel send rate
     WHW.potionsLeft = () => { const k = potionLimitKey(); return k ? W.potionsLeft(g.potionLimit, k) : null; };
     function trackPit() {
         const now = inPit();
@@ -296,7 +297,7 @@
         g.actors = []; g.respawns = [];
         if (z.interior) return; // nothing lives inside the Hall of Gods
         if (z.gen === 'arena' || z.gen === 'trials') return; // players only (the Proving Grounds' waves come from world-waves.js)
-        if (z.gen === 'vault') { if (WHW.waves) WHW.waves.syncDoors(); return; } // its rooms' monsters and the King come with the run
+        if (z.gen === 'dungeon') { if (WHW.waves) WHW.waves.syncDoors(); return; } // its rooms' monsters and its boss come with the run
         if (g.zoneId === 'town') {
             const d = A.makeMonster('dummy', g.map.dummy.x, g.map.dummy.y);
             g.actors.push(d);
@@ -341,6 +342,8 @@
             if (portal) pos = { x: portal.x + (portal.side === 'w' ? 56 : portal.side === 'e' ? -56 : 0), y: portal.y + (portal.side === 'n' ? 56 : portal.side === 's' ? -56 : 0) };
         }
         if (!pos && opts.atCamp && g.map.camp) pos = { x: g.map.camp.x, y: g.map.camp.y + 40 };
+        // back up out of a hidden dungeon: beside its way down
+        if (!pos && g.map.dungeon && from === g.map.dungeon.id) pos = { x: g.map.dungeon.x, y: g.map.dungeon.y + 44 };
         if (!pos) pos = g.map.entry;
         // a saved spot that is now inside something you can't walk on (the town grew the WH Depot there, say): the entry
         if (pos !== g.map.entry && G.blocksWalk(G.tileAt(g.map, pos.x, pos.y))) pos = g.map.entry;
@@ -683,21 +686,27 @@
             if (zoneId !== 'town' && !g.state.unlocked.zones[zoneId]) { WHW.toast('That gate is still locked.', 'bad'); return; }
             enterZone(zoneId, { atCamp });
         },
-        // The Sunken Vault (core/world-vault.js): a party of 2 to 4 that has reached the Far Reaches, online
-        enterVault() {
-            const V = window.WHWorldVault, P = WHW.party;
+        // A hidden dungeon (core/world-dungeons.js), from its way down in the zone above: once that zone's boss has fallen to
+        // you, alone or with a party of up to 4. A party online shares one copy (each member goes down on their own); alone,
+        // or offline, it is yours.
+        enterDungeon(id) {
+            const Dg = window.WHWorldDungeons, P = WHW.party, dd = Dg.def(id);
+            if (!dd) return;
             const size = P && P.id ? Math.max(P.tickets.length, P.members.size) : 0;
-            const ok = V.mayEnter(size, W.vaultReached(g.state));
+            const ok = Dg.mayEnter(size, W.dungeonOpen(g.state, id));
             if (!ok.ok) {
-                WHW.toast({ reach: 'The Waystone only reaches the Vault once you have been to the Far Reaches.', party: 'The Vault is for a party of ' + V.PARTY.min + ' to ' + V.PARTY.max + '. Invite someone with E first (P opens your party).',
-                    size: 'At most ' + V.PARTY.max + ' can go in together.' }[ok.reason], 'bad');
+                WHW.toast({ locked: 'Sealed. ' + D.BOSSES[D.ZONES[dd.zone].boss].name + ' must fall to you first.', size: 'At most ' + Dg.PARTY.max + ' can go in together.' }[ok.reason], 'bad');
                 return;
             }
-            if (!(WHW.online && WHW.online.db && WHW.online.status === 'online')) { WHW.toast('The Vault needs online play: your party goes in together.', 'bad'); return; }
-            enterZone('vault');
-            WHW.toast('🔱 The Sunken Vault: start the first room from its ready circle, together.', 'gold');
+            const together = size > 1 && WHW.online && WHW.online.db && WHW.online.status === 'online';
+            if (W.noteDungeonFound(g.state, id)) save();
+            enterZone(id);
+            WHW.toast(dd.icon + ' ' + dd.name + ': start the first room from its ready circle' + (together ? ', together. Your party shares this copy.' : '. Alone, everything is sized for one.'), 'gold');
+            WHW.ui.openDungeonIntro(id); // the first time down any dungeon: how they work
         },
-        leaveVault() { if (g.zoneId === 'vault') enterZone('town'); },
+        // back up into the zone above (the Vault's old name kept for older callers)
+        leaveDungeon() { const z = D.ZONES[g.zoneId]; if (z && z.dungeon) enterZone(z.from); },
+        leaveVault() { WHW.actions.leaveDungeon(); },
         // The Arena panel's queue (world-arena.js), opened from somewhere safe (town, the Hall): in through the Arena's door,
         // as if walked there. Nowhere else, so it is no way out of a fight. true when the player is in the Arena after it
         enterArena() {
@@ -711,8 +720,7 @@
     // The far wall of the Hall grinds open: the hidden room is carved into the map for good
     function openTheWall() {
         G.openSecret(g.map);
-        E.setMap(g.map);
-        E.buildNodeGrid(g.nodes);
+        E.invalidateGround();
         const at = g.map.secret.at;
         E.burst(at.x, at.y, '#3dffb4', 60, 220, { life: 1.2, size: 4 });
         E.burst(at.x, at.y, '#8a8f9c', 40, 160, { life: 1.4, size: 6, grav: -10 });
@@ -760,7 +768,7 @@
         E.burst(w.x, w.y - 20, '#9fdcff', 50, 240, { life: 1 }); E.addShake(10);
         WHW.sfx('boss');
         if (r.lairOpen) {
-            G.openLair(g.map); E.setMap(g.map); E.buildNodeGrid(g.nodes);
+            G.openLair(g.map); E.invalidateGround();
             if (!g.actors.some(a => a.kind === 'boss' && !a.dead)) g.actors.push(A.makeBoss(z.boss, g.map.boss.x, g.map.boss.y));
             WHW.banner('The lair is open', D.BOSSES[z.boss].name + ' is waiting for you');
         } else WHW.banner('A ward breaks', r.broken + ' of ' + r.of + ' wards broken');
@@ -801,6 +809,15 @@
         if (r.gems) WHW.toast(`💎 ${r.gems} gem${r.gems > 1 ? 's' : ''} sent to your game.`, 'gem');
         if (r.firstToday) WHW.toast('First win today: bonus rubies!', 'gold');
         if (r.unlocked && r.firstEver) setTimeout(() => WHW.toast(`The gate to ${D.ZONES[r.unlocked].name} is open! Head back to town.`, 'gold'), 1200);
+        // a dungeon boss: its Heart, a Catalyst, the Vault's seals and Glory
+        if (r.first && b.def.dungeon) {
+            const got = Object.entries(r.mats || {}).map(([id, n]) => (n > 1 ? n + ' ' : '') + D.MATERIALS_BY_ID[id].icon + ' ' + D.MATERIALS_BY_ID[id].name);
+            WHW.toast('This week\'s reward: ' + got.join(', ') + (r.glory ? ', +' + r.glory + ' Glory' : '') + (r.box ? ' and a Golden Chest for your game' : '') + '.', 'gold');
+        } else if (b.def.dungeon) WHW.toast('Already beaten this week: a smaller reward until next week.');
+        // the first time a zone's boss falls, the way into its hidden dungeon wakes
+        const under = g.map.dungeon;
+        if (under && !b.def.dungeon && r.firstEver && !g.state.dungeons.found[under.id])
+            setTimeout(() => WHW.toast('🕳️ Something stirs under ' + D.ZONES[g.zoneId].name + '. Somewhere off the roads, a way down has opened. The camp may know more.', 'gold'), 2600);
         refreshPlayer();
     };
 
@@ -848,9 +865,9 @@
             }
             if (!prompt && WHW.arena && !WHW.arena.match && dist(p, map.pit) < map.pit.r) prompt = '🩸 The Pit: anyone in here can fight you';
         } else if (map.rooms) {
-            // the Sunken Vault: back out, the Vault Keeper (an NPC, below), and the next room's ready circle
+            // a hidden dungeon: back up, the Vault Keeper (an NPC, above), and the next room's ready circle
             const rc = WHW.waves && WHW.waves.vaultReady();
-            if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Back to town'; if (press) enterZone('town'); }
+            if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Climb back up to ' + esc(D.ZONES[map.exit.to].name); if (press) WHW.actions.leaveDungeon(); }
             else if (rc && dist(p, rc) < rc.r + 20) { const w = WHW.waves.promptText(); prompt = w.text; if (press && w.can) WHW.waves.start(); }
         } else if (map.floor) {
             // the Proving Grounds
@@ -878,6 +895,13 @@
                 break;
             }
             if (!prompt && map.lair && !map.lair.open && dist(p, map.lair.at) < 96) prompt = '🔒 Sealed: ' + W.wardsBroken(s, g.zoneId) + ' of ' + W.wardCount(g.zoneId) + ' wards broken';
+            // the zone's hidden dungeon: a boulder like any other until its boss has fallen to you
+            const dg = map.dungeon;
+            if (!prompt && dg && W.dungeonOpen(s, dg.id)) {
+                const dd = D.DUNGEONS[dg.id], d = dist(p, dg);
+                if (d < 150 && W.noteDungeonFound(s, dg.id)) { WHW.toast(dd.icon + ' You found the way down to ' + dd.name + '!', 'gold'); WHW.sfx('boss'); save(); }
+                if (d < 60) { prompt = '<kbd>E</kbd>' + dd.icon + ' Go down into ' + esc(dd.name); if (press) WHW.actions.enterDungeon(dg.id); }
+            }
             if (prompt) { /* the wards and the seal */ } else if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Return to town'; if (press) enterZone('town'); }
             else if (map.camp && dist(p, map.camp) < 80) {
                 if (!s.unlocked.camps[g.zoneId]) { s.unlocked.camps[g.zoneId] = true; WHW.toast('Camp found! You can now travel straight here from town.', 'gold'); save(); }
@@ -1101,6 +1125,7 @@
         }
         if (map.waystone && inView(map.waystone.x, map.waystone.y, 80)) drawWaystone(ctx, map.waystone, farOpen());
         for (const w of map.wards || []) if (inView(w.x, w.y, 80)) drawWard(ctx, w, W.wardBroken(g.state, g.zoneId, w.i), g.wardFight && g.wardFight.i === w.i);
+        if (map.dungeon && inView(map.dungeon.x, map.dungeon.y, 90)) drawDungeonWay(ctx, map.dungeon, W.dungeonOpen(g.state, map.dungeon.id));
         if (map.lair && !map.lair.open && inView(map.lair.at.x, map.lair.at.y, 200)) {
             for (const [tx, ty] of map.lair.tiles) {
                 const a = 0.35 + Math.sin(E.time * 3 + tx + ty) * 0.15;
@@ -1193,6 +1218,41 @@
             if (E.perf !== 'low' && Math.random() < 0.15) E.burst(x, y - 30, '#9fdcff', 1, 30, { angle: -Math.PI / 2, spread: 0.5, life: 0.8, grav: -30, size: 2 });
         }
         E.label(ctx, broken ? 'Broken ward' : 'Ward stone', x, y - 48, { font: '700 11px Inter, sans-serif', fill: broken ? '#9aa0a8' : '#cfe9ff', stroke: 'rgba(0,0,0,0.75)' });
+    }
+    // A hidden dungeon's way down: shut, just a mossy boulder like the rest of the scenery; open (its zone's boss beaten), the
+    // boulder is split and a stair glows in the dungeon's colour beneath it
+    function drawDungeonWay(ctx, dg, open) {
+        const x = dg.x, y = dg.y, dd = D.DUNGEONS[dg.id];
+        ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.beginPath(); ctx.ellipse(x, y + 12, 22, 7, 0, 0, Math.PI * 2); ctx.fill();
+        if (!open) {
+            ctx.fillStyle = '#7d828b'; ctx.beginPath(); ctx.ellipse(x, y, 19, 15, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#5f646c'; ctx.beginPath(); ctx.ellipse(x + 5, y + 4, 12, 9, 0.3, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = 'rgba(90,140,80,0.55)'; ctx.beginPath(); ctx.ellipse(x - 6, y - 8, 9, 4, -0.3, 0, Math.PI * 2); ctx.fill();
+            return;
+        }
+        // open: the boulder has split into a ring of stones round a pit, steps going down into the dark, and the dungeon's
+        // own colour glowing up out of it
+        const pulse = 0.5 + Math.sin(E.time * 2.5) * 0.5;
+        const glow = ctx.createRadialGradient(x, y + 2, 4, x, y + 2, 40);
+        glow.addColorStop(0, dd.color); glow.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.globalAlpha = 0.35 + pulse * 0.25; ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(x, y + 2, 40, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+        ctx.fillStyle = '#07060a'; ctx.beginPath(); ctx.ellipse(x, y + 2, 16, 11, 0, 0, Math.PI * 2); ctx.fill();
+        // steps: narrower and dimmer the deeper they go
+        for (let i = 0; i < 3; i++) {
+            const w = 12 - i * 3.2, sy = y - 3 + i * 4;
+            ctx.fillStyle = `rgba(150,150,165,${0.55 - i * 0.15})`; ctx.fillRect(x - w, sy, w * 2, 2);
+        }
+        ctx.strokeStyle = dd.color; ctx.globalAlpha = 0.5 + pulse * 0.4; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.ellipse(x, y + 2, 16, 11, 0, 0, Math.PI * 2); ctx.stroke(); ctx.globalAlpha = 1;
+        // the ring of split stone (the far side first, the near side over the pit's edge)
+        for (let i = 0; i < 8; i++) {
+            const ang = -Math.PI / 2 + i * Math.PI / 4 + [0, 0.12, -0.08, 0.1, 0, -0.12, 0.06, -0.05][i], big = [7.5, 5.5, 8, 6, 7, 5, 8.5, 6.5][i];
+            const sx = x + Math.cos(ang) * (21 + (i % 3)), sy = y + 2 + Math.sin(ang) * 15;
+            ctx.fillStyle = '#5c6068'; ctx.beginPath(); ctx.ellipse(sx, sy, big, big * 0.8, ang, 0, Math.PI * 2); ctx.fill();
+            ctx.fillStyle = '#8a8f98'; ctx.beginPath(); ctx.ellipse(sx - 1.5, sy - 1.8, big * 0.55, big * 0.4, ang, 0, Math.PI * 2); ctx.fill();
+        }
+        if (E.perf !== 'low' && Math.random() < 0.2) E.burst(x, y, dd.color, 1, 30, { angle: -Math.PI / 2, spread: 0.6, life: 0.9, grav: -30, size: 2 });
+        E.label(ctx, dd.icon + ' ' + dd.name, x, y - 34, { font: '800 12px Inter, sans-serif', fill: '#fff', stroke: 'rgba(0,0,0,0.75)' });
     }
     // The Hall of Gods from outside: a dark temple with columns, a gold-trimmed pediment and a black open door
     function drawHallOutside(ctx, h) {
@@ -1395,6 +1455,7 @@
         if (m.camp) dot(m.camp.x, m.camp.y, g.state.unlocked.camps[g.zoneId] ? '#ffd24d' : 'rgba(255,210,77,0.4)', 3);
         if (m.boss) dot(m.boss.x, m.boss.y, m.lair && !m.lair.open ? '#7fc8ff' : '#ff5b6b', 4);
         for (const w of m.wards || []) dot(w.x, w.y, W.wardBroken(g.state, g.zoneId, w.i) ? '#5a6070' : '#7fc8ff', 3);
+        if (m.dungeon && g.state.dungeons.found[m.dungeon.id]) dot(m.dungeon.x, m.dungeon.y, D.DUNGEONS[m.dungeon.id].color, 4); // once found
         if (m.waystone) dot(m.waystone.x, m.waystone.y, '#7fc8ff', 3);
         for (const pt of m.portals) dot(pt.x, pt.y, g.state.unlocked.zones[pt.to] ? '#7dffb0' : '#ff8a95', 3);
         for (const st of m.stations) dot(st.door.x, st.door.y, D.STATIONS[st.id].color, 3);
@@ -1480,12 +1541,19 @@
         const s = g.state;
         if (!s || !g.canSave) return; // only the tab that plays collects
         const got = Bridge.inbox(localStorage, s.inAck);
-        if (!got.entries.length) return;
-        s.rubies += got.rubies;
-        s.inAck = got.lastSeq;
+        if (!got.entries.length || got.gearUnknown) return;
+        // gear sent back from the game goes into the Relic Satchel; entries that don't fit wait for room
+        let rubies = 0, pieces = 0;
+        for (const e of got.entries) {
+            if (e.gear && !W.satchelRoom(s, e.gear.length)) { WHW.toast('Gear from your game is waiting: make room in the Relic Satchel (the Crucible).', 'bad'); break; }
+            if (e.gear) pieces += W.receivePieces(s, e.gear);
+            rubies += e.rubies; s.rubies += e.rubies;
+            s.inAck = e.seq;
+        }
         save();
-        const from = [...new Set(got.entries.map(e => RUBY_SOURCES[e.src] || 'the game'))].join(' and ');
-        WHW.toast('♦ +' + got.rubies.toLocaleString() + ' rubies from ' + from + '!', 'gold');
+        const from = [...new Set(got.entries.filter(e => e.rubies).map(e => RUBY_SOURCES[e.src] || 'the game'))].join(' and ');
+        if (rubies) WHW.toast('♦ +' + rubies.toLocaleString() + ' rubies from ' + from + '!', 'gold');
+        if (pieces) WHW.toast('📦 ' + pieces + ' piece' + (pieces > 1 ? 's' : '') + ' of gear came back from your game: they are in the Relic Satchel.', 'gold');
         WHW.sfx('craft');
     }
 
@@ -1545,6 +1613,24 @@
         }
     }
 
+    // ---------------- opened again without the player asking ----------------
+    // A browser can close a tab and open it again by itself: Chrome's Memory Saver puts away a tab left in the background
+    // (document.wasDiscarded), and a phone (Safari above all) reloads a page that used too much memory. The page notes that
+    // it is open in this tab's sessionStorage, and that it closed when it does (pagehide); still "open" at the next start
+    // means it never closed properly. Returns what to tell the player, or ''.
+    const OPEN_KEY = 'whathappened_world_open';
+    function reopenedWhy() {
+        let why = '';
+        try {
+            const wasOpen = sessionStorage.getItem(OPEN_KEY) === '1';
+            if (document.wasDiscarded) why = 'Your browser closed this tab in the background to save memory, and opened it again. (In Chrome: Settings › Performance › "Always keep these sites active" stops it.)';
+            else if (wasOpen) why = 'The page was closed by your browser (usually when the device runs short of memory) and opened again. Your progress was saved.';
+            sessionStorage.setItem(OPEN_KEY, '1');
+            window.addEventListener('pagehide', () => { try { sessionStorage.removeItem(OPEN_KEY); } catch (e) {} });
+        } catch (e) {}
+        return why;
+    }
+
     // ---------------- boot ----------------
     function boot() {
         if (boot.done) return;
@@ -1572,13 +1658,25 @@
             window._saveLoaded = true; // (cloud.js) this tab owns the Wilds save: it can sync it
             refreshClickerView(); // crew who came since last time say hello
         });
-        if (D.ZONES[g.state.zone] && D.ZONES[g.state.zone].instance) { g.state.zone = 'town'; g.state.pos = null; WHW.toastLater = WHW.toastLater || 'You came out of the Sunken Vault: go back in with your party through the Waystone.'; }
+        // Opened again in a hidden dungeon (a reload: the browser may do one on its own): still in it, the run carrying on
+        // (alone, from the save, rooms cleared still cleared; with a party, from the database once online). Only a dungeon
+        // that is no longer open to this save sends you up.
+        const dz = D.ZONES[g.state.zone];
+        let inDungeon = false;
+        if (dz && dz.instance) {
+            if (dz.dungeon && W.dungeonOpen(g.state, g.state.zone)) inDungeon = true;
+            else { g.state.zone = 'town'; g.state.pos = null; WHW.toastLater = WHW.toastLater || 'You came out of ' + dz.name + ': its way down is in ' + D.ZONES[dz.from].name + '.'; }
+        }
         g.zoneId = g.state.zone;
         enterZone(g.state.zone, { pos: g.state.pos, silent: g.state.zone !== 'town' });
+        if (inDungeon && WHW.waves && WHW.waves.resume()) WHW.toastLater = WHW.toastLater || D.DUNGEONS[g.zoneId].icon + ' Back in ' + dz.name + ': the rooms you cleared are still cleared.';
+        const why = reopenedWhy();
+        if (why) WHW.toastLater = why + (WHW.toastLater ? ' ' + WHW.toastLater : '');
         WHW.ui.renderHud();
         if (WHW.online) WHW.online.start();
         document.getElementById('loading').hidden = true;
-        if (WHW.toastLater) { WHW.toast(WHW.toastLater, 'bad'); WHW.toastLater = null; }
+        // what happened while the page was away (a reload, a dungeon carried on): long enough to read while the page settles
+        if (WHW.toastLater) { WHW.toast(WHW.toastLater, 'bad', 8000); WHW.toastLater = null; }
         if (!g.state.tutorial.welcome) {
             g.state.tutorial.welcome = true;
             save();

@@ -211,7 +211,8 @@
         return Object.assign({ id, mode: f[0], stake, ring, t0, cap: f[4], a, b }, tour ? { tour } : {});
     }
     // a message as it arrives: { from, m (kind), id, x, t }, or null
-    const KINDS = ['ask', 'yes', 'no', 'busy', 'cancel', 'go', 'down', 'quit', 'party', 'pyes', 'pno', 'pleave', 'ko'];
+    // (trade, tyes, tno: a trade invitation and its answers, world-market.js)
+    const KINDS = ['ask', 'yes', 'no', 'busy', 'cancel', 'go', 'down', 'quit', 'party', 'pyes', 'pno', 'pleave', 'ko', 'trade', 'tyes', 'tno'];
     function cleanMsg(raw) {
         if (!isObj(raw) || !UID_RE.test(String(raw.from || '')) || !KINDS.includes(raw.m)) return null;
         return { from: raw.from, m: raw.m, id: typeof raw.id === 'string' ? raw.id.slice(0, 24) : '', x: typeof raw.x === 'string' ? raw.x.slice(0, 400) : '', t: Number(raw.t) || 0 };

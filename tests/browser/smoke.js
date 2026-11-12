@@ -457,7 +457,7 @@ async function main() {
         // quests: a quest giver in town offers one, it shows in the tracker
         await evalJs('WHWorldDebug.travel("town")');
         await sleep(400);
-        check('town: the Hall of Gods and four quest givers are there', await evalJs('!!WHW.game.map.hall && WHW.game.map.npcs.filter(n => !WHWorldData.NPCS[n.id].crew && !WHWorldData.NPCS[n.id].guild).length === 4'));
+        check('town: the Hall of Gods, four quest givers and the Auctioneer are there', await evalJs('!!WHW.game.map.hall && WHW.game.map.npcs.filter(n => !WHWorldData.NPCS[n.id].crew && !WHWorldData.NPCS[n.id].guild && !WHWorldData.NPCS[n.id].auction).length === 4 && WHW.game.map.npcs.some(n => n.id === "auctioneer")'));
         await evalJs('WHW.ui.openNpc("brannoc")');
         await sleep(150);
         check('quests: Captain Brannoc offers his first quest', await evalJs('/Slime Season/.test(document.getElementById("wModalBody").textContent) && !!document.querySelector("[data-qaccept]")'));
@@ -730,10 +730,55 @@ async function main() {
         check('recipes: hovering a material in a recipe says where to get it', /Where to get it/.test(await evalJs('(() => { const t = document.getElementById("wTip"); return t && !t.hidden ? t.textContent : ""; })()')));
         await evalJs('WHW.ui.closeModal()');
         check('the tooltip goes away with the window', await evalJs('document.getElementById("wTip").hidden'));
+        // ---- the Crucible: forge gear for the game from essences, play its minigame, send it home ----
+        await evalJs('(() => { const s = WHW.game.state; for (const id of ["sunstone", "quicksilver", "titan_ruby", "flint_shard"]) s.mats[id] = 5; s.rubies += 20000; WHW.ui.openStation("crucible"); return true; })()');
+        await sleep(200);
+        check('crucible: it opens from town, with the essences you have and the odds', await evalJs('!!document.querySelector("#wModalBody .w-odds") && document.querySelectorAll("#wModalBody [data-add]").length >= 4'));
+        await evalJs('(() => { document.querySelector("[data-kind=game]").click(); for (const id of ["titan_ruby", "sunstone", "quicksilver", "flint_shard"]) document.querySelector("[data-add=" + id + "]").click(); return true; })()');
+        await sleep(100);
+        if (SCRATCH) await shot('shot-crucible.png');
+        await evalJs('document.getElementById("doForge").click()');
+        await sleep(500);
+        check('crucible: forging plays its minigame', await evalJs('WHW.craft.isOpen() && WHW.craft.current().opts.station === "crucible"'));
+        if (SCRATCH) { await evalJs('(() => { const r = WHW.craft.current(); r.down = true; return true; })()'); await sleep(900); await shot('shot-crucible-game.png'); }
+        await evalJs('(() => { const r = WHW.craft.current(); r.finished = true; r.opts.onDone(85); return true; })()');
+        await sleep(300);
+        check('crucible: a piece of gear for the game comes out, into the Relic Satchel', await evalJs('WHW.game.state.satchel.length === 1 && WHW.game.state.relics.forged === 1 && /Forged/.test(document.getElementById("wModalTitle") ? document.getElementById("wModalTitle").textContent : document.body.textContent)'));
+        if (SCRATCH) await shot('shot-crucible-result.png');
+        // and a Wilds relic in hand, drawn in its essences' colours
+        await evalJs('(() => { const s = WHW.game.state; const it = WHWorld.addGear(s, "sword_3", 90, [], Date.now(), { r: { t: 6, l: [["ember", 1], ["might", 1], ["keen", 1], ["swift", 1], ["vigor", 1]], m: ["heart_crypt", "titan_ruby"], c: ["#ff3b1f", "#ffe14d"], q: "wyrmtongue", by: "Smoke", n: 0, lv: 3 } }); s.hotbar[0] = it.uid; s.sel = 0; WHW.refreshPlayer(); WHW.ui.closeModal(); return true; })()');
+        check('relics: a unique keeps its name and shape', await evalJs('WHWorld.gearName(WHW.game.state.gear.find(g => g.r && g.r.q === "wyrmtongue")) === "Wyrmtongue" && WHW.actors.myLooks().w.shape === "flamberge"'));
+        if (SCRATCH) { await evalJs('WHW.engine.snapCamera()'); await sleep(500); await shot('shot-relic-in-hand.png'); await evalJs('WHW.ui.openBag()'); await sleep(300); await shot('shot-bag-relic.png'); await evalJs('WHW.ui.closeModal()'); }
+        await evalJs('(() => { WHW.relics.open("satchel"); return true; })()');
+        await sleep(150);
+        await evalJs('document.getElementById("sendAll").click()');
+        await sleep(150);
+        check('crucible: sent home from the satchel', await evalJs('WHW.game.state.satchel.length === 0 && WHW.game.state.outbox.some(e => e.gear && e.gear.length === 1)'));
+        await evalJs('WHW.ui.closeModal()');
+
+        // ---- a reload in a hidden dungeon (a browser may reload a tab on its own): still in it, the rooms cleared still cleared ----
+        await evalJs(`(() => { const s = WHW.game.state, b = WHWorldData.ZONES.greenwood.boss; s.bosses[b] = Object.assign(s.bosses[b] || {}, { kills: Math.max(1, (s.bosses[b] || {}).kills || 0) }); WHW.actions.enterDungeon('roots'); WHW.ui.closeModal(); const rc = WHW.waves.vaultReady(); WHWorldDebug.teleport(rc.x, rc.y); WHW.waves.start(); return true; })()`);
+        await evalJs(`(() => { const g = WHW.game, p = g.player; window.__k = setInterval(() => { p.hp = p.maxHp; for (const a of g.actors) if (a.wave && !a.dead) WHW.actors.damage(a, 1e6, { from: p, kbAngle: 0, kb: 0, s: 1 }); }, 200); return true; })()`);
+        await waitFor('WHW.waves.run && WHW.waves.run.st === "break" && WHW.waves.run.wave === 1', 40000);
+        await evalJs('(() => { clearInterval(window.__k); const rc = WHW.waves.vaultReady(); WHWorldDebug.teleport(rc.x, rc.y); WHW.waves.start(); window.saveGame(); return true; })()'); // room 2 about to start
+        await send('Page.reload');
+        await sleep(1500);
+        await waitFor('typeof window.WHWorldDebug === "object" && WHWorldDebug.frames() > 30');
+        await waitFor('window._saveLoaded === true', 15000); // this tab plays (and saves) again before anything else happens
+        await sleep(500);
+        const back = await evalJs('({ zone: WHW.game.zoneId, run: WHW.waves.run && WHW.waves.run.st + WHW.waves.run.wave, toasts: document.getElementById("toasts").textContent })');
+        check('dungeon: after a reload you are still in it, with room 1 cleared and room 2 to start again', back.zone === 'roots' && back.run === 'break1' && /still cleared/.test(back.toasts) && !/closed by your browser/.test(back.toasts), back);
+        await evalJs('(() => { WHW.ui.closeModal(); WHW.actions.leaveDungeon(); WHWorldDebug.travel("town"); return WHW.game.state.dungeons.run === null; })()');
         await evalJs('WHWorldDebug.grant({ gems: 2, boxes: [0, 1, 0, 0, 0] })');
         const rubiesBefore = await evalJs('WHWorldDebug.state().rubies');
         await navigate(`http://localhost:${PORT}/index.html`, 'window._saveLoaded === true');
         await sleep(600);
+        check('gear: the forged piece arrives in the game and is worn at once', await evalJs('WHGearPanel.count() === 1 && WHGearPanel.worn().length === 1 && Object.values(getGearBonuses()).some(v => v > 0)'));
+        await evalJs('WHI.openInventory("gear")');
+        await sleep(400);
+        check('gear: the Items menu has a Gear tab showing it, with its picture', await evalJs('!!document.querySelector(".items-content .gear-card .gear-svg") && document.querySelectorAll(".gear-slot").length === 5'));
+        if (SCRATCH) await shot('shot-clicker-gear.png');
+        await evalJs('WHI.closeInventory()');
         check('wilds: gems sent home arrive in the game', (await evalJs('getGems()')) >= 2);
         check('wilds: lootboxes sent home arrive in Items', (await evalJs('JSON.parse(localStorage.getItem("whathappened_items")).boxes[1]')) >= 1);
         check('wilds: the game acknowledged them', Number(await evalJs('localStorage.getItem("whathappened_world_ack")')) >= 1);

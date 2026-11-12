@@ -33,6 +33,7 @@
     const pp = (sub) => Pt.path(P.id, sub);
 
     function savedId() { try { const v = localStorage.getItem(KEY); return Pt.validPid(v) ? v : null; } catch (e) { return null; } }
+    P.savedId = savedId; // (world-online.js: the dungeon a reloaded page was in with this party)
     function remember(id) { try { if (id) localStorage.setItem(KEY, id); else localStorage.removeItem(KEY); } catch (e) {} }
     function unsub() { P.subs.forEach(u => { try { u(); } catch (e) {} }); P.subs = []; }
 
@@ -235,9 +236,12 @@
     P.openPlayer = function (r) {
         const mate = P.isMate(r.uid);
         const body = WHW.ui.modal('👤 ' + r.info.n, `<p>${r.info.ti ? esc(r.info.ti) + ' · ' : ''}Rating <b>${r.info.r || 1000}</b>${r.info.wb ? ' · best wave <b>' + r.info.wb + '</b>' : ''}</p>${clanLine(r)}
-            <div class="w-section"><h3>Party</h3>${mate ? '<p class="muted">In your party.</p>' : `<p class="muted">Party members can't hurt each other, see where each other are and have their own chat.</p><button class="btn btn-primary" id="ptInvite">Invite to your party</button>`}</div>`);
+            <div class="w-section"><h3>Party</h3>${mate ? '<p class="muted">In your party.</p>' : `<p class="muted">Party members can't hurt each other, see where each other are and have their own chat.</p><button class="btn btn-primary" id="ptInvite">Invite to your party</button>`}</div>
+            ${WHW.market ? `<div class="w-section"><h3>Trade</h3><p class="muted">Swap gear, relics, gear for the game and rubies, face to face. Nothing changes hands until you both confirm the same deal.</p><button class="btn btn-gold" id="ptTrade">🤝 Offer a trade</button></div>` : ''}`);
         const b = body.querySelector('#ptInvite');
         if (b) b.addEventListener('click', () => { WHW.ui.closeModal(); P.invitePlayer(r); });
+        const tr = body.querySelector('#ptTrade');
+        if (tr) tr.addEventListener('click', () => { WHW.ui.closeModal(); WHW.market.inviteTrade(r); });
     };
     // "In your clan" on a player's card (the badge by their name says the same)
     function clanLine(r) {

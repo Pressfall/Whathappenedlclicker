@@ -43,7 +43,7 @@
         run.keyUp = (ev) => { if (ev.key === ' ' || ev.key === 'Enter') { run.keyHeld = false; run.released = true; } };
         window.addEventListener('keydown', run.keyDown);
         window.addEventListener('keyup', run.keyUp);
-        run.game = opts.station === 'forge' ? forge(run) : opts.station === 'workbench' ? workbench(run) : altar(run);
+        run.game = opts.station === 'forge' ? forge(run) : opts.station === 'workbench' ? workbench(run) : opts.station === 'crucible' ? crucible(run) : altar(run);
         loop();
     }
     function close(silent) {
@@ -356,6 +356,106 @@
             text(ctx, `${G.k} / ${angles.length}`, cx, cy + 50, 16, '#e6d4ff', 'center', 700);
             if (G.delay > 0) text(ctx, 'Ready…', cx, cy - 30, 22, '#fff');
             fadeLabels(ctx, G.labels);
+        };
+        return G;
+    }
+
+    // ---------------- Crucible ----------------
+    // opts.ess: [{ name, color, icon }], one per essence going in. 1) Pour: hold to fill the vial and let go on the essence's
+    // mark, once per essence. 2) Bind: press as the needle crosses each essence's rune. 3) Seal: press as the closing ring
+    // meets the gold mark. (Infusing a socket is the same with one essence.)
+    function crucible(R) {
+        const cfg = R.cfg, ess = (R.opts.ess && R.opts.ess.length ? R.opts.ess : [{ name: 'Essence', color: '#b07dff', icon: '✨' }]).slice(0, cfg.n);
+        const angles = S.runeAngles(Math.random, ess.length, cfg.minGapDeg).sort((a, b) => a - b);
+        const G = { phase: 'pour', i: 0, level: 0, target: 0.4 + Math.random() * 0.45, wait: 0, pours: [], k: 0, runes: [], stray: 0, needle: Math.max(-40, angles[0] - 60),
+            delay: 0.7, sealT: 0, sealAt: 0.45 + Math.random() * 0.3, seal: 0, labels: [], liquid: [] };
+        const cx = CW / 2, cy = CH / 2 + 20, rad = 140;
+        const info = () => setInfo(G.phase === 'pour' ? `1 / 3 · Pour (${G.i + 1} / ${ess.length})` : G.phase === 'bind' ? `2 / 3 · Bind (${G.k} / ${ess.length})` : '3 / 3 · Seal',
+            ess.length + ' essence' + (ess.length > 1 ? 's' : ''),
+            G.phase === 'pour' ? 'Hold the mouse button (or Space) to pour ' + ess[Math.min(G.i, ess.length - 1)].name + ', and let go when the vial reaches its mark.'
+                : G.phase === 'bind' ? 'The needle sweeps once. Click (or Space) as it crosses each essence\'s rune, in order.' : 'A ring closes in on the crucible. Click (or Space) the moment it meets the gold mark.');
+        info();
+        G.update = function (dt) {
+            if (G.phase === 'pour') {
+                if (held()) { G.level = Math.min(1.05, G.level + cfg.pourRate * dt); G.wait = 0; } else G.wait += dt;
+                const done = (R.released && G.level > 0) || G.level >= 1.05 || G.wait > cfg.pourWait;
+                if (done) {
+                    const sc = G.level > 0 ? S.pourScore(G.level, G.target, cfg.pourHalf) : 0;
+                    G.pours.push(sc); G.liquid.push(ess[G.i].color);
+                    G.labels.push({ s: scoreWord(sc), x: CW - 120, y: 70, c: scoreColor(sc), at: R.t });
+                    WHW.sfx(sc >= 100 ? 'perfect' : sc > 0 ? 'rune' : 'tink');
+                    G.i++; G.level = 0; G.wait = 0; G.target = 0.35 + Math.random() * 0.5;
+                    if (G.i >= ess.length) { G.phase = 'bind'; }
+                    info();
+                }
+            } else if (G.phase === 'bind') {
+                if (G.delay > 0) { G.delay -= dt; return; }
+                G.needle += 360 / cfg.period * dt;
+                const target = angles[G.k];
+                if (R.pressed) {
+                    const err = G.needle - target;
+                    if (Math.abs(err) <= 18) { const sc = S.runePressScore(err); G.runes.push(sc); G.k++; G.labels.push({ s: scoreWord(sc), x: cx, y: cy - rad - 26, c: scoreColor(sc), at: R.t }); WHW.sfx(sc >= 100 ? 'perfect' : 'rune'); info(); }
+                    else { G.stray++; G.labels.push({ s: '−' + cfg.strayPenalty, x: cx, y: cy, c: '#ff5b6b', at: R.t }); WHW.sfx('tink'); }
+                } else if (G.needle > target + 18) { G.runes.push(0); G.k++; G.labels.push({ s: 'MISS', x: cx, y: cy - rad - 26, c: '#ff5b6b', at: R.t }); info(); }
+                if (G.k >= angles.length) { G.phase = 'seal'; G.sealT = 0; info(); }
+            } else if (G.phase === 'seal') {
+                G.sealT += dt;
+                const meet = G.sealAt * cfg.sealSpan;
+                if (R.pressed || G.sealT > cfg.sealSpan) {
+                    G.seal = R.pressed ? S.sealScore(G.sealT - meet, cfg.sealWindow) : 0;
+                    G.labels.push({ s: scoreWord(G.seal), x: cx, y: cy - 40, c: scoreColor(G.seal), at: R.t });
+                    G.phase = 'done';
+                    WHW.sfx('quench');
+                    finish(S.crucibleScore(G.pours, G.runes, G.stray, G.seal, cfg));
+                }
+            }
+        };
+        const mix = () => { if (!G.liquid.length) return '#3a2f55'; const c = G.liquid.map(h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16))); const avg = [0, 1, 2].map(j => Math.round(c.reduce((a, x) => a + x[j], 0) / c.length)); return `rgb(${avg.join(',')})`; };
+        G.draw = function (ctx) {
+            const grad = ctx.createRadialGradient(cx, cy, 20, cx, cy, 360);
+            grad.addColorStop(0, '#2b1f3d'); grad.addColorStop(1, '#0c0912');
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, CW, CH);
+            // the crucible: a bowl of what has been poured so far
+            ctx.fillStyle = '#2a2f3c'; ctx.beginPath(); ctx.ellipse(cx, cy + 40, 110, 60, 0, 0, Math.PI); ctx.fill();
+            ctx.fillStyle = mix(); ctx.globalAlpha = 0.85; ctx.beginPath(); ctx.ellipse(cx, cy + 40, 96, 22, 0, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1;
+            ctx.strokeStyle = '#6b7286'; ctx.lineWidth = 4; ctx.beginPath(); ctx.ellipse(cx, cy + 40, 110, 26, 0, 0, Math.PI * 2); ctx.stroke();
+            if (G.phase === 'pour') {
+                const e = ess[Math.min(G.i, ess.length - 1)], vx = CW - 140, vy = 60, vh = 280;
+                ctx.fillStyle = '#0b0d13'; ctx.fillRect(vx, vy, 44, vh);
+                ctx.fillStyle = 'rgba(255,200,61,0.22)'; ctx.fillRect(vx - 6, vy + vh * (1 - G.target - cfg.pourHalf * 3), 56, vh * cfg.pourHalf * 6);
+                ctx.fillStyle = 'rgba(255,200,61,0.8)'; ctx.fillRect(vx - 6, vy + vh * (1 - G.target - cfg.pourHalf), 56, vh * cfg.pourHalf * 2);
+                ctx.fillStyle = e.color; ctx.fillRect(vx + 4, vy + vh * (1 - Math.min(1, G.level)), 36, vh * Math.min(1, G.level));
+                // the mark stays visible over the liquid: two gold lines and arrows at its edges
+                const mt = vy + vh * (1 - G.target - cfg.pourHalf), mb = vy + vh * (1 - G.target + cfg.pourHalf);
+                ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(vx - 8, mt); ctx.lineTo(vx + 52, mt); ctx.moveTo(vx - 8, mb); ctx.lineTo(vx + 52, mb); ctx.stroke();
+                ctx.fillStyle = '#ffe14d'; ctx.beginPath(); ctx.moveTo(vx - 10, (mt + mb) / 2); ctx.lineTo(vx - 20, (mt + mb) / 2 - 7); ctx.lineTo(vx - 20, (mt + mb) / 2 + 7); ctx.fill();
+                text(ctx, e.icon + ' ' + e.name, vx + 22, vy - 14, 15, '#f3f5fa');
+                if (held()) { ctx.strokeStyle = e.color; ctx.lineWidth = 6; ctx.beginPath(); ctx.moveTo(vx - 10, vy + 20); ctx.quadraticCurveTo(cx + 60, vy, cx + 30, cy + 30); ctx.stroke(); }
+                ess.forEach((x, j) => { ctx.fillStyle = j < G.i ? scoreColor(G.pours[j]) : j === G.i ? x.color : '#2a2f3c'; ctx.beginPath(); ctx.arc(70 + j * 26, 40, 9, 0, Math.PI * 2); ctx.fill(); });
+            } else {
+                ctx.strokeStyle = 'rgba(176,125,255,0.4)'; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(cx, cy, rad, 0, Math.PI * 2); ctx.stroke();
+                angles.forEach((a, j) => {
+                    const r = a * Math.PI / 180, x = cx + Math.sin(r) * rad, y = cy - Math.cos(r) * rad, cur = j === G.k && G.phase === 'bind';
+                    ctx.fillStyle = j < G.k ? scoreColor(G.runes[j]) : ess[j].color;
+                    if (cur) { ctx.shadowColor = ess[j].color; ctx.shadowBlur = 18; }
+                    ctx.beginPath(); ctx.arc(x, y, cur ? 20 : 15, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
+                    text(ctx, ess[j].icon, x, y + 6, 16, '#111');
+                });
+                if (G.phase === 'bind') {
+                    const nr = G.needle * Math.PI / 180;
+                    ctx.strokeStyle = '#ffe14d'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+                    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.sin(nr) * (rad + 20), cy - Math.cos(nr) * (rad + 20)); ctx.stroke();
+                    if (G.delay > 0) text(ctx, 'Ready…', cx, cy - 20, 22, '#fff');
+                } else {
+                    // the closing ring and its mark
+                    const markR = 30 + (1 - G.sealAt) * 140, curR = 30 + Math.max(0, 1 - G.sealT / cfg.sealSpan) * 140;
+                    ctx.strokeStyle = 'rgba(255,200,61,0.9)'; ctx.lineWidth = 3; ctx.setLineDash([6, 5]); ctx.beginPath(); ctx.arc(cx, cy, markR, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+                    ctx.strokeStyle = mix(); ctx.lineWidth = 7; ctx.beginPath(); ctx.arc(cx, cy, curR, 0, Math.PI * 2); ctx.stroke();
+                }
+            }
+            fadeLabels(ctx, G.labels);
+            if (G.phase === 'done') text(ctx, 'Score ' + S.crucibleScore(G.pours, G.runes, G.stray, G.seal, cfg), cx, 50, 26, '#ffc83d');
         };
         return G;
     }

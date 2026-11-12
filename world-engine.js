@@ -186,6 +186,7 @@
 
     // ---------------- map ----------------
     function setMap(m) {
+        if (E.chunks.size) dropChunks(true); // the last zone's ground: its memory back now, not whenever the browser gets to it
         E.map = m;
         E.chunks = new Map();
         E.minimapCache = null;
@@ -276,7 +277,7 @@
     // Change the graphics settings (any of perf, resolution, fpsCap) and redraw what depends on them
     function applyGraphics(opts) {
         const perf = ['high', 'medium', 'low'].includes(opts.perf) ? opts.perf : E.perf;
-        if (perf !== E.perf) { E.perf = perf; E.chunks = new Map(); } // the ground's detail depends on it
+        if (perf !== E.perf) { E.perf = perf; dropChunks(true); E.chunks = new Map(); } // the ground's detail depends on it
         if (opts.resolution !== undefined) E.resolution = opts.resolution;
         if (opts.fpsCap !== undefined) E.fpsCap = Number(opts.fpsCap) || 0;
         if (E.canvas) resize();
@@ -287,24 +288,32 @@
         return `rgb(${c(n >> 16)},${c((n >> 8) & 255)},${c(n & 255)})`;
     }
     function tileHash(x, y, s = 0) { let h = (x * 374761393 + y * 668265263 + s * 2147483647) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; }
-    function drawChunk(cx, cy) {
+    // A ground chunk is drawn a few rows at a time: { cv, g, row (next row to draw), done }. Chunks just off screen are drawn
+    // ahead in the time a frame has to spare (prewarmGround), so walking on doesn't stall a frame on a whole new chunk.
+    function newChunk() {
+        const cv = document.createElement('canvas');
+        cv.width = CHUNK * TILE; cv.height = CHUNK * TILE;
+        return { cv, g: cv.getContext('2d'), row: 0, done: false, used: 0 };
+    }
+    function drawChunk(ch, cx, cy, rows) {
         const m = E.map;
         const zone = D.ZONES[m.id];
         const P = zone.palette;
-        const cv = document.createElement('canvas');
-        cv.width = CHUNK * TILE; cv.height = CHUNK * TILE;
-        const g = cv.getContext('2d');
+        const g = ch.g;
         const T = G.T;
-        const colorOf = (t) => ({
+        const colors = {
             [T.FLOOR]: P.floor, [T.FLOOR2]: P.floor2, [T.PATH]: P.path, [T.WALL]: P.wall, [T.WATER]: P.water || P.wall,
             [T.LAVA]: P.hazard || '#ff5a1f', [T.ICE]: P.ice || '#a9dcf5', [T.PLAZA]: P.plaza || P.path, [T.BUILDING]: zone.gen === 'hall' ? P.floor : '#2a2420', [T.ARENA]: shade(P.floor, 0.82),
             [T.SHALLOW]: P.shallow || P.water || '#4fa3bd', [T.VOID]: P.void || '#0b0d18',
-        })[t];
+        };
+        const colorOf = (t) => colors[t];
         const detail = E.perf !== 'low';
-        for (let y = 0; y < CHUNK; y++) for (let x = 0; x < CHUNK; x++) {
+        const yEnd = Math.min(CHUNK, ch.row + rows);
+        for (let y = ch.row; y < yEnd; y++) for (let x = 0; x < CHUNK; x++) {
             const tx = cx * CHUNK + x, ty = cy * CHUNK + y;
             if (tx >= m.w || ty >= m.h) continue;
-            const t = G.get(m, tx, ty);
+            // a hidden dungeon's way down stands on solid ground: drawn as the floor around it (world.js draws the stone)
+            const t = m.dungeon && tx === m.dungeon.tx && ty === m.dungeon.ty ? T.FLOOR : G.get(m, tx, ty);
             const X = x * TILE, Y = y * TILE;
             g.fillStyle = colorOf(t);
             g.fillRect(X, Y, TILE, TILE);
@@ -364,19 +373,81 @@
                 if (t === T.PLAZA) { g.strokeStyle = 'rgba(0,0,0,0.14)'; g.lineWidth = 1; g.strokeRect(X + 0.5, Y + 0.5, TILE - 1, TILE - 1); }
             }
         }
-        return cv;
+        ch.row = yEnd;
+        ch.done = ch.row >= CHUNK;
+    }
+    // Each chunk is a 1 MB picture: a zone walked end to end would keep 40-70 of them. The ones furthest from the camera go
+    // past this many (and their memory is handed back at once: phones, Safari above all, reload a tab that holds too much).
+    // (never fewer than the screen and the band drawn ahead around it need, or a big screen would draw the same chunks again
+    // and again)
+    function chunkCap() {
+        const r = chunkRange(CHUNK * TILE * 0.75);
+        return Math.max(E.perf === 'low' || E.w * E.h < 600000 ? 24 : 40, (r.x1 - r.x0 + 2) * (r.y1 - r.y0 + 2));
+    }
+    function freeCanvas(cv) { try { cv.width = 0; cv.height = 0; } catch (e) {} }
+    function dropChunks(all) {
+        if (!all && E.chunks.size <= chunkCap()) return;
+        const cs = CHUNK * TILE, mx = (E.cam.x + viewW() / 2) / cs, my = (E.cam.y + viewH() / 2) / cs;
+        const list = [...E.chunks].map(([k, ch]) => { const [x, y] = k.split(',').map(Number); return { k, ch, d: Math.hypot(x + 0.5 - mx, y + 0.5 - my) }; });
+        list.sort((a, b) => b.d - a.d);
+        for (const it of list) {
+            if (!all && E.chunks.size <= chunkCap()) break;
+            if (!all && it.ch.used === E.frames) continue; // on screen this frame
+            freeCanvas(it.ch.cv);
+            E.chunks.delete(it.k);
+        }
+    }
+    function chunkRange(pad) {
+        const cs = CHUNK * TILE, m = E.map;
+        return { x0: Math.max(0, Math.floor((E.cam.x - pad) / cs)), y0: Math.max(0, Math.floor((E.cam.y - pad) / cs)),
+            x1: Math.min(Math.ceil(m.w / CHUNK) - 1, Math.floor((E.cam.x + viewW() + pad) / cs)), y1: Math.min(Math.ceil(m.h / CHUNK) - 1, Math.floor((E.cam.y + viewH() + pad) / cs)) };
+    }
+    // Some tiles of this map changed (a door opened, a lair's wall fell): the ground is drawn again over the old picture, a few
+    // rows a frame, instead of being thrown away and redrawn all at once (a stall the moment a dungeon room was cleared)
+    function invalidateGround() {
+        for (const ch of E.chunks.values()) { if (ch.row > 0) ch.stale = true; ch.row = 0; ch.done = false; }
+        E.minimapCache = null;
     }
     function drawGround(ctx) {
-        const m = E.map;
-        const x0 = Math.max(0, Math.floor(E.cam.x / (CHUNK * TILE))), y0 = Math.max(0, Math.floor(E.cam.y / (CHUNK * TILE)));
-        const x1 = Math.floor((E.cam.x + viewW()) / (CHUNK * TILE)), y1 = Math.floor((E.cam.y + viewH()) / (CHUNK * TILE));
-        for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) {
-            if (cx * CHUNK >= m.w || cy * CHUNK >= m.h) continue;
+        const r = chunkRange(0);
+        for (let cy = r.y0; cy <= r.y1; cy++) for (let cx = r.x0; cx <= r.x1; cx++) {
             const key = cx + ',' + cy;
             let ch = E.chunks.get(key);
-            if (!ch) { ch = drawChunk(cx, cy); E.chunks.set(key, ch); }
-            ctx.drawImage(ch, cx * CHUNK * TILE, cy * CHUNK * TILE);
+            if (!ch) { ch = newChunk(); E.chunks.set(key, ch); }
+            // on screen: the rest of it now (one being redrawn over its old picture: four rows a frame)
+            if (!ch.done) { drawChunk(ch, cx, cy, ch.stale ? 4 : CHUNK); if (ch.done) ch.stale = false; }
+            ch.used = E.frames;
+            ctx.drawImage(ch.cv, cx * CHUNK * TILE, cy * CHUNK * TILE);
         }
+    }
+    // Chunks within a chunk's width of the screen, drawn a few rows at a time while this frame is still under budget: the
+    // nearest first, and those the player is walking towards before those behind.
+    function prewarmGround(frameStart) {
+        if (!E.map) return;
+        const budget = E.perf === 'low' ? 3 : 5; // ms of the frame
+        if (performance.now() - frameStart > 12) return;
+        const cs = CHUNK * TILE, r = chunkRange(cs * 0.75);
+        const p = WHW.game && WHW.game.player, vx = p ? p.vx || 0 : 0, vy = p ? p.vy || 0 : 0;
+        const mx = (E.cam.x + viewW() / 2) / cs, my = (E.cam.y + viewH() / 2) / cs;
+        const todo = [];
+        for (let cy = r.y0; cy <= r.y1; cy++) for (let cx = r.x0; cx <= r.x1; cx++) {
+            const ch = E.chunks.get(cx + ',' + cy);
+            if (ch && ch.done) continue;
+            const dx = cx + 0.5 - mx, dy = cy + 0.5 - my;
+            todo.push({ cx, cy, ch, d: Math.hypot(dx, dy) - (dx * vx + dy * vy > 0 ? 0.75 : 0) });
+        }
+        if (!todo.length) return;
+        todo.sort((a, b) => a.d - b.d);
+        const until = performance.now() + budget;
+        for (const t of todo) {
+            if (!t.ch) { t.ch = newChunk(); E.chunks.set(t.cx + ',' + t.cy, t.ch); }
+            while (!t.ch.done) {
+                drawChunk(t.ch, t.cx, t.cy, 2);
+                if (t.ch.done) t.ch.stale = false;
+                if (performance.now() > until) { dropChunks(false); return; }
+            }
+        }
+        dropChunks(false);
     }
     // A tiny picture of the whole map for the minimap (one pixel per tile)
     function minimapBase() {
@@ -414,34 +485,57 @@
     // Drawn with the baseline at y, like fillText.
     const labelCache = new Map();
     let measureCtx = null;
-    function label(ctx, text, x, y, o) {
-        text = String(text);
-        const m = ctx.getTransform(), scale = Math.hypot(m.a, m.b);
+    // part: '' (outline and fill), 'stroke' (only the outline) or 'fill' (only the fill: numbers, below)
+    function labelSprite(text, o, scale, part) {
         const lw = o.stroke ? (o.lw || 3) : 0, align = o.align || 'center';
-        const key = text + '\u0001' + o.font + '\u0001' + o.fill + '\u0001' + (o.stroke || '') + lw + align + '\u0001' + scale.toFixed(2);
+        const key = text + '\u0001' + o.font + '\u0001' + (part === 'stroke' ? '' : o.fill) + '\u0001' + (o.stroke || '') + lw + align + '\u0001' + scale.toFixed(2) + (part || '');
         let sp = labelCache.get(key);
-        if (!sp) {
-            // past 400 (damage numbers are nearly all different), forget the oldest hundred; names and signs come straight back
-            if (labelCache.size > 400) { let n = 0; for (const k of labelCache.keys()) { labelCache.delete(k); if (++n >= 100) break; } }
+        if (sp) { labelCache.delete(key); labelCache.set(key, sp); } // the most recently used last: those go last
+        else {
+            // past 400, forget the hundred used longest ago (and hand back their memory)
+            if (labelCache.size > 400) { let n = 0; for (const [k, old] of labelCache) { freeCanvas(old.cv); labelCache.delete(k); if (++n >= 100) break; } }
             if (!measureCtx) measureCtx = document.createElement('canvas').getContext('2d');
             measureCtx.font = o.font;
             const size = Number((o.font.match(/(\d+(?:\.\d+)?)px/) || [0, 14])[1]);
-            const pad = lw + 2, asc = Math.ceil(size * 1.15);
-            const w = Math.ceil(measureCtx.measureText(text).width) + pad * 2, h = Math.ceil(size * 1.55) + pad * 2;
+            const pad = lw + 2, asc = Math.ceil(size * 1.15), adv = measureCtx.measureText(text).width;
+            const w = Math.ceil(adv) + pad * 2, h = Math.ceil(size * 1.55) + pad * 2;
             const cv = document.createElement('canvas');
             cv.width = Math.max(1, Math.ceil(w * scale)); cv.height = Math.max(1, Math.ceil(h * scale));
             const c = cv.getContext('2d');
             c.scale(scale, scale);
             c.font = o.font; c.textAlign = 'left';
-            if (lw) { c.lineWidth = lw; c.strokeStyle = o.stroke; c.strokeText(text, pad, pad + asc); }
-            c.fillStyle = o.fill; c.fillText(text, pad, pad + asc);
-            sp = { cv, w, h, ax: align === 'left' ? pad : align === 'right' ? w - pad : w / 2, ay: pad + asc };
+            if (lw && part !== 'fill') { c.lineWidth = lw; c.strokeStyle = o.stroke; c.strokeText(text, pad, pad + asc); }
+            if (part !== 'stroke') { c.fillStyle = o.fill; c.fillText(text, pad, pad + asc); }
+            sp = { cv, w, h, pad, adv, ax: align === 'left' ? pad : align === 'right' ? w - pad : w / 2, ay: pad + asc };
             labelCache.set(key, sp);
         }
+        return sp;
+    }
+    function label(ctx, text, x, y, o) {
+        text = String(text);
+        const m = ctx.getTransform(), scale = Math.hypot(m.a, m.b);
+        const sp = labelSprite(text, o, scale, '');
         ctx.drawImage(sp.cv, x - sp.ax, y - sp.ay, sp.w, sp.h);
     }
+    // A number that floats up (damage, healing): nearly every one is different, and drawing each into a picture of its own
+    // made a new canvas for almost every hit (a big part of a busy fight's frame on a phone). These are put together from
+    // pictures of single characters instead: every outline first, then every fill, so no outline crosses a neighbour.
+    const NUMBER_RE = /^[-+]?\d{1,9}!?$/;
+    function labelNumber(ctx, text, x, y, o) {
+        const m = ctx.getTransform(), scale = Math.hypot(m.a, m.b);
+        let w = 0;
+        for (let i = 0; i < text.length; i++) w += labelSprite(text[i], o, scale, 'fill').adv;
+        for (const part of o.stroke ? ['stroke', 'fill'] : ['fill']) {
+            let cx = x - w / 2;
+            for (let i = 0; i < text.length; i++) {
+                const sp = labelSprite(text[i], o, scale, part);
+                ctx.drawImage(sp.cv, cx - sp.pad, y - sp.ay, sp.w, sp.h);
+                cx += sp.adv;
+            }
+        }
+    }
     // labels drawn before the page's font arrived would keep the fallback font
-    try { document.fonts.addEventListener('loadingdone', () => labelCache.clear()); } catch (e) {}
+    try { document.fonts.addEventListener('loadingdone', () => { for (const sp of labelCache.values()) freeCanvas(sp.cv); labelCache.clear(); }); } catch (e) {}
     function floatText(x, y, text, color = '#fff', size = 14, life = 0.9) {
         E.texts.push({ x, y, text: String(text), color, size, life, max: life, vy: -38 });
         if (E.texts.length > 80) E.texts.shift();
@@ -470,7 +564,9 @@
         ctx.globalAlpha = 1;
         for (const t of E.texts) {
             ctx.globalAlpha = Math.min(1, t.life / t.max * 2);
-            label(ctx, t.text, t.x, t.y, { font: `800 ${t.size}px Inter, system-ui, sans-serif`, fill: t.color, stroke: 'rgba(0,0,0,0.7)' });
+            const o = { font: `800 ${t.size}px Inter, system-ui, sans-serif`, fill: t.color, stroke: 'rgba(0,0,0,0.7)' };
+            if (NUMBER_RE.test(t.text)) labelNumber(ctx, t.text, t.x, t.y, o);
+            else label(ctx, t.text, t.x, t.y, o);
         }
         ctx.globalAlpha = 1;
     }
@@ -498,6 +594,7 @@
     let fpsCount = 0, fpsAt = 0;
     function frame(ts) {
         requestAnimationFrame(frame);
+        const frameStart = performance.now();
         // the frame-rate limit (a little early is fine: a 144 Hz screen limited to 60 draws every other refresh)
         const since = ts - last;
         if (E.fpsCap && since < 1000 / E.fpsCap - 3) return;
@@ -518,6 +615,7 @@
             E.mouse.pressed = false; E.mouse.released = false; E.pressedKeys.clear();
         } else acc = 0;
         render();
+        if (!E.paused) prewarmGround(frameStart);
         E.frames++;
         fpsCount++;
         if (ts - fpsAt >= 1000) { E.fps = Math.round(fpsCount * 1000 / (ts - fpsAt)); fpsCount = 0; fpsAt = ts; }
@@ -549,7 +647,7 @@
 
     Object.assign(E, {
         start, resize, img, screenToWorld, worldToScreen, viewW, viewH, aimPoint, moveInput, consumeKey,
-        setMap, tileAt, collideTiles, collideCircles, move, wallBetween, buildNodeGrid, nodesNear, minimapBase, shadeHex,
+        setMap, invalidateGround, tileAt, collideTiles, collideCircles, move, wallBetween, buildNodeGrid, nodesNear, minimapBase, shadeHex,
         burst, floatText, label, addShake, addHitStop, snapCamera, readSetting, applyGraphics,
     });
 })();

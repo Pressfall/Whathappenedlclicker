@@ -250,6 +250,7 @@ test('position sends: events at once, movement throttled, a heartbeat while stil
     assert.equal(O.sendDue(at, { ...at, a: 1.5 }, 1 / R.moveHz, false), 'move', 'aiming counts');
     assert.equal(O.posChange(at, { ...at, a: 0.5 + Math.PI * 2 }), null, 'a full turn is no turn');
     assert.ok(R.moveHz <= 3 && R.fightHz <= 10 && R.beatSec < R.staleSec / 2, 'stays under the old 10 a second, and a still player never looks gone');
+    assert.ok(R.duelHz <= 15 && R.coopHz <= 10, 'only real fights go faster, and not without limit');
     // events: shield/dash/death flags, a shot, a cast, getting hurt; not before eventGapSec
     for (const c of [{ fl: O.FLAGS.shield }, { shot: 1 }, { cs: 1, ci: 'whirlwind' }, { hp: 70 }, { mhp: 120 }]) {
         assert.equal(O.posChange(at, { ...at, ...c }), 'event', JSON.stringify(c));
@@ -259,6 +260,65 @@ test('position sends: events at once, movement throttled, a heartbeat while stil
     assert.equal(O.posChange(at, { ...at, hp: 81 }), 'move', 'healing is not urgent');
     assert.equal(O.posChange(at, { ...at, sa: 2 }), null, 'a lowered shield turning does not matter');
     assert.equal(O.posChange({ ...at, fl: O.FLAGS.shield }, { ...at, fl: O.FLAGS.shield, sa: 2 }), 'move', 'a raised one does');
+});
+
+test('a relic weapon\'s harder hits are let through; a plain weapon keeps its old cap', () => {
+    const R = require('../core/world-relics'), Gr = require('../core/gear');
+    assert.equal(O.maxHit('sword_5', 'melee', -1), O.maxHit('sword_5', 'melee'), 'plain: unchanged');
+    for (let t = 1; t <= 6; t++) assert.ok(O.maxHit('sword_5', 'melee', t) > O.maxHit('sword_5', 'melee', t - 1), 'tier ' + t);
+    // the best relic sword there can be (Primordial, +5, a top Might line, four Mythic Might essences) is within its cap
+    const it = { uid: 1, base: 'sword_5', score: 100, aff: [], r: { t: 6, l: [['might', Gr.ROLL.hi], ['ember', Gr.ROLL.hi]], m: [], c: ['#ffffff', '#ffffff'], q: '', by: '', n: 0, lv: Gr.MAX_LEVEL },
+        k: [['heartstone', 23.4], ['heartstone', 23.4], ['heartstone', 23.4], ['heartstone', 23.4]] };
+    const st = { dmg: require('../core/world-data').GEAR_BY_ID.sword_5.dmg, armor: 0, hp: 0, speed: 0, crit: 0, wMult: 1, lifesteal: 0, stamRegen: 0, luck: 0, yield: 0, fireResist: 0 };
+    R.applyAspects(st, it, 'weapon');
+    const plainCap = O.maxHit('sword_5', 'melee');
+    assert.ok(st.dmg / require('../core/world-data').GEAR_BY_ID.sword_5.dmg * plainCap <= O.maxHit('sword_5', 'melee', 6) + 1e-9, 'within the cap');
+    const v = O.validateHit({ w: 'sword_5', k: 'melee', dmg: 1e6 }, { zone: 'greenwood', attacker: { x: 0, y: 0, fl: 0 }, me: { x: 10, y: 0 }, now: 10, relicTier: 6 });
+    assert.equal(v.dmg, O.maxHit('sword_5', 'melee', 6) * O.PVP.mult);
+});
+
+test('relic looks travel as one short string, and anything else in it is dropped', () => {
+    const looks = { w: { tier: 6, shape: 'flamberge', main: '#FF3B6B', trim: '#ffe14d' }, c: { tier: 2, shape: '', main: '#a8d8ff', trim: '#4fd8d0' }, h: null,
+        b: { tier: 4, shape: 'wings', main: '#7df9ff', trim: '#ffffff' }, s: { tier: 5, shape: 'sun', main: '#ffc83d', trim: '#ff9a2a' } };
+    const str = O.packLooks(looks);
+    assert.ok(str.length <= O.LOOK_MAX, str.length + ' characters');
+    assert.deepEqual(O.unpackLooks(str), { w: { tier: 6, shape: 'flamberge', main: '#ff3b6b', trim: '#ffe14d' }, c: { tier: 2, shape: '', main: '#a8d8ff', trim: '#4fd8d0' },
+        b: { tier: 4, shape: 'wings', main: '#7df9ff', trim: '#ffffff' }, s: { tier: 5, shape: 'sun', main: '#ffc83d', trim: '#ff9a2a' } });
+    assert.deepEqual(O.unpackLooks('w9.x:zzzzzz:000000;q1:ffffff:ffffff;c3.<b>:ffffff:ffffff'), {}, 'junk');
+    assert.deepEqual(O.unpackLooks('x'.repeat(500)), {});
+    assert.deepEqual(O.sanitizeInfo({ n: 'Ok Name' }).lk, {}, 'an older page: no looks');
+    assert.equal(O.sanitizeInfo({ n: 'Ok Name', lk: str }).lk.w.shape, 'flamberge');
+    assert.equal(O.packLooks({}), '');
+});
+
+test('real fights send faster: a live Arena match or the Pit at the duel rate, a co-op wave at the co-op rate', () => {
+    const at = { x: 100, y: 100, a: 0.5, r: 0, sa: 0, fl: 0, hp: 80, mhp: 100, shot: 0, k: 1 }, moved = { ...at, x: 130 };
+    const R = O.RATE;
+    assert.equal(O.sendMode({ duel: true, coop: true, near: true }), 'duel');
+    assert.equal(O.sendMode({ coop: true, near: true }), 'coop');
+    assert.equal(O.sendMode({ near: true }), 'fight');
+    assert.equal(O.sendMode({}), 'move');
+    assert.equal(O.sendMode(), 'move');
+    // the real rate, with sends checked every checkSec: count the sends over a simulated second
+    const rate = (mode) => {
+        let since = 1, n = 0, prev = at;
+        for (let t = 0; t < 1; t += R.checkSec) {
+            const cur = { ...prev, x: prev.x + 5 };
+            if (O.sendDue(prev, cur, since, mode)) { n++; since = 0; prev = cur; }
+            since += R.checkSec;
+        }
+        return n;
+    };
+    assert.ok(Math.abs(rate('duel') - R.duelHz) <= 1.5, 'duel: ' + rate('duel'));
+    assert.ok(Math.abs(rate('coop') - R.coopHz) <= 1.5, 'coop: ' + rate('coop'));
+    assert.ok(Math.abs(rate('move') - R.moveHz) <= 1, 'walking stays slow: ' + rate('move'));
+    assert.equal(O.sendDue(at, moved, 1 / R.coopHz, 'move'), null, 'outside a fight, still the walking rate');
+    // both sides send fast in a fight, so the other player is drawn closer behind
+    const gap = 1000 / R.duelHz;
+    assert.ok(O.interpDelay(gap, 'duel') < O.interpDelay(gap, 'move'));
+    assert.ok(O.interpDelay(gap, 'duel') >= R.fightInterpMinMs && O.interpDelay(gap, 'duel') <= 110, 'about 100 ms: ' + O.interpDelay(gap, 'duel'));
+    assert.equal(O.interpDelay(5000, 'duel'), R.interpMaxMs, 'a slow sender is still capped');
+    assert.equal(O.interpDelay(gap, true), O.interpDelay(gap, 'fight'), 'the old true/false still work');
 });
 
 test('remote players are drawn far enough behind to glide at the slower rate, and walk off cleanly after standing still', () => {
@@ -320,7 +380,8 @@ test('database.rules.json is valid and covers every place the game writes', () =
     // arena messages work like hits: signed by the sender, read only by who they are for
     assert.match(zone.d.$to['.read'], /auth\.uid === \$to/);
     assert.match(zone.d.$to.$mid['.write'], /newData\.child\('from'\)\.val\(\) === auth\.uid/);
-    for (const f of ['r', 'ti', 'cl', 'am', 'aq', 'pt', 'wb', 'cn']) assert.ok(zone.i.$uid[f], 'info field ' + f);
+    for (const f of ['r', 'ti', 'cl', 'am', 'aq', 'pt', 'wb', 'cn', 'lk']) assert.ok(zone.i.$uid[f], 'info field ' + f);
+    assert.match(zone.i.$uid.lk['.validate'], new RegExp('length <= ' + O.LOOK_MAX), 'relic looks fit the rule');
     // the leaderboard: everyone writes only their own record
     assert.match(rules.wilds.v1.arena.top.$uid['.write'], /auth\.uid === \$uid/);
     assert.match(zone.p.$uid['.write'], /auth\.uid === \$uid/, 'only you write your position');
@@ -332,6 +393,10 @@ test('database.rules.json is valid and covers every place the game writes', () =
     const zoneRe = new RegExp(zone['.validate'].match(/\/(.*)\//)[1]);
     for (const z of Object.keys(D.ZONES).filter(id => !D.ZONES[id].interior)) assert.ok(zoneRe.test(D.ZONES[z].instance ? z + '_abcd2345ef' : z), 'zone ' + z + ' allowed');
     assert.ok(!zoneRe.test('vault') && !zoneRe.test('vault_x') && !zoneRe.test('vault_../x'), 'only a real party id');
+    assert.ok(!zoneRe.test('roots') && !zoneRe.test('greenwood_abcd2345ef') && !zoneRe.test('hall_abcd2345ef'), 'a party copy only of a dungeon');
+    // every dungeon's copy is allowed, and the page's own instance key makes exactly that
+    const Dg = require('../core/world-dungeons');
+    for (const id of Dg.IDS) { assert.ok(zoneRe.test(Dg.instanceKey(id, 'abcd2345ef')), id); assert.ok(D.ZONES[id].instance && /^[a-z]{2,12}$/.test(id), id + ' fits a party member\'s zone'); }
 });
 
 test('nobody can hurt a player standing in a camp, and the camp is a sensible size', () => {

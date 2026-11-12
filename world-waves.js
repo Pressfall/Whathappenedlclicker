@@ -8,24 +8,28 @@
  * for everyone (w/m, like a shared boss), stuns travel as small events (w/x), and knockback stays on the page that dealt it.
  * Alone or offline, this page is the host and nothing is sent.
  *
- * The Sunken Vault (zone 'vault', core/world-vault.js) runs its rooms the same way: a room is one "wave" (its monsters from
- * roomComposition), started from its ready circle, sealed while it is fought; clearing it opens the next door (syncDoors),
- * and once the third is clear the Drowned King wakes in his chamber. A wipe sends the party back to before that room.
+ * The hidden dungeons (the Sunken Vault and the rest: zones with `dungeon`, core/world-dungeons.js) run their rooms the same
+ * way: a room is one "wave" (its monsters from roomComposition), started from its ready circle, sealed while it is fought;
+ * clearing it opens the next door (syncDoors), and once the third is clear the boss wakes in its chamber. A wipe sends the
+ * party back to before that room. Alone (or offline) the page runs it by itself, like the waves.
  */
 (function () {
     'use strict';
-    const D = window.WHWorldData, W = window.WHWorld, Wv = window.WHWorldWaves, O = window.WHWorldOnline, Vt = window.WHWorldVault, G = window.WHWorldGen;
+    const D = window.WHWorldData, W = window.WHWorld, Wv = window.WHWorldWaves, O = window.WHWorldOnline, Dg = window.WHWorldDungeons, G = window.WHWorldGen;
     const WHW = window.WHW, E = WHW.engine, A = WHW.actors;
     const game = () => WHW.game;
     const net = () => WHW.online;
-    // the co-op zone this page is in: the Proving Grounds ('trials') or the Sunken Vault ('vault')
+    // the co-op zone this page is in: the Proving Grounds ('trials') or a dungeon
     const coopZone = () => { const z = game() && game().zoneId; return z && D.ZONES[z] && D.ZONES[z].coop ? z : 'trials'; };
-    const isVault = () => !!(game() && game().zoneId === 'vault');
+    // the dungeon this page is in (its id = its zone's), or null
+    const dungeonId = () => { const z = game() && game().zoneId; return z && D.ZONES[z] && D.ZONES[z].dungeon ? z : null; };
+    const isVault = () => !!dungeonId(); // (any dungeon: the Vault was the first)
+    const rooms = () => Dg.def(dungeonId()).rooms;
     const shared = () => !!(net() && net().db && net().status === 'online' && net().zone === coopZone());
     const me = () => (shared() ? net().uid : 'me');
     const sNow = () => (net() && net().db ? net().db.serverNow() : Date.now());
     const Z = (sub) => (net() && net().Z ? net().Z(sub) : O.ROOT + '/trials' + (sub ? '/' + sub : ''));
-    const needsReset = (r, now) => (isVault() ? Vt.runNeedsReset(r, now) : Wv.runNeedsReset(r, now));
+    const needsReset = (r, now) => (isVault() ? Dg.runNeedsReset(r, now) : Wv.runNeedsReset(r, now));
     // where this run's monsters come in, and where a player gets back up
     function gatesOf(r) { const g = game(); return isVault() ? (g.map.rooms[(r.wave || 1) - 1] || g.map.rooms[0]).gates : g.map.gates; }
     function upSpot() { const g = game(); return isVault() ? g.map.entry : g.map.ready; }
@@ -35,7 +39,8 @@
     const WV = WHW.waves = {
         run: null, comp: [], compKey: '', spawned: new Set(), dead: new Set(), seen: new Set(), snap: new Map(),
         pending: {}, flushT: 0, hostT: 0, hostN: 0, hostSeenAt: 0, lastHostN: -1, isHost: true, wasHost: true,
-        paid: '', eligibleFrom: 0, eligibleGen: '', upAt: 0, prevSt: '', prevWave: 0,
+        paid: '', eligibleFrom: 0, eligibleGen: '', upAt: 0, prevSt: '', prevWave: 0, fightKey: '', snapSeq: 0, snapAt: 0,
+        seenBy: {}, runSeenAt: 0, // when each other page last sent a snapshot; when this run was first seen here
     };
 
     // ---------------- who is in the room ----------------
@@ -55,7 +60,8 @@
     // ---------------- the run ----------------
     WV.onRun = function (raw) {
         const r = Wv.sanitizeRun(raw);
-        if (r && r.h && r.h.u !== me() && r.h.n !== WV.lastHostN) { WV.lastHostN = r.h.n; WV.hostSeenAt = performance.now(); WV.snap = Wv.unpackSnap(r.h.s); }
+        if (r && r.h && r.h.u !== me() && r.h.n !== WV.lastHostN) { WV.lastHostN = r.h.n; WV.hostSeenAt = performance.now(); WV.seenBy[r.h.u] = WV.hostSeenAt; WV.snap = Wv.unpackSnap(r.h.s); WV.snapSeq++; WV.snapAt = WV.hostSeenAt; }
+        if (r && (!WV.run || WV.run.gen !== r.gen)) WV.runSeenAt = performance.now();
         if (r && WV.isHost && r.x.length) {
             // stuns other players dealt: the host's monsters feel them too
             for (const e of r.x) { const m = byMid(e.mid); if (m) m.status.stunUntil = Math.max(m.status.stunUntil, E.time + e.st); if (net() && net().db) net().db.remove(Z('w/x/' + e.id)); }
@@ -75,6 +81,10 @@
             WV.prevSt = ''; WV.prevWave = 0;
         }
         WV.run = r;
+        noteCheckpoint();
+        // monsters of a wave that is no longer being fought: the host already killed them (it ends the wave in the same step
+        // as the last kill, so no snapshot ever says they are gone). Left here they would stand frozen at no health forever.
+        dropStale();
         // everyone's copies follow the shared damage
         for (const m of waveActors()) {
             const max = m.maxHp, target = max - (r.m[m.wave.mid] || 0) - (WV.pending[m.wave.mid] || 0);
@@ -83,6 +93,22 @@
         }
         changed();
     }
+    // A dungeon played alone: the run as it stands between rooms goes in the save, so a reload (the browser may reload a tab
+    // on its own) carries on with it. A party's run is in the database already.
+    function noteCheckpoint() {
+        const id = dungeonId(), s = game() && game().state;
+        if (!id || !s || !s.dungeons) return;
+        s.dungeons.run = shared() ? null : Dg.checkpoint(id, WV.run);
+    }
+    // After a reload in a dungeon (world.js boot): the run saved there, if it is this dungeon's and recent. true if resumed
+    WV.resume = function () {
+        const id = dungeonId(), s = game().state;
+        if (!id || shared() || WV.run) return false;
+        const run = Dg.resumeRun(s.dungeons.run, id, sNow());
+        if (!run) { s.dungeons.run = null; return false; }
+        setRun(Object.assign({ m: {}, x: [], h: null }, run));
+        return Dg.cleared(run) > 0;
+    };
     // the run moved on (a wave started, was cleared, or the run ended): what each page does about it
     function changed() {
         const r = WV.run, g = game(), p = g.player, s = g.state;
@@ -95,27 +121,31 @@
         if (r.st === 'fight' && WV.fightKey === fightKey) return;
         if (r.st === 'fight') {
             WV.fightKey = fightKey;
-            WV.comp = isVault() ? Vt.roomComposition(r.seed, r.wave, r.n) : Wv.composition(r.seed, r.wave, r.n);
+            WV.comp = isVault() ? Dg.roomComposition(dungeonId(), r.seed, r.wave, r.n) : Wv.composition(r.seed, r.wave, r.n);
             WV.spawned = new Set(); WV.dead = new Set(); WV.seen = new Set();
             if (isVault()) {
                 const room = g.map.rooms[r.wave - 1];
-                WHW.banner(Vt.ROOMS[r.wave - 1].name, 'Room ' + r.wave + ' of ' + Vt.ROOMS.length + (r.n > 1 ? ' · ' + r.n + ' players' : ''));
+                WHW.banner(rooms()[r.wave - 1].name, 'Room ' + r.wave + ' of ' + rooms().length + (r.n > 1 ? ' · ' + r.n + ' players' : ''));
                 // the room seals: anyone not inside is brought in
                 if (room && !p.dead && Math.hypot(p.x - room.floor.x, p.y - room.floor.y) > room.floor.r - 20) { p.x = room.floor.x; p.y = room.floor.y + room.floor.r * 0.55; E.snapCamera(); }
             } else WHW.banner('Wave ' + r.wave, (r.n > 1 ? r.n + ' players · ' : '') + D.ZONES[Wv.zoneFor(r.wave)].name + "'s monsters");
         } else if (isVault() && r.st === 'break' && was === 'fight' && r.wave < wasWave) {
             // everyone went down: that room again, when the party is ready
             clearMonsters();
-            WHW.banner('The room is lost', Vt.ROOMS[wasWave - 1].name + ' again from its ready circle');
+            WHW.banner('The room is lost', rooms()[wasWave - 1].name + ' again from its ready circle');
             if (p.dead) WV.upAt = E.time + 3;
         } else if (isVault() && r.st === 'break' && was === 'fight') {
-            const w = r.wave, key = r.gen + ':' + w;
+            const w = r.wave, key = r.gen + ':' + w, last = w >= rooms().length;
+            const boss = D.BOSSES[Dg.def(dungeonId()).boss].name;
             if (WV.paid !== key && r.gen === WV.eligibleGen && w >= WV.eligibleFrom) {
                 WV.paid = key;
-                const got = W.vaultRoomCleared(s, w, sNow());
-                WHW.banner(Vt.ROOMS[w - 1].name + ' cleared!', (got.rubies ? '+' + fmt(got.rubies) + ' rubies · ' : '') + (w < Vt.ROOMS.length ? 'the way on is open' : "the King's chamber is open"));
+                const got = W.dungeonRoomCleared(s, dungeonId(), w, sNow(), Math.random, WV.players());
+                const ess = Object.entries(got.mats).map(([id, n]) => (n > 1 ? n + ' ' : '') + D.MATERIALS_BY_ID[id].icon + ' ' + D.MATERIALS_BY_ID[id].name);
+                WHW.banner(rooms()[w - 1].name + ' cleared!', (got.rubies ? '+' + fmt(got.rubies) + ' rubies · ' : '') + (last ? boss + "'s chamber is open" : 'the way on is open'));
+                if (ess.length) WHW.toast('📦 The room\'s chest: ' + ess.join(', '), 'gold');
+                else if (got.capped) WHW.toast("Today's dungeon chests are all opened. Rooms still count, but pay nothing more until tomorrow.");
                 WHW.save();
-            } else WHW.banner(Vt.ROOMS[w - 1].name + ' cleared!', w < Vt.ROOMS.length ? 'The way on is open' : "The King's chamber is open");
+            } else WHW.banner(rooms()[w - 1].name + ' cleared!', last ? boss + "'s chamber is open" : 'The way on is open');
             if (p.dead) up(0.5);
         } else if (r.st === 'break' && was === 'fight') {
             const w = r.wave, key = r.gen + ':' + w;
@@ -137,23 +167,43 @@
             if (p.dead) WV.upAt = E.time + 2.5;
         }
     }
-    // The Vault's doors follow the run (core/world-vault.js doorOpen), and the King wakes once the third room is clear
+    // A dungeon's doors follow the run (core/world-dungeons.js doorOpen), and its boss wakes once the third room is clear
     WV.syncDoors = syncDoors;
     function syncDoors() {
-        const g = game();
-        if (!isVault() || !g.map || !g.map.rooms) return;
+        const g = game(), id = dungeonId();
+        if (!id || !g.map || !g.map.rooms) return;
         let changedTiles = false;
-        for (let i = 1; i <= Vt.KING_ROOM; i++) changedTiles = G.setVaultDoor(g.map, i, Vt.doorOpen(WV.run, i)) || changedTiles;
-        if (changedTiles) { E.setMap(g.map); E.buildNodeGrid(g.nodes); }
-        if (Vt.kingOpen(WV.run) && !g.actors.some(a => a.kind === 'boss' && !a.dead) && E.time >= (g.bossDeadUntil.vault || 0)) g.actors.push(A.makeBoss(Vt.BOSS, g.map.boss.x, g.map.boss.y));
+        for (let i = 1; i <= Dg.KING_ROOM; i++) changedTiles = G.setVaultDoor(g.map, i, Dg.doorOpen(WV.run, i)) || changedTiles;
+        if (changedTiles) E.invalidateGround(); // the ground is drawn again over a few frames (no stall as a room clears)
+        if (Dg.kingOpen(WV.run) && !g.actors.some(a => a.kind === 'boss' && !a.dead) && E.time >= (g.bossDeadUntil[id] || 0)) g.actors.push(A.makeBoss(Dg.def(id).boss, g.map.boss.x, g.map.boss.y));
     }
-    // the Drowned King fell (world-actors.js): the run is done; a new one can start from the first room
+    // the dungeon's boss fell (world-actors.js): the run is done; a new one can start from the first room
     WV.kingDown = function () {
-        if (!isVault() || !WV.run || WV.run.st === 'over') return;
-        setState({ st: 'over', wave: Vt.KING_ROOM });
-        WHW.banner('The Drowned King is beaten!', 'The Vault is yours. Start over from the first room any time.');
+        const id = dungeonId();
+        if (!id || !WV.run || WV.run.st === 'over') return;
+        setState({ st: 'over', wave: Dg.KING_ROOM });
+        WHW.banner(D.BOSSES[Dg.def(id).boss].name + ' is beaten!', Dg.def(id).name + ' is yours. Start over from the first room any time.');
     };
     function clearMonsters() { for (const m of game().actors) if (m.wave) m.dead = true; WV.snap = new Map(); WV.pending = {}; }
+    WV.dropStale = dropStale;
+    function dropStale() {
+        const live = waveActors();
+        if (!live.length) return;
+        const gone = new Set(Wv.staleMids(WV.run, live.map(m => m.wave.mid)));
+        for (const m of live) {
+            if (!gone.has(m.wave.mid)) continue;
+            m.dead = true;
+            WV.dead.add(m.wave.mid);
+            delete WV.pending[m.wave.mid];
+            E.burst(m.x, m.y, m.def.color, 18, 180, { life: 0.7, size: 4 });
+        }
+    }
+    // the run's damage tallies are done with (a new wave, or a dungeon room fought again after a wipe: its ids repeat)
+    function clearTallies(r) {
+        WV.pending = {};
+        if (shared()) { const old = {}; for (const k in r.m) old['m/' + k] = null; if (Object.keys(old).length) net().db.update(Z('w'), old); }
+        if (WV.run) WV.run.m = {};
+    }
     // a change of the run's state, written by the host (shared: to the database; alone: here)
     function setState(patch) {
         patch.t = sNow();
@@ -171,24 +221,24 @@
         setRun(Object.assign({ m: {}, x: [], h: null }, run));
         WHW.toast('The waves are coming, from wave 1. Hold the ring! (' + D.RULES.potionsPerMatch + ' potions per run)');
     };
-    // The Vault: start the next room (a fresh run when there is none, it went quiet, or the King is already down)
+    // A dungeon: start the next room (a fresh run when there is none, it went quiet, or the boss is already down)
     function startRoom(now) {
-        const r = WV.run, fresh = !r || Vt.runNeedsReset(r, now) || r.st === 'over';
-        const next = fresh ? 1 : Vt.nextRoom(r);
-        if (!next) { WHW.toast(r.st === 'fight' || r.st === 'ready' ? 'A room is already going.' : 'Every room is clear: the Drowned King waits at the far end.'); return; }
-        const at = now + Vt.RUN.readySec * 1000;
+        const r = WV.run, fresh = !r || Dg.runNeedsReset(r, now) || r.st === 'over';
+        const next = fresh ? 1 : Dg.nextRoom(r);
+        if (!next) { WHW.toast(r.st === 'fight' || r.st === 'ready' ? 'A room is already going.' : 'Every room is clear: ' + D.BOSSES[Dg.def(dungeonId()).boss].name + ' waits at the far end.'); return; }
+        const at = now + Dg.RUN.readySec * 1000;
         if (fresh) {
-            const run = Object.assign(Vt.newRun(now), { st: 'ready', wave: 1, n: WV.players(), at });
+            const run = Object.assign(Dg.newRun(now), { st: 'ready', wave: 1, n: WV.players(), at });
             if (shared()) net().db.set(Z('w'), run);
             setRun(Object.assign({ m: {}, x: [], h: null }, run));
         } else setState({ st: 'ready', wave: next, n: WV.players(), at });
-        WHW.toast(Vt.ROOMS[next - 1].name + ': get ready! (' + D.RULES.potionsPerMatch + ' potions per room)');
+        WHW.toast(rooms()[next - 1].name + ': get ready! (' + D.RULES.potionsPerMatch + ' potions per room)');
     }
-    // the ready circle the Vault's next room starts from (null when there is none to start)
+    // the ready circle a dungeon's next room starts from (null when there is none to start)
     WV.vaultReady = function () {
         const g = game(), r = WV.run, now = sNow();
         if (!isVault() || !g.map.rooms) return null;
-        const next = !r || Vt.runNeedsReset(r, now) || r.st === 'over' ? 1 : Vt.nextRoom(r);
+        const next = !r || Dg.runNeedsReset(r, now) || r.st === 'over' ? 1 : Dg.nextRoom(r);
         if (next) return g.map.rooms[next - 1].ready;
         if (r && r.st === 'ready') return g.map.rooms[r.wave - 1].ready;
         return null;
@@ -196,9 +246,9 @@
     WV.promptText = function () {
         const r = WV.run, now = sNow();
         if (isVault()) {
-            if (r && r.st === 'ready' && !needsReset(r, now)) return { text: Vt.ROOMS[r.wave - 1].name + ' in ' + Math.max(0, Math.ceil((r.at - now) / 1000)) + 's: get in!', can: false };
-            const next = !r || needsReset(r, now) || r.st === 'over' ? 1 : Vt.nextRoom(r);
-            return { text: '<kbd>E</kbd>🔱 Start ' + Vt.ROOMS[next - 1].name + (WV.players() > 1 ? ' with ' + (WV.players() - 1) + ' other' + (WV.players() > 2 ? 's' : '') : ''), can: true };
+            if (r && r.st === 'ready' && !needsReset(r, now)) return { text: rooms()[r.wave - 1].name + ' in ' + Math.max(0, Math.ceil((r.at - now) / 1000)) + 's: get in!', can: false };
+            const next = !r || needsReset(r, now) || r.st === 'over' ? 1 : Dg.nextRoom(r);
+            return { text: '<kbd>E</kbd>' + Dg.def(dungeonId()).icon + ' Start ' + rooms()[next - 1].name + (WV.players() > 1 ? ' with ' + (WV.players() - 1) + ' other' + (WV.players() > 2 ? 's' : '') : ''), can: true };
         }
         if (!r || Wv.runNeedsReset(r, now)) return { text: '<kbd>E</kbd>⚔️ Start the waves' + (WV.players() > 1 ? ' with ' + (WV.players() - 1) + ' other' + (WV.players() > 2 ? 's' : '') : ''), can: true };
         if (r.st === 'ready') return { text: 'Starting in ' + Math.max(0, Math.ceil((r.at - now) / 1000)) + 's: get in the ring!', can: false };
@@ -211,7 +261,7 @@
         const p = game().player;
         p.dead = true;
         // the Vault outside a room's fight (the King, or walking): back up at the entrance in a moment
-        if (isVault() && !(WV.run && WV.run.st === 'fight')) { WV.upAt = E.time + 4; WHW.toast('Down! Back on your feet at the entrance in a moment. Nothing is lost in the Vault.', 'bad'); return; }
+        if (isVault() && !(WV.run && WV.run.st === 'fight')) { WV.upAt = E.time + 4; WHW.toast('Down! Back on your feet at the entrance in a moment. Nothing is lost in a dungeon.', 'bad'); return; }
         if (isVault()) { WHW.toast(WV.players() > 1 ? 'Down! You get back up when your party clears the room.' : 'Down! The room is lost.', 'bad'); return; }
         WHW.toast(WV.players() > 1 ? 'Down! You get back up when your team clears the wave.' : 'Down! The run is over.', 'bad');
     };
@@ -222,9 +272,15 @@
     }
     WV.zoneEntered = function (from, to) {
         const coop = (z) => !!(D.ZONES[z] && D.ZONES[z].coop);
-        if (coop(from) && to !== from) { if (!shared() && WV.run) WV.run = null; WV.prevSt = ''; WV.comp = []; WV.snap = new Map(); if (from === 'vault') WV.run = null; }
+        // fightKey too: coming back in during the same fight must build its monsters again (the host would otherwise never
+        // see the wave end, and a follower would never see a monster)
+        const dungeon = (z) => !!(D.ZONES[z] && D.ZONES[z].dungeon);
+        if (coop(from) && to !== from) { if (!shared() && WV.run) WV.run = null; WV.prevSt = ''; WV.fightKey = ''; WV.comp = []; WV.snap = new Map(); if (dungeon(from)) WV.run = null; }
+        // walked out of a dungeon (or into one from outside): any run kept for a reload is over
+        if (to !== from && (dungeon(from) || dungeon(to)) && game().state.dungeons) game().state.dungeons.run = null;
         if (coop(to) && !shared()) WV.run = null;
-        if (to === 'vault') syncDoors();
+        // went in with a party: if it breaks up, the dungeon closes behind you (alone, it never does)
+        if (dungeon(to)) { WV.withParty = !!(WHW.party && WHW.party.id); syncDoors(); }
     };
 
     // ---------------- damage, kills and stuns (hooks from world-actors.js) ----------------
@@ -251,18 +307,20 @@
         if (!D.ZONES[g.zoneId] || !D.ZONES[g.zoneId].coop) { renderHud(); return; }
         const r = WV.run, now = sNow();
         if (WV.upAt && E.time >= WV.upAt) { WV.upAt = 0; up(1); const rc = upSpot(); p.x = rc.x; p.y = rc.y; E.snapCamera(); }
-        // the Vault is a party's: without one (it broke up, or this page lost it) it is back to town
-        if (isVault() && !(WHW.party && WHW.party.id)) { WHW.toast('Your party is gone, so the Vault closes behind you.', 'bad'); WHW.actions.leaveVault(); return; }
+        // a party's copy of a dungeon: without the party (it broke up, or this page lost it) it is back up to the zone
+        if (isVault() && WV.withParty && !(WHW.party && WHW.party.id)) { WV.withParty = false; WHW.toast('Your party is gone, so the dungeon closes behind you.', 'bad'); WHW.actions.leaveDungeon(); return; }
         // who runs the waves: the lowest id here; if they go quiet (a hidden tab, a paused page), the next lowest
-        const hostUid = Wv.hostOf(present());
-        let host = !shared() || hostUid === me();
-        if (!host && r && performance.now() - WV.hostSeenAt > R.hostQuietMs) host = present().filter(u => u !== hostUid).sort()[0] === me();
+        // (and past that one too if it is quiet as well). Just after a run appears nobody has sent a snapshot yet: the lowest.
+        const t = performance.now(), quiet = {};
+        for (const u in WV.seenBy) quiet[u] = t - WV.seenBy[u];
+        const fresh = !r || t - WV.runSeenAt < R.hostQuietMs;
+        const host = !shared() || (fresh ? Wv.hostOf(present()) : Wv.hostAmong(present(), me(), quiet)) === me();
         WV.isHost = host;
         if (WV.isHost && !WV.wasHost) takeOver();
         else if (!WV.isHost && WV.wasHost) demote();
         WV.wasHost = WV.isHost;
         WV.flushT -= dt;
-        if (WV.flushT <= 0) { WV.flushT = R.flushSec; flush(); }
+        if (WV.flushT <= 0) { WV.flushT = Wv.flushRate(r && r.st); flush(); }
         if (r) {
             if (WV.isHost) hostStep(r, now, dt);
             else followStep(dt);
@@ -273,8 +331,7 @@
         const g = game(), p = g.player;
         if (r.st === 'ready' && now >= r.at) setState({ st: 'fight', wave: r.wave, n: WV.players(), at: now });
         else if (r.st === 'break' && now >= r.at && !isVault()) {
-            // last wave's damage tallies are done with
-            if (shared()) { const old = {}; for (const k in r.m) old['m/' + k] = null; if (Object.keys(old).length) net().db.update(Z('w'), old); }
+            clearTallies(r); // last wave's damage tallies are done with
             setState({ st: 'fight', wave: r.wave + 1, n: WV.players(), at: now });
         } else if (r.st === 'fight') {
             const alive = waveActors();
@@ -287,13 +344,16 @@
             }
             for (const m of waveActors()) if (m.hp <= 0) A.kill(m, null);
             if (WV.comp.length && WV.comp.every(c => WV.dead.has(c.mid))) setState({ st: 'break', at: now + R.breakSec * 1000 });
-            // everyone down: the run is over (the Vault: that room is lost, the ones before stay cleared)
-            else if (p.dead && others().every(o => o.dead)) setState(isVault() ? Vt.wiped(r) : { st: 'over', at: now });
+            // everyone down: the run is over (the Vault: that room is lost, the ones before stay cleared; its damage tallies
+            // go, or the room's monsters would come back nearly dead next time)
+            else if (p.dead && others().every(o => o.dead)) { if (isVault()) clearTallies(r); setState(isVault() ? Dg.wiped(r) : { st: 'over', at: now }); }
+            // a long fight: keep the run's time fresh, so nobody at the ready circle takes it for an abandoned run
+            else if (now - (r.t || 0) > R.touchSec * 1000) setState({});
         }
-        // the snapshot for everyone else
+        // the snapshot for everyone else (fast during a fight; between waves it only says the host is still here)
         WV.hostT -= dt;
         if (shared() && WV.hostT <= 0) {
-            WV.hostT = 1 / R.hostHz;
+            WV.hostT = 1 / Wv.hostRate(r.st);
             const list = waveActors().sort((a, b) => (b.elite ? 1 : 0) - (a.elite ? 1 : 0)).map(m => ({ mid: m.wave.mid, x: m.x, y: m.y, fa: m.facing, as: m.atkSeq || 0, ai: m.atkI || 0, tx: m.atkTx, ty: m.atkTy }));
             net().db.update(Z('w'), { h: { u: net().uid, n: (WV.hostN = WV.hostN + 1), s: Wv.packSnap(list) } });
         }
@@ -326,6 +386,17 @@
             WV.seen.add(mid);
             if (!m) continue;
             m.follow = true;
+            if (m.snapSeq !== WV.snapSeq) {
+                // a new snapshot: how fast it moved since the last one, so it can be drawn a little ahead (world-actors.js
+                // followMonster) instead of always trailing behind
+                const gap = (WV.snapAt - (m.netAt || 0)) / 1000;
+                if (m.netAt && gap > 0.02 && gap < 1) {
+                    const cap = 700;
+                    m.netVx = Math.max(-cap, Math.min(cap, (sn.x - m.netX) / gap));
+                    m.netVy = Math.max(-cap, Math.min(cap, (sn.y - m.netY) / gap));
+                } else { m.netVx = 0; m.netVy = 0; }
+                m.netAt = WV.snapAt; m.snapSeq = WV.snapSeq;
+            }
             m.netX = sn.x; m.netY = sn.y; m.netFa = sn.fa;
             if (sn.as !== m.lastAs) {
                 m.lastAs = sn.as;
@@ -357,9 +428,10 @@
         let html = '';
         if (isVault() && r && !needsReset(r, sNow())) {
             const left = r.st === 'fight' ? Math.max(0, WV.comp.length - WV.dead.size) : 0, secs = Math.max(0, Math.ceil((r.at - sNow()) / 1000));
-            const where = r.st === 'over' ? 'the Drowned King is beaten' : Vt.kingOpen(r) ? "the King's chamber is open" : r.st === 'fight' ? Vt.ROOMS[r.wave - 1].name + ' · ' + left + ' left'
-                : r.st === 'ready' ? Vt.ROOMS[r.wave - 1].name + ' in ' + secs + 's' : 'rooms cleared: ' + Vt.cleared(r) + ' of ' + Vt.ROOMS.length;
-            html = `🔱 ${where} · ${WV.players()} in the party here${WV.isHost && shared() && WV.players() > 1 ? ' · you run it' : ''}`;
+            const dd = Dg.def(dungeonId()), boss = D.BOSSES[dd.boss].name;
+            const where = r.st === 'over' ? boss + ' is beaten' : Dg.kingOpen(r) ? boss + "'s chamber is open" : r.st === 'fight' ? rooms()[r.wave - 1].name + ' · ' + left + ' left'
+                : r.st === 'ready' ? rooms()[r.wave - 1].name + ' in ' + secs + 's' : 'rooms cleared: ' + Dg.cleared(r) + ' of ' + rooms().length;
+            html = `${dd.icon} ${where} · ${WV.players() > 1 ? WV.players() + ' in the party here' : 'alone'}${WV.isHost && shared() && WV.players() > 1 ? ' · you run it' : ''}`;
         } else if (g.zoneId === 'trials' && r && !Wv.runNeedsReset(r, sNow())) {
             const left = r.st === 'fight' ? Math.max(0, WV.comp.length - WV.dead.size) : 0;
             const secs = Math.max(0, Math.ceil((r.at - sNow()) / 1000));

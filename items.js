@@ -240,7 +240,9 @@
         return b;
     }
     function rateMult() {
-        let m = 1 + (bonuses().boxRate || 0) / 100;
+        let gear = 0; // gear for the game (gear-panel.js): Fortune raises the lootbox rate too
+        try { gear = window.WHGearPanel ? window.WHGearPanel.bonuses().boxRate || 0 : 0; } catch (e) { gear = 0; }
+        let m = (1 + (bonuses().boxRate || 0) / 100) * (1 + gear / 100);
         if (st().lureUntil > Date.now()) m *= LURE.mult;
         return Math.min(MAX_RATE_MULT, m);
     }
@@ -940,6 +942,7 @@
                         <button type="button" class="shop-tab-btn" role="tab" data-itab="boxes">Lootboxes<span class="items-tab-count" data-count="boxes"></span></button>
                         <button type="button" class="shop-tab-btn" role="tab" data-itab="charms">Charms</button>
                         <button type="button" class="shop-tab-btn" role="tab" data-itab="use">Consumables<span class="items-tab-count" data-count="use"></span></button>
+                        <button type="button" class="shop-tab-btn" role="tab" data-itab="gear">Gear<span class="items-tab-count" data-count="gear"></span></button>
                     </div>
                 </div>
                 <div class="items-head-right">
@@ -979,6 +982,8 @@
     function onMenuClick(e) {
         const tabBtn = e.target.closest('[data-itab]');
         if (tabBtn) { if (tabBtn.dataset.itab !== curTab) { curTab = tabBtn.dataset.itab; renderInventory(true); } menu.querySelector('.items-content').scrollTop = 0; return; }
+        // the Gear tab's own buttons (gear-panel.js)
+        if (curTab === 'gear' && window.WHGearPanel && window.WHGearPanel.onClick(e)) return;
         const b = e.target.closest('[data-act]');
         if (!b || b.disabled) return;
         const tier = Number(b.dataset.tier), id = b.dataset.id;
@@ -1033,9 +1038,10 @@
             b.classList.toggle('active', on);
             b.setAttribute('aria-selected', on ? 'true' : 'false');
         });
-        const counts = { boxes: totalBoxes(), use: totalUsables() };
+        const counts = { boxes: totalBoxes(), use: totalUsables(), gear: window.WHGearPanel ? window.WHGearPanel.count() : 0 };
         menu.querySelectorAll('[data-count]').forEach(el => { const n = counts[el.dataset.count]; el.textContent = n ? String(n) : ''; });
-        menu.querySelector('.items-content').innerHTML = curTab === 'charms' ? charmsTabHtml() : curTab === 'use' ? useTabHtml() : boxesTabHtml();
+        menu.querySelector('.items-content').innerHTML = curTab === 'charms' ? charmsTabHtml() : curTab === 'use' ? useTabHtml()
+            : curTab === 'gear' ? (window.WHGearPanel ? window.WHGearPanel.html() : '') : boxesTabHtml();
         renderBoosts();
         renderHud();
     }
@@ -1356,5 +1362,6 @@
         STORAGE_KEY, RARITIES, BOXES, ITEMS, ITEMS_BY_ID,
         sellItems, sellValue, sellableCount, bonuses, renderHud, gemBurst, shakeChip, confirmSpend, renderTreasury,
         openInventory, closeInventory, openTreasury, handleEscape, boostLines, summary, grantBoxes, grantItems, grantSpecial, hasItem, autoClicks, toggleEquip,
+        renderInventory, menuOpen, esc,
     };
 })();

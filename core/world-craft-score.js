@@ -34,7 +34,27 @@
         if (station === 'altar') return {
             T, period: Math.max(1.4, 2.2 - 0.12 * (T - 1)), runes: Math.min(10, 5 + T), minGapDeg: 35, strayPenalty: 8,
         };
+        if (station === 'crucible') return crucibleDifficulty(tier);
         return { T };
+    }
+    // ---- Crucible (core/world-relics.js): n = how many essences go in (1 to 8): one pour and one rune each, then the seal.
+    // More essences, a longer and harder game.
+    function crucibleDifficulty(n) {
+        const N = clamp(Math.round(Number(n) || 1), 1, 8);
+        return { T: Math.min(6, Math.max(1, N - 2)), n: N, pourHalf: Math.max(0.035, 0.08 - 0.005 * N), pourRate: 0.34 + 0.03 * N, pourWait: 6,
+            period: Math.max(1.6, 2.7 - 0.1 * N), minGapDeg: 26, strayPenalty: 8, sealSpan: Math.max(1.1, 1.7 - 0.06 * N), sealWindow: Math.max(0.06, 0.15 - 0.01 * N) };
+    }
+    // one pour: level and target in 0..1 of the vial. Within the band (half) 100 down to 70; past it down to 0 at 3x the band
+    function pourScore(level, target, half) {
+        const e = Math.abs(level - target);
+        if (e <= half) return clamp100(100 - 30 * e / half);
+        return clamp100(70 * (1 - (e - half) / (2 * half)));
+    }
+    // the seal: err = seconds between the press and the moment the closing ring met the mark
+    function sealScore(err, window) { return clamp100(100 * Math.max(0, 1 - Math.abs(err) / (window * 2.5))); }
+    function crucibleScore(pours, runes, stray, seal, cfg) {
+        const B = clamp100(mean(runes) - stray * cfg.strayPenalty);
+        return Math.round(clamp100(0.35 * mean(pours) + 0.45 * B + 0.2 * seal));
     }
 
     // ---- Forge ----
@@ -184,6 +204,6 @@
     return {
         difficulty, heatScore, strikeScore, strikeZones, hammerScore, quenchScore, forgeScore, heatBand, heatStep,
         makePath, randomPath, createTracer, carveScore, stringScore, workbenchScore,
-        runeAngles, runePressScore, runeScore,
+        runeAngles, runePressScore, runeScore, crucibleDifficulty, pourScore, sealScore, crucibleScore,
     };
 }));
