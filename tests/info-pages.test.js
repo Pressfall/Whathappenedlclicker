@@ -231,3 +231,14 @@ test('Ko-fi: the address lives only in core/premium-config.js, no page has a pla
     for (const f of ['main.js', 'items.js', 'followers.js', 'gamba.js', 'world.js', 'world-ui.js', 'clan.html', 'clan-page.js', 'clan-events-tab.js', 'clan-game.js', 'world.html'])
         assert.ok(!/ko-?fi|support the game/i.test(read(f).replace('<script src="core/kofi.js"></script>', '')), f + ' does not mention Ko-fi'); // ("donated" in clan.html is clan points)
 });
+
+test('the Wilds guide prices the Crucible blueprints as the game does', () => {
+    const R = require('../core/world-relics'), Gr = require('../core/gear');
+    const guide = read('wilds-guide.html');
+    assert.ok(guide.includes('at most a <b>' + Gr.TIERS[R.BASE_MAX].name + '</b>'));
+    for (const b of R.BLUEPRINTS) {
+        const price = b.rubies ? '♦ ' + b.rubies.toLocaleString('en-US') + '</b>' : b.glory.toLocaleString('en-US') + ' Glory</b>';
+        assert.ok(guide.includes('<b>' + Gr.TIERS[b.tier].name + '</b> for <b>' + price), Gr.TIERS[b.tier].name + ' blueprint price');
+    }
+    assert.ok(guide.includes('choose a <b>weapon</b>') && guide.includes('<b>armor</b>'));
+});

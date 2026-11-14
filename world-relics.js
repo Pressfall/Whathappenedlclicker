@@ -1,5 +1,6 @@
 /**
- * The Crucible's screens (The Wilds, a station in town): forge relics from essences, infuse gear's sockets, upgrade relics,
+ * The Crucible's screens (The Wilds, a station in town): forge relics from essences (a weapon, armor or gear for the game),
+ * buy blueprints (each lets the forge make one rarer tier, for good), infuse gear's sockets, upgrade relics,
  * and the Relic Satchel (gear for the game, waiting to be sent home). The rules are core/world-relics.js and core/gear.js;
  * the save changes go through core/world-logic.js (beginForge, finishCraft, beginInfuse, upgradeRelic, scrapPiece,
  * sendToGame). The forge and infusing play the Crucible minigame (world-craft.js station 'crucible').
@@ -15,10 +16,11 @@
     const fmt = (n) => Math.round(n).toLocaleString('en-US');
     const ess = (id) => D.MATERIALS_BY_ID[id];
 
-    let tab = 'forge', kind = 'wilds', picked = [], useCat = false, infuseUid = 0;
-    const TABS = { forge: 'Forge', infuse: 'Infuse', upgrade: 'Upgrade', satchel: 'Relic Satchel' };
+    let tab = 'forge', kind = 'weapon', picked = [], useCat = false, infuseUid = 0;
+    const TABS = { forge: 'Forge', blueprints: 'Blueprints', infuse: 'Infuse', upgrade: 'Upgrade', satchel: 'Relic Satchel' };
     const reasonText = { busy: 'Finish your other craft first.', count: 'Put in ' + R.FORGE.min + ' to ' + R.FORGE.max + ' essences.', materials: "You don't have those essences.",
-        catalyst: 'You have no Catalyst.', rubies: 'Not enough rubies.', full: 'No room: ', unknown: "That can't go in.", socket: 'No such socket.', max: 'Already +' + Gr.MAX_LEVEL + '.' };
+        catalyst: 'You have no Catalyst.', rubies: 'Not enough rubies.', full: 'No room: ', unknown: "That can't go in.", socket: 'No such socket.', max: 'Already +' + Gr.MAX_LEVEL + '.',
+        owned: 'You already have that blueprint.', order: 'Buy the blueprint before it first.', glory: 'Not enough Glory.' };
 
     function open(t) {
         if (t) tab = t;
@@ -30,7 +32,7 @@
         if (!body) return;
         const s = game().state;
         let html = UI().tabs(Object.keys(TABS), tab, null, Object.assign({}, TABS, { satchel: 'Relic Satchel (' + s.satchel.length + ')' }));
-        html += tab === 'forge' ? forgeHtml(s) : tab === 'infuse' ? infuseHtml(s) : tab === 'upgrade' ? upgradeHtml(s) : satchelHtml(s);
+        html += tab === 'forge' ? forgeHtml(s) : tab === 'blueprints' ? blueprintsHtml(s) : tab === 'infuse' ? infuseHtml(s) : tab === 'upgrade' ? upgradeHtml(s) : satchelHtml(s);
         body.innerHTML = html;
         UI().wireTabs(body, (t) => { tab = t; render(); });
         wire(body, s);
@@ -39,8 +41,8 @@
     // ---------------- forge ----------------
     const owned = (s) => D.ESSENCE_IDS.filter(id => W.count(s, id) > 0);
     const pickedCount = (id) => picked.filter(x => x === id).length;
-    function oddsBars(o) {
-        return `<div class="w-odds">${o.map((p, t) => `<div class="w-odds-row"><span style="color:${Gr.TIERS[t].color}">${esc(Gr.TIERS[t].name)}</span>
+    function oddsBars(o, maxTier = Gr.TIERS.length - 1) {
+        return `<div class="w-odds">${o.map((p, t) => t > maxTier ? `<div class="w-odds-row is-locked" title="Needs its blueprint (Blueprints tab)"><span style="color:${Gr.TIERS[t].color}">${esc(Gr.TIERS[t].name)}</span><i></i><em>🔒</em></div>` : `<div class="w-odds-row"><span style="color:${Gr.TIERS[t].color}">${esc(Gr.TIERS[t].name)}</span>
             <i><b style="width:${Math.max(p > 0 ? 1 : 0, Math.min(100, p * 100)).toFixed(1)}%;background:${Gr.TIERS[t].color}"></b></i><em>${p >= 0.1 ? (p * 100).toFixed(0) : p >= 0.01 ? (p * 100).toFixed(1) : p > 0 ? (p * 100).toFixed(2) : '0'}%</em></div>`).join('')}</div>`;
     }
     function forgeHtml(s) {
@@ -48,12 +50,15 @@
         if (useCat && !cat) useCat = false;
         picked = picked.filter(id => pickedCount(id) <= W.count(s, id));
         const c = W.canForge(s, kind, picked, useCat);
-        const odds = R.forgeOdds({ ess: picked, score: 70, luck, catalyst: useCat, pity: s.relics.pity });
+        const max = s.relics.bp;
+        const odds = R.forgeOdds({ ess: picked, score: 70, luck, catalyst: useCat, pity: s.relics.pity, maxTier: max });
         const reso = R.resonant(picked);
         let html = `<details class="w-how"><summary>Put in <b>${R.FORGE.min} to ${R.FORGE.max} essences</b>, choose what to make, and play the Crucible: out comes one random relic.</summary>
-            <p>Its <b>relic tier</b>, from Common to Primordial, comes from the essences' rarity most of all, then how many you put in (each counts a little less), your score, your luck, <b>Resonance</b> (every essence of one aspect), a <b>Catalyst</b> (never Common) and your bad luck so far (each forge without a Legendary helps the next a little). Its boosts follow the aspects you put in, and its colours are your essences'. <b>Mythic and Primordial stay rare whatever you put in</b>: at most ${R.FORGE.caps[5] * 100}% and ${R.FORGE.caps[6] * 100}% a forge.</p></details>
-            <div class="w-chips" role="group" aria-label="Make">
-                <button class="w-chip${kind === 'wilds' ? ' is-on' : ''}" data-kind="wilds" aria-pressed="${kind === 'wilds'}">⚔️ Wilds gear <small>a weapon or armor at gear tier ${W.relicGearTier(s)}</small></button>
+            <p>Its <b>relic tier</b>, from Common to Primordial, comes from the essences' rarity most of all, then how many you put in (each counts a little less), your score, your luck, <b>Resonance</b> (every essence of one aspect), a <b>Catalyst</b> (never Common) and your bad luck so far (each forge without a Legendary helps the next a little). Its boosts follow the aspects you put in, and its colours are your essences'. <b>Mythic and Primordial stay rare whatever you put in</b>: at most ${R.FORGE.caps[5] * 100}% and ${R.FORGE.caps[6] * 100}% a forge.</p>
+            <p>Without <b>blueprints</b> the Crucible makes at most a <b style="color:${Gr.TIERS[R.BASE_MAX].color}">${esc(Gr.TIERS[R.BASE_MAX].name)}</b>. Each blueprint (Blueprints tab) lets every forge after it reach one tier higher, for good; a roll above what you can make comes out as the best tier you can.</p></details>
+            <div class="w-chips w-make" role="group" aria-label="Make">
+                <button class="w-chip${kind === 'weapon' ? ' is-on' : ''}" data-kind="weapon" aria-pressed="${kind === 'weapon'}">⚔️ Weapon <small>a sword, dagger, spear, bow or staff at gear tier ${W.relicGearTier(s)}</small></button>
+                <button class="w-chip${kind === 'armor' ? ' is-on' : ''}" data-kind="armor" aria-pressed="${kind === 'armor'}">🛡️ Armor <small>a helmet, chest, boots or shield at gear tier ${W.relicGearTier(s)}</small></button>
                 <button class="w-chip${kind === 'game' ? ' is-on' : ''}" data-kind="game" aria-pressed="${kind === 'game'}">🖱️ Gear for the game <small>a cursor, crown, cloak, ring or relic for the clicker</small></button>
             </div>`;
         html += `<div class="w-forge"><section class="w-panel"><h3>Your essences</h3>`;
@@ -70,24 +75,57 @@
         html += `</section><section class="w-panel"><h3>In the Crucible <span class="muted">${picked.length} / ${R.FORGE.max}</span></h3>
             <div class="w-ess-picked">${picked.map((id, i) => `<button class="w-ess is-on" data-del="${i}" style="--c:${ess(id).color}" title="Take it out"><span class="w-ess-dot"></span>${ess(id).icon} ${esc(ess(id).name)} ✕</button>`).join('') || '<span class="muted">Empty. Pick essences from your list to put them in.</span>'}</div>
             ${cat ? `<label class="w-check"><input type="checkbox" id="useCat" ${useCat ? 'checked' : ''}> ⚗️ Add a Crucible Catalyst (you have ${cat}): never Common</label>` : ''}
-            <p class="w-note" style="margin:6px 0">${reso ? '✨ <b>Resonance</b>: every essence shares one aspect. ' : ''}${s.relics.pity ? `🍀 ${s.relics.pity} forge${s.relics.pity > 1 ? 's' : ''} since your last Legendary: the next is a little luckier. ` : ''}Odds with a good game (score 70):</p>
-            ${oddsBars(odds)}
+            <p class="w-note" style="margin:6px 0">${reso ? '✨ <b>Resonance</b>: every essence shares one aspect. ' : ''}${s.relics.pity ? `🍀 ${s.relics.pity} forge${s.relics.pity > 1 ? 's' : ''} since your last Legendary: the next is a little luckier. ` : ''}Odds with a good game (score 70)${max < Gr.TIERS.length - 1 ? `, up to <b style="color:${Gr.TIERS[max].color}">${esc(Gr.TIERS[max].name)}</b> with your blueprints` : ''}:</p>
+            ${oddsBars(odds, max)}
             ${picked.length ? `<p class="w-note">Boosts it can get: ${Object.entries(R.aspectPoints(picked)).sort((a, b) => b[1] - a[1]).map(([a]) => D.ASPECTS[a].icon + ' ' + esc(D.ASPECTS[a].name) + ' <small>(' + esc(kind === 'game' ? D.ASPECTS[a].game : D.ASPECTS[a].wilds) + ')</small>').join(', ')}</p>` : ''}
             <div class="w-card-actions"><button class="btn btn-gold" id="doForge" ${c.ok ? '' : 'disabled'}>Forge · ♦ ${fmt(c.fee)}</button><button class="btn btn-ghost btn-sm" id="practice">Practice</button>${picked.length ? '<button class="btn btn-ghost btn-sm" id="clearPick">Empty it</button>' : ''}</div>
-            ${!c.ok && picked.length ? `<p class="w-note" style="color:#ffb3bb">${esc(reasonText[c.reason] || '')}${c.reason === 'full' ? (kind === 'wilds' ? 'your backpack is full.' : 'the Relic Satchel is full: send pieces home first.') : ''}</p>` : ''}
+            ${!c.ok && picked.length ? `<p class="w-note" style="color:#ffb3bb">${esc(reasonText[c.reason] || '')}${c.reason === 'full' ? (kind !== 'game' ? 'your backpack is full.' : 'the Relic Satchel is full: send pieces home first.') : ''}</p>` : ''}
             <p class="w-note">Forged so far: <b>${fmt(s.relics.forged)}</b>${s.relics.best >= 0 ? ` · best <b style="color:${Gr.TIERS[s.relics.best].color}">${esc(Gr.TIERS[s.relics.best].name)}</b>` : ''}${s.relics.uniques ? ` · uniques <b>${s.relics.uniques}</b>` : ''}</p>
-            ${uniqueHints(kind, picked)}</section></div>`;
+            ${uniqueHints(kind, picked, max)}</section></div>`;
         // on a phone the panels stack, the Forge button far below the essences: this bar keeps it at hand
         const legend = odds.slice(4).reduce((a, p) => a + p, 0);
-        html += `<div class="w-forge-bar"><span><b>${picked.length} / ${R.FORGE.max}</b> in${picked.length ? ` · <b style="color:${Gr.TIERS[4].color}">Legendary+</b> ${legend >= 0.1 ? Math.round(legend * 100) : (legend * 100).toFixed(1)}%` : ''}</span>
+        html += `<div class="w-forge-bar"><span><b>${picked.length} / ${R.FORGE.max}</b> in${picked.length ? (max >= 4 ? ` · <b style="color:${Gr.TIERS[4].color}">Legendary+</b> ${legend >= 0.1 ? Math.round(legend * 100) : (legend * 100).toFixed(1)}%` : ` · up to <b style="color:${Gr.TIERS[max].color}">${esc(Gr.TIERS[max].name)}</b>`) : ''}</span>
             <button class="btn btn-gold btn-sm" data-forge-go ${c.ok ? '' : 'disabled'}>Forge · ♦ ${fmt(c.fee)}</button></div>`;
         return html;
     }
-    // which uniques these essences could make (on a Legendary or better forge)
-    function uniqueHints(k, ids) {
-        const list = R.uniquesFor(k, ids);
+    // which uniques these essences could make (on a Legendary or better forge, so only with the Legendary blueprint)
+    function uniqueHints(k, ids, max) {
+        const list = k === 'game' ? R.uniquesFor('game', ids) : R.uniquesFor('wilds', ids, k);
         if (!list.length) return '';
-        return `<details class="w-uniques"><summary>Uniques these essences could make (Legendary or better, ${Math.round(R.FORGE.uniqueChance * 100)}% of those)</summary><div class="w-grid">${list.map(u => `<div class="w-card"><div class="w-card-top"><div class="w-card-ico">${Gr.iconSvg({ shape: u.shape, tier: 4, outline: u.outline, main: '#d9c27a', trim: '#8a7a5a', uid: 'h' + u.id })}</div><div><div class="w-card-name">${esc(u.name)}</div><div class="w-card-sub">${esc(u.desc)}</div></div></div></div>`).join('')}</div></details>`;
+        return `<details class="w-uniques"><summary>Uniques these essences could make (Legendary or better, ${Math.round(R.FORGE.uniqueChance * 100)}% of those${max < 4 ? '; needs the Legendary blueprint' : ''})</summary><div class="w-grid">${list.map(u => `<div class="w-card"><div class="w-card-top"><div class="w-card-ico">${Gr.iconSvg({ shape: u.shape, tier: 4, outline: u.outline, main: '#d9c27a', trim: '#8a7a5a', uid: 'h' + u.id })}</div><div><div class="w-card-name">${esc(u.name)}</div><div class="w-card-sub">${esc(u.desc)}</div></div></div></div>`).join('')}</div></details>`;
+    }
+
+    // ---------------- blueprints ----------------
+    function blueprintsHtml(s) {
+        const have = s.relics.bp, next = W.nextBlueprint(s);
+        // the explainer stays open until the first blueprint is bought
+        let html = `<details class="w-how"${have <= R.BASE_MAX ? ' open' : ''}><summary>Blueprints let the Crucible forge rarer gear: each one, for good, raises the best tier a forge can make by one.</summary>
+            <p>Without any, a forge makes at most a <b style="color:${Gr.TIERS[R.BASE_MAX].color}">${esc(Gr.TIERS[R.BASE_MAX].name)}</b>. They go in order. Epic and Legendary cost rubies; Mythic and Primordial cost <b>Glory</b> (won in the Arena, the Pit and waves). A blueprint only opens the chance: the essences, your game, luck and the rest still decide what comes out, and Mythic and Primordial stay rare. Uniques need the Legendary one. It works for weapons, armor and gear for the game alike.</p></details>
+`;
+        // the ladder: every tier, the ones you can already forge lit up
+        html += `<ol class="w-bp-ladder" aria-label="Tiers the Crucible can forge">${Gr.TIERS.map((t, i) => {
+            const st = i <= have ? 'is-on' : next && i === next.tier ? 'is-next' : 'is-off';
+            return `<li class="${st}" style="--q:${t.color}">${i <= have ? '<span>✓</span>' : '<span>🔒</span>'}${esc(t.name)}</li>`;
+        }).join('')}</ol>`;
+        html += `<p class="w-note w-bp-wallet">You can forge up to <b style="color:${Gr.TIERS[have].color}">${esc(Gr.TIERS[have].name)}</b>${next ? '' : ': every blueprint is yours'}. <span>♦ <b>${fmt(s.rubies)}</b> rubies</span> <span>🏆 <b>${fmt(s.arena.glory)}</b> Glory</span></p>`;
+        html += `<div class="w-grid w-bp-grid">${R.BLUEPRINTS.map(b => {
+            const t = Gr.TIERS[b.tier], c = W.canBuyBlueprint(s, b.tier), owned = b.tier <= have;
+            const price = b.rubies ? '♦ ' + fmt(b.rubies) + ' rubies' : '🏆 ' + fmt(b.glory) + ' Glory';
+            let foot;
+            if (owned) foot = '<span class="w-bp-owned">✓ Yours</span>';
+            else if (c.reason === 'order') foot = `<span class="w-bp-price">${price}</span><span class="muted">🔒 After the ${esc(Gr.TIERS[b.tier - 1].name)} blueprint</span>`;
+            else {
+                // the next one: a gold button when you can pay, otherwise how close you are
+                const cost = b.rubies || b.glory, got = Math.min(cost, b.rubies ? s.rubies : s.arena.glory);
+                foot = `<button class="btn btn-sm${c.ok ? ' btn-gold' : ''}" data-bp="${b.tier}" ${c.ok ? '' : 'disabled'}>Buy · ${price}</button>`
+                    + (c.ok ? '' : `<div class="w-bp-progress" title="${fmt(got)} / ${fmt(cost)}"><i style="width:${Math.floor(got / cost * 100)}%"></i></div><span class="muted">${b.rubies ? '♦ ' + fmt(c.need) + ' more rubies' : fmt(c.need) + ' more Glory'} to go</span>`);
+            }
+            const state = owned ? 'is-owned' : c.reason === 'order' ? 'is-locked' : 'is-next';
+            return `<div class="w-card w-bp ${state}" style="--q:${t.color}"><div class="w-card-top"><div class="w-card-ico">📜</div><div><div class="w-card-name" style="color:${t.color}">${esc(t.name)} Blueprint</div>
+                <div class="w-card-sub">Forge <b style="color:${t.color}">${esc(t.name)}</b> gear: ${t.lines} boost${t.lines > 1 ? 's' : ''}${b.tier === 4 ? ', and uniques' : ''}</div></div></div>
+                <div class="w-card-actions">${foot}</div></div>`;
+        }).join('')}</div>`;
+        return html;
     }
 
     // ---------------- infuse ----------------
@@ -156,6 +194,12 @@
     function wire(body, s) {
         const on = (sel, fn) => UI().on(body, sel, fn);
         on('[data-kind]', (d) => { kind = d.kind; render(); });
+        on('[data-bp]', (d) => {
+            const r = W.buyBlueprint(s, Number(d.bp));
+            if (!r.ok) { WHW.toast(reasonText[r.reason] || "Can't buy that.", 'bad'); return; }
+            const t = Gr.TIERS[Number(d.bp)];
+            WHW.toast('📜 ' + t.name + ' Blueprint: the Crucible can now forge ' + t.name + ' gear.', 'gold'); WHW.sfx('craft'); WHW.save(); render();
+        });
         on('[data-add]', (d) => { if (picked.length < R.FORGE.max && pickedCount(d.add) < W.count(s, d.add)) picked.push(d.add); render(); });
         on('[data-del]', (d) => { picked.splice(Number(d.del), 1); render(); });
         const cat = body.querySelector('#useCat');
@@ -199,7 +243,7 @@
         const g = game(), s = g.state;
         const name = WHW.online && WHW.online.name ? WHW.online.name() : '';
         const c = W.beginForge(s, k, ids, catalyst, Date.now(), name);
-        if (!c.ok) { WHW.toast((reasonText[c.reason] || "Can't forge that.") + (c.reason === 'full' ? (k === 'wilds' ? 'your backpack is full.' : 'the Relic Satchel is full.') : ''), 'bad'); return; }
+        if (!c.ok) { WHW.toast((reasonText[c.reason] || "Can't forge that.") + (c.reason === 'full' ? (k !== 'game' ? 'your backpack is full.' : 'the Relic Satchel is full.') : ''), 'bad'); return; }
         WHW.save();
         picked = []; useCat = false;
         WHW.craft.open({
@@ -216,7 +260,7 @@
     function practice() {
         const ids = picked.length ? picked.slice() : ['flint_shard', 'quartz_dust', 'lucky_pebble'];
         WHW.craft.open({ station: 'crucible', tier: ids.length, title: '⚗️ Practice', practice: true, ess: ids.map(id => ({ name: ess(id).name, color: ess(id).color, icon: ess(id).icon })),
-            onDone: (score) => { const body = UI().modal('Practice', `<div class="w-result"><div class="score">${score}</div></div><p class="w-note" style="text-align:center">Practice only. With these essences, a real forge at this score would have these odds:</p>${oddsBars(R.forgeOdds({ ess: ids, score, luck: W.playerStats(game().state).luck, pity: game().state.relics.pity }))}<div class="w-row" style="justify-content:center"><button class="btn btn-primary" id="resOk">Back to the Crucible</button></div>`); body.querySelector('#resOk').addEventListener('click', () => open('forge')); },
+            onDone: (score) => { const body = UI().modal('Practice', `<div class="w-result"><div class="score">${score}</div></div><p class="w-note" style="text-align:center">Practice only. With these essences, a real forge at this score would have these odds:</p>${oddsBars(R.forgeOdds({ ess: ids, score, luck: W.playerStats(game().state).luck, pity: game().state.relics.pity, maxTier: game().state.relics.bp }), game().state.relics.bp)}<div class="w-row" style="justify-content:center"><button class="btn btn-primary" id="resOk">Back to the Crucible</button></div>`); body.querySelector('#resOk').addEventListener('click', () => open('forge')); },
             onCancel: () => {} });
     }
     const s = () => game().state;

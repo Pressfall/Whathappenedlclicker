@@ -49,8 +49,23 @@
         { a: 'frost', b: 'ward', name: 'Glacier', bonus: { ward: 4, frost: 3 } },
         { a: 'swift', b: 'ember', name: 'Comet', bonus: { swift: 5 } },
     ];
-    // what a forge of Wilds gear can turn out: [class or slot, how it's named in GEAR]
-    const RELIC_BASES = ['sword', 'dagger', 'spear', 'bow', 'firestaff', 'lightningstaff', 'froststaff', 'helmet', 'chest', 'boots', 'shield'];
+    // what a forge of Wilds gear can turn out: [class or slot, how it's named in GEAR]. You choose a weapon or armor (a shield
+    // counts as armor); which one of those is random.
+    const WEAPON_BASES = ['sword', 'dagger', 'spear', 'bow', 'firestaff', 'lightningstaff', 'froststaff'];
+    const ARMOR_BASES = ['helmet', 'chest', 'boots', 'shield'];
+    const PARTS = { weapon: WEAPON_BASES, armor: ARMOR_BASES };
+    const RELIC_BASES = WEAPON_BASES.concat(ARMOR_BASES);
+    // Blueprints: without one, a forge makes at most a Rare (BASE_MAX); each one, bought for good and in order, lets every
+    // forge after it reach one tier higher. Epic and Legendary cost rubies (at the Crucible), Mythic and Primordial Glory.
+    // A tier the forge would have rolled above what you can make comes out as the best tier you can.
+    const BASE_MAX = 2;
+    const BLUEPRINTS = [
+        { tier: 3, rubies: 20000 },
+        { tier: 4, rubies: 75000 },
+        { tier: 5, glory: 12000 },
+        { tier: 6, glory: 40000 },
+    ];
+    const BLUEPRINT_BY_TIER = Object.fromEntries(BLUEPRINTS.map(b => [b.tier, b]));
     const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
     const int = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.floor(Number(v) || 0)));
     const ess = (id) => { const m = D.MATERIALS_BY_ID[id]; return m && m.kind === 'essence' ? m : null; };
@@ -68,7 +83,7 @@
     }
     const resonant = (ids) => ids.length >= FORGE.min && new Set(ids.map(id => ess(id) && ess(id).asp)).size === 1;
     // The chance of each relic tier (0 Common .. 6 Primordial) for a forge. o: { ess: [essence ids], score (0-100), luck,
-    // catalyst (bool), pity (forges since the last Legendary or better) }
+    // catalyst (bool), pity (forges since the last Legendary or better), maxTier (the best your blueprints allow; none: any) }
     function forgeOdds(o) {
         const ids = (o.ess || []).filter(ess);
         let p = potency(ids);
@@ -83,6 +98,9 @@
         const out = w.map(x => x / total);
         // the caps: anything over goes to Legendary
         for (const t of [6, 5]) { const cap = FORGE.caps[t]; if (out[t] > cap) { out[4] += out[t] - cap; out[t] = cap; } }
+        // blueprints: whatever is above the best tier you can make comes out as that tier
+        const max = o.maxTier == null ? T.length - 1 : int(o.maxTier, 0, T.length - 1);
+        for (let t = T.length - 1; t > max; t--) { out[max] += out[t]; out[t] = 0; }
         return out;
     }
     function rollTier(odds, rng) {
@@ -118,8 +136,11 @@
         const rarest = list.slice().sort((a, x) => x.rar - a.rar)[0];
         return ['#' + hex(r) + hex(g) + hex(b), rarest.color.toLowerCase()];
     }
-    // the uniques a forge of this kind could make with these essences (each needs its dungeon's Heart, if it names one)
-    function uniquesFor(kind, ids) { return Gear.UNIQUES.filter(u => u.kind === kind && (!u.need || ids.includes(u.need))); }
+    // the uniques a forge of this kind could make with these essences (each needs its dungeon's Heart, if it names one).
+    // part ('weapon' | 'armor'): only that kind of Wilds gear (a weapon unique has a class, armor a slot)
+    function uniquesFor(kind, ids, part) {
+        return Gear.UNIQUES.filter(u => u.kind === kind && (!u.need || ids.includes(u.need)) && (!PARTS[part] || (part === 'weapon') === !!u.cls));
+    }
     // the gear id for a relic base at a gear tier (the nearest tier that exists, for staffs that stop early)
     function baseIdFor(base, tier) {
         const name = (t) => (/staff$/.test(base) ? base + '_' + t : base === 'shield' ? 'shield_' + t : base + '_' + t);
@@ -129,18 +150,21 @@
     }
     // the base for a unique: its class or slot
     function uniqueBase(u) { return u.cls === 'staff' ? 'firestaff' : u.cls || (u.slot === 'offhand' ? 'shield' : u.slot); }
-    // The Crucible's work. o: { kind: 'wilds' | 'game', ess: [ids], score, luck, catalyst, pity, gearTier (for Wilds gear), by }.
+    // The Crucible's work. o: { kind: 'wilds' | 'game', part ('weapon' | 'armor'; none: either, for Wilds gear), ess: [ids],
+    // score, luck, catalyst, pity, maxTier (blueprints), gearTier (for Wilds gear), by }.
     // Returns { tier, unique (or null), lines, colors, base (a GEAR id, Wilds), slot (the game's) }
     function forge(o, rng) {
         const ids = (o.ess || []).filter(ess);
         const odds = forgeOdds(o), tier = rollTier(odds, rng);
+        const part = o.kind === 'wilds' && PARTS[o.part] ? o.part : null;
         let unique = null;
-        if (tier >= 4 && rng() < FORGE.uniqueChance) { const list = uniquesFor(o.kind, ids); if (list.length) unique = list[Math.floor(rng() * list.length) % list.length]; }
+        if (tier >= 4 && rng() < FORGE.uniqueChance) { const list = uniquesFor(o.kind, ids, part); if (list.length) unique = list[Math.floor(rng() * list.length) % list.length]; }
         const n = T[tier].lines + (unique ? 1 : 0);
         const lines = pickLines(ids, n, rng, o.score, unique ? unique.sig : null);
         const colors = colorsOf(ids);
         if (o.kind === 'game') return { tier, unique, lines, colors, slot: unique ? unique.s : Gear.SLOTS[Math.floor(rng() * Gear.SLOTS.length) % Gear.SLOTS.length], odds };
-        const base = baseIdFor(unique ? uniqueBase(unique) : RELIC_BASES[Math.floor(rng() * RELIC_BASES.length) % RELIC_BASES.length], int(o.gearTier, 0, D.MAX_TIER));
+        const pool = part ? PARTS[part] : RELIC_BASES;
+        const base = baseIdFor(unique ? uniqueBase(unique) : pool[Math.floor(rng() * pool.length) % pool.length], int(o.gearTier, 0, D.MAX_TIER));
         return { tier, unique, lines, colors, base, odds };
     }
     // the ruby fee for a forge of n essences at a gear tier
@@ -236,6 +260,6 @@
         return { shape: u ? u.shape : (b.slot === 'weapon' ? b.cls : b.slot), main: it.r.c[0], trim: it.r.c[1], tier: it.r.t, outline: u ? u.outline : null, glow: T[it.r.t].color, uid: 'w' + it.uid };
     }
 
-    return { PTS, FORGE, WILDS_LINE, SOCKET_VALUE, MAX_SOCKETS, COMBOS, RELIC_BASES, potency, aspectPoints, resonant, forgeOdds, rollTier, pickLines, colorsOf,
+    return { PTS, FORGE, WILDS_LINE, SOCKET_VALUE, MAX_SOCKETS, COMBOS, RELIC_BASES, WEAPON_BASES, ARMOR_BASES, PARTS, BASE_MAX, BLUEPRINTS, BLUEPRINT_BY_TIER, potency, aspectPoints, resonant, forgeOdds, rollTier, pickLines, colorsOf,
         uniquesFor, baseIdFor, uniqueBase, forge, forgeFee, cleanRelic, socketCount, cleanSockets, socketValue, wildsAspects, applyAspects, upgradeCost, relicName, lookOf };
 }));

@@ -586,6 +586,7 @@ body.is-touch .w-chat { bottom: auto; top: calc(54px + var(--sat)); }
 .w-odds-row { display: grid; grid-template-columns: 82px minmax(0, 1fr) 48px; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; }
 .w-odds-row i { height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.06); overflow: hidden; }
 .w-odds-row i b { display: block; height: 100%; border-radius: 4px; }
+.w-odds-row.is-locked { opacity: 0.55; }
 .w-odds-row em { font-style: normal; text-align: right; color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .w-uniques { margin-top: 8px; font-size: 13px; }
 .w-uniques summary { cursor: pointer; color: var(--gold); font-weight: 700; }
@@ -642,3 +643,25 @@ body.is-touch .w-chat { bottom: auto; top: calc(54px + var(--sat)); }
 .w-market-item p { margin: 0; font-size: 13px; }
 .w-trade-chip { position: absolute; left: calc(12px + var(--sal)); bottom: calc(110px + var(--sab)); z-index: 11; pointer-events: auto; }
 body.is-touch .w-trade-chip { bottom: calc(260px + var(--sab)); }
+
+/* Crucible blueprints: the tier ladder and the four cards */
+.w-bp-ladder { list-style: none; margin: 10px 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.w-bp-ladder li { display: flex; align-items: center; gap: 4px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; border: 1px solid var(--border); color: var(--text-faint); }
+.w-bp-ladder li span { font-size: 11px; }
+.w-bp-ladder li.is-on { color: var(--q); border-color: color-mix(in srgb, var(--q) 55%, transparent); background: color-mix(in srgb, var(--q) 12%, transparent); }
+.w-bp-ladder li.is-next { color: var(--text); border: 1px dashed var(--q); }
+.w-bp-wallet span { margin-left: 10px; white-space: nowrap; }
+.w-bp { border-color: color-mix(in srgb, var(--q) 60%, transparent); }
+.w-bp .w-card-ico { font-size: 22px; border-color: var(--q); background: color-mix(in srgb, var(--q) 14%, rgba(0, 0, 0, 0.3)); }
+.w-bp .w-card-actions { align-items: center; gap: 6px 8px; margin-top: 10px; }
+.w-bp.is-owned { background: color-mix(in srgb, var(--q) 8%, transparent); }
+.w-bp.is-locked { opacity: 0.6; border-style: dashed; }
+.w-bp-owned { color: var(--q); font-weight: 800; font-size: 13px; }
+.w-bp-price { font-weight: 800; font-size: 12.5px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border-strong); }
+.w-bp-progress { flex: 1 1 100%; height: 5px; border-radius: 99px; background: rgba(255, 255, 255, 0.08); overflow: hidden; }
+.w-bp-progress i { display: block; height: 100%; background: var(--q); }
+
+/* the Crucible's "what to make": three equal choices, the detail on its own line */
+.w-make { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 6px; }
+.w-make .w-chip { border-radius: 10px; padding: 7px 11px; text-align: left; font-size: 13px; }
+.w-make .w-chip small { display: block; margin: 2px 0 0; }

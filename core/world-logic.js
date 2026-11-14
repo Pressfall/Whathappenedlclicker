@@ -105,7 +105,7 @@
             // the hidden dungeons: today's paid rooms (all of them together), each boss's week and kills, the ways in found
             dungeons: freshDungeons(),
             // the Crucible (core/world-relics.js): gear for the game waiting to be sent home, and the forge's record (pity:
-            // forges since the last Legendary or better)
+            // forges since the last Legendary or better; bp: the best tier your blueprints let you forge)
             satchel: [],
             relics: freshRelics(),
             // trading and the Auction Hall (core/world-market.js): what you have listed and bid (set aside), the trade
@@ -1097,7 +1097,7 @@
 
     // ---------------- the Crucible (core/world-relics.js, core/gear.js) ----------------
     const SATCHEL_MAX = 40;
-    function freshRelics() { return { pity: 0, forged: 0, best: -1, mythic: 0, uniques: 0, infused: 0, sent: 0, nextPid: 1 }; }
+    function freshRelics() { return { pity: 0, forged: 0, best: -1, mythic: 0, uniques: 0, infused: 0, sent: 0, nextPid: 1, bp: Relics.BASE_MAX }; }
     function cleanRelics(raw) {
         const r = freshRelics();
         if (!isObj(raw)) return r;
@@ -1105,6 +1105,9 @@
         r.best = Math.max(-1, Math.min(Gear.MAX_TIER, Math.floor(Number(raw.best)))) ;
         if (!Number.isFinite(r.best)) r.best = -1;
         r.nextPid = Math.max(1, int(raw.nextPid, 1e9));
+        // blueprints came later: a save from before them keeps every tier it has already forged
+        const bp = Math.floor(Number(raw.bp));
+        r.bp = Math.max(Relics.BASE_MAX, Math.min(Gear.MAX_TIER, Number.isFinite(bp) ? bp : r.best));
         return r;
     }
     // gear for the game waiting in the Wilds (forged, or bought or traded): cleaned, unique ids, at most SATCHEL_MAX
@@ -1121,9 +1124,11 @@
         }
         return out;
     }
+    // what the Crucible can forge: a Wilds weapon or armor ('wilds', either, is what a craft begun before the choice kept), or gear for the game
+    const FORGE_KINDS = ['weapon', 'armor', 'wilds', 'game'];
     // the gear tier a forged Wilds relic is made at: your own (the furthest zone's gear)
     function relicGearTier(s) { return Math.max(1, Math.min(D.MAX_TIER, furthestTier(s) + 1)); }
-    // Can these essences be forged now? kind: 'wilds' | 'game'. ids: 3-8 essence ids (repeats allowed). catalyst: put a
+    // Can these essences be forged now? kind: 'weapon' | 'armor' (Wilds gear; 'wilds': either) | 'game'. ids: 3-8 essence ids (repeats allowed). catalyst: put a
     // Catalyst in too. Returns { ok, reason?, fee, mats }: 'busy' | 'count' | 'unknown' | 'materials' | 'catalyst' | 'rubies' | 'full'
     function canForge(s, kind, ids, catalyst) {
         const list = Array.isArray(ids) ? ids : [];
@@ -1133,13 +1138,13 @@
         if (catalyst) mats.catalyst = 1;
         const res = { ok: false, fee, mats };
         if (s.pendingCraft) return Object.assign(res, { reason: 'busy' });
-        if (kind !== 'wilds' && kind !== 'game') return Object.assign(res, { reason: 'unknown' });
+        if (!FORGE_KINDS.includes(kind)) return Object.assign(res, { reason: 'unknown' });
         if (list.length < Relics.FORGE.min || list.length > Relics.FORGE.max) return Object.assign(res, { reason: 'count' });
         if (list.some(id => !D.MATERIALS_BY_ID[id] || D.MATERIALS_BY_ID[id].kind !== 'essence')) return Object.assign(res, { reason: 'unknown' });
         if (catalyst && !count(s, 'catalyst')) return Object.assign(res, { reason: 'catalyst' });
         if (!has(s, mats)) return Object.assign(res, { reason: 'materials', missing: missing(s, mats) });
         if (s.rubies < fee) return Object.assign(res, { reason: 'rubies', need: fee - s.rubies });
-        if (kind === 'wilds' ? s.gear.length >= D.RULES.maxGear : s.satchel.length >= SATCHEL_MAX) return Object.assign(res, { reason: 'full' });
+        if (kind !== 'game' ? s.gear.length >= D.RULES.maxGear : s.satchel.length >= SATCHEL_MAX) return Object.assign(res, { reason: 'full' });
         return Object.assign(res, { ok: true });
     }
     // Pay for a forge before the minigame (quitting or reloading gives the essences back, not the fee). by: your name
@@ -1152,7 +1157,8 @@
         return c;
     }
     function finishForge(s, p, sc, rng, now) {
-        const res = Relics.forge({ kind: p.id, ess: p.ess, score: sc, luck: playerStats(s).luck, catalyst: p.cat, pity: s.relics.pity, gearTier: relicGearTier(s) }, rng);
+        const wilds = p.id !== 'game', part = Relics.PARTS[p.id] ? p.id : null;
+        const res = Relics.forge({ kind: wilds ? 'wilds' : 'game', part, ess: p.ess, score: sc, luck: playerStats(s).luck, catalyst: p.cat, pity: s.relics.pity, maxTier: s.relics.bp, gearTier: relicGearTier(s) }, rng);
         const R = s.relics;
         R.forged++;
         R.pity = res.tier >= 4 ? 0 : R.pity + 1;
@@ -1161,7 +1167,7 @@
         if (res.unique) R.uniques++;
         const rel = { t: res.tier, l: res.lines, m: p.ess, c: res.colors, q: res.unique ? res.unique.id : '', by: p.by, n: 0, lv: 0 };
         questEvent(s, { kind: 'relic', tier: res.tier });
-        if (p.id === 'wilds') {
+        if (wilds) {
             const base = D.GEAR_BY_ID[res.base];
             const item = addGear(s, res.base, sc, rollAffixes(base, sc, rng), now, { r: rel });
             return { kind: 'relic', target: 'wilds', item, tier: res.tier, unique: res.unique, score: sc };
@@ -1169,6 +1175,26 @@
         const piece = Gear.cleanPiece(Object.assign({ id: R.nextPid++, s: res.slot, at: now }, rel));
         s.satchel.push(piece);
         return { kind: 'relic', target: 'game', piece, tier: res.tier, unique: res.unique, score: sc };
+    }
+    // Blueprints (core/world-relics.js BLUEPRINTS): the next tier you can buy (or null when you have them all), and whether you
+    // can buy it now. They go in order, each for good. Returns { ok, reason?, bp }: 'owned' | 'order' | 'unknown' | 'rubies' | 'glory'
+    function nextBlueprint(s) { return Relics.BLUEPRINT_BY_TIER[s.relics.bp + 1] || null; }
+    function canBuyBlueprint(s, tier) {
+        const bp = Relics.BLUEPRINT_BY_TIER[tier];
+        if (!bp) return { ok: false, reason: 'unknown' };
+        if (tier <= s.relics.bp) return { ok: false, reason: 'owned', bp };
+        if (tier !== s.relics.bp + 1) return { ok: false, reason: 'order', bp };
+        if (bp.rubies && s.rubies < bp.rubies) return { ok: false, reason: 'rubies', bp, need: bp.rubies - s.rubies };
+        if (bp.glory && s.arena.glory < bp.glory) return { ok: false, reason: 'glory', bp, need: bp.glory - s.arena.glory };
+        return { ok: true, bp };
+    }
+    function buyBlueprint(s, tier) {
+        const c = canBuyBlueprint(s, tier);
+        if (!c.ok) return c;
+        if (c.bp.rubies) s.rubies -= c.bp.rubies;
+        if (c.bp.glory) s.arena.glory -= c.bp.glory;
+        s.relics.bp = tier;
+        return c;
     }
     // Infuse: an essence into socket i of a piece of gear (the minigame sizes it). Returns { ok, reason? }
     function beginInfuse(s, uid, i, essId) {
@@ -2056,7 +2082,7 @@
         wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal,
         arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, arenaWeekLeft, setTitle, rollSeason, waveCleared,
         dungeonOpen, noteDungeonFound, dungeonRoomCleared, dungeonBossLoot, vaultBuy, vaultWeekLeft, nodeEssences, isBanked,
-        SATCHEL_MAX, relicGearTier, canForge, beginForge, beginInfuse, upgradeRelic, scrapPiece, sendToGame, receivePieces, satchelRoom,
+        SATCHEL_MAX, FORGE_KINDS, relicGearTier, canForge, beginForge, nextBlueprint, canBuyBlueprint, buyBlueprint, beginInfuse, upgradeRelic, scrapPiece, sendToGame, receivePieces, satchelRoom,
         takeItem, putItem, collectPending, tradesLeft, tradeStart, tradeSetOffer, tradeConfirmed, tradeReconcile, heldMatches, tradeSettle, tradeCancel, auctionList, auctionReturn, auctionPaid, auctionHold, auctionRelease, auctionWon,
         sell, buy, exchange, classId, classOf, classProgress, classState, unlockClass, setClass, skillDef, skillState, learnSkill, loadoutOf, equipAbility, unequipAbility, abilityKit, treeOrder,
         godState, upgradeGod, isHallWord, speak, hiddenShopState, buyHidden, questOffer, questProgress, acceptQuest, turnInQuest, abandonQuest, questEvent, activeQuests, furthestTier, noteNode, nodeReadyAt, pruneNodes, serialize,

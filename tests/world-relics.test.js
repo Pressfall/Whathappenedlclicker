@@ -109,6 +109,7 @@ test('who may forge: 3 to 8 essences you have, a Catalyst you have, the fee', ()
 
 test('pity: each forge without a Legendary adds up, a Legendary or better resets it', () => {
     const s = rich(W.freshState(NOW));
+    s.relics.bp = 6; // every blueprint
     for (let i = 0; i < 3; i++) { W.beginForge(s, 'game', C3, false, NOW, ''); W.finishCraft(s, 50, seq(0.999), NOW, null); }
     assert.equal(s.relics.pity, 3);
     W.beginForge(s, 'game', C3, false, NOW, '');
@@ -207,4 +208,61 @@ test('stone and the Crucible: essences show where they come from, and the Crucib
     assert.ok(G.generateZone('town').stations.some(st => st.id === 'crucible'));
     for (const id of D.ESSENCE_IDS) assert.ok(W.materialSources(id).length > 0, id + ' comes from somewhere');
     assert.ok(W.materialSources('catalyst').length > 0);
+});
+
+test('weapon or armor: the forge makes the kind you chose, and only uniques of that kind', () => {
+    const isWeapon = (id) => D.GEAR_BY_ID[id].slot === 'weapon';
+    for (let i = 0; i < 300; i++) {
+        const r = Math.random;
+        assert.ok(isWeapon(R.forge({ kind: 'wilds', part: 'weapon', ess: C3, score: 50, gearTier: 3 }, r).base), 'a weapon');
+        assert.ok(!isWeapon(R.forge({ kind: 'wilds', part: 'armor', ess: C3, score: 50, gearTier: 3 }, r).base), 'armor');
+    }
+    const hearts = D.ESSENCE_IDS.filter(id => /^heart_/.test(id));
+    assert.ok(R.uniquesFor('wilds', hearts, 'weapon').every(u => u.cls) && R.uniquesFor('wilds', hearts, 'weapon').length);
+    assert.ok(R.uniquesFor('wilds', hearts, 'armor').every(u => !u.cls) && R.uniquesFor('wilds', hearts, 'armor').length);
+    // through the save: an armor forge lands an armor piece in the backpack
+    const s = rich(W.freshState(NOW));
+    assert.equal(W.canForge(s, 'shield', C3, false).reason, 'unknown');
+    assert.equal(W.beginForge(s, 'armor', C3, false, NOW, '').ok, true);
+    const res = W.finishCraft(s, 60, Math.random, NOW, null);
+    assert.ok(res.item && !isWeapon(res.item.base));
+});
+
+test('blueprints: without any the forge stops at Rare; each one, bought in order and for good, opens the next tier', () => {
+    assert.equal(R.BASE_MAX, 2);
+    assert.deepEqual(R.BLUEPRINTS.map(b => [b.tier, b.rubies ? 'rubies' : 'glory']), [[3, 'rubies'], [4, 'rubies'], [5, 'glory'], [6, 'glory']]);
+    // the odds: whatever is above the cap comes out as the cap, so they still add up to 1
+    const strong = { ess: ['heart_roots', 'heart_deep', 'heart_crypt', 'heart_tomb'], score: 100, luck: 0.5, catalyst: true, pity: 50 };
+    const free = R.forgeOdds(Object.assign({ maxTier: 2 }, strong)), all = R.forgeOdds(strong);
+    assert.ok(Math.abs(free.reduce((a, b) => a + b, 0) - 1) < 1e-9);
+    assert.deepEqual(free.slice(3), [0, 0, 0, 0]);
+    assert.ok(Math.abs(free[2] - all.slice(2).reduce((a, b) => a + b, 0)) < 1e-9);
+    // a new player forges the luckiest roll there is and gets a Rare
+    const s = rich(W.freshState(NOW));
+    assert.equal(s.relics.bp, 2);
+    W.beginForge(s, 'weapon', ['heart_roots', 'heart_deep', 'heart_crypt'], true, NOW, '');
+    assert.equal(W.finishCraft(s, 100, seq(0.0001), NOW, null).tier, 2);
+    // buying: in order, rubies for Epic and Legendary, Glory for Mythic and Primordial
+    s.rubies = 0; s.arena.glory = 0;
+    assert.equal(W.buyBlueprint(s, 4).reason, 'order');
+    assert.equal(W.buyBlueprint(s, 3).reason, 'rubies');
+    s.rubies = 20000;
+    assert.equal(W.buyBlueprint(s, 3).ok, true);
+    assert.equal(s.rubies, 0);
+    assert.equal(W.buyBlueprint(s, 3).reason, 'owned');
+    s.rubies = 75000; W.buyBlueprint(s, 4);
+    assert.equal(W.buyBlueprint(s, 5).reason, 'glory');
+    s.arena.glory = 12000; assert.equal(W.buyBlueprint(s, 5).ok, true); assert.equal(s.arena.glory, 0);
+    assert.equal(W.nextBlueprint(s).tier, 6);
+    assert.equal(reload(s).relics.bp, 5, 'kept in the save');
+    s.rubies = 1e7;
+    W.beginForge(s, 'weapon', ['heart_roots', 'heart_deep', 'heart_crypt'], true, NOW, '');
+    assert.ok(W.finishCraft(s, 100, seq(0.0001), NOW, null).tier >= 4, 'now the same roll is Legendary or better');
+});
+
+test('blueprints: a save from before them keeps every tier it has already forged', () => {
+    assert.equal(W.migrate({ relics: { best: -1 } }, NOW).relics.bp, 2);
+    assert.equal(W.migrate({ relics: { best: 4 } }, NOW).relics.bp, 4);
+    assert.equal(W.migrate({ relics: { best: 6, bp: 3 } }, NOW).relics.bp, 3, 'a saved bp is kept as it is');
+    assert.equal(W.migrate({ relics: { bp: 99 } }, NOW).relics.bp, 6);
 });
