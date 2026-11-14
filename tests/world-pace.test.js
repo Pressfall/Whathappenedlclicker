@@ -95,7 +95,7 @@ test('the Drowned King: about as long for each player in a party as Vrill alone,
     assert.ok(burden / 2 <= 0.45 && burden / 4 <= 0.25, 'shared: ' + (burden * 50).toFixed(0) + '% for two');
     // what the help and the guide say of it alone, with gear made for the zone above each dungeon: most of your health under
     // the first four zones; under the Far Reaches (not the Vault, tuned above) enough to knock you out even at full health
-    for (const id of V.IDS.filter(x => x !== 'vault')) {
+    for (const id of V.IDS.filter(x => x !== 'vault' && D.BOSSES[D.DUNGEONS[x].boss].phases.flat().includes('burden'))) {
         const dd = D.DUNGEONS[id], alone = share(D.BOSSES[dd.boss], gear(dd.zone)) * 8.5;
         if (D.ZONES[dd.zone].via === 'waystone') assert.ok(alone >= 1, id + ': ' + (alone * 100).toFixed(0) + '% (the guide: knocks you out alone)');
         else assert.ok(alone >= 0.5 && alone < 1, id + ': ' + (alone * 100).toFixed(0) + '% (the guide: most of your health)');

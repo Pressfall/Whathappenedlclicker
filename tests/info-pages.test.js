@@ -174,11 +174,12 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     assert.deepEqual(mult, [2.5]);
     assert.ok(guide.includes('hits ' + mult[0] + ' times as hard'), 'the frenzy\'s strength');
     // the Shared Burden: from the second phase (two thirds of its health), the Drowned King from the start
-    for (const id of Dg.IDS) {
+    for (const id of Dg.IDS.filter(x => x !== 'roots')) {
         const b = D.BOSSES[D.DUNGEONS[id].boss], from = b.phases.findIndex(p => p.includes('burden'));
         assert.equal(from, id === 'vault' ? 0 : 1, b.name + ': the guide says when the Burden starts');
     }
     assert.ok(guide.includes('down to two thirds of its health (the Drowned King from the start)'));
+    assert.ok(!D.BOSSES.root_mother.phases.flat().includes('burden') && guide.includes('except the Root Mother'), 'the guide says the first dungeon boss has no Burden');
     // every boss attack in the game is in the Boss attacks section (a new one has to be explained there)
     const atk = text(guide.slice(guide.indexOf('<h2 id="boss-attacks">'), guide.indexOf('<h2 id="arena">')));
     const SAYS = { sweep: 'sweeping blow', ring: 'ring of shots', charge: 'charge', summon: 'Summoned', roots: 'Roots', boulders: 'rocks', slam: 'slam',

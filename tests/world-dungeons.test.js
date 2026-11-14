@@ -24,7 +24,7 @@ test('one dungeon under each zone, each with its own boss, rooms, essence and He
         assert.equal(z.boss, dd.boss); assert.equal(z.from, dd.zone);
         const b = D.BOSSES[dd.boss];
         assert.ok(b && b.dungeon === id && b.partyScale && b.enrage && b.phases.length === 3, id + ' boss');
-        assert.ok(b.phases.flat().includes('burden'), id + ': the boss has the Shared Burden');
+        assert.equal(b.phases.flat().includes('burden'), id !== 'roots', id + ': the Shared Burden (all but the first dungeon\'s boss)');
         assert.equal(dd.rooms.length, V.ROOM_COUNT);
         for (const r of dd.rooms) for (const zz of r.zones) assert.ok(D.ZONES[zz].spawns, id + ' room zone ' + zz);
         const e = D.MATERIALS_BY_ID[dd.essence], h = D.MATERIALS_BY_ID[dd.heart];

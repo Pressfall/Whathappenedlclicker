@@ -725,13 +725,13 @@
         // ---- the hidden dungeons' bosses (core/world-dungeons.js), one deep under each zone. dungeon: which one (they pay
         // through world-logic.js dungeonBossLoot, no drops of their own); partyScale: health grows with the players in the fight
         // (bossHp); enrage: after sec of fighting they hit mult times as hard. burden: a mark on one player that bursts, its
-        // damage shared by everyone standing in it. vault: the Drowned King, who also pays the Vault Keeper's seals.
+        // damage shared by everyone standing in it (every dungeon boss but the Root Mother, the first). vault: the Drowned King, who also pays the Vault Keeper's seals.
         root_mother: {
             name: 'The Root Mother', zone: 'roots', face: 'mainimage/thumbs/whnature.webp', hp: 2000, dmg: 18, r: 44, speed: 62, armor: 0, color: '#2f9a4a',
             phases: [
                 ['sweep', 'ring', 'roots'],
-                ['sweep', 'roots', 'summon', 'burden'],
-                ['sweep', 'ring', 'roots', 'charge', 'summon', 'burden'],
+                ['sweep', 'roots', 'summon'],
+                ['sweep', 'ring', 'roots', 'charge', 'summon'],
             ],
             summon: 'slime', axeBonus: 1.25, dungeon: 'roots', partyScale: true, enrage: { sec: 360, mult: 2.5 },
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
