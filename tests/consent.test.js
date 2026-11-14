@@ -304,6 +304,13 @@ test('the game page does not start Google Analytics without consent', () => {
     assert.match(fn, /import\("https:\/\/www\.gstatic\.com\/firebasejs\/[\d.]+\/firebase-analytics\.js"\)/);
 });
 
+test('the game page carries the AdSense verification tag for the same publisher as the ad code and ads.txt', () => {
+    const client = Consent.ADSENSE_SRC.match(/client=(ca-pub-\d+)/)[1];
+    const head = read('index.html').split('</head>')[0];
+    assert.ok(head.includes(`<meta name="google-adsense-account" content="${client}">`), 'meta tag in <head>');
+    assert.equal(read('ads.txt').trim(), `google.com, ${client.replace('ca-', '')}, DIRECT, f08c47fec0942fa0`);
+});
+
 test('the ad slot on the game page starts hidden', () => {
     assert.match(read('index.html'), /<div id="adWrapper"[^>]*\bhidden\b/);
 });
