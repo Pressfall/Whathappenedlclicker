@@ -426,7 +426,8 @@ body.perf-low .main-image, body.perf-low .gem-chip::after { animation: none; }
     border-radius: var(--radius-lg);
     background: var(--surface-solid);
     border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow-lg);
+    /* the second shadow dims the page behind, so a small dialog doesn't float over busy cards */
+    box-shadow: var(--shadow-lg), 0 0 0 100vmax rgba(0, 0, 0, 0.55);
     animation: modal-in 180ms ease-out;
 }
 @keyframes modal-in { from { opacity: 0; transform: translate(-50%, -46%); } to { opacity: 1; transform: translate(-50%, -50%); } }
@@ -505,7 +506,10 @@ body.perf-low .main-image, body.perf-low .gem-chip::after { animation: none; }
 .shop-item:hover { border-color: var(--border-strong); transform: translateY(-2px); }
 .shop-item.equipped { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), 0 8px 24px rgba(255, 200, 61, 0.15); }
 .shop-item-title { font-weight: 700; font-size: 14px; }
-.shop-item-img { width: 100%; aspect-ratio: 4 / 3; height: auto; object-fit: cover; border-radius: 10px; background: #000; display: block; }
+.shop-item-img { width: 100%; aspect-ratio: 4 / 3; height: auto; object-fit: cover; border-radius: 10px; background: linear-gradient(110deg, #141925 35%, #212839 50%, #141925 65%) 0 0 / 300% 100%; animation: shop-img-wait 1.4s linear infinite; display: block; }
+/* a soft shimmer while a lazy thumbnail loads, instead of a black box (it is hidden once the image paints) */
+@keyframes shop-img-wait { to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .shop-item-img { animation: none; } }
 .shop-item-info { color: var(--text-dim); font-size: 13px; }
 .shop-item-info strong { color: var(--text); }
 .shop-item > div:last-child { margin-top: auto; flex-wrap: wrap; }
@@ -884,7 +888,9 @@ body.perf-low .main-image, body.perf-low .gem-chip::after { animation: none; }
 .nav-count { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--gold); color: #2a1600; font-size: 10.5px; font-weight: 900; display: grid; place-items: center; box-shadow: 0 0 0 2px var(--bg); pointer-events: none; }
 
 /* ========== Floating widgets ========== */
-#chatFab { position: fixed; right: 18px; bottom: 18px; z-index: 1300; }
+#chatFab { position: fixed; right: 18px; bottom: 18px; z-index: 1300; transition: opacity 150ms ease; }
+/* out of the way while a full menu is open (it sat on top of the Menu's last row) */
+body:has(.nav-sidebar.open) #chatFab, body:has(.settings-menu.open) #chatFab, body:has(.shop-menu.open) #chatFab { opacity: 0; pointer-events: none; }
 .fab-btn {
     width: 54px;
     height: 54px;

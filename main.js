@@ -2839,10 +2839,10 @@ function updateDisplays() {
                 const chance = Math.min(1, getDivineCritChance() + (fb.critChance || 0) / 100 + (ib.critChance || 0) / 100 + (gb.critChance || 0) / 100 + (gear.critChance || 0) / 100);
                 const critMult = chance > 0 ? getDivineCritMult() * (1 + (fb.critDmg || 0) / 100) * (1 + (ib.critDmg || 0) / 100) * (1 + (gb.critDmg || 0) / 100) * (1 + (gear.critDmg || 0) / 100) : 0;
                 if (cEl) cEl.innerText = `${(chance * 100).toFixed(2)}%`;
-                if (mEl) mEl.innerText = `x${formatNumber(critMult)}`;
+                if (mEl) mEl.innerText = critMult > 0 ? `x${formatNumber(critMult)}` : '—'; // no crits yet: nothing to multiply
             } catch (e) {
                 if (cEl) cEl.innerText = '0%';
-                if (mEl) mEl.innerText = 'x0';
+                if (mEl) mEl.innerText = '—';
             }
     } catch (e) {}
 

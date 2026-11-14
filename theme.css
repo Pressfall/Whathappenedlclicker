@@ -93,6 +93,8 @@ a { color: var(--blue); }
 .btn:hover:not(:disabled) { filter: brightness(1.12); transform: translateY(-1px); }
 .btn:active:not(:disabled) { transform: translateY(0); }
 .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+/* a coloured button you can't press yet shouldn't still look like the thing to press */
+.btn-primary:disabled, .btn-gold:disabled { filter: saturate(0.25); box-shadow: none; }
 .btn-primary { background: linear-gradient(180deg, var(--primary), var(--primary-deep)); color: #04170c; box-shadow: 0 6px 18px rgba(47, 208, 122, 0.25); }
 .btn-gold { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); color: #2a1600; box-shadow: 0 6px 18px rgba(255, 170, 40, 0.3); }
 .btn-ghost { background: rgba(255, 255, 255, 0.06); border-color: var(--border-strong); }
