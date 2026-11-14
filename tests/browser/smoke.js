@@ -221,7 +221,7 @@ async function main() {
                     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, links: document.querySelectorAll('.info-footer a').length,
                     rows: document.querySelectorAll('#upgradeTable tbody tr').length })`);
                 check(`${p} (${label}, no JavaScript): readable`, info && info.text > 1500 && info.h1 === 'rgb(255, 200, 61)' && info.links === 7 && info.overflow <= 0, info);
-                if (p === 'upgrades-followers-gems.html') check(`${p}: all 29 upgrades listed`, info.rows === 29, info);
+                if (p === 'upgrades-followers-gems.html') check(`${p}: all 30 upgrades listed`, info.rows === 30, info);
                 check(`${p} (${label}): nothing from Google ads or analytics requested`, !seen.slice(before).some((u) => /googlesyndication|google-analytics|googletagmanager|consent\.js/.test(u)));
                 if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, `shot-${label}-${p}.png`), Buffer.from(s.result.data, 'base64')); }
             }

@@ -23,7 +23,7 @@
     'use strict';
 
     const BEST_KEY = 'whathappened_upgrade_best';
-    const UPGRADES = 29;
+    const UPGRADES = 30;
 
     // spot: tiles from the town's centre (the Depot's yard is south-east of the plaza, core/world-gen.js buildTown).
     // arrive: the best level of their upgrade, ever, that brings them to Wildgate. service: what they do besides quests

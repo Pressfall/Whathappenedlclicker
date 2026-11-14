@@ -1,5 +1,5 @@
 /**
- * Hero guilds: one for each of the clicker's 29 upgrades ("heroes"), only to be had in the Wilds. Loaded by both pages:
+ * Hero guilds: one for each of the clicker's 30 upgrades ("heroes"), only to be had in the Wilds. Loaded by both pages:
  * - world.html: the Guildmaster by the Rune Altar has 6 guilds in stock, a new stock every two days (at local
  *   midnight). Each guild costs a lot (rubies and its zone's materials) and has a contract (a quest) that must be taken and
  *   finished before it can be bought. Once bought, that guild is out of stock until the stock changes. There is no limit
@@ -22,7 +22,7 @@
     const OWN_MAX = 999;         // only what a damaged or edited save is cut down to
     const ZONES = ['greenwood', 'mines', 'ember', 'frost', 'coast', 'storm', 'ruins', 'sky'];
 
-    // up: the clicker upgrade (1..29) and hero: its name there (main.js UPGRADE_NAMES; tests/world-guilds.test.js keeps
+    // up: the clicker upgrade (1..30) and hero: its name there (main.js UPGRADE_NAMES; tests/world-guilds.test.js keeps
     // them the same). crest: the emblem on its button. color: the button's trim.
     const GUILDS = [
         { up: 1, hero: 'OP mouse', name: 'Guild of the Final Click', crest: '🖱️', color: '#5ee7ff' },
@@ -54,12 +54,14 @@
         { up: 27, hero: 'Evil Somalian Pirate', name: 'Scourge of the Gulf', crest: '☠️', color: '#5a1a1a' },
         { up: 28, hero: "O'algo", name: 'Philosopher Kings', crest: '🎓', color: '#7b5cff' },
         { up: 29, hero: 'Siberian Hitman', name: 'Last Contract Bureau', crest: '🎯', color: '#9fb4c7' },
+        { up: 30, hero: 'Mincecraft Man', name: 'Championship Harriers', crest: '🏃', color: '#ff8c1a' },
     ];
     const BY_UP = Object.fromEntries(GUILDS.map(g => [g.up, g]));
     const UPS = GUILDS.map(g => g.up);
 
     // ---------------- what a guild takes ----------------
-    // A guild's tier (1..8) follows its upgrade: the later the hero, the further out its zone, the dearer it is
+    // A guild's tier (1..8) follows its upgrade: the later the hero, the further out its zone, the dearer it is (still
+    // out of 29, as when the guilds were made, so no price moved when upgrade 30 came; 30 is tier 8 like 29)
     function tierOf(up) { return Math.max(1, Math.min(8, Math.ceil(up / 29 * 8))); }
     function zoneOf(up) { return ZONES[tierOf(up) - 1]; }
     // rubies by tier, and two of the zone's own materials
@@ -98,7 +100,7 @@
         const left = (Math.floor(n / PERIOD_DAYS) + 1) * PERIOD_DAYS - n;
         return new Date(d.getFullYear(), d.getMonth(), d.getDate() + left, 0, 0, 0, 0).getTime();
     }
-    // The 6 guilds in stock for a period: the same for everyone, picked at random from all 29 (seeded by the period)
+    // The 6 guilds in stock for a period: the same for everyone, picked at random from all 30 (seeded by the period)
     const stockCache = new Map(); // the page asks every frame (the Guildmaster's mark)
     function stockFor(period) {
         if (stockCache.has(period)) return stockCache.get(period).slice();

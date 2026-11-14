@@ -5,7 +5,7 @@
  * - Decimal/currency helpers, core state (count, clickPower, cps)
  * - Clan sync (syncClanStats), main image size, formatNumber
  * - Achievements, titles, batch cost, level multipliers, effective CPS
- * - Upgrade tooltips, upgrade state and buy functions (1–29, divine, specials)
+ * - Upgrade tooltips, upgrade state and buy functions (1–30, divine, specials)
  * - Prestige, save/load, increment (click handler + mainClicks for clan events)
  * - UI: falling images, displays, shop, settings, init
  */
@@ -612,6 +612,7 @@ function getUpgradeLevel(idx) {
         case 27: return upgrade27Level || 0;
         case 28: return upgrade28Level || 0;
         case 29: return upgrade29Level || 0;
+        case 30: return upgrade30Level || 0;
         default: return 0;
     }
 }
@@ -942,27 +943,28 @@ UPGRADE_DESCRIPTIONS.upgrade26 = 'A diagram so powerful it rewires the entire ec
 UPGRADE_DESCRIPTIONS.upgrade27 = 'The Somalian Pirate had a twin all along. This one does not ask for a price. (Meant to be reached after a few prestiges.)';
 UPGRADE_DESCRIPTIONS.upgrade28 = "O'algo has read Logical Fallacies for Dummies cover to cover. Your CPS can no longer be argued with. (Meant to be reached after many prestiges.)";
 UPGRADE_DESCRIPTIONS.upgrade29 = 'The Siberian Hitman has arrived from the cold, bringing precise and relentless What Happened production.';
+UPGRADE_DESCRIPTIONS.upgrade30 = 'The Mincecraft Man ran the Orange County XC Championships and never stopped. Every stride mines more What Happeneds. (Meant to be reached after many prestiges.)';
 
-// Display names for upgrades 1..29 (index 0 unused), used in the left-bar button labels
+// Display names for upgrades 1..30 (index 0 unused), used in the left-bar button labels
 const UPGRADE_NAMES = [null, 'OP mouse', 'Somalian Pirate', 'Goonsaw Man', 'Diddy blud', 'Argonian Autist', 'Grape God', 'Skippie Toilet', 'Mysterious Island',
     'Tribal Camp', 'The Phonk Man', 'Jonathan', 'CR lurker', 'ropingnecurse', 'skibbidi scimitar', 'What Happened Beats', 'ez villager', 'scp wish I knew.',
     'The Goatis', 'goatises raw liver', 'The Landon Stream', 'The Bass', 'Good Noodles', 'Mobile Man 38', 'Easton Bundy',
-    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo", 'Siberian Hitman'];
+    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo", 'Siberian Hitman', 'Mincecraft Man'];
 const UPGRADE_COUNT = UPGRADE_NAMES.length - 1;
 
-// Balance tables for upgrades 1..29 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
+// Balance tables for upgrades 1..30 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
 // Each level costs 10% more than the last for upgrades 1-10 and 15% more from upgrade 11 on.
 // Later upgrades take longer to pay for themselves, so each new one is a goal rather than an instant unlock.
 const UPGRADE_CPS = [0, 1, 1, 5, 20, 100, 500, 5000, 20000, 100000, 500000, 1500000, 5000000,
     20000000, 50000000, 500000000, 2000000000, 10000000000, 150000000000, 2000000000000, 50000000000000, 1e15, 5e16, 5e17, 1e18,
-    1e19, 1e20, 1e21, 1e22, 1e23];
+    1e19, 1e20, 1e21, 1e22, 1e23, 1e24];
 // Costs from CR lurker (12) on were tuned with a simulated player so each new upgrade takes a bit longer to reach than the last
 // (about 5 minutes apart at CR lurker, 10-13 minutes apart by Easton Bundy) instead of the whole late game unlocking in two minutes.
 // Evil Somalian Pirate (27) and O'algo (28) are meant for after prestiges: out of reach in a first run, Evil Pirate after about
 // 2 prestiges, O'algo several prestiges later, and each gets quicker to reach as your Divine upgrades grow.
 const UPGRADE_BASE_COSTS = [0, 100, 500, 1000, 3000, 10000, 250000, 1000000, 5000000, 20000000, 100000000, 500000000, 4.3e10,
     4e13, 1.5e14, 3.6e14, 1.2e15, 3.3e16, 1.7e19, 1.3e20, 3.1e20, 7e22, 6.8e23, 6e25, 1.8e26,
-    8.5e26, 4.2e27, 3e31, 1e33, 3e34];
+    8.5e26, 4.2e27, 3e31, 1e33, 3e34, 1e36];
 function upgradeCostRate(i) { return i <= 10 ? 1.1 : 1.15; }
 
 // Special upgrade prices: a multiple of what the level that unlocks the special costs, so a special is never pocket change
@@ -1201,8 +1203,9 @@ let upgrade26Cost = UPGRADE_BASE_COSTS[26], upgrade26Level = 0;
 let upgrade27Cost = UPGRADE_BASE_COSTS[27], upgrade27Level = 0;
 let upgrade28Cost = UPGRADE_BASE_COSTS[28], upgrade28Level = 0;
 let upgrade29Cost = UPGRADE_BASE_COSTS[29], upgrade29Level = 0;
+let upgrade30Cost = UPGRADE_BASE_COSTS[30], upgrade30Level = 0;
 // each one's specials multiply only its own CPS
-let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1, siberianHitmanMultiplier = 1;
+let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1, siberianHitmanMultiplier = 1, mincecraftMultiplier = 1;
 function lateTierMultiplier(i) {
     switch (i) {
         case 25: return Number(tomPearlMultiplier) || 1;
@@ -1210,6 +1213,7 @@ function lateTierMultiplier(i) {
         case 27: return Number(evilPirateMultiplier) || 1;
         case 28: return Number(oalgoMultiplier) || 1;
         case 29: return Number(siberianHitmanMultiplier) || 1;
+        case 30: return Number(mincecraftMultiplier) || 1;
         default: return 1;
     }
 }
@@ -1224,6 +1228,8 @@ let oalgo1Cost = specialCost(28, 10, 'own'), oalgo2Cost = specialCost(28, 25, 'o
 let oalgo1Purchased = false, oalgo2Purchased = false, oalgo3Purchased = false, oalgo4Purchased = false;
 let siberianHitman1Cost = specialCost(29, 10, 'own'), siberianHitman2Cost = specialCost(29, 25, 'own'), siberianHitman3Cost = specialCost(29, 50, 'own'), siberianHitman4Cost = specialCost(29, 100, 'own');
 let siberianHitman1Purchased = false, siberianHitman2Purchased = false, siberianHitman3Purchased = false, siberianHitman4Purchased = false;
+let mincecraft1Cost = specialCost(30, 10, 'own'), mincecraft2Cost = specialCost(30, 25, 'own'), mincecraft3Cost = specialCost(30, 50, 'own'), mincecraft4Cost = specialCost(30, 100, 'own');
+let mincecraft1Purchased = false, mincecraft2Purchased = false, mincecraft3Purchased = false, mincecraft4Purchased = false;
 // Landon Stream specials (one-time multipliers that apply to upgrade20 contribution)
 let landon1Cost = specialCost(20, 10, 'own');
 let landon2Cost = specialCost(20, 25, 'own');
@@ -2690,7 +2696,7 @@ function updateDisplays() {
     // show batch cost for the selected bulk amount (in Max mode: as many levels as the player can afford)
     const upgradeCosts = [null, upgrade1Cost, upgrade2Cost, upgrade3Cost, upgrade4Cost, upgrade5Cost, upgrade6Cost, upgrade7Cost, upgrade8Cost, upgrade9Cost, upgrade10Cost, upgrade11Cost, upgrade12Cost,
         upgrade13Cost, upgrade14Cost, upgrade15Cost, upgrade16Cost, upgrade17Cost, upgrade18Cost, upgrade19Cost, upgrade20Cost, upgrade21Cost, upgrade22Cost, upgrade23Cost, upgrade24Cost,
-        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost, upgrade29Cost];
+        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost, upgrade29Cost, upgrade30Cost];
     for (let i = 1; i <= UPGRADE_COUNT; i++) {
         const rate = upgradeCostRate(i);
         const levels = bulkLevelsFor(upgradeCosts[i], rate);
@@ -4051,6 +4057,7 @@ function syncUpgradeCostsFromLevels() {
     upgrade22Cost = costForLevel(22, upgrade22Level); upgrade23Cost = costForLevel(23, upgrade23Level); upgrade24Cost = costForLevel(24, upgrade24Level);
     upgrade25Cost = costForLevel(25, upgrade25Level); upgrade26Cost = costForLevel(26, upgrade26Level); upgrade27Cost = costForLevel(27, upgrade27Level);
     upgrade28Cost = costForLevel(28, upgrade28Level); upgrade29Cost = costForLevel(29, upgrade29Level);
+    upgrade30Cost = costForLevel(30, upgrade30Level);
 }
 // Bulk-buy loop shared by upgrades 25+ (their CPS comes from the level, so a level only changes level and cost).
 // `levelUp` adds one level and raises the stored cost.
@@ -4076,6 +4083,7 @@ function buyUpgrade26() { buyUpgradeLevels(26, () => upgrade26Cost, () => { upgr
 function buyUpgrade27() { buyUpgradeLevels(27, () => upgrade27Cost, () => { upgrade27Level = numericLevel(upgrade27Level) + 1; upgrade27Cost = nextUpgradeCost(upgrade27Cost, 27); }); }
 function buyUpgrade28() { buyUpgradeLevels(28, () => upgrade28Cost, () => { upgrade28Level = numericLevel(upgrade28Level) + 1; upgrade28Cost = nextUpgradeCost(upgrade28Cost, 28); }); }
 function buyUpgrade29() { buyUpgradeLevels(29, () => upgrade29Cost, () => { upgrade29Level = numericLevel(upgrade29Level) + 1; upgrade29Cost = nextUpgradeCost(upgrade29Cost, 29); }); }
+function buyUpgrade30() { buyUpgradeLevels(30, () => upgrade30Cost, () => { upgrade30Level = numericLevel(upgrade30Level) + 1; upgrade30Cost = nextUpgradeCost(upgrade30Cost, 30); }); }
 
 // Purchase flow shared by the one-time specials of upgrades 25+: level gate, cost, then `apply` sets the flag and multiplier
 function buyOneTimeSpecial(upgradeIdx, unlockLevel, owned, cost, apply) {
@@ -4106,6 +4114,10 @@ function buySiberianHitman1() { buyOneTimeSpecial(29, 10, siberianHitman1Purchas
 function buySiberianHitman2() { buyOneTimeSpecial(29, 25, siberianHitman2Purchased, siberianHitman2Cost, () => { siberianHitman2Purchased = true; siberianHitmanMultiplier *= 2; }); }
 function buySiberianHitman3() { buyOneTimeSpecial(29, 50, siberianHitman3Purchased, siberianHitman3Cost, () => { siberianHitman3Purchased = true; siberianHitmanMultiplier *= 2.5; }); }
 function buySiberianHitman4() { buyOneTimeSpecial(29, 100, siberianHitman4Purchased, siberianHitman4Cost, () => { siberianHitman4Purchased = true; siberianHitmanMultiplier *= 3; }); }
+function buyMincecraft1() { buyOneTimeSpecial(30, 10, mincecraft1Purchased, mincecraft1Cost, () => { mincecraft1Purchased = true; mincecraftMultiplier *= 1.5; }); }
+function buyMincecraft2() { buyOneTimeSpecial(30, 25, mincecraft2Purchased, mincecraft2Cost, () => { mincecraft2Purchased = true; mincecraftMultiplier *= 2; }); }
+function buyMincecraft3() { buyOneTimeSpecial(30, 50, mincecraft3Purchased, mincecraft3Cost, () => { mincecraft3Purchased = true; mincecraftMultiplier *= 2.5; }); }
+function buyMincecraft4() { buyOneTimeSpecial(30, 100, mincecraft4Purchased, mincecraft4Cost, () => { mincecraft4Purchased = true; mincecraftMultiplier *= 3; }); }
 
 // SCP special purchases (each doubles SCP contribution)
 function buyScp1() {
@@ -7568,13 +7580,14 @@ function buildSaveObject() {
                     eastonBundy4Purchased,
                     eastonBundyMultiplier,
             // upgrades 25-28 (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo) and their specials
-            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level, upgrade29Cost, upgrade29Level,
-            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier, siberianHitmanMultiplier,
+            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level, upgrade29Cost, upgrade29Level, upgrade30Cost, upgrade30Level,
+            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier, siberianHitmanMultiplier, mincecraftMultiplier,
             tomPearl1Purchased, tomPearl2Purchased, tomPearl3Purchased, tomPearl4Purchased,
             hypergamy1Purchased, hypergamy2Purchased, hypergamy3Purchased, hypergamy4Purchased,
             evilPirate1Purchased, evilPirate2Purchased, evilPirate3Purchased, evilPirate4Purchased,
             oalgo1Purchased, oalgo2Purchased, oalgo3Purchased, oalgo4Purchased,
             siberianHitman1Purchased, siberianHitman2Purchased, siberianHitman3Purchased, siberianHitman4Purchased,
+            mincecraft1Purchased, mincecraft2Purchased, mincecraft3Purchased, mincecraft4Purchased,
             // phonk state
             phonkBaseCps, phonkOtherMultiplier, phonkMultiplier,
             upgrade10Cost, upgrade10Level,
@@ -7918,16 +7931,19 @@ function loadGame() {
         upgrade27Cost = normalizeNumericValue(s.upgrade27Cost ?? upgrade27Cost, upgrade27Cost); upgrade27Level = numericLevel(s.upgrade27Level);
         upgrade28Cost = normalizeNumericValue(s.upgrade28Cost ?? upgrade28Cost, upgrade28Cost); upgrade28Level = numericLevel(s.upgrade28Level);
         upgrade29Cost = normalizeNumericValue(s.upgrade29Cost ?? upgrade29Cost, upgrade29Cost); upgrade29Level = numericLevel(s.upgrade29Level);
+        upgrade30Cost = normalizeNumericValue(s.upgrade30Cost ?? upgrade30Cost, upgrade30Cost); upgrade30Level = numericLevel(s.upgrade30Level);
         if (Number(s.tomPearlMultiplier) > 0) tomPearlMultiplier = Number(s.tomPearlMultiplier);
         if (Number(s.hypergamyMultiplier) > 0) hypergamyMultiplier = Number(s.hypergamyMultiplier);
         if (Number(s.evilPirateMultiplier) > 0) evilPirateMultiplier = Number(s.evilPirateMultiplier);
         if (Number(s.oalgoMultiplier) > 0) oalgoMultiplier = Number(s.oalgoMultiplier);
         if (Number(s.siberianHitmanMultiplier) > 0) siberianHitmanMultiplier = Number(s.siberianHitmanMultiplier);
+        if (Number(s.mincecraftMultiplier) > 0) mincecraftMultiplier = Number(s.mincecraftMultiplier);
         tomPearl1Purchased = !!s.tomPearl1Purchased; tomPearl2Purchased = !!s.tomPearl2Purchased; tomPearl3Purchased = !!s.tomPearl3Purchased; tomPearl4Purchased = !!s.tomPearl4Purchased;
         hypergamy1Purchased = !!s.hypergamy1Purchased; hypergamy2Purchased = !!s.hypergamy2Purchased; hypergamy3Purchased = !!s.hypergamy3Purchased; hypergamy4Purchased = !!s.hypergamy4Purchased;
         evilPirate1Purchased = !!s.evilPirate1Purchased; evilPirate2Purchased = !!s.evilPirate2Purchased; evilPirate3Purchased = !!s.evilPirate3Purchased; evilPirate4Purchased = !!s.evilPirate4Purchased;
         oalgo1Purchased = !!s.oalgo1Purchased; oalgo2Purchased = !!s.oalgo2Purchased; oalgo3Purchased = !!s.oalgo3Purchased; oalgo4Purchased = !!s.oalgo4Purchased;
         siberianHitman1Purchased = !!s.siberianHitman1Purchased; siberianHitman2Purchased = !!s.siberianHitman2Purchased; siberianHitman3Purchased = !!s.siberianHitman3Purchased; siberianHitman4Purchased = !!s.siberianHitman4Purchased;
+        mincecraft1Purchased = !!s.mincecraft1Purchased; mincecraft2Purchased = !!s.mincecraft2Purchased; mincecraft3Purchased = !!s.mincecraft3Purchased; mincecraft4Purchased = !!s.mincecraft4Purchased;
         // phonk purchased flags and state
         phonk1Purchased = !!s.phonk1Purchased; phonk2Purchased = !!s.phonk2Purchased; phonk3Purchased = !!s.phonk3Purchased; phonk4Purchased = !!s.phonk4Purchased; phonk5Purchased = !!s.phonk5Purchased;
         if (typeof s.phonkBaseCps === 'string') phonkBaseCps = hasDecimal ? D(s.phonkBaseCps) : Number(s.phonkBaseCps);

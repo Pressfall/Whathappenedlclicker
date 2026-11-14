@@ -56,10 +56,27 @@ test('Siberian Hitman special purchases apply their own-tier multiplier and pers
 test('achievement snapshots include Siberian Hitman in the full roster count', () => {
     const g = withSave({ version: 3, upgrade29Level: 1 });
     const snap = g.window.WHA.snapshot();
-    assert.equal(snap.upgrades.length, 30);
+    assert.equal(snap.upgrades.length, 31);
     assert.equal(snap.upgradesOwned, 1);
     const roster = g.window.WHA.ACHIEVEMENTS.find((achievement) => achievement.key === 'x_roster');
-    assert.equal(roster.target, 29);
+    assert.equal(roster.target, 30);
+});
+
+test('Mincecraft Man (upgrade 30): level, specials and multiplier survive save/load, and the specials multiply its CPS', () => {
+    const g = withSave({ version: 3, count: 1e100, upgrade30Level: 12, mincecraftMultiplier: 1 });
+    assert.equal(g.eval('UPGRADE_NAMES[30]'), 'Mincecraft Man');
+    assert.equal(g.eval('upgrade30Cost'), g.eval('costForLevel(30, 12)'));
+    const before = g.eval("getUpgradeCps('upgrade30')");
+    assert.ok(before > 0, 'it earns CPS');
+    g.eval('buyMincecraft1()');
+    assert.equal(g.eval('mincecraft1Purchased'), true);
+    assert.equal(g.eval("getUpgradeCps('upgrade30')"), before * 1.5);
+    const out = resaved(g);
+    assert.equal(out.upgrade30Level, 12);
+    assert.equal(out.mincecraft1Purchased, true);
+    assert.equal(out.mincecraftMultiplier, 1.5);
+    assert.ok(g.window.SPECIAL_UPGRADES.some(sp => sp.id === 'mincecraft4' && sp.group.name === 'Mincecraft Man'), 'its specials are listed');
+    assert.ok(g.window.document.getElementById('upgrade30'), 'its button is on the page');
 });
 
 test('a save under only the legacy key still loads', () => {

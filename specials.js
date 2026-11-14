@@ -43,6 +43,7 @@
         evilPirate: 'Evil Somalian Pirate CPS',
         oalgo: 'O\'algo CPS',
         siberianHitman: 'Siberian Hitman CPS',
+        mincecraft: 'Mincecraft Man CPS',
     };
     const CREW_NOTE = 'Crew = every upgrade except the Pirate, Jonathan, CR lurker and The Phonk Man.';
     const TIER_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -228,6 +229,12 @@
             ['siberianHitman2', 25, 'buySiberianHitman2', 'siberianHitman2Purchased', 'siberianHitman2Cost', 'siberianHitman', 'siberianHitmanMultiplier', 2, 'Winter Operations', 'The Siberian cold slows everyone else down. The Hitman works twice as fast.'],
             ['siberianHitman3', 50, 'buySiberianHitman3', 'siberianHitman3Purchased', 'siberianHitman3Cost', 'siberianHitman', 'siberianHitmanMultiplier', 2.5, 'No Witnesses', 'No loose ends, no wasted What Happeneds.'],
             ['siberianHitman4', 100, 'buySiberianHitman4', 'siberianHitman4Purchased', 'siberianHitman4Cost', 'siberianHitman', 'siberianHitmanMultiplier', 3, 'The Last Contract', 'The contract is complete. Siberian Hitman output triples.'],
+        ] },
+        { key: 'mincecraft', up: 30, img: 'mincecraftman.webp', items: [
+            ['mincecraft1', 10, 'buyMincecraft1', 'mincecraft1Purchased', 'mincecraft1Cost', 'mincecraft', 'mincecraftMultiplier', 1.5, 'Personal Record', 'A new PR every lap. The What Happeneds can barely keep up.'],
+            ['mincecraft2', 25, 'buyMincecraft2', 'mincecraft2Purchased', 'mincecraft2Cost', 'mincecraft', 'mincecraftMultiplier', 2, 'Championship Tee', 'Orange County XC Championships. He wears it like armor.'],
+            ['mincecraft3', 50, 'buyMincecraft3', 'mincecraft3Purchased', 'mincecraft3Cost', 'mincecraft', 'mincecraftMultiplier', 2.5, 'Second Wind', 'Mile three, uphill, and he only gets faster.'],
+            ['mincecraft4', 100, 'buyMincecraft4', 'mincecraft4Purchased', 'mincecraft4Cost', 'mincecraft', 'mincecraftMultiplier', 3, 'Hands on Hips', 'The victory pose. Mincecraft Man output triples.'],
         ] },
     ];
 
