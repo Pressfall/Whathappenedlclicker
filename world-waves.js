@@ -275,7 +275,8 @@
         // fightKey too: coming back in during the same fight must build its monsters again (the host would otherwise never
         // see the wave end, and a follower would never see a monster)
         const dungeon = (z) => !!(D.ZONES[z] && D.ZONES[z].dungeon);
-        if (coop(from) && to !== from) { if (!shared() && WV.run) WV.run = null; WV.prevSt = ''; WV.fightKey = ''; WV.comp = []; WV.snap = new Map(); if (dungeon(from)) WV.run = null; }
+        // (upAt too: left while knocked out, by Settings' Respawn, the get-up must not fire in the next co-op zone)
+        if (coop(from) && to !== from) { if (!shared() && WV.run) WV.run = null; WV.prevSt = ''; WV.fightKey = ''; WV.comp = []; WV.snap = new Map(); WV.upAt = 0; if (dungeon(from)) WV.run = null; }
         // walked out of a dungeon (or into one from outside): any run kept for a reload is over
         if (to !== from && (dungeon(from) || dungeon(to)) && game().state.dungeons) game().state.dungeons.run = null;
         if (coop(to) && !shared()) WV.run = null;

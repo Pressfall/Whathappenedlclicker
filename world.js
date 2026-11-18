@@ -748,14 +748,37 @@
         save();
         WHW.sfx('hurt');
         E.burst(p.x, p.y, '#ff6b7a', 24, 160, { life: 0.8 });
-        setTimeout(() => WHW.ui.openDeath(drop, killer, () => {
-            p.dead = false;
-            p.hp = g.pstats.maxHp;
-            p.status.burnUntil = 0; p.slow = 0; p.stam.val = D.COMBAT.stamina.max; p.stam.winded = false; p.mana.val = D.COMBAT.mana.max;
-            p.overSlow = null; p.beam = null; if (p.weapon) { p.weapon.charge = 0; p.weapon.over = 0; }
-            enterZone('town', { silent: true });
-            WHW.banner('Wildgate Town', 'You wake up by the plaza');
-        }), 700);
+        setTimeout(() => WHW.ui.openDeath(drop, killer, wakeInTown), 700);
+    };
+    // Back on your feet in town, at full health (after a knockout, or Settings' Respawn)
+    function wakeInTown() {
+        const p = g.player;
+        p.dead = false;
+        p.hp = g.pstats.maxHp;
+        p.status.burnUntil = 0; p.slow = 0; p.stam.val = D.COMBAT.stamina.max; p.stam.winded = false; p.mana.val = D.COMBAT.mana.max;
+        p.stunUntil = 0; p.pull = null;
+        p.overSlow = null; p.beam = null; if (p.weapon) { p.weapon.charge = 0; p.weapon.over = 0; }
+        enterZone('town', { silent: true });
+        WHW.banner('Wildgate Town', 'You wake up by the plaza');
+    }
+    // Settings > Stuck?: for anywhere a player can't get out of (a dungeon opened again behind shut doors, a spot inside a
+    // wall). It costs what a knockout costs where you are: out in the Wilds you are knocked out as usual (part of what you
+    // carry drops there, and the knocked-out screen sends you to town); where a knockout loses nothing (the Arena, the
+    // Proving Grounds, a dungeon) you leave for town at once, as if you had walked out (a match you are in is a loss, a
+    // dungeon's rooms cleared alone start over); in town or the Hall it only takes you back to the plaza.
+    // respawnKind(): 'safe' | 'free' | 'knockout'
+    WHW.actions.respawnKind = function () {
+        const z = D.ZONES[g.zoneId] || {};
+        return z.safe ? 'safe' : z.coop || g.zoneId === 'arena' ? 'free' : 'knockout';
+    };
+    WHW.actions.respawn = function () {
+        const p = g.player;
+        if (!p) return;
+        if (WHW.ui.isOpen()) WHW.ui.closeModal();
+        if (WHW.actions.respawnKind() !== 'knockout') { wakeInTown(); return; }
+        if (p.dead) return; // already knocked out: the knocked-out screen is on its way
+        p.hp = 0; p.dead = true;
+        WHW.onPlayerDeath();
     };
     // A ward's guardian fell: the ward breaks for good, and with the last one the lair opens
     WHW.onGuardianKilled = function (t) {

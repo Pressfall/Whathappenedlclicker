@@ -300,7 +300,7 @@
         WHW.save();
     };
     AR.zoneEntered = function (from, to) {
-        if (from === 'arena' && to !== 'arena') AR.leaving();
+        if (from === 'arena' && to !== 'arena') { AR.pitUpAt = 0; AR.leaving(); } // (left while down in the Pit, by Settings' Respawn: no get-up later)
         if (to === 'arena' && from !== 'arena') {
             const s = game().state;
             if (W.rollSeason && W.rollSeason(s, sNow())) WHW.save();

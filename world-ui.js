@@ -1520,6 +1520,8 @@
             <label class="w-setting"><span>Frame rate limit<small>Higher is smoother on fast screens but works your device harder.</small></span>
                 <select id="setFps">${opts([['30', '30 fps'], ['60', '60 fps'], ['0', 'Screen rate']], String(S.fpsCap))}</select></label>
             <label class="w-setting"><span>Show frame rate</span><input type="checkbox" id="setShowFps" ${S.showFps ? 'checked' : ''}></label>
+            <h3 class="w-setting-h">Stuck?</h3>
+            <div class="w-setting"><span>Respawn in town<small>${esc(respawnNote())}</small></span><button class="btn btn-sm btn-ghost" id="setRespawn">Respawn</button></div>
             <div class="w-row" style="margin-top:14px"><a class="btn btn-ghost" href="index.html">Back to the clicker</a><button class="btn btn-ghost" id="setHelp">How to play</button></div>`);
         const save = () => { WHW.saveSettings(); };
         body.querySelector('#setAssist').addEventListener('change', (e) => { S.assist = e.target.checked; save(); });
@@ -1536,6 +1538,27 @@
         body.querySelector('#setFps').addEventListener('change', (e) => gfx('fpsCap', Number(e.target.value)));
         body.querySelector('#setShowFps').addEventListener('change', (e) => { S.showFps = e.target.checked; save(); });
         body.querySelector('#setHelp').addEventListener('click', openHelp);
+        // Respawn: a second press within a few seconds does it (it can cost a knockout or a match)
+        const rb = body.querySelector('#setRespawn');
+        let armed = 0;
+        rb.addEventListener('click', () => {
+            if (!armed) {
+                rb.textContent = 'Sure? Respawn'; rb.classList.replace('btn-ghost', 'btn-danger');
+                armed = setTimeout(() => { armed = 0; rb.textContent = 'Respawn'; rb.classList.replace('btn-danger', 'btn-ghost'); }, 4000);
+                return;
+            }
+            clearTimeout(armed); armed = 0;
+            WHW.actions.respawn();
+        });
+    }
+    // What Settings' Respawn costs where the player is (world.js WHW.actions.respawn)
+    function respawnNote() {
+        const g = game(), z = D.ZONES[g.zoneId] || {}, kind = WHW.actions.respawnKind();
+        if (kind === 'safe') return 'Back to the plaza. Nothing is lost.';
+        if (z.dungeon) return 'Out of the dungeon and back to town. Nothing you carry is lost, but if you came down alone, its rooms start over.';
+        if (z.coop) return 'Out of the Proving Grounds and back to town, leaving the waves. Nothing is lost.';
+        if (g.zoneId === 'arena') return WHW.arena && WHW.arena.match && !WHW.arena.match.result ? 'Out of the Arena and back to town. The match you are in counts as a loss.' : 'Out of the Arena and back to town. Nothing is lost.';
+        return 'Counts as being knocked out: part of what you are carrying drops here, as usual. Your rubies, gear and banked materials are safe.';
     }
     function openDeath(drop, killer, onRespawn) {
         const items = Object.entries(drop || {}).map(([id, n]) => `${n} × ${esc(matName(id))}`).join(', ');
