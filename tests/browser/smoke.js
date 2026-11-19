@@ -198,15 +198,21 @@ async function main() {
         // ---- 7a. Holy What Happeneds: the chip, the shop, buying a look with earned Holy What Happeneds; buying for money stays closed with the placeholder config ----
         await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 500, earnedTotal: 500 })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
         const bn = await evalJs(`(() => { const o = document.querySelector('.bn-overlay'); return { chip: document.querySelector('#beanChip [data-bean-short]').textContent, open: !!o && !o.hidden, cards: document.querySelectorAll('.bn-card').length }; })()`);
-        check('beans: the chip shows the balance and opens the Holy What Happeneds shop', bn && Number(bn.chip) >= 500 && bn.open && bn.cards === 14, bn);
-        await evalJs(`(() => { document.querySelector('[data-bnbuy="th_matcha"]').click(); document.querySelector('[data-bnyes="th_matcha"]').click(); return true; })()`);
+        check('beans: the chip shows the balance and opens the Holy What Happeneds shop', bn && Number(bn.chip) >= 500 && bn.open && bn.cards === 23, bn);
+        await evalJs(`(() => { document.querySelector('[data-bnbuy="th_sanctum"]').click(); document.querySelector('[data-bnyes="th_sanctum"]').click(); return true; })()`);
         await sleep(600);
-        const bought = await evalJs(`({ cls: document.body.classList.contains('bn-theme-matcha'), primary: getComputedStyle(document.body).getPropertyValue('--primary').trim(), owned: WHBeans.read().owned.th_matcha === true, earned: WHBeans.read().earned })`);
-        check('beans: buying a theme with earned Holy What Happeneds recolours the page and takes the Holy What Happeneds', bought && bought.cls && bought.primary === '#9ad66b' && bought.owned && bought.earned < 500, bought);
+        const bought = await evalJs(`({ cls: document.body.classList.contains('bn-theme-sanctum'), primary: getComputedStyle(document.body).getPropertyValue('--primary').trim(), owned: WHBeans.read().owned.th_sanctum === true, earned: WHBeans.read().earned })`);
+        check('beans: buying a theme with earned Holy What Happeneds recolours the page and takes the Holy What Happeneds', bought && bought.cls && bought.primary === '#b48cff' && bought.owned && bought.earned < 500, bought);
         await evalJs(`(() => { document.querySelector('[data-bntab="get"]').click(); return true; })()`);
         check("beans: Get more says buying isn't open while the config has placeholders", /isn't open yet/.test(await evalJs('document.querySelector(".bn-tabbody").textContent')));
+        // an aura on the real page: the main image's button draws Heaven's Rays behind the image, turning
+        await evalJs(`(() => { WHBeans.mutate((s) => { s.owned.au_rays = true; s.equip.aura = 'au_rays'; }); return true; })()`);
+        const aura = await evalJs(`(() => { const b = document.querySelector('.main-image-btn'), st = getComputedStyle(b, '::before'); return { cls: document.body.classList.contains('bn-aura-rays'), anim: st.animationName, z: st.zIndex, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
+        check('beans: an aura draws around the main image without widening the page', aura && aura.cls && aura.anim === 'bn-rays' && aura.z === '-1' && aura.overflow <= 0, aura);
+        if (SCRATCH) { await evalJs('(() => { WHBeansPanel.close(); document.querySelector(".main-image-btn").scrollIntoView({ block: "center" }); return true; })()'); await sleep(400);
+            fs.writeFileSync(path.join(SCRATCH, 'shot-aura.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64')); }
         if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, 'shot-beans.png'), Buffer.from(s.result.data, 'base64')); }
-        await evalJs(`(() => { WHBeansPanel.close(); localStorage.removeItem('whathappened_premium'); document.body.classList.remove('bn-theme-matcha'); return true; })()`);
+        await evalJs(`(() => { WHBeansPanel.close(); localStorage.removeItem('whathappened_premium'); document.body.classList.remove('bn-theme-sanctum', 'bn-aura-rays'); return true; })()`);
 
         // ---- 7b. help pages: readable with JavaScript off, on a computer and a phone, and they load nothing from Google ads ----
         check('game footer links the help pages', /^how-to-play\.html,wilds-guide\.html,upgrades-followers-gems\.html,faq\.html,about\.html,privacy\.html$/.test(
@@ -270,9 +276,9 @@ async function main() {
         if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-wilds-guilds.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
         await evalJs('WHW.ui.closeModal()');
         // Holy What Happeneds in the Wilds: the HUD chip opens the Holy What Happeneds shop in the Wilds' own window (which pauses the game); a bought trail is worn
-        await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 7, owned: { tr_ember: true }, equip: { trail: 'tr_ember' } })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
+        await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 7, owned: { tr_light: true, mk_wings: true }, equip: { trail: 'tr_light', mark: 'mk_wings' } })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
         const wb = await evalJs(`({ open: WHW.ui.isOpen(), title: document.getElementById('wModalTitle').textContent, cards: document.querySelectorAll('#wModalBody .bn-card').length, chip: document.querySelector('#beanChip [data-bean-short]').textContent, paused: WHW.engine.paused })`);
-        check('wilds: the 👼 chip shows Holy What Happeneds and opens the Holy What Happeneds shop in the Wilds window, pausing the game', wb && wb.open && /Holy What Happeneds/.test(wb.title) && wb.cards === 14 && Number(wb.chip) >= 7 && wb.paused, wb);
+        check('wilds: the 👼 chip shows Holy What Happeneds and opens the Holy What Happeneds shop in the Wilds window, pausing the game', wb && wb.open && /Holy What Happeneds/.test(wb.title) && wb.cards === 23 && Number(wb.chip) >= 7 && wb.paused, wb);
         await evalJs('WHW.ui.closeModal()');
         const errsBeforeWalk = errors().length;
         const key = (type) => send('Input.dispatchKeyEvent', { type, key: 'd', code: 'KeyD', text: type === 'keyDown' ? 'd' : undefined, windowsVirtualKeyCode: 68 });
@@ -280,6 +286,7 @@ async function main() {
         await key('keyDown'); await sleep(500); await key('keyUp');
         check('wilds: holding D walks right', (await evalJs('WHWorldDebug.player().x')) > x0 + 20);
         check('wilds: walking with a Holy What Happeneds trail on draws without errors', errors().length === errsBeforeWalk, errors().slice(errsBeforeWalk));
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-wilds-wings.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
         await evalJs('localStorage.removeItem("whathappened_premium"); true');
         await evalJs('WHWorldDebug.travel("greenwood"); WHW.game.actors.forEach(a => { if (a.kind !== "boss") a.dead = true; })');
         await sleep(400);

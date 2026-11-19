@@ -1,6 +1,7 @@
 # Holy What Happeneds 👼 and Ko-fi: owner setup
 
-Holy What Happeneds are the game's new currency for titles and looks. Players earn a few by playing, or buy them on Ko-fi. This guide
+Holy What Happeneds are the game's new currency for titles and looks, and for gems, Golden What Happeneds and boosts (a few a
+week). Players earn a few by playing, or buy them on Ko-fi. This guide
 gets the Ko-fi side running: the shop items, the webhook, the secrets, the Firestore rules and the worker that credits Holy What Happeneds.
 
 Nothing here needs the Firebase Blaze plan or a payment method on Firebase or Cloudflare.
@@ -88,8 +89,22 @@ also needs rules for the clan collections first: see `docs/trust-boundaries.md`,
 
 You decide the packs and the prices; none are set in the code. A common rule of thumb is about 100 Holy What Happeneds per US dollar,
 with a little extra on bigger packs. For scale: the cheapest look costs 100 Holy What Happeneds, most cost 200-350, the dearest 600, and
-all 14 together cost 4,250. `node tools/simulate-beans.js` shows what players earn for free (a regular player about 30-40 a
+all 19 together cost 6,150 (titles, themes, click numbers and clicker auras on the game page; trails, a halo and wings in the
+Wilds). `node tools/simulate-beans.js` shows what players earn for free (a regular player about 30-40 a
 month, a dedicated one about 60).
+
+**Gems, Golden and boosts.** The shop also trades Holy What Happeneds for gems and Golden What Happeneds, earned and bought ones
+alike (your choice on 2026-11-10): 10 gems for 15, up to 5 times a week, and 1 Golden for 40, up to 2 times a week (the Wilds'
+weeks, starting Monday). It also sells two boost bundles from the Items menu, each up to 3 times a week: an Hourglass (an hour of
+What Happeneds) for 20, and Holy Rush (2 Energy Drinks, 2 Spare Batteries, a Loaded Dice) for 10. Change the price, the amount or
+`perWeek` in `CATALOG` in `core/premium.js` (`x_gems`, `x_golden`, `b_hourglass`, `b_rush`), then run `npm test` and
+`node tools/simulate-beans.js`. A bundle may only hold boosts that `ITEMS` in `core/world-bridge.js` allows (a test checks).
+These only work on the game page, since gems, Golden and boosts go into the game's saves.
+Be aware of what this means: gems buy the Treasury's lootboxes (random contents) and the casino takes gems and Golden, so money
+paid on Ko-fi can now end up in lootboxes and casino bets. Several countries treat that as paid lootboxes or gambling, and players
+may be minors. The shop says it next to the trade, the privacy page says it, and the game asks under-18s to get a parent's
+permission, but none of that is legal advice; if the game grows, ask someone qualified, and consider dropping `x_gems` /
+`x_golden` (or limiting them to earned Holy What Happeneds) for players in those countries.
 
 ### 2. The config: `core/premium-config.js`
 

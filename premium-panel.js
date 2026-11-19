@@ -15,11 +15,16 @@
     const bean = (n) => '<span class="bn-amt">' + CUR.icon + ' ' + fmt(n) + '</span>';
     const cloud = () => window.WHBeansCloud || null;
     const SECTIONS = [
-        { kind: 'title', head: 'Titles', sub: 'Shown next to your name in chat, on the leaderboard and on your profile.' },
-        { kind: 'theme', head: 'Game page themes', sub: 'New colours for the clicker page.' },
-        { kind: 'pop', head: 'Click numbers', sub: 'How the +N looks when you click.' },
-        { kind: 'trail', head: 'Wilds trails', sub: 'Follows you as you walk in the Wilds. Only you see it.' },
+        { kinds: ['exchange', 'bundle'], head: 'For your game', sub: 'Gems, Golden and boosts, a few times a week. Gems and Golden work like ones earned in the game, so they can go on lootboxes (which have random contents) and on casino bets. Boosts wait in Items until you use them.' },
+        { kinds: ['title'], head: 'Titles', sub: 'Shown next to your name in chat, on the leaderboard and on your profile.' },
+        { kinds: ['theme'], head: 'Game page themes', sub: 'New colours for the clicker page.' },
+        { kinds: ['aura'], head: 'Clicker auras', sub: 'Around the What Happened you click.' },
+        { kinds: ['pop'], head: 'Click numbers', sub: 'How the +N looks when you click.' },
+        { kinds: ['trail'], head: 'Wilds trails', sub: 'Follows you as you walk in the Wilds. Only you see it.' },
+        { kinds: ['mark'], head: 'Wilds halo and wings', sub: 'On your character in the Wilds. Only you see them.' },
     ];
+    // a bundle shows the Items icon of its first boost
+    const ITEM_ICONS = { hourglass: '⏳', energyDrink: '🥤', spareBattery: '🔋', loadedDice: '🎲', pocketWatch: '⏱️' };
 
     let tab = 'shop', confirmId = '', msg = null, histList = null, claimMsg = null, busy = false, pendingRender = false;
     let overlay = null, inWilds = false;
@@ -82,6 +87,11 @@
     }
     function swatch(it) {
         if (it.kind === 'title') return '<span class="bn-sw bn-sw--title" aria-hidden="true">🏷️</span>';
+        if (it.kind === 'exchange') return `<span class="bn-sw bn-sw--title" aria-hidden="true"><img src="${it.gems ? 'mainimage/gem.png' : 'mainimage/thumbs/goldwh.webp'}" alt="" width="28" height="28"></span>`;
+        if (it.kind === 'bundle') {
+            const first = Object.keys(it.items)[0], I = window.WHI && window.WHI.ITEMS_BY_ID && window.WHI.ITEMS_BY_ID[first];
+            return `<span class="bn-sw bn-sw--title" aria-hidden="true">${esc((I && I.icon) || ITEM_ICONS[first] || '✨')}</span>`;
+        }
         const c = it.swatch || it.colors || ['#888', '#444'];
         return `<span class="bn-sw" aria-hidden="true" style="background:linear-gradient(135deg, ${esc(c[0])}, ${esc(c[1])})"></span>`;
     }
@@ -102,18 +112,24 @@
                 <button type="button" class="btn btn-sm btn-ghost" data-bnno="1">Cancel</button></div>`;
         }
         const short = it.cost - have;
-        return `<button type="button" class="btn btn-sm btn-gold" data-bnbuy="${it.id}" ${short > 0 ? 'aria-disabled="true"' : ''}>${CUR.icon} ${fmt(it.cost)}</button>`
-            + (short > 0 ? `<span class="bn-need">${fmt(short)} more</span>` : '');
+        let note = short > 0 ? `<span class="bn-need">${fmt(short)} more</span>` : '';
+        if (P.isRepeat(it)) {
+            const left = P.weekLeft(s, it.id, Date.now());
+            if (!B.canTrade(it)) return `<span class="bn-need">${it.kind === 'bundle' ? 'Buy it' : 'Trade for it'} on the game page</span>`;
+            if (left <= 0) return `<button type="button" class="btn btn-sm btn-ghost" disabled>All ${it.perWeek} used this week</button>`;
+            note += `<span class="bn-need">${left} of ${it.perWeek} left this week</span>`;
+        }
+        return `<button type="button" class="btn btn-sm btn-gold" data-bnbuy="${it.id}" ${short > 0 ? 'aria-disabled="true"' : ''}>${CUR.icon} ${fmt(it.cost)}</button>` + note;
     }
     function shopHtml() {
         const s = B.read(), pd = B.paid(), have = s.earned + (pd.signedIn ? pd.balance : 0);
         const secs = SECTIONS.map((sec) => {
-            const items = P.CATALOG.filter((c) => c.kind === sec.kind);
+            const items = P.CATALOG.filter((c) => sec.kinds.includes(c.kind));
             return `<section class="bn-sec"><h4>${esc(sec.head)}</h4><p class="bn-sub">${esc(sec.sub)}</p><div class="bn-grid">${items.map((it) => `
                 <div class="bn-card${s.owned[it.id] ? ' is-owned' : ''}">${swatch(it)}<div class="bn-card-main"><div class="bn-name">${esc(it.name)}</div>
                 <div class="bn-desc">${esc(it.desc)}</div><div class="bn-act">${actionHtml(it, s, have)}</div></div></div>`).join('')}</div></section>`;
         }).join('');
-        return secs + `<p class="bn-fine">${esc(CUR.many)} only buy looks. They never buy gems, rubies, Golden, lootboxes, follower packs or anything random, and the casino doesn't take them.</p>`;
+        return secs + `<p class="bn-fine">${esc(CUR.many)} buy looks, and gems, Golden What Happeneds and boosts up to a weekly limit. They never buy lootboxes, follower packs or rubies themselves, and the casino doesn't take them.</p>`;
     }
     function earnHtml() {
         const s = B.read(), now = Date.now();
@@ -197,13 +213,16 @@
         short: 'Not enough ' + CUR.many + ' yet.', signin: 'Sign in to use the ' + CUR.many + ' you bought.', owned: 'You already have it.',
         rules: 'The server refused the purchase. Nothing was taken. Try again later.', network: 'Couldn\'t reach the server. Nothing was taken. Try again.',
         unknown: 'That item isn\'t in the shop any more.',
+        week: 'That\'s all of those for this week. More from Monday.', 'game-only': 'Buy gems, Golden and boosts on the game page.',
     };
     async function doBuy(id) {
         if (busy) return;
         busy = true; render();
         const r = await B.buy(id);
         busy = false; confirmId = '';
-        if (r.ok) msg = { ok: true, text: 'Bought ' + r.item.name + (r.item.kind === 'title' ? '. Wear it below or in Settings > Title.' : '. It\'s on now.') };
+        if (r.ok) msg = { ok: true, text: r.item.kind === 'exchange' ? 'Traded: ' + r.item.name + ' added to your game.'
+            : r.item.kind === 'bundle' ? 'Bought ' + r.item.name + '. It\'s in Items, ready to use.'
+            : 'Bought ' + r.item.name + (r.item.kind === 'title' ? '. Wear it below or in Settings > Title.' : r.item.kind === 'mark' || r.item.kind === 'trail' ? '. You\'ll see it in the Wilds.' : '. It\'s on now.') };
         else msg = { ok: false, text: REASONS[r.reason] || REASONS.network };
         if (r.ok && r.item.kind === 'title' && !B.wornTitle()) B.wearTitle(r.item.name);
         render();

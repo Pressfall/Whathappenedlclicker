@@ -35,7 +35,8 @@ const PLAYERS = {
         ach: { common: 1, uncommon: 1, rare: 0.85, epic: 0.6, legendary: 0.4, mythic: 0.34 } },
 };
 
-const prices = P.CATALOG.map((c) => c.cost).sort((a, b) => a - b);
+const LOOKS = P.CATALOG.filter((c) => !P.isRepeat(c));
+const prices = LOOKS.map((c) => c.cost).sort((a, b) => a - b);
 const catalogTotal = prices.reduce((a, b) => a + b, 0);
 const median = prices[Math.floor(prices.length / 2)];
 
@@ -57,7 +58,7 @@ function simulate(pl) {
 }
 const firstAt = (months, n) => { const x = months.find((r) => r.total >= n); return x ? 'month ' + x.m : 'over a year'; };
 
-console.log('Holy What Happeneds shop: ' + P.CATALOG.length + ' items, ' + prices[0] + '-' + prices[prices.length - 1] + ' each (median ' + median + '), ' + catalogTotal + ' for everything.');
+console.log('Holy What Happeneds shop: ' + LOOKS.length + ' looks, ' + prices[0] + '-' + prices[prices.length - 1] + ' each (median ' + median + '), ' + catalogTotal + ' for everything.');
 console.log('Achievements worth Holy What Happeneds: ' + Object.entries(byRarity).map(([r, n]) => n + ' ' + r + ' x ' + (P.EARN.achievement[r] || 0)).join(', ')
     + ' = ' + Object.entries(byRarity).reduce((a, [r, n]) => a + n * (P.EARN.achievement[r] || 0), 0) + ' Holy What Happeneds in all, once.');
 console.log('Bosses: ' + BOSSES.length + ' x ' + P.EARN.boss + '. Recurring: weekly bonus ' + P.EARN.weekly + ', 7-day streak ' + P.EARN.streak
@@ -72,4 +73,13 @@ for (const [name, pl] of Object.entries(PLAYERS)) {
     console.log('  after a year: ' + Math.round(ms[11].total) + ' Holy What Happeneds = ' + (100 * ms[11].total / catalogTotal).toFixed(0) + '% of the whole shop'
         + '; cheapest item (' + prices[0] + ') by ' + firstAt(ms, prices[0]) + ', a median one (' + median + ') by ' + firstAt(ms, median)
         + ', the dearest (' + prices[prices.length - 1] + ') by ' + firstAt(ms, prices[prices.length - 1]));
+    // or all of it traded: gems first (up to the weekly limit), the rest for Golden
+    const gx = P.BY_ID.x_gems, ox = P.BY_ID.x_golden, monthly = ms[11].recurring;
+    const gemTrades = Math.min(Math.floor(monthly / gx.cost), Math.round(gx.perWeek * 52 / 12));
+    console.log('  or traded each month (recurring part): ' + gemTrades * gx.gems + ' gems, or ' + Math.min(Math.floor(monthly / ox.cost), Math.round(ox.perWeek * 52 / 12)) * ox.golden + ' Golden');
 }
+const gx = P.BY_ID.x_gems, ox = P.BY_ID.x_golden;
+console.log('');
+console.log('Trading: ' + gx.gems + ' gems for ' + gx.cost + ' (up to ' + gx.perWeek + 'x a week = ' + gx.gems * gx.perWeek + ' gems), ' + ox.golden
+    + ' Golden for ' + ox.cost + ' (up to ' + ox.perWeek + 'x a week). For comparison the game gives up to 5 gems a week from weekly challenges, and Varro sells 3 gems for 600 Glory (2x a week) and 1 Golden for 2,500 Glory (1x a week).');
+console.log('Boost bundles: ' + P.CATALOG.filter((c) => c.kind === 'bundle').map((c) => c.name + ' ' + c.cost + ' (' + Object.entries(c.items).map(([id, n]) => n + 'x ' + id).join(', ') + '; up to ' + c.perWeek + 'x a week)').join(', ') + '.');

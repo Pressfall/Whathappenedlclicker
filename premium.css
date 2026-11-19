@@ -66,6 +66,7 @@
 .bn-card.is-owned { border-color: rgba(224, 168, 104, 0.45); }
 .bn-sw { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 10px; border: 1px solid var(--border-strong); }
 .bn-sw--title { display: flex; align-items: center; justify-content: center; font-size: 20px; background: var(--surface-3); }
+.bn-sw img { width: 26px; height: 26px; object-fit: contain; }
 .bn-card-main { min-width: 0; flex: 1; }
 .bn-name { font-weight: 800; font-size: 14px; }
 .bn-desc { font-size: 12.5px; color: var(--text-dim); margin: 2px 0 8px; }
@@ -110,20 +111,47 @@
 .w-modal-body .bn-root { font-size: 14px; }
 
 /* ---- the game page's themes (body.bn-theme-*) ---- */
-body.bn-theme-mocha { --primary: #d39a5c; --primary-deep: #a8693a; --gold: #ffd08a; --gold-deep: #e39a4a; --blue: #e0b07a; --divine: #c49bff;
-    --bg: #120d0a; --surface: rgba(30, 21, 15, 0.86); --surface-solid: #1f1712; --surface-2: #2a2019; --surface-3: #3a2c22; --border-strong: rgba(255, 220, 180, 0.2); }
-body.bn-theme-matcha { --primary: #9ad66b; --primary-deep: #5f9e3e; --gold: #dce98f; --gold-deep: #b4cc55; --blue: #8fd6a8;
-    --bg: #0a120b; --surface: rgba(15, 25, 16, 0.86); --surface-solid: #121c13; --surface-2: #1a281b; --surface-3: #233626; --border-strong: rgba(200, 255, 200, 0.18); }
-body.bn-theme-cherry { --primary: #ff6b81; --primary-deep: #d63c5a; --gold: #ffc2a1; --gold-deep: #ff8f6b; --blue: #ff9db0;
-    --bg: #12060a; --surface: rgba(32, 12, 19, 0.86); --surface-solid: #1f0d14; --surface-2: #2c121c; --surface-3: #3d1a27; --border-strong: rgba(255, 190, 200, 0.2); }
-body.bn-theme-midnight { --primary: #8f9bff; --primary-deep: #5b67d6; --gold: #c6b8ff; --gold-deep: #9a86ff; --blue: #9fb4ff;
-    --bg: #070818; --surface: rgba(13, 15, 36, 0.86); --surface-solid: #0f1230; --surface-2: #171b42; --surface-3: #21265a; --border-strong: rgba(190, 200, 255, 0.2); }
+body.bn-theme-heaven { --primary: #f3d27a; --primary-deep: #c9a24a; --gold: #fff1b8; --gold-deep: #e6c463; --blue: #bfe3ff; --divine: #d9c2ff;
+    --bg: #0e1220; --surface: rgba(20, 24, 40, 0.86); --surface-solid: #161b2e; --surface-2: #1e2540; --surface-3: #283052; --border-strong: rgba(255, 240, 200, 0.22); }
+body.bn-theme-sanctum { --primary: #b48cff; --primary-deep: #7d55e0; --gold: #ffd27a; --gold-deep: #e8a93a; --blue: #c7b3ff;
+    --bg: #0c0818; --surface: rgba(22, 14, 40, 0.86); --surface-solid: #170f2c; --surface-2: #21163d; --surface-3: #2d1f52; --border-strong: rgba(220, 200, 255, 0.2); }
+body.bn-theme-dawn { --primary: #ffb38a; --primary-deep: #e07a52; --gold: #ffe0a3; --gold-deep: #ffb85c; --blue: #ffc9d6;
+    --bg: #160c10; --surface: rgba(36, 18, 24, 0.86); --surface-solid: #22121a; --surface-2: #2e1822; --surface-3: #3f222f; --border-strong: rgba(255, 210, 190, 0.2); }
+body.bn-theme-stained { --primary: #5fb4ff; --primary-deep: #2f7ad6; --gold: #ffcf5a; --gold-deep: #ff9a3d; --blue: #ff6b8a;
+    --bg: #070c18; --surface: rgba(10, 18, 36, 0.86); --surface-solid: #0c1630; --surface-2: #132044; --surface-3: #1c2c5a; --border-strong: rgba(180, 210, 255, 0.2); }
 
 /* ---- the click numbers (body.bn-pop-*: main.js spawnClickFloat's .click-float) ---- */
-body.bn-pop-latte .click-float { color: #fff3df; text-shadow: 0 2px 0 #7a4a2a, 0 0 14px rgba(201, 138, 75, 0.75); }
-body.bn-pop-latte .click-float.crit { color: #ffd7a8; }
-body.bn-pop-neon .click-float { color: #c9f8ff; text-shadow: 0 0 6px #5ee7ff, 0 0 16px #5ee7ff, 0 0 26px #ff5bd0; }
-body.bn-pop-neon .click-float.crit { color: #ffd1f3; text-shadow: 0 0 6px #ff5bd0, 0 0 18px #ff5bd0, 0 0 30px #5ee7ff; }
-body.bn-pop-ember .click-float { color: #ffd36b; text-shadow: 0 2px 0 #7a2400, 0 0 12px #ff5a1f, 0 -4px 18px rgba(255, 90, 31, 0.6); }
-body.bn-pop-ember .click-float.crit { color: #fff0b0; }
+body.bn-pop-feather .click-float { color: #ffffff; text-shadow: 0 2px 0 #8a7a52, 0 0 12px rgba(255, 248, 220, 0.85); }
+body.bn-pop-feather .click-float.crit { color: #fff3c4; }
+body.bn-pop-halo .click-float { color: #ffe9a3; text-shadow: 0 0 6px #ffd54a, 0 0 16px #ffcf3a, 0 0 28px rgba(255, 220, 120, 0.7); }
+body.bn-pop-halo .click-float.crit { color: #fffbe6; }
+body.bn-pop-choir .click-float { color: #e8f4ff; text-shadow: 0 0 6px #9ad0ff, 0 0 18px #b48cff; }
+body.bn-pop-choir .click-float.crit { color: #ffffff; text-shadow: 0 0 8px #ffd1f3, 0 0 22px #b48cff; }
 @media (prefers-reduced-motion: reduce) { .bean-chip.is-bump, .w-beans.is-bump { animation: none; } }
+/* ---- clicker auras (body.bn-aura-*: around main.js's .main-image-btn). Only transform and opacity move, so the browser can
+   animate them without repainting; they stop for reduced motion and on Performance > Low. The wrap clips sideways so the
+   rays never make a phone page scroll left and right. ---- */
+body[class*="bn-aura-"] .main-image-wrap { overflow-x: clip; }
+body[class*="bn-aura-"] .main-image-btn { position: relative; isolation: isolate; }
+body.bn-aura-halo .main-image-btn::before {
+    content: ''; position: absolute; left: 50%; top: -22px; width: 44%; height: 32px; z-index: 1; pointer-events: none;
+    border: 6px solid #ffe27a; border-radius: 50%;
+    box-shadow: 0 0 14px 4px rgba(255, 214, 90, 0.75), inset 0 0 10px rgba(255, 240, 180, 0.8);
+    transform: translateX(-50%); animation: bn-halo-float 6s ease-in-out infinite;
+}
+@keyframes bn-halo-float { 0%, 100% { transform: translate(-50%, 0); } 50% { transform: translate(-50%, -6px); } }
+body.bn-aura-glow .main-image-btn::after {
+    content: ''; position: absolute; inset: -18px; z-index: -1; pointer-events: none; border-radius: 34px;
+    background: radial-gradient(closest-side, rgba(255, 232, 150, 0.8), rgba(255, 214, 110, 0.35) 62%, rgba(255, 214, 110, 0) 100%);
+    animation: bn-glow 3.2s ease-in-out infinite;
+}
+@keyframes bn-glow { 0%, 100% { opacity: 0.55; transform: scale(0.98); } 50% { opacity: 1; transform: scale(1.03); } }
+body.bn-aura-rays .main-image-btn::before {
+    content: ''; position: absolute; left: 50%; top: 50%; width: 135%; aspect-ratio: 1; z-index: -1; pointer-events: none;
+    background: repeating-conic-gradient(from 0deg, rgba(255, 241, 184, 0.4) 0deg 7deg, rgba(255, 241, 184, 0) 7deg 20deg);
+    -webkit-mask: radial-gradient(closest-side, #000 30%, transparent 100%); mask: radial-gradient(closest-side, #000 30%, transparent 100%);
+    transform: translate(-50%, -50%); animation: bn-rays 48s linear infinite;
+}
+@keyframes bn-rays { from { transform: translate(-50%, -50%) rotate(0deg); } to { transform: translate(-50%, -50%) rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { body[class*="bn-aura-"] .main-image-btn::before, body[class*="bn-aura-"] .main-image-btn::after { animation: none; } }
+body.perf-low[class*="bn-aura-"] .main-image-btn::before, body.perf-low[class*="bn-aura-"] .main-image-btn::after { animation: none; }

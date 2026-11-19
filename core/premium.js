@@ -14,10 +14,12 @@
  *   or refused write costs nothing. A purchase that used bought Holy What Happeneds is in the account's spends log, so it comes back
  *   on any device signed in to the account (restoreFromSpends).
  *
- * WHAT BEANS BUY: cosmetics only (CATALOG). Never gems, rubies, Golden, Glory, lootboxes, follower packs or anything with a
- * random outcome, nothing the game gives for free today, and nothing in the casino. tests/premium.test.js holds that line.
+ * WHAT THEY BUY (CATALOG): looks (titles, themes, click numbers, clicker auras, Wilds trails, a halo or wings in the Wilds),
+ * and, within a weekly limit, gems and Golden What Happeneds and boost bundles from the Items menu (no random ones). The owner chose on 2026-11-10 that bought ones may trade for gems and Golden too, knowing gems
+ * and Golden can then be spent on lootboxes (random contents) and in the casino. Never lootboxes, follower packs, rubies or
+ * Glory directly, and never anything the game gives for free today. tests/premium.test.js holds that line.
  *
- * WHERE EARNED BEANS COME FROM (EARN): worked out from the saves the game already keeps, never from a hook in the code
+ * WHERE EARNED ONES COME FROM (EARN): worked out from the saves the game already keeps, never from a hook in the code
  * that pays them, so each one is paid once whichever page notices first (grant ids, e.g. 'ach:x_golden_10', 'boss:tidal',
  * 'wk:2026-W46'). The first time a save sees Holy What Happeneds, what it had already done pays at most EARN.retroCap.
  *
@@ -35,27 +37,52 @@
 
     // ---------------- what Holy What Happeneds buy ----------------
     // kind: title (added to the game's titles; shown next to your name in chat and on the leaderboard), theme (the game
-    // page's colours), pop (the "+N" that floats up when you click), trail (behind you in the Wilds; only you see it).
-    // Each is owned once and can be switched on and off freely. No item gives anything else.
-    const KINDS = ['title', 'theme', 'pop', 'trail'];
+    // page's colours), pop (the "+N" that floats up when you click), aura (around the What Happened you click), trail
+    // (behind you in the Wilds), mark (a halo or wings on you in the Wilds); the Wilds ones only you see. Each is owned once
+    // and switched on and off freely.
+    // Bought again and again, up to perWeek times a week (the Wilds' weeks), and only on the game page: exchange (gems or
+    // Golden What Happeneds, main.js addGems / addGolden) and bundle (timed boosts from the Items menu, items.js grantItems;
+    // only ids core/world-bridge.js ITEMS allows, which are never gems, Golden or lootboxes).
+    const KINDS = ['title', 'theme', 'pop', 'aura', 'trail', 'mark', 'exchange', 'bundle'];
     const CATALOG = [
-        { id: 't_bean_counter', kind: 'title', name: 'Bean Counter', cost: 100, rarity: 'rare', desc: 'A title. Counts every bean, twice.' },
-        { id: 't_night_roaster', kind: 'title', name: 'Night Roaster', cost: 250, rarity: 'epic', desc: 'A title for the ones who play after midnight.' },
-        { id: 't_barista', kind: 'title', name: 'Barista of Chaos', cost: 400, rarity: 'epic', desc: 'A title. Nobody ordered this.' },
-        { id: 't_espresso', kind: 'title', name: 'Espresso Legend', cost: 600, rarity: 'legendary', desc: 'A title. Short, strong, unforgettable.' },
-        { id: 'th_mocha', kind: 'theme', name: 'Mocha', cost: 350, swatch: ['#d39a5c', '#7a4a2a'], desc: 'The game page in caramel and cocoa.' },
-        { id: 'th_matcha', kind: 'theme', name: 'Matcha', cost: 350, swatch: ['#9ad66b', '#3d6b3a'], desc: 'The game page in soft green tea.' },
-        { id: 'th_cherry', kind: 'theme', name: 'Cherry Cola', cost: 350, swatch: ['#ff6b81', '#7a1d36'], desc: 'The game page in fizzy red.' },
-        { id: 'th_midnight', kind: 'theme', name: 'Midnight Roast', cost: 350, swatch: ['#8f9bff', '#2a2f6b'], desc: 'The game page in deep night blue.' },
-        { id: 'pop_latte', kind: 'pop', name: 'Latte Foam', cost: 200, swatch: ['#fff3df', '#c98a4b'], desc: 'Your click numbers, creamy and round.' },
-        { id: 'pop_neon', kind: 'pop', name: 'Neon', cost: 200, swatch: ['#5ee7ff', '#ff5bd0'], desc: 'Your click numbers glow like a sign at 3 a.m.' },
-        { id: 'pop_ember', kind: 'pop', name: 'Ember', cost: 200, swatch: ['#ffd36b', '#ff5a1f'], desc: 'Your click numbers, hot off the grill.' },
-        { id: 'tr_steam', kind: 'trail', name: 'Steam Trail', cost: 300, colors: ['rgba(235,240,255,0.55)', 'rgba(200,210,230,0.35)'], rise: 18, desc: 'Puffs of steam behind you in the Wilds. Only you see it.' },
-        { id: 'tr_ember', kind: 'trail', name: 'Ember Trail', cost: 300, colors: ['rgba(255,190,80,0.85)', 'rgba(255,90,30,0.7)'], rise: 26, desc: 'Sparks behind you in the Wilds. Only you see it.' },
-        { id: 'tr_frost', kind: 'trail', name: 'Frost Trail', cost: 300, colors: ['rgba(170,235,255,0.8)', 'rgba(120,170,255,0.6)'], rise: 6, desc: 'Frost glitter behind you in the Wilds. Only you see it.' },
+        { id: 'x_gems', kind: 'exchange', name: '10 gems', cost: 15, gems: 10, perWeek: 5, desc: 'For the Treasury, skins, music and everything else gems buy.' },
+        { id: 'x_golden', kind: 'exchange', name: '1 Golden What Happened', cost: 40, golden: 1, perWeek: 2, desc: 'For Divine upgrades, followers and everything else Golden buys.' },
+        { id: 'b_hourglass', kind: 'bundle', name: 'Hourglass', cost: 20, items: { hourglass: 1 }, perWeek: 3, desc: 'An hour of What Happeneds at once, whenever you use it from Items.' },
+        { id: 'b_rush', kind: 'bundle', name: 'Holy Rush', cost: 10, items: { energyDrink: 2, spareBattery: 2, loadedDice: 1 }, perWeek: 3, desc: '2 Energy Drinks, 2 Spare Batteries and a Loaded Dice: short bursts of double clicks, double income and crits.' },
+        { id: 't_acolyte', kind: 'title', name: 'Acolyte of What', cost: 100, rarity: 'rare', desc: 'A title. Every saint starts by clicking.' },
+        { id: 't_haloed', kind: 'title', name: 'Haloed', cost: 250, rarity: 'epic', desc: 'A title. Your name, lit from above.' },
+        { id: 't_saint', kind: 'title', name: 'Saint of the Click', cost: 400, rarity: 'epic', desc: 'A title for the most faithful clicker.' },
+        { id: 't_archangel', kind: 'title', name: 'Archangel of What', cost: 600, rarity: 'legendary', desc: 'A title. The highest choir sings your name.' },
+        { id: 'th_heaven', kind: 'theme', name: 'Heavenly', cost: 350, swatch: ['#fff1b8', '#c9a24a'], desc: 'The game page in soft gold and sky.' },
+        { id: 'th_sanctum', kind: 'theme', name: 'Sanctum', cost: 350, swatch: ['#b48cff', '#ffd27a'], desc: 'The game page in temple violet and gold.' },
+        { id: 'th_dawn', kind: 'theme', name: 'First Light', cost: 350, swatch: ['#ffd1b3', '#e07a52'], desc: 'The game page in the colours of dawn.' },
+        { id: 'th_stained', kind: 'theme', name: 'Stained Glass', cost: 350, swatch: ['#5fb4ff', '#ff6b8a'], desc: 'The game page in cathedral blues and reds.' },
+        { id: 'pop_feather', kind: 'pop', name: 'Feather', cost: 200, swatch: ['#ffffff', '#b9a77a'], desc: 'Your click numbers, light as a feather.' },
+        { id: 'pop_halo', kind: 'pop', name: 'Halo', cost: 200, swatch: ['#ffe9a3', '#ffcf3a'], desc: 'Your click numbers wear a golden halo.' },
+        { id: 'pop_choir', kind: 'pop', name: 'Choir', cost: 200, swatch: ['#e8f4ff', '#b48cff'], desc: 'Your click numbers glow like a hymn.' },
+        { id: 'au_halo', kind: 'aura', name: 'Halo', cost: 300, swatch: ['#fff3b0', '#e6b93a'], desc: 'A golden halo floats over the What Happened you click.' },
+        { id: 'au_glow', kind: 'aura', name: 'Holy Glow', cost: 300, swatch: ['#fffbe0', '#ffd66e'], desc: 'Soft holy light breathes around the What Happened you click.' },
+        { id: 'au_rays', kind: 'aura', name: 'Heaven\'s Rays', cost: 450, swatch: ['#fff1b8', '#9fc7ff'], desc: 'Rays of light turn slowly behind the What Happened you click.' },
+        { id: 'tr_feathers', kind: 'trail', name: 'Falling Feathers', cost: 300, colors: ['rgba(255,255,255,0.85)', 'rgba(230,236,255,0.6)'], rise: -10, desc: 'Feathers drift down behind you in the Wilds. Only you see it.' },
+        { id: 'tr_light', kind: 'trail', name: 'Holy Light', cost: 300, colors: ['rgba(255,230,140,0.9)', 'rgba(255,250,210,0.7)'], rise: 22, desc: 'A trail of holy light behind you in the Wilds. Only you see it.' },
+        { id: 'tr_divine', kind: 'trail', name: 'Divine Embers', cost: 300, colors: ['rgba(190,150,255,0.85)', 'rgba(255,210,120,0.75)'], rise: 16, desc: 'Violet and gold sparks behind you in the Wilds. Only you see it.' },
+        { id: 'mk_halo', kind: 'mark', name: 'Halo', cost: 350, swatch: ['#fff3b0', '#e6b93a'], desc: 'A golden halo over your head in the Wilds. Only you see it.' },
+        { id: 'mk_wings', kind: 'mark', name: 'Angel Wings', cost: 500, swatch: ['#ffffff', '#c9d6f2'], desc: 'White wings on your back in the Wilds, beating as you run. Only you see them.' },
     ];
     const BY_ID = Object.fromEntries(CATALOG.map((c) => [c.id, c]));
-    const EQUIP_KINDS = ['theme', 'pop', 'trail'];
+    const EQUIP_KINDS = ['theme', 'pop', 'aura', 'trail', 'mark'];
+    const isExchange = (it) => !!it && it.kind === 'exchange';
+    // bought again and again (up to perWeek a week) instead of owned once
+    const isRepeat = (it) => !!it && (it.kind === 'exchange' || it.kind === 'bundle');
+    // the week as the Wilds count them (core/world-bridge.js weekKey: ISO weeks, the player's local date)
+    function weekKey(now) {
+        const d = new Date(now);
+        const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+        const dow = t.getUTCDay() || 7;
+        t.setUTCDate(t.getUTCDate() + 4 - dow);
+        const year = t.getUTCFullYear();
+        return year + '-W' + String(Math.ceil(((t - Date.UTC(year, 0, 1)) / 86400000 + 1) / 7)).padStart(2, '0');
+    }
 
     // ---------------- how Holy What Happeneds are earned ----------------
     // Small on purpose (tools/simulate-beans.js prints what each kind of player earns a month against the prices above).
@@ -76,8 +103,8 @@
 
     // ---------------- the state ----------------
     function fresh() {
-        return { v: 1, earned: 0, earnedTotal: 0, started: 0, owned: {}, equip: { theme: '', pop: '', trail: '' }, grants: {}, log: [],
-            applied: [], paid: { uid: '', balance: 0, at: 0 } };
+        return { v: 1, earned: 0, earnedTotal: 0, started: 0, owned: {}, equip: { theme: '', pop: '', aura: '', trail: '', mark: '' }, grants: {}, log: [],
+            applied: [], paid: { uid: '', balance: 0, at: 0 }, week: { id: '', n: {} } };
     }
     const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
     const int = (v, lo, hi) => { const n = Math.floor(Number(v)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : lo; };
@@ -88,7 +115,11 @@
         s.earned = int(raw.earned, 0, EARNED_MAX);
         s.earnedTotal = Math.max(s.earned, int(raw.earnedTotal, 0, 1e9));
         s.started = int(raw.started, 0, 1e15);
-        if (isObj(raw.owned)) for (const id in raw.owned) if (BY_ID[id] && raw.owned[id] === true) s.owned[id] = true;
+        if (isObj(raw.owned)) for (const id in raw.owned) if (BY_ID[id] && !isRepeat(BY_ID[id]) && raw.owned[id] === true) s.owned[id] = true;
+        if (isObj(raw.week) && typeof raw.week.id === 'string' && /^\d{4}-W\d{2}$/.test(raw.week.id)) {
+            s.week.id = raw.week.id;
+            if (isObj(raw.week.n)) for (const id in raw.week.n) if (isRepeat(BY_ID[id])) s.week.n[id] = int(raw.week.n[id], 0, 1000);
+        }
         if (isObj(raw.equip)) for (const k of EQUIP_KINDS) {
             const id = raw.equip[k];
             if (typeof id === 'string' && BY_ID[id] && BY_ID[id].kind === k && s.owned[id]) s.equip[k] = id;
@@ -206,16 +237,40 @@
         const fromEarned = Math.min(e, c);
         return { ok: e + p >= c, fromEarned, fromPaid: c - fromEarned, short: Math.max(0, c - e - p) };
     }
-    function canBuy(s, id) {
+    // how many more of a repeat item (gems, Golden, a bundle) can be bought this week (Infinity for a look)
+    function weekLeft(s, id, now) {
+        const it = BY_ID[id];
+        if (!isRepeat(it)) return Infinity;
+        const used = s.week && s.week.id === weekKey(now) ? (s.week.n[id] || 0) : 0;
+        return Math.max(0, it.perWeek - used);
+    }
+    // { ok, reason?: 'unknown' | 'owned' | 'week', item }
+    function canBuy(s, id, now) {
         const it = BY_ID[id];
         if (!it) return { ok: false, reason: 'unknown' };
+        if (isRepeat(it)) return weekLeft(s, id, now === undefined ? Date.now() : now) > 0 ? { ok: true, item: it } : { ok: false, reason: 'week', item: it };
         if (s.owned[id]) return { ok: false, reason: 'owned' };
         return { ok: true, item: it };
+    }
+    // A repeat item: the earned part is taken and the week's count goes up. The caller then hands over the gems, Golden or
+    // boosts (main.js addGems / addGolden, items.js grantItems), straight after this is saved.
+    function completeExchange(s, id, fromEarned, now, spendId) {
+        const it = BY_ID[id];
+        if (!isRepeat(it) || weekLeft(s, id, now) <= 0) return false;
+        const e = int(fromEarned, 0, EARNED_MAX);
+        if (e > s.earned) return false;
+        s.earned -= e;
+        const wk = weekKey(now);
+        if (s.week.id !== wk) s.week = { id: wk, n: {} };
+        s.week.n[id] = (s.week.n[id] || 0) + 1;
+        if (spendId) markApplied(s, spendId);
+        note(s, now, -it.cost, (isExchange(it) ? 'Traded for ' : 'Bought ') + it.name);
+        return true;
     }
     // The item arrives and the earned part is taken (the account's part was already taken by the caller).
     function completePurchase(s, id, fromEarned, now, spendId) {
         const it = BY_ID[id];
-        if (!it || s.owned[id]) return false;
+        if (!it || isRepeat(it) || s.owned[id]) return false;
         const e = int(fromEarned, 0, EARNED_MAX);
         if (e > s.earned) return false;
         s.earned -= e;
@@ -236,14 +291,16 @@
         s.equip[it.kind] = s.equip[it.kind] === id ? '' : id;
         return true;
     }
-    // Purchases logged in the account (wallets/{uid}/spends: [{ id, item }]) that this device doesn't have yet. Returns the
-    // items given back.
+    // Looks bought with the account's Holy What Happeneds (wallets/{uid}/spends: [{ id, item }]) that this device doesn't have
+    // yet. Returns the items given back. Gems, Golden and boosts are never handed out again from the log: the device that
+    // bought them already did, and the log can't tell whether this device's save has them.
     function restoreFromSpends(s, spends) {
         const back = [];
         for (const sp of spends || []) {
             if (!sp || typeof sp.id !== 'string' || s.applied.includes(sp.id)) continue;
             markApplied(s, sp.id);
-            if (BY_ID[sp.item] && !s.owned[sp.item]) { s.owned[sp.item] = true; back.push(BY_ID[sp.item]); }
+            const it = BY_ID[sp.item];
+            if (it && !isRepeat(it) && !s.owned[sp.item]) { s.owned[sp.item] = true; back.push(it); }
         }
         return back;
     }
@@ -271,6 +328,6 @@
     const plural = (n) => (Math.floor(n) === 1 ? CUR.one : CUR.many);
 
     return { KEY, CUR, KINDS, CATALOG, BY_ID, EQUIP_KINDS, EARN, DERIVE_DAYS, PRUNE_DAYS, fresh, clean, periodStart, sources, applyEarnings,
-        credit, prune, planSpend, canBuy, completePurchase, markApplied, equip, restoreFromSpends, checkWalletSpend, WALLET_CLIENT_KEYS,
-        amount, plural };
+        credit, prune, planSpend, canBuy, weekLeft, weekKey, isExchange, isRepeat, completePurchase, completeExchange, markApplied, equip, restoreFromSpends,
+        checkWalletSpend, WALLET_CLIENT_KEYS, amount, plural };
 }));

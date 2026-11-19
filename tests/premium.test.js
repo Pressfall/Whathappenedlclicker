@@ -1,7 +1,8 @@
 'use strict';
 // Holy What Happeneds 👼: the pure rules (core/premium.js, core/premium-config.js, core/kofi.js) and the lines they must never cross:
-// cosmetics only, never anything random, never the casino, never a paywall on what is free, and no browser write that adds
-// bought Holy What Happeneds (the spend rule in firestore-premium.rules, written out as checkWalletSpend).
+// looks, plus gems and Golden within a weekly limit (the owner's choice, 2026-11-10); never a lootbox, pack or anything random
+// directly, never casino chips, never a paywall on what is free, and no browser write that adds bought Holy What Happeneds
+// (the spend rule in firestore-premium.rules, written out as checkWalletSpend).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs');
@@ -22,19 +23,78 @@ const NOW = Date.UTC(2026, 10, 9, 12);
 const DAY = 86400000;
 
 // ---------------- what Holy What Happeneds buy ----------------
-test('the shop sells looks only: titles, themes, click numbers, trails; nothing that gives a currency, a box or a pack', () => {
-    assert.deepEqual(P.KINDS, ['title', 'theme', 'pop', 'trail']);
+test('the shop sells looks, and gems, Golden and boosts with a weekly limit; nothing that gives a box, a pack, rubies or Glory', () => {
+    assert.deepEqual(P.KINDS, ['title', 'theme', 'pop', 'aura', 'trail', 'mark', 'exchange', 'bundle']);
     const ids = new Set();
+    const FIELDS = {
+        exchange: ['id', 'kind', 'name', 'cost', 'desc', 'gems', 'golden', 'perWeek'],
+        bundle: ['id', 'kind', 'name', 'cost', 'desc', 'items', 'perWeek'],
+        look: ['id', 'kind', 'name', 'cost', 'rarity', 'desc', 'swatch', 'colors', 'rise'],
+    };
     for (const it of P.CATALOG) {
         assert.ok(P.KINDS.includes(it.kind), it.id + ' kind');
         assert.ok(Number.isInteger(it.cost) && it.cost > 0, it.id + ' cost');
         assert.ok(!ids.has(it.id), 'unique id ' + it.id); ids.add(it.id);
-        const allowed = ['id', 'kind', 'name', 'cost', 'rarity', 'desc', 'swatch', 'colors', 'rise'];
-        for (const k of Object.keys(it)) assert.ok(allowed.includes(k), it.id + ' has only look fields, not "' + k + '"');
+        const allowed = FIELDS[it.kind] || FIELDS.look;
+        for (const k of Object.keys(it)) assert.ok(allowed.includes(k), it.id + ' has no "' + k + '"');
+        if (P.isRepeat(it)) assert.ok(Number.isInteger(it.perWeek) && it.perWeek > 0 && it.perWeek <= 7, it.id + ' has a weekly limit');
+        if (P.isExchange(it)) assert.equal(Object.keys(it).filter((k) => k === 'gems' || k === 'golden').length, 1, it.id + ' gives gems or Golden, one of them');
+        if (it.kind === 'bundle') {
+            // only the timed boosts the game takes from anywhere outside it (never a Gem Pouch, a Geode or a Golden Ticket)
+            for (const [id, n] of Object.entries(it.items)) {
+                assert.ok(Bridge.isItem(id), it.id + ': ' + id + ' is a boost the bridge allows');
+                assert.ok(Number.isInteger(n) && n > 0 && n <= 5, it.id + ': a few of ' + id);
+            }
+        }
     }
+    assert.deepEqual(P.CATALOG.filter(P.isExchange).map((c) => c.id).sort(), ['x_gems', 'x_golden']);
+    assert.deepEqual(P.CATALOG.filter((c) => c.kind === 'bundle').map((c) => c.id).sort(), ['b_hourglass', 'b_rush']);
+    for (const k of ['aura', 'mark']) assert.ok(P.EQUIP_KINDS.includes(k), k + ' is worn like the other looks');
 });
 
-test('Holy What Happeneds can\'t be used in the casino, and no other game code reads what Holy What Happeneds bought (nothing free gets locked behind them)', () => {
+test('boost bundles: weekly limits like gems and Golden, never owned, never handed out again from the account log', () => {
+    const s = P.fresh();
+    s.earned = 500;
+    for (let i = 0; i < 3; i++) assert.equal(P.completeExchange(s, 'b_rush', 10, NOW), true);
+    assert.equal(P.canBuy(s, 'b_rush', NOW).reason, 'week');
+    assert.equal(P.completeExchange(s, 'b_hourglass', 20, NOW), true);
+    assert.deepEqual(s.week.n, { b_rush: 3, b_hourglass: 1 });
+    assert.equal(s.owned.b_rush, undefined);
+    assert.equal(s.log[s.log.length - 1].why, 'Bought Hourglass');
+    assert.deepEqual(P.restoreFromSpends(P.fresh(), [{ id: 'spendbb0001', item: 'b_hourglass' }]), []);
+    assert.deepEqual(P.clean({ owned: { b_rush: true, au_halo: true, mk_wings: true }, equip: { aura: 'au_halo', mark: 'mk_wings' } }).equip,
+        { theme: '', pop: '', aura: 'au_halo', trail: '', mark: 'mk_wings' });
+});
+
+test('trading for gems and Golden: the weekly limit, the earned part taken, never handed out again from the account log', () => {
+    const s = P.fresh();
+    s.earned = 1000;
+    for (let i = 0; i < 5; i++) assert.equal(P.completeExchange(s, 'x_gems', 15, NOW), true, 'gem trade ' + (i + 1));
+    assert.equal(P.canBuy(s, 'x_gems', NOW).reason, 'week');
+    assert.equal(P.completeExchange(s, 'x_gems', 15, NOW), false, 'not a sixth this week');
+    assert.equal(P.weekLeft(s, 'x_golden', NOW), 2);
+    assert.equal(P.completeExchange(s, 'x_golden', 40, NOW, 'spendxx0001'), true);
+    assert.equal(s.earned, 1000 - 5 * 15 - 40);
+    assert.equal(s.week.id, Bridge.weekKey(NOW));
+    assert.deepEqual(s.week.n, { x_gems: 5, x_golden: 1 });
+    assert.equal(s.owned.x_gems, undefined, 'a trade is never owned');
+    // next week the limits start again
+    const next = NOW + 7 * DAY;
+    assert.equal(P.weekLeft(s, 'x_gems', next), 5);
+    assert.equal(P.canBuy(s, 'x_gems', next).ok, true);
+    // the account log can bring looks back to a new device, never gems or Golden
+    const t = P.fresh();
+    assert.deepEqual(P.restoreFromSpends(t, [{ id: 'spendxx0002', item: 'x_gems' }, { id: 'spendxx0003', item: 'x_golden' }]), []);
+    assert.deepEqual(t.applied, ['spendxx0002', 'spendxx0003']);
+    // not with Holy What Happeneds it doesn't have, and a stored state can't claim a trade is owned
+    const u = P.fresh();
+    assert.equal(P.completeExchange(u, 'x_golden', 40, NOW), false);
+    assert.deepEqual(P.clean({ owned: { x_gems: true }, week: { id: '2026-W46', n: { x_gems: 3, th_heaven: 2 } } }).week, { id: '2026-W46', n: { x_gems: 3 } });
+    assert.deepEqual(P.clean({ owned: { x_gems: true } }).owned, {});
+    assert.equal(P.completePurchase(P.fresh(), 'x_gems', 0, NOW), false, 'trades go through completeExchange only');
+});
+
+test('the casino doesn\'t take Holy What Happeneds, and no other game code reads what they bought (nothing free gets locked behind them)', () => {
     for (const f of ['gamba.js', 'gamba.html']) assert.ok(!/WHBeans|WHPremium|whathappened_premium|premium\.js|Holy What Happeneds/i.test(read(f)), f + ' knows nothing of Holy What Happeneds');
     // only these files touch the Holy What Happeneds state or API; main.js only colours the bought titles, the Wilds only draw the trail and
     // ask for an earnings check after a Glory purchase
@@ -137,7 +197,7 @@ test('old week, day and season grant ids are dropped only once they can no longe
 test('earning stays small: the most a player can earn in a month from repeating rewards', () => {
     const month = 5 * P.EARN.weekly + 5 * P.EARN.streak + 5 * P.EARN.glory + P.EARN.season.champion;
     assert.ok(month <= 80, 'at most 80 a month, got ' + month);
-    const cheapest = Math.min(...P.CATALOG.map((c) => c.cost));
+    const cheapest = Math.min(...P.CATALOG.filter((c) => !P.isRepeat(c)).map((c) => c.cost));
     assert.ok(cheapest >= 2 * (P.EARN.weekly + P.EARN.glory), 'even the cheapest item takes more than one week of everything');
     // the Glory item and EARN agree, and it is limited to once a week
     const g = Arena.SHOP_BY_ID.beans;
@@ -158,27 +218,27 @@ test('a purchase takes earned Holy What Happeneds first, then bought ones', () =
 test('buying, wearing, and getting a purchase back from the account', () => {
     const s = P.fresh();
     s.earned = 400;
-    assert.equal(P.completePurchase(s, 'th_mocha', 350, NOW), true);
+    assert.equal(P.completePurchase(s, 'th_heaven', 350, NOW), true);
     assert.equal(s.earned, 50);
-    assert.equal(s.equip.theme, 'th_mocha');
-    assert.equal(P.canBuy(s, 'th_mocha').reason, 'owned');
-    assert.equal(P.completePurchase(s, 'th_mocha', 0, NOW), false, 'not twice');
-    assert.equal(P.completePurchase(s, 'pop_neon', 200, NOW), false, 'not with Holy What Happeneds it doesn\'t have');
+    assert.equal(s.equip.theme, 'th_heaven');
+    assert.equal(P.canBuy(s, 'th_heaven').reason, 'owned');
+    assert.equal(P.completePurchase(s, 'th_heaven', 0, NOW), false, 'not twice');
+    assert.equal(P.completePurchase(s, 'pop_halo', 200, NOW), false, 'not with Holy What Happeneds it doesn\'t have');
     assert.equal(P.canBuy(s, 'nope').reason, 'unknown');
-    P.equip(s, 'th_mocha');
+    P.equip(s, 'th_heaven');
     assert.equal(s.equip.theme, '', 'equip again takes it off');
-    assert.equal(P.equip(s, 'pop_neon'), false, 'not owned');
-    const back = P.restoreFromSpends(s, [{ id: 'spend0001', item: 'pop_neon' }, { id: 'spend0002', item: 'th_mocha' }, { id: 'spend0003', item: 'gone' }]);
-    assert.deepEqual(back.map((x) => x.id), ['pop_neon']);
-    assert.deepEqual(P.restoreFromSpends(s, [{ id: 'spend0001', item: 'pop_neon' }]), [], 'each spend once');
+    assert.equal(P.equip(s, 'pop_halo'), false, 'not owned');
+    const back = P.restoreFromSpends(s, [{ id: 'spend0001', item: 'pop_halo' }, { id: 'spend0002', item: 'th_heaven' }, { id: 'spend0003', item: 'gone' }]);
+    assert.deepEqual(back.map((x) => x.id), ['pop_halo']);
+    assert.deepEqual(P.restoreFromSpends(s, [{ id: 'spend0001', item: 'pop_halo' }]), [], 'each spend once');
 });
 
 test('a stored state is cleaned: unknown items, looks not owned and nonsense numbers are dropped', () => {
-    const s = P.clean({ earned: -5, earnedTotal: 'x', owned: { th_mocha: true, gems_100: true, pop_neon: 'yes' }, equip: { theme: 'th_mocha', pop: 'pop_neon', trail: 'th_mocha' },
+    const s = P.clean({ earned: -5, earnedTotal: 'x', owned: { th_heaven: true, gems_100: true, pop_halo: 'yes' }, equip: { theme: 'th_heaven', pop: 'pop_halo', trail: 'th_heaven' },
         grants: { 'ach:a': 2, evil: 5, 'wk:2026-W46': 4 }, log: [{ t: 1, n: 5, why: 'ok' }, { n: 'x' }], applied: ['spend0001', 'bad id!'], paid: { uid: 'u', balance: 9 } });
     assert.equal(s.earned, 0);
-    assert.deepEqual(s.owned, { th_mocha: true });
-    assert.deepEqual(s.equip, { theme: 'th_mocha', pop: '', trail: '' });
+    assert.deepEqual(s.owned, { th_heaven: true });
+    assert.deepEqual(s.equip, { theme: 'th_heaven', pop: '', aura: '', trail: '', mark: '' });
     assert.deepEqual(s.grants, { 'ach:a': 2, 'wk:2026-W46': 4 });
     assert.equal(s.log.length, 1);
     assert.deepEqual(s.applied, ['spend0001']);
@@ -189,7 +249,7 @@ test('a stored state is cleaned: unknown items, looks not owned and nonsense num
 test('the account\'s balance can only go down, by exactly the logged spend; nothing a browser writes can add Holy What Happeneds', () => {
     const before = { balance: 500, total: 500, updatedAt: 't' };
     const ok = (after, spend, id, existed) => P.checkWalletSpend(before, after, spend, id || 'spend0001', !!existed);
-    const spend = (cost, extra) => Object.assign({ item: 'th_mocha', cost, at: 'request.time' }, extra);
+    const spend = (cost, extra) => Object.assign({ item: 'th_heaven', cost, at: 'request.time' }, extra);
     assert.equal(ok({ balance: 150, total: 500, updatedAt: 't', spent: 350, lastSpend: 'spend0001' }, spend(350)), true);
     assert.equal(ok({ balance: 900, total: 500, updatedAt: 't', spent: -400, lastSpend: 'spend0001' }, spend(-400)), false, 'no raising the balance');
     assert.equal(ok({ balance: 500, total: 900, updatedAt: 't', spent: 0, lastSpend: 'spend0001' }, spend(1)), false, 'no touching total');

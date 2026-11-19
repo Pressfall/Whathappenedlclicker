@@ -60,7 +60,7 @@
         { id: 'pack_royal', name: 'Royal Chest (follower pack)', glory: 3500, pack: 'royal', perWeek: 1 },
         { id: 'pack_celestial', name: 'Celestial Relic (follower pack)', glory: 8000, pack: 'celestial', perWeek: 1 },
         { id: 'guild_chest', name: 'Guild Chest (a random hero guild)', glory: 15000, guild: true },
-        { id: 'beans', name: '👼 5 Holy What Happeneds (for titles and looks)', glory: 1500, beans: 5, perWeek: 1 },
+        { id: 'beans', name: '👼 5 Holy What Happeneds (for looks, gems and Golden)', glory: 1500, beans: 5, perWeek: 1 },
         { id: 'title_brawler', name: 'Title: Brawler', glory: 100, title: 'Brawler' },
         { id: 'title_gladiator', name: 'Title: Gladiator', glory: 400, title: 'Gladiator' },
         { id: 'title_warlord', name: 'Title: Warlord', glory: 1200, title: 'Warlord' },

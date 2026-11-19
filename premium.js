@@ -103,14 +103,32 @@
     }
 
     // ---------------- buying ----------------
-    // Returns { ok, reason?: 'unknown' | 'owned' | 'short' | 'signin' | 'rules' | 'network', short? }
+    // gems, Golden and boosts live in the game's saves, so they can only be bought on the game page (main.js and items.js are
+    // there). it: one item, or none for "can this page hand over gems, Golden and boosts at all".
+    function canTrade(it) {
+        const gems = typeof window.addGems === 'function' && typeof window.addGolden === 'function';
+        const items = !!(window.WHI && typeof window.WHI.grantItems === 'function');
+        if (!it) return gems && items;
+        return it.kind === 'bundle' ? items : gems;
+    }
+    // hand a repeat item over to the game (it is already paid for and saved)
+    function deliver(it) {
+        try {
+            if (it.gems) window.addGems(it.gems);
+            if (it.golden) window.addGolden(it.golden);
+            if (it.items && !window.WHI.grantItems(it.items)) console.warn('Holy What Happeneds: the boosts could not be added', it.id);
+        } catch (e) { console.warn('Holy What Happeneds: handing over', it.id, e); }
+    }
+    // Returns { ok, reason?: 'unknown' | 'owned' | 'week' | 'game-only' | 'short' | 'signin' | 'rules' | 'network', short? }
     async function buy(id) {
         const it = P.BY_ID[id];
-        const chk = P.canBuy(read(), id);
+        const chk = P.canBuy(read(), id, Date.now());
         if (!chk.ok) return chk;
+        if (P.isRepeat(it) && !canTrade(it)) return { ok: false, reason: 'game-only' };
         return withLock(async () => {
             const s = read();
-            if (s.owned[id]) return { ok: false, reason: 'owned' };
+            const again = P.canBuy(s, id, Date.now()); // another tab may have bought it, or used up the week, meanwhile
+            if (!again.ok) return again;
             const pd = paid();
             const plan = P.planSpend(s.earned, pd.signedIn ? pd.balance : 0, it.cost);
             if (!plan.ok) return { ok: false, reason: 'short', short: plan.short, signedIn: pd.signedIn };
@@ -121,6 +139,16 @@
                 const r = await c.spend(it.id, plan.fromPaid);
                 if (!r.ok) return r;
                 spendId = r.id;
+            }
+            if (P.isRepeat(it)) {
+                // saved first, then handed over: the game page saves its own saves at once (addGems / addGolden / grantItems)
+                let ok = mutate((st) => P.completeExchange(st, id, plan.fromEarned, Date.now(), spendId));
+                // the account already paid its part: what this device still has of the earned part is taken, and it goes through
+                if (!ok && spendId) ok = mutate((st) => P.completeExchange(st, id, Math.min(plan.fromEarned, st.earned), Date.now(), spendId));
+                if (!ok) return { ok: false, reason: 'short' };
+                deliver(it);
+                try { if (typeof window.playSfx === 'function') window.playSfx('audio/purchase.wav'); } catch (e) {}
+                return { ok: true, item: it, fromEarned: plan.fromEarned, fromPaid: plan.fromPaid };
             }
             let done = mutate((st) => P.completePurchase(st, id, plan.fromEarned, Date.now(), spendId));
             // the account already paid but this device's earned Holy What Happeneds changed meanwhile: the item still arrives (it is logged)
@@ -164,24 +192,29 @@
         const b = document.body;
         if (!b) return;
         const s = read();
-        const key = s.equip.theme + '|' + s.equip.pop;
+        const key = s.equip.theme + '|' + s.equip.pop + '|' + s.equip.aura;
         if (key === shownLooks) return;
         shownLooks = key;
-        for (const c of [...b.classList]) if (/^bn-(theme|pop)-/.test(c)) b.classList.remove(c);
+        for (const c of [...b.classList]) if (/^bn-(theme|pop|aura)-/.test(c)) b.classList.remove(c);
         if (!isWilds && s.equip.theme) b.classList.add('bn-theme-' + s.equip.theme.replace(/^th_/, ''));
         if (s.equip.pop) b.classList.add('bn-pop-' + s.equip.pop.replace(/^pop_/, ''));
+        if (!isWilds && s.equip.aura) b.classList.add('bn-aura-' + s.equip.aura.replace(/^au_/, ''));
     }
 
-    // the Wilds: a trail behind the player (world-actors.js drawPlayer calls this before drawing them)
+    // the Wilds: a trail behind the player, and a halo or wings on them (world-actors.js drawPlayer calls this before drawing
+    // the player, so wings sit behind the body and the halo floats over the head)
     const puffs = [];
-    let lastPos = null, trailId = '', trailCheck = 0;
+    let lastPos = null, trailId = '', markId = '', trailCheck = 0, moveT = 0;
     function drawTrail(ctx, p) {
         const now = performance.now() / 1000;
-        if (now - trailCheck > 1) { trailCheck = now; trailId = read().equip.trail; }
-        const t = P.BY_ID[trailId];
-        if (!t || !p) { puffs.length = 0; return; }
+        if (now - trailCheck > 1) { trailCheck = now; const e = read().equip; trailId = e.trail; markId = e.mark; }
+        if (!p) { puffs.length = 0; return; }
         const E = window.WHW && window.WHW.engine;
         const low = E && E.perf === 'low';
+        if (lastPos && Math.hypot(p.x - lastPos.x, p.y - lastPos.y) > 1) moveT = now;
+        if (markId) drawMark(ctx, p, markId, now, low, now - moveT < 0.25);
+        const t = P.BY_ID[trailId];
+        if (!t) { puffs.length = 0; lastPos = { x: p.x, y: p.y }; return; }
         if (lastPos && Math.hypot(p.x - lastPos.x, p.y - lastPos.y) > (low ? 14 : 6) && puffs.length < (low ? 10 : 40)) {
             puffs.push({ x: p.x + (Math.random() - 0.5) * 10, y: p.y + (p.r || 14) * 0.6 + (Math.random() - 0.5) * 6, t: now, c: t.colors[puffs.length % t.colors.length] });
             lastPos = { x: p.x, y: p.y };
@@ -200,6 +233,40 @@
         }
         ctx.restore();
     }
+    // a halo (a golden ring bobbing over the head) or wings (beating faster while moving)
+    function drawMark(ctx, p, id, now, low, moving) {
+        const r = p.r || 14;
+        ctx.save();
+        if (id === 'mk_halo') {
+            const y = p.y - r * 1.55 + Math.sin(now * 2.2) * 1.5;
+            ctx.strokeStyle = '#ffe27a';
+            ctx.lineWidth = 3;
+            if (!low) { ctx.shadowColor = 'rgba(255, 214, 90, 0.9)'; ctx.shadowBlur = 8; }
+            ctx.beginPath();
+            ctx.ellipse(p.x, y, r * 0.62, r * 0.22, 0, 0, Math.PI * 2);
+            ctx.stroke();
+        } else if (id === 'mk_wings') {
+            const flap = Math.sin(now * (moving ? 14 : 3)) * (moving ? 0.28 : 0.08);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+            ctx.strokeStyle = 'rgba(170, 186, 220, 0.9)';
+            ctx.lineWidth = 1.5;
+            for (const side of [-1, 1]) {
+                ctx.save();
+                ctx.translate(p.x + side * r * 0.45, p.y - r * 0.15);
+                ctx.rotate(side * (0.25 + flap));
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                ctx.quadraticCurveTo(side * r * 1.5, -r * 1.5, side * r * 1.9, -r * 0.35);
+                ctx.quadraticCurveTo(side * r * 1.35, -r * 0.05, side * r * 1.5, r * 0.35);
+                ctx.quadraticCurveTo(side * r * 0.8, r * 0.3, 0, r * 0.25);
+                ctx.closePath();
+                ctx.fill();
+                ctx.stroke();
+                ctx.restore();
+            }
+        }
+        ctx.restore();
+    }
 
     // ---------------- the chip ----------------
     // the chips show a short number (1.2K), the menu and the panel the whole one
@@ -213,7 +280,7 @@
         for (const el of document.querySelectorAll('[data-bean-balance]')) el.textContent = full;
         for (const el of document.querySelectorAll('[data-bean-short]')) el.textContent = short(n);
         const chip = $('beanChip');
-        if (chip) chip.title = full + ' ' + P.plural(n) + ': earned by playing or bought, for titles and looks';
+        if (chip) chip.title = full + ' ' + P.plural(n) + ': earned by playing or bought, for looks, gems and Golden';
     }
     // the animation starts again on the next frame: reading offsetWidth to restart it made the browser lay out the whole page
     // there and then (150 ms on a slow phone, in the middle of a fight in the Wilds)
@@ -238,7 +305,7 @@
         setInterval(() => { if (document.visibilityState === 'visible') scan(); }, isWilds ? 5000 : 8000);
         window.addEventListener('storage', (e) => { if (!e.key || e.key === KEY) { shownLooks = ''; changed(); } });
     }
-    window.WHBeans = { read, mutate, scan, buy, restore, equip, paid, total, giveTitles, wearTitle, wornTitle, drawTrail, applyLooks, renderChip,
+    window.WHBeans = { read, mutate, scan, buy, restore, equip, paid, total, canTrade, giveTitles, wearTitle, wornTitle, drawTrail, applyLooks, renderChip,
         onChange: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }, isWilds };
     if (document.readyState === 'loading') {
         document.addEventListener('readystatechange', () => { if (document.readyState !== 'loading') start(); });
