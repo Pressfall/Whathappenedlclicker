@@ -429,3 +429,39 @@ test('tip packs (the shipped config): the tip\'s amount picks the pack; the same
     const lost = await tip(n++, small.dollars.toFixed(2), 'great game!');
     assert.deepEqual(await body(lost), { ok: true, beans: small.beans, matched: false });
 });
+
+test('tools/kofi-test-payment.js sends what the worker takes: credited once, a repeat refused, no code kept for claiming', async () => {
+    const T = require('../tools/kofi-test-payment.js');
+    const { g, call, linkFor } = await setup();
+    const code = await linkFor('uid_tess');
+    const send = async (p) => {
+        const r = await call(new Request(T.webhookUrl('https://wh-kofi.example.workers.dev'), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: T.formBody(p) }), RealConfig);
+        const b = await body(r);
+        return { status: r.status, b, says: T.explain(r.status, b, p) };
+    };
+    const five = RealConfig.tipBeans(5, RealConfig.tipCurrency);
+    const p = T.buildPayload({ token: TOKEN, code, amount: 5 });
+    assert.match(p.kofi_transaction_id, /^TEST-/);
+    assert.equal(p.amount, '5.00');
+    const first = await send(p);
+    assert.deepEqual(first.b, { ok: true, beans: five, matched: true });
+    assert.match(first.says, new RegExp('Credited ' + five));
+    const again = await send(p);
+    assert.deepEqual(again.b, { ok: true, duplicate: true });
+    assert.match(again.says, /nothing credited again/);
+    assert.equal(g.plain('wallets/uid_tess').balance, five);
+    // no code: kept, and the script says how to claim it
+    const lost = T.buildPayload({ token: TOKEN, amount: 2, email: 'me@example.com' });
+    const kept = await send(lost);
+    assert.equal(kept.b.matched, false);
+    assert.match(kept.says, new RegExp('Claim it in the game[\\s\\S]*' + lost.kofi_transaction_id + '[\\s\\S]*me@example\\.com'));
+    // a wrong token is refused, and the script says so
+    const bad = await send(T.buildPayload({ token: 'wrong', code, amount: 5 }));
+    assert.equal(bad.status, 401);
+    assert.match(bad.says, /token doesn't match/);
+    // its guard rails
+    assert.throws(() => T.buildPayload({ code: 'WH-12' }), /link code/);
+    assert.throws(() => T.webhookUrl('http://example.com'), /https/);
+    assert.equal(T.webhookUrl('http://localhost:8787/'), 'http://localhost:8787/kofi');
+    assert.deepEqual(T.parseArgs(['--code', 'WH-1', '--amount=5', '--twice']), { code: 'WH-1', amount: '5', twice: true });
+});

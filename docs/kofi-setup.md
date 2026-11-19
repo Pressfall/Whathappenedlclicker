@@ -192,15 +192,43 @@ and codes blocks. Run the Rules Playground checklist at the bottom of that file,
 
 1. ko-fi.com/manage/webhooks > Webhook URL: `https://wh-kofi.yourname.workers.dev/kofi` > Update.
 2. Send a test payment from that page. In a terminal in `kofi-worker`, `npx wrangler tail` shows the worker's log while it
-   runs. Ko-fi's test uses the example transaction id `00000000-1111-2222-3333-444444444444`; the worker answers 200 and
-   credits nothing for it.
+   runs. If Ko-fi's test uses the example transaction id `00000000-1111-2222-3333-444444444444`, the worker answers 200 and
+   credits nothing for it; with any other id it may keep one "unmatched" record in `kofi_payments`, which you can delete.
+   Either way it proves Ko-fi reaches the worker and the token matches.
 
-### 7. Publish the site and try it
+### 7. Test it without spending money
 
-1. Deploy the site with the filled-in config (only after you've reviewed the diff).
-2. In the game, sign in, open 👼 > Get more, copy your link code.
-3. Buy the cheapest pack yourself with the code in the message. Within a minute the 👼 chip should go up.
-4. In Firestore, `kofi_payments/<transaction id>` should say `status: credited` with your uid, and hold no name or email.
+Do this before you push the config with `workerUrl` in it, so players don't see buying open while you test.
+
+1. Run the game on your computer with the worker's address filled in only there: put it in `workerUrl`, don't commit it yet,
+   and run `npm start` (the game at http://localhost:8000; `ALLOWED_ORIGINS` already lets that page send claims).
+2. Sign in, open 👼 > Get more, and copy your link code.
+3. Put your Ko-fi verification token where the test script finds it, in `kofi-worker/.dev.vars` (never committed):
+   ```
+   KOFI_VERIFICATION_TOKEN=paste-the-token-here
+   ```
+4. Send pretend tips, signed with your token, through the real worker into your account:
+   ```bash
+   node tools/kofi-test-payment.js --code WH-XXXX-XXXX-XXXX --amount 5 --worker https://wh-kofi.yourname.workers.dev
+   ```
+   It prints what the worker did. Then check, in the game:
+   - the 👼 chip went up by the pack's amount (550 for $5);
+   - spending works: buy a look, and trade for gems;
+   - `--twice` sends the same payment two times and it is credited once;
+   - `--no-code --amount 2 --email you@example.com` keeps a payment to be claimed: claim it in Get more > "Paid without your
+     code?" with the transaction id it prints and that email.
+5. In Firestore, `kofi_payments/TEST-...` should say `status: credited` with your uid, and hold no name or email.
+
+What the script credits is real, on your own account: spend it, or lower `wallets/<your uid>.balance` in the Firebase console.
+Anyone with the verification token could do the same, so keep it secret (Ko-fi lets you regenerate it).
+
+Optional, with real money: a $1 tip from another Ko-fi account confirms Ko-fi's real messages match. PayPal and Stripe keep their
+fee (about $0.30) even if you refund it.
+
+### 8. Publish
+
+1. Commit `workerUrl` and push. Buying opens for everyone once the site deploys.
+2. Keep `npx wrangler tail` open for the first real tips if you like; `kofi_payments` lists each one.
 
 ## Fixing a payment
 

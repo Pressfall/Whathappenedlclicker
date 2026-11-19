@@ -1,0 +1,156 @@
+// THE FULL FIRESTORE RULES TO PUBLISH (Firebase console > Firestore Database > Rules: replace everything there with this file).
+//
+// It replaces the old open catch-all (`match /{document=**} { allow read, write; }`), which let anyone read and change every
+// document, including everyone's cloud save and, once added, the Holy What Happeneds wallets.
+//
+//   - The social collections the game writes without a sign-in for every write (clans and their members, both chats, profiles,
+//     the leaderboard, clan events) stay open, exactly as before. firestore-social.rules and docs/trust-boundaries.md are the
+//     plan for tightening them later; when you publish that, remove their names from the open list below.
+//   - Every other collection is closed unless a block below allows it: cloud saves (firestore-saves.rules), redeem codes
+//     (firestore-codes.rules) and Holy What Happeneds (firestore-premium.rules). Those files explain each block; keep them in
+//     step with this one.
+//   - Your own edits in the Firebase console and the Ko-fi worker (a service account) are never limited by these rules.
+//
+// The list of open collections is every collection the game's code uses (checked 2026-11-19: clans, clan_chat, global_chat,
+// profiles, leaderboard, events, saves, codes, wallets, kofi_links). A new collection in the code needs a rule here, or its
+// reads and writes are refused.
+//
+// Before you Publish, try the checklist at the bottom in the Rules Playground. NOT run against the Firestore emulator.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------- still open, as before ----------------
+    match /{coll}/{rest=**} {
+      allow read, write: if coll in ['clans', 'clan_chat', 'global_chat', 'profiles', 'leaderboard', 'events'];
+    }
+
+    // ---------------- cloud saves (firestore-saves.rules) ----------------
+    // One cloud save per account. Only the signed-in owner can read, write or delete it.
+    match /saves/{uid} {
+      allow read, delete: if isOwner(uid);
+      // rev counts up by exactly one per save, so a device that missed another device's save can't overwrite it
+      allow create: if isOwner(uid) && isValidSave() && request.resource.data.rev == 1;
+      allow update: if isOwner(uid) && isValidSave() && request.resource.data.rev == resource.data.rev + 1;
+    }
+
+    // ---------------- redeem codes (firestore-codes.rules) ----------------
+    // A player can check a code they know; nobody can list them or change them (you add codes in the console).
+    match /codes/{code} {
+      allow get: if true;
+      allow list, create, update, delete: if false;
+    }
+
+    // ---------------- Holy What Happeneds (firestore-premium.rules) ----------------
+    match /wallets/{uid} {
+      allow get: if beansOwner(uid);
+      allow list, create, delete: if false;
+      // a spend: the balance goes down by exactly the cost of the spend logged in the same write, and nothing else changes
+      allow update: if beansOwner(uid) && beansAccount() && beansValidSpend(uid);
+
+      match /spends/{spendId} {
+        allow get, list: if beansOwner(uid);
+        allow create: if beansOwner(uid) && beansAccount() && beansValidSpendLog(uid, spendId);
+        allow update, delete: if false;
+      }
+      match /credits/{txid} {
+        allow get, list: if beansOwner(uid);
+        allow create, update, delete: if false;
+      }
+    }
+
+    match /kofi_links/{code} {
+      // your own code, or "there is none yet" (so the game knows to make it); never someone else's
+      allow get: if request.auth != null && (resource == null || resource.data.uid == request.auth.uid);
+      allow create: if request.auth != null && beansAccount()
+        && request.resource.data.keys().hasOnly(['uid', 'at'])
+        && request.resource.data.keys().hasAll(['uid', 'at'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.at == request.time
+        && code.matches('^[0-9A-F]{12}$')
+        && beansLinkHex(request.auth.uid).matches(code + '[0-9A-F]{52}');
+      allow list, update, delete: if false;
+    }
+
+    match /kofi_payments/{txid} {
+      allow read, write: if false;
+    }
+
+    // ---------------- helpers ----------------
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    // Exactly the fields cloud.js writes. The progress is one JSON string; Firestore caps a document at 1 MiB.
+    // updatedAt must be the server's clock (serverTimestamp()), not the device's.
+    function isValidSave() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['v', 'rev', 'payload', 'summary', 'device', 'updatedAt'])
+        && d.keys().hasAll(['v', 'rev', 'payload', 'summary', 'device', 'updatedAt'])
+        && d.v == 1
+        && d.rev is int
+        && d.payload is string && d.payload.size() <= 900000
+        && d.summary is map && d.summary.size() <= 16
+        && d.device is string && d.device.size() <= 64
+        && d.updatedAt == request.time;
+    }
+    function beansOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    // a real account (email or Google), not the Wilds' anonymous sign-in: bought Holy What Happeneds belong to an account
+    function beansAccount() {
+      return request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    // sha256('kofi-link:' + uid) as 64 upper-case hex digits (core/kofi.js linkIdForUid takes the first 12)
+    function beansLinkHex(uid) {
+      return hashing.sha256('kofi-link:' + uid).toHexString().upper();
+    }
+    function beansValidSpend(uid) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balance', 'spent', 'lastSpend'])
+        && request.resource.data.balance is int
+        && request.resource.data.balance >= 0
+        && request.resource.data.balance < resource.data.balance
+        && request.resource.data.spent == resource.data.get('spent', 0) + (resource.data.balance - request.resource.data.balance)
+        && request.resource.data.lastSpend is string
+        && request.resource.data.lastSpend.matches('^[A-Za-z0-9_-]{4,40}$')
+        && !exists(/databases/$(database)/documents/wallets/$(uid)/spends/$(request.resource.data.lastSpend))
+        && existsAfter(/databases/$(database)/documents/wallets/$(uid)/spends/$(request.resource.data.lastSpend))
+        && getAfter(/databases/$(database)/documents/wallets/$(uid)/spends/$(request.resource.data.lastSpend)).data.cost
+             == resource.data.balance - request.resource.data.balance;
+    }
+    function beansValidSpendLog(uid, spendId) {
+      return request.resource.data.keys().hasOnly(['item', 'cost', 'at'])
+        && request.resource.data.keys().hasAll(['item', 'cost', 'at'])
+        && request.resource.data.item is string
+        && request.resource.data.item.size() >= 1 && request.resource.data.item.size() <= 40
+        && request.resource.data.cost is int && request.resource.data.cost > 0
+        && request.resource.data.at == request.time
+        && spendId.matches('^[A-Za-z0-9_-]{4,40}$')
+        && getAfter(/databases/$(database)/documents/wallets/$(uid)).data.lastSpend == spendId
+        && getAfter(/databases/$(database)/documents/wallets/$(uid)).data.balance
+             == get(/databases/$(database)/documents/wallets/$(uid)).data.balance - request.resource.data.cost;
+    }
+  }
+}
+
+// RULES PLAYGROUND CHECKLIST (each should ALLOW unless it says DENY). "As U1" = Authenticated, Firebase UID U1, provider
+// password (or google.com). First, in the Data tab, create wallets/U1 = { balance: 500 (number), total: 500 (number) }.
+//   Still working, as before:
+//   1. get  clans/anything, signed out                                          ALLOW
+//   2. create global_chat/x, signed out                                         ALLOW
+//   3. get  leaderboard/x, signed out                                           ALLOW
+//   Saves and codes:
+//   4. get  saves/U1 as U1                                                      ALLOW
+//   5. get  saves/U1 as U2                                                      DENY
+//   6. get  saves/U1 signed out                                                 DENY
+//   7. get  codes/ANYTHING signed out                                           ALLOW
+//   8. create codes/FREEGEMS as U1                                              DENY
+//   Holy What Happeneds:
+//   9. get  wallets/U1 as U1                                                    ALLOW
+//  10. get  wallets/U1 as U2                                                    DENY
+//  11. update wallets/U1 as U1 to { balance: 99999, total: 500 }                DENY (nobody can add to their own balance)
+//  12. create wallets/U2 as U2 with { balance: 100 }                            DENY
+//  13. get  kofi_payments/anything as U1                                        DENY
+//   Anything else:
+//  14. create somethingnew/x as U1                                              DENY

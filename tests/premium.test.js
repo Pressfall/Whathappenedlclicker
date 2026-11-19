@@ -344,3 +344,25 @@ test('the earned-Holy What Happeneds state syncs with the account like other pro
     assert.ok(Progress.SYNC_KEYS.has('whathappened_premium'));
     assert.equal(Progress.isSyncKey('whathappened_premium'), true);
 });
+
+test('firestore.rules (the full rules to publish): every collection the game uses has a rule, and money is never on the open list', () => {
+    const noComments = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const rules = noComments(read('firestore.rules')); // the rules, not the comments
+    assert.ok(!/match \/\{document=\*\*\}/.test(rules), 'no catch-all');
+    const open = (/coll in \[([^\]]*)\]/.exec(rules) || [])[1];
+    assert.ok(open, 'the open list is there');
+    const openList = open.split(',').map((x) => x.trim().replace(/'/g, ''));
+    for (const closed of ['wallets', 'kofi_links', 'kofi_payments', 'saves', 'codes']) {
+        assert.ok(!openList.includes(closed), closed + ' is not open');
+        assert.ok(new RegExp('match /' + closed + '/\\{').test(rules), closed + ' has its own rule');
+    }
+    // every top-level collection named in the game's code
+    const used = new Set();
+    const files = fs.readdirSync(ROOT).filter((f) => /\.(js|html)$/.test(f));
+    for (const f of files) for (const m of read(f).matchAll(/(?:collection|doc)\(\s*[A-Za-z_.]*db\s*,\s*['"]([A-Za-z_]+)['"]/g)) used.add(m[1]);
+    assert.ok(used.size >= 8, 'found the collections: ' + [...used].join(', '));
+    for (const c of used) assert.ok(openList.includes(c) || new RegExp('match /' + c + '/\\{').test(rules), c + ' (used in the code) has a rule in firestore.rules');
+    // the Holy What Happeneds part is the same as firestore-premium.rules
+    const body = (s) => s.slice(s.indexOf('match /wallets/{uid}'), s.indexOf('match /kofi_payments/{txid}')).replace(/\s+/g, ' ');
+    assert.equal(body(rules), body(noComments(read('firestore-premium.rules'))));
+});

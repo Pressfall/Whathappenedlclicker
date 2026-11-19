@@ -14,4 +14,6 @@ workers_dev = true
 FIREBASE_PROJECT_ID = "whleaderboard"
 # The site(s) the game runs on, comma separated, exactly as the browser shows them (https://..., no trailing slash).
 # Only these may send "claim a payment" requests. Add a custom domain here if the game moves to one.
-ALLOWED_ORIGINS = "https://whathappenedclicker.netlify.app"
+# http://localhost:8000 is the game run on your own computer (npm start), for testing before you push; a claim still needs
+# a signed-in account, the transaction id and the payer's email, so it opens nothing to anyone else.
+ALLOWED_ORIGINS = "https://whathappenedclicker.netlify.app,http://localhost:8000"
