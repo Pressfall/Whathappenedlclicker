@@ -131,7 +131,7 @@ test('the panel: shop, earn and Get more tabs; buying from it asks first; buying
 test('Get more once the owner filled in the config: sign in first; then the link code, the packs on Ko-fi, history and claiming', async () => {
     const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 5 }) });
     const w = game.window, doc = w.document, C = w.WHPremiumConfig;
-    Object.assign(C, { kofiPage: 'https://ko-fi.com/whtest', workerUrl: 'https://wh-kofi.test.workers.dev',
+    Object.assign(C, { kofiPage: 'https://ko-fi.com/whtest', workerUrl: 'https://wh-kofi.test.workers.dev', tipPacks: [],
         packs: [{ code: 'beanbag1', beans: 500, name: 'Bag of Holy What Happeneds', price: '$5' }, { code: 'OWNER_SHOP_ITEM_CODE_2', beans: 0, name: 'x', price: 'x' }] });
     const tick = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r)); };
     // signed out: asked to sign in, nothing else
@@ -159,6 +159,26 @@ test('Get more once the owner filled in the config: sign in first; then the link
     await tick();
     assert.deepEqual(claims, [['aaaa-bbbb-cccc', 'me@example.com']]);
     assert.match(doc.querySelector('.bn-claim .bn-msg').textContent, /Claimed: 120 Holy What Happeneds/);
+});
+
+test('Get more with the shipped tip packs: each pack, its tip amount, a link to the Ko-fi page, and how to paste the code', async () => {
+    const game = loadGame({ now: NOW, noRenown: true, storage: seed({ earned: 5 }) });
+    const w = game.window, doc = w.document, C = w.WHPremiumConfig;
+    C.workerUrl = 'https://wh-kofi.test.workers.dev'; // the one thing still to fill in before buying opens
+    assert.equal(C.buyingOpen(), true);
+    fakeAccount(game, 0);
+    w.WHBeansPanel.open('get');
+    for (let i = 0; i < 6; i++) await new Promise((r) => setImmediate(r));
+    const body = doc.querySelector('.bn-tabbody');
+    const packs = C.activeTipPacks();
+    const cards = [...body.querySelectorAll('.bn-card')];
+    assert.equal(cards.length, packs.length);
+    packs.forEach((p, i) => {
+        assert.match(cards[i].textContent, new RegExp(p.name + '[\\s\\S]*' + p.beans.toLocaleString('en-US') + ' for a \\$' + p.dollars + ' tip'));
+        assert.equal(cards[i].querySelector('a').getAttribute('href'), C.kofiPage);
+    });
+    assert.match(body.textContent, /paste your code in Your message/);
+    assert.match(body.textContent, /sharing it can't cost you anything/);
 });
 
 test('the earned-Holy What Happeneds state is part of the progress that syncs and exports', () => {

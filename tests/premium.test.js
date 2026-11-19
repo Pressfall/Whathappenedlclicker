@@ -267,11 +267,14 @@ test('the account\'s balance can only go down, by exactly the logged spend; noth
 });
 
 // ---------------- config and link codes ----------------
-test('the shipped config is all placeholders, so buying is off until the owner fills it in', () => {
-    assert.equal(Config.buyingOpen(), false);
-    assert.deepEqual(Config.activePacks(), []);
-    assert.ok(Config.isPlaceholder(Config.kofiPage) && Config.isPlaceholder(Config.workerUrl));
-    assert.deepEqual(Config.donationRate, {});
+test('buying opens only once the Ko-fi page, the worker and a way to buy are all filled in', () => {
+    // whatever the owner has filled in so far, the switch follows the rule (and the page is a real Ko-fi address)
+    const ways = Config.activePacks().length + Config.rates(Config.donationRate).length + Config.rates(Config.subscriptionTiers).length;
+    assert.equal(Config.buyingOpen(), !Config.isPlaceholder(Config.kofiPage) && !Config.isPlaceholder(Config.workerUrl) && ways > 0);
+    assert.match(Config.kofiPage, /^https:\/\/ko-fi\.com\/[A-Za-z0-9_]+$/);
+    // a page alone, with the worker still a placeholder and nothing to sell, keeps it closed
+    const half = Object.assign({}, Config, { workerUrl: 'https://OWNER-WORKER.workers.dev', packs: [], donationRate: {}, subscriptionTiers: {} });
+    assert.equal(Config.buyingOpen(half), false);
     const filled = Object.assign({}, Config, { kofiPage: 'https://ko-fi.com/whathappened', workerUrl: 'https://wh-kofi.x.workers.dev',
         packs: [{ code: 'abc123', beans: 100, name: 'n', price: 'p' }, { code: 'OWNER_X', beans: 5 }, { code: 'zz', beans: 1.5 }] });
     assert.equal(Config.buyingOpen(filled), true);
@@ -280,6 +283,30 @@ test('the shipped config is all placeholders, so buying is off until the owner f
     assert.equal(Config.shopItemUrl('abc123'), 'https://ko-fi.com/s/abc123');
     // the Ko-fi link and prices live in this one file: no page hard-codes a Ko-fi address
     for (const f of fs.readdirSync(ROOT).filter((x) => /\.(js|html)$/.test(x))) assert.ok(!/ko-fi\.com\//i.test(read(f)) || f === 'premium-panel.js' && !/https:\/\/ko-fi\.com\/[A-Za-z]/.test(read(f)), f + ' has no Ko-fi address of its own');
+});
+
+test('tip packs: each pack\'s amount gives that pack, a bigger tip never gets a worse rate, other currencies get nothing', () => {
+    const packs = Config.activeTipPacks();
+    assert.ok(packs.length > 0, 'packs are set');
+    assert.match(Config.tipCurrency, /^[A-Z]{3}$/);
+    let rate = 0;
+    for (const p of packs) {
+        assert.ok(p.dollars >= 1, p.name + ': at least the $1 Ko-fi allows');
+        assert.equal(Config.tipBeans(p.dollars, Config.tipCurrency), p.beans, p.name);
+        assert.ok(p.beans / p.dollars >= rate, p.name + ': the rate never drops for a bigger pack');
+        rate = p.beans / p.dollars;
+    }
+    // every amount from $1 to past the biggest pack: more money never gives fewer
+    let last = 0;
+    for (let cents = 100; cents <= (packs[packs.length - 1].dollars + 10) * 100; cents += 25) {
+        const b = Config.tipBeans(cents / 100, Config.tipCurrency);
+        assert.ok(b >= last, '$' + cents / 100 + ' gives at least as many as a little less');
+        last = b;
+    }
+    assert.equal(Config.tipBeans(5, Config.tipCurrency === 'EUR' ? 'USD' : 'EUR'), 0);
+    assert.equal(Config.tipBeans(0, Config.tipCurrency), 0);
+    // the most one tip can give stays under the safety cap at a few hundred dollars
+    assert.ok(Config.tipBeans(500, Config.tipCurrency) <= Config.maxBeansPerPayment);
 });
 
 test('link codes: the same code for an account everywhere, the same hash the rules check, found in any message', async () => {

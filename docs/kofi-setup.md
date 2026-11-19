@@ -65,12 +65,13 @@ From Ko-fi's help article *Does Ko-fi have an API or webhook?* (help.ko-fi.com, 
 The full field list (including the shape of `shop_items` entries: `direct_link_code`, `variation_name`, `quantity`, and the
 `Subscription` / `Shop Order` / `Commission` types) is on ko-fi.com/manage/webhooks, which needs your Ko-fi login, so I
 could not read it. The worker is written defensively (form or JSON body, `currency` or `currency_code`, a missing
-`quantity` counts as 1). **Please check two things there:**
+`quantity` counts as 1).
 
-1. That a Shop Order's `shop_items` entries carry `direct_link_code` (the code in the item's `ko-fi.com/s/...` link).
-2. Whether a shop checkout lets the buyer write a message. If it doesn't, shop buyers can't paste their link code, and every
-   shop order will arrive "unmatched" (players then claim it in the game, see "Fixing a payment"). In that case, prefer
-   selling Holy What Happeneds as **tips with the code in the message** (`donationRate` in the config), since a tip always has a message box.
+**Why tips and not Shop items** (checked on ko-fi.com/whathappenedclicker and Ko-fi's help, 2026-11-19): a Shop item's buy form
+has only the price, so a shop order can't carry the player's link code; every shop order would arrive unmatched and have to be
+claimed. The tip box takes any amount from $1, has a "Your message" box (280 characters) and a "Private message" tick. Ko-fi's
+free plan also charges 0% on one-time tips and 5% on Shop sales ("Does Ko-fi take a fee?"; PayPal or Stripe add about 3% + $0.30
+either way). So the packs are sold as tips: the amount picks the pack.
 
 ## Step by step
 
@@ -81,14 +82,22 @@ test-mode rule (`if request.time < timestamp.date(...)`), **any browser could gi
 rules say (Firestore allows a request if any rule allows it). Don't open buying until that catch-all is gone. Removing it
 also needs rules for the clan collections first: see `docs/trust-boundaries.md`, "Before you publish firestore-social.rules".
 
-### 1. Ko-fi: the Holy What Happeneds packs
+### 1. Ko-fi: the packs are tips
 
-1. On Ko-fi, make one Shop item per Holy What Happeneds pack (a digital item; no file needed). In its description, tell buyers to paste
-   their link code from the game (Get more tab) into the message. Set the price you want.
-2. Open each item and copy its code: the part after `ko-fi.com/s/` in its link.
+Nothing to list on Ko-fi. The packs are `tipPacks` in `core/premium-config.js`; the game's Get more tab shows each one with its
+tip amount, and the player tips that amount on your page with their link code in the message. Any amount from $1 works: an
+amount between packs is paid at the rate of the biggest pack it reaches.
 
-You decide the packs and the prices; none are set in the code. A common rule of thumb is about 100 Holy What Happeneds per US dollar,
-with a little extra on bigger packs. For scale: the cheapest look costs 100 Holy What Happeneds, most cost 200-350, the dearest 600, and
+The packs set now (2026-11-19, about 100 per US dollar with a bonus on bigger ones): Small $2 → 200, Medium $5 → 550, Large $10 →
+1,200, Huge $20 → 2,600. Change `dollars`, `beans` or `name` there (a test checks a bigger pack never has a worse rate).
+
+On Ko-fi, check two settings:
+- Your page's currency must be `tipCurrency` in the config (USD now). Tips in another currency give nothing unless you add a
+  rate for it in `donationRate`.
+- Settings > Payment: Ko-fi starts new creators in "Get all of Ko-fi" (Standard), which charges 5% on tips too. Turn it off if you
+  want tips at 0% (you lose Standard's extras, like supporter-only posts).
+
+For scale: For scale: the cheapest look costs 100 Holy What Happeneds, most cost 200-350, the dearest 600, and
 all 19 together cost 6,150 (titles, themes, click numbers and clicker auras on the game page; trails, a halo and wings in the
 Wilds). `node tools/simulate-beans.js` shows what players earn for free (a regular player about 30-40 a
 month, a dedicated one about 60).
@@ -108,13 +117,12 @@ permission, but none of that is legal advice; if the game grows, ask someone qua
 
 ### 2. The config: `core/premium-config.js`
 
-Fill in everything marked `OWNER`:
+Only `workerUrl` is left to fill in (it is marked `OWNER`):
 
-- `kofiPage`: your Ko-fi page, e.g. `https://ko-fi.com/yourname`.
-- `packs`: one row per item from step 1: `{ code: 'the item code', beans: 500, name: 'Bag of Holy What Happeneds', price: '$4.99' }`.
-  `beans` is per item (a quantity of 2 gives twice as many). `price` is only the label the game shows.
-- Optional `donationRate`: Holy What Happeneds per 1 unit of a currency for a tip that has a link code, e.g. `{ USD: 100, EUR: 100 }`.
-  Leave it empty and tips stay tips: no Holy What Happeneds, and nothing about them is stored.
+- `kofiPage`: your Ko-fi page (set: `https://ko-fi.com/whathappenedclicker`).
+- `tipCurrency`, `tipPacks`: the packs from step 1 (set).
+- `packs`: Ko-fi Shop items that sell Holy What Happeneds. Empty, and best left so (a shop order can't carry the link code).
+- Optional `donationRate`: a flat rate for tips in other currencies than `tipCurrency`, e.g. `{ EUR: 100, GBP: 120 }`.
 - Optional `subscriptionTiers`: Holy What Happeneds per membership payment, by the tier's exact name on Ko-fi.
 - `workerUrl`: fill in after step 4.
 
@@ -142,8 +150,8 @@ in the whole project. The dedicated one is safer.)
    ```bash
    npx wrangler login
    ```
-3. In `kofi-worker/wrangler.toml`, set `ALLOWED_ORIGINS` to the address your game runs on, exactly as the browser shows it
-   (e.g. `https://whathappenedclicker.com`; several are comma separated). Only those may send claim requests.
+3. `ALLOWED_ORIGINS` in `kofi-worker/wrangler.toml` is set to `https://whathappenedclicker.netlify.app`, the address the game
+   runs on. Only that site may send claim requests; add a custom domain there (comma separated) if the game moves to one.
 4. Set the secrets (each command asks for the value; nothing is written to a file):
    ```bash
    npx wrangler secret put KOFI_VERIFICATION_TOKEN

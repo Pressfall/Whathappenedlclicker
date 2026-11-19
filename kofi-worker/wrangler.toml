@@ -12,6 +12,6 @@ workers_dev = true
 
 [vars]
 FIREBASE_PROJECT_ID = "whleaderboard"
-# OWNER: the site(s) the game runs on, comma separated, exactly as the browser shows them (https://..., no trailing slash).
-# Only these may send "claim a payment" requests.
-ALLOWED_ORIGINS = "OWNER_SITE_ORIGIN"
+# The site(s) the game runs on, comma separated, exactly as the browser shows them (https://..., no trailing slash).
+# Only these may send "claim a payment" requests. Add a custom domain here if the game moves to one.
+ALLOWED_ORIGINS = "https://whathappenedclicker.netlify.app"

@@ -6,8 +6,9 @@
  * disagree between the two. After changing it: redeploy the site AND the worker (docs/kofi-setup.md, step 6).
  *
  * While anything needed is still a placeholder, buying is switched off by itself: the game's Get more tab says "not open
- * yet", and the worker credits nothing for a Ko-fi item that isn't in `packs` (and stores nothing about it: Ko-fi's own
- * dashboard still lists the payment, and /admin/resolve can credit it by hand, docs/kofi-setup.md "Fixing a payment").
+ * yet". The worker credits nothing for a payment the tables below don't price (a Shop item not in `packs`, a tip in another
+ * currency with no rate) and stores nothing about it: Ko-fi's own dashboard still lists the payment, and /admin/resolve can
+ * credit it by hand (docs/kofi-setup.md "Fixing a payment").
  */
 (function (root, factory) {
     if (typeof module === 'object' && module.exports) module.exports = factory();
@@ -19,26 +20,36 @@
         // The currency's name in every message. Change it here and in the help pages if you rename it.
         currency: { one: 'Holy What Happened', many: 'Holy What Happeneds', icon: '👼' },
 
-        // OWNER: your Ko-fi page, e.g. 'https://ko-fi.com/whathappened'.
-        kofiPage: 'https://ko-fi.com/OWNER_KOFI_NAME',
+        // Your Ko-fi page.
+        kofiPage: 'https://ko-fi.com/whathappenedclicker',
 
         // OWNER: the address of the deployed worker (docs/kofi-setup.md, step 4), e.g. 'https://wh-kofi.yourname.workers.dev'.
         // The game sends "claim a payment" requests here. No trailing slash.
         workerUrl: 'https://OWNER-WORKER.workers.dev',
 
-        // OWNER: the price-to-Holy What Happeneds table. One row per Ko-fi Shop item that sells Holy What Happeneds.
+        // THE PRICE TABLE: packs paid as Ko-fi tips. The player tips the pack's amount on your Ko-fi page (any amount from $1
+        // works there) with their link code in the tip's message, and gets that pack. An amount between packs is paid at the
+        // rate of the biggest pack it reaches (e.g. $7 at the $5 pack's rate: 770); under the smallest pack, at its rate.
+        //   dollars: the tip, in tipCurrency (your Ko-fi page's currency)   beans: what that tip gives   name: shown in the game
+        // Tips are used rather than Ko-fi Shop items because a Shop checkout has no message box, so a shop order can't carry
+        // the player's link code (checked on ko-fi.com, 2026-11-19).
+        tipCurrency: 'USD',
+        tipPacks: [
+            { name: 'Small', dollars: 2, beans: 200 },
+            { name: 'Medium', dollars: 5, beans: 550 },
+            { name: 'Large', dollars: 10, beans: 1200 },
+            { name: 'Huge', dollars: 20, beans: 2600 },
+        ],
+
+        // Ko-fi Shop items that sell Holy What Happeneds (not used: see above). One row per item:
         //   code:  the item's code, the part after ko-fi.com/s/ in its link (Ko-fi sends it as shop_items[].direct_link_code)
         //   beans: how many Holy What Happeneds ONE of that item gives (a quantity of 2 gives twice as many)
         //   name, price: what the game's Get more tab shows. The price is only a label: Ko-fi charges what the item costs there.
-        // A row whose code or beans is still a placeholder is ignored by the game and the worker alike.
-        packs: [
-            { code: 'OWNER_SHOP_ITEM_CODE_1', beans: 0, name: 'OWNER: pack name', price: 'OWNER: price' },
-            { code: 'OWNER_SHOP_ITEM_CODE_2', beans: 0, name: 'OWNER: pack name', price: 'OWNER: price' },
-            { code: 'OWNER_SHOP_ITEM_CODE_3', beans: 0, name: 'OWNER: pack name', price: 'OWNER: price' },
-        ],
+        // Shop orders arrive without a link code, so each one has to be claimed (docs/kofi-setup.md "Fixing a payment").
+        packs: [],
 
-        // OWNER (optional): Holy What Happeneds for a plain Ko-fi tip ("Donation") that has a link code in its message, per 1 unit of each
-        // currency, e.g. { USD: 100, EUR: 100, GBP: 120 }. Left empty, a tip stays a tip: it gives no Holy What Happeneds and nothing is stored.
+        // Optional: a flat rate for tips in OTHER currencies than tipCurrency, per 1 unit, e.g. { EUR: 100, GBP: 120 }.
+        // Left empty, a tip in another currency gives nothing and nothing is stored.
         donationRate: {},
 
         // OWNER (optional): Holy What Happeneds for each Ko-fi membership payment ("Subscription"), by the tier's exact name on Ko-fi,
@@ -65,14 +76,29 @@
         return activePacks(cfg).find((p) => p.code.toLowerCase() === want) || null;
     }
     const rates = (m) => Object.entries(m && typeof m === 'object' ? m : {}).filter(([k, v]) => k && Number.isFinite(v) && v > 0);
+    // the tip packs that are filled in, smallest first
+    function activeTipPacks(cfg) {
+        const c = cfg || API;
+        return (Array.isArray(c.tipPacks) ? c.tipPacks : []).filter((p) => p && Number.isFinite(p.dollars) && p.dollars > 0 && posInt(p.beans))
+            .slice().sort((a, b) => a.dollars - b.dollars);
+    }
+    // What a tip of `amount` (in `currency`) gives under the tip packs: the rate of the biggest pack it reaches. 0 when the
+    // currency isn't tipCurrency or there are no packs.
+    function tipBeans(amount, currency, cfg) {
+        const c = cfg || API, packs = activeTipPacks(c);
+        if (!packs.length || !(amount > 0) || String(currency || '').toUpperCase() !== String(c.tipCurrency || '').toUpperCase()) return 0;
+        let pack = packs[0];
+        for (const p of packs) if (amount + 1e-9 >= p.dollars) pack = p;
+        return Math.floor(amount * pack.beans / pack.dollars + 1e-9);
+    }
     // buying is open once the Ko-fi page and the worker are set and there is at least one way to get Holy What Happeneds for money
     function buyingOpen(cfg) {
         const c = cfg || API;
         return !isPlaceholder(c.kofiPage) && /^https:\/\/ko-fi\.com\/[A-Za-z0-9_]+\/?$/.test(c.kofiPage)
             && !isPlaceholder(c.workerUrl) && /^https:\/\//.test(c.workerUrl)
-            && (activePacks(c).length > 0 || rates(c.donationRate).length > 0 || rates(c.subscriptionTiers).length > 0);
+            && (activeTipPacks(c).length > 0 || activePacks(c).length > 0 || rates(c.donationRate).length > 0 || rates(c.subscriptionTiers).length > 0);
     }
     function shopItemUrl(code) { return 'https://ko-fi.com/s/' + encodeURIComponent(code); }
 
-    return Object.assign(API, { CONFIG, isPlaceholder, activePacks, packByCode, buyingOpen, shopItemUrl, rates });
+    return Object.assign(API, { CONFIG, isPlaceholder, activePacks, activeTipPacks, tipBeans, packByCode, buyingOpen, shopItemUrl, rates });
 }));

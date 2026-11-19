@@ -160,9 +160,11 @@ function kofiPost(p, url) {
     });
 }
 
-// a config with real packs filled in (the shipped one is all placeholders)
+// a config with shop packs and a flat tip rate (no tip packs), for the tests of those; the tip packs have their own test
+// against the real config further down
 const CFG = Object.assign({}, RealConfig, {
     packs: [{ code: 'beanpouch1', beans: 120, name: 'Pouch', price: '$1' }, { code: 'beansack9', beans: 1000, name: 'Sack', price: '$8' }],
+    tipPacks: [],
     donationRate: { USD: 100 },
     subscriptionTiers: { 'Bean Club': 300 },
     maxBeansPerPayment: 5000,
@@ -394,4 +396,36 @@ test('a JSON body on its own is accepted too (curl tests)', async () => {
         body: JSON.stringify(payload({ type: 'Shop Order', kofi_transaction_id: TX(21), message: code, shop_items: [{ direct_link_code: 'beanpouch1', quantity: 1 }] })) }));
     assert.equal(r.status, 200);
     assert.equal(g.plain('wallets/uid_lee').balance, 120);
+});
+
+test('tip packs (the shipped config): the tip\'s amount picks the pack; the same code works for every tip; a code only says who gets them', async () => {
+    const { g, call, linkFor } = await setup();
+    const real = RealConfig;
+    const packs = real.activeTipPacks();
+    assert.ok(packs.length >= 1, 'the config has tip packs');
+    const mia = await linkFor('uid_mia');
+    const tip = (n, amount, message, over) => call(kofiPost(payload(Object.assign({ type: 'Donation', kofi_transaction_id: TX(n), amount, currency: real.tipCurrency, message }, over))), real);
+    // each pack's exact amount gives that pack, every time, to the same code
+    let total = 0, n = 30;
+    for (const p of packs) {
+        const r = await tip(n++, p.dollars.toFixed(2), 'for the game ' + mia);
+        assert.deepEqual(await body(r), { ok: true, beans: p.beans, matched: true });
+        total += p.beans;
+    }
+    assert.equal(g.plain('wallets/uid_mia').balance, total);
+    // an amount between packs gets the rate of the biggest pack it reached
+    const small = packs[0], next = packs[1] || packs[0];
+    const between = next.dollars + 1;
+    const r = await tip(n++, between.toFixed(2), mia.toLowerCase());
+    assert.equal((await body(r)).beans, Math.floor(between * next.beans / next.dollars));
+    // another currency: nothing (no flat rate set), nothing stored
+    const eur = await tip(n++, '5.00', mia, { currency: 'EUR' });
+    assert.deepEqual(await body(eur), { ok: true, ignored: 'tip' });
+    // someone else typing Mia's code only buys Holy What Happeneds for Mia
+    const before = g.plain('wallets/uid_mia').balance;
+    await tip(n++, small.dollars.toFixed(2), mia, { from_name: 'A Stranger', email: 'stranger@example.com' });
+    assert.equal(g.plain('wallets/uid_mia').balance, before + small.beans);
+    // a tip with no code is kept for its payer to claim
+    const lost = await tip(n++, small.dollars.toFixed(2), 'great game!');
+    assert.deepEqual(await body(lost), { ok: true, beans: small.beans, matched: false });
 });

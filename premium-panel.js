@@ -168,16 +168,28 @@
             : '<p class="bn-sub">Getting your link code…</p>';
         const rates = C.rates(C.donationRate);
         const tips = rates.length ? `<p class="bn-sub">Or send a tip on <a href="${esc(C.kofiPage)}" target="_blank" rel="noopener">Ko-fi</a> with your code in the message: ${esc(rates.map(([cur, r]) => fmt(r) + ' ' + CUR.many + ' per 1 ' + cur).join(', '))}.</p>` : '';
+        // the packs, paid as tips: the amount picks the pack (any amount works, at the rate of the biggest pack it reaches)
+        const tipPacks = C.activeTipPacks ? C.activeTipPacks() : [];
+        const money = (d) => (C.tipCurrency === 'USD' ? '$' : '') + (Number.isInteger(d) ? d : d.toFixed(2)) + (C.tipCurrency === 'USD' ? '' : ' ' + C.tipCurrency);
+        const tipHtml = tipPacks.length ? `<div class="bn-grid">${tipPacks.map((p) => `<div class="bn-card"><span class="bn-sw bn-sw--title" aria-hidden="true">${CUR.icon}</span><div class="bn-card-main">
+                <div class="bn-name">${esc(p.name)}</div><div class="bn-desc">${bean(p.beans)} for a ${esc(money(p.dollars))} tip</div>
+                <div class="bn-act"><a class="btn btn-sm btn-gold" href="${esc(C.kofiPage)}" target="_blank" rel="noopener">Tip ${esc(money(p.dollars))} on Ko-fi ↗</a></div></div></div>`).join('')}</div>
+            <p class="bn-sub">Any amount from ${esc(money(1))} works: in between packs you get the rate of the biggest pack you reached.</p>` : '';
+        const step2 = tipPacks.length
+            ? `On Ko-fi, type the amount, paste your code in <b>Your message</b> (you can tick <b>Private message</b>), and pay`
+            : `Pick ${esc(CUR.many)} on Ko-fi and paste the code in the message box before you pay`;
         const hist = histList === null ? '<p class="bn-sub">Loading…</p>' : histList.length
             ? '<ul class="bn-log">' + histList.map((h) => `<li><span class="bn-plus">+${fmt(h.beans)}</span> ${esc(h.kind || 'Ko-fi')} <time>${h.at ? esc(new Date(h.at).toLocaleDateString()) : ''}</time></li>`).join('') + '</ul>'
             : '<p class="bn-sub">None yet.</p>';
         return `<div class="bn-note bn-note--parent">Under 18? Ask a parent or guardian before buying anything.</div>
             <h4>1. Copy your link code</h4>${codeHtml}
-            <h4>2. Pick ${esc(CUR.many)} on Ko-fi and paste the code in the message box before you pay</h4>
-            <div class="bn-grid">${packs.map((p) => `<div class="bn-card"><span class="bn-sw bn-sw--title" aria-hidden="true">${CUR.icon}</span><div class="bn-card-main">
+            <h4>2. ${step2}</h4>
+            ${tipHtml}
+            ${packs.length ? `<div class="bn-grid">${packs.map((p) => `<div class="bn-card"><span class="bn-sw bn-sw--title" aria-hidden="true">${CUR.icon}</span><div class="bn-card-main">
                 <div class="bn-name">${esc(p.name)}</div><div class="bn-desc">${bean(p.beans)} · ${esc(p.price)}</div>
-                <div class="bn-act"><a class="btn btn-sm btn-gold" href="${esc(C.shopItemUrl(p.code))}" target="_blank" rel="noopener">Open on Ko-fi ↗</a></div></div></div>`).join('')}</div>
+                <div class="bn-act"><a class="btn btn-sm btn-gold" href="${esc(C.shopItemUrl(p.code))}" target="_blank" rel="noopener">Open on Ko-fi ↗</a></div></div></div>`).join('')}</div>` : ''}
             ${tips}
+            <p class="bn-sub">Your code only says whose account the ${esc(CUR.many)} go to. It works for every purchase you make, and sharing it can't cost you anything: someone else using it would only be buying ${esc(CUR.many)} for you.</p>
             <p class="bn-sub">They arrive within a minute or two of paying. Bought ${esc(CUR.many)} are for this game only and can't be turned back into money.</p>
             <h4>Your Ko-fi purchases</h4>${hist}
             <details class="bn-claim"><summary>Paid without your code?</summary>

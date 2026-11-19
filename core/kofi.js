@@ -126,8 +126,13 @@
             }
             if (!beans) reason = 'unknown-items';
         } else if (n.type === 'Donation') {
-            const rate = Object.prototype.hasOwnProperty.call(C.donationRate || {}, n.currency) ? Number(C.donationRate[n.currency]) : 0;
-            if (rate > 0 && n.amount > 0) { beans = Math.floor(n.amount * rate + 1e-9); lines.push({ code: 'tip', qty: 1, beans }); }
+            // a tip in the page's currency is priced by the tip packs; another currency by the flat donationRate, if any
+            const packed = typeof C.tipBeans === 'function' ? C.tipBeans(n.amount, n.currency, C) : 0;
+            if (packed > 0) { beans = packed; lines.push({ code: 'tip', qty: 1, beans }); }
+            else {
+                const rate = Object.prototype.hasOwnProperty.call(C.donationRate || {}, n.currency) ? Number(C.donationRate[n.currency]) : 0;
+                if (rate > 0 && n.amount > 0) { beans = Math.floor(n.amount * rate + 1e-9); lines.push({ code: 'tip', qty: 1, beans }); }
+            }
             if (!beans) reason = 'tip';
         } else if (n.type === 'Subscription') {
             const tiers = C.subscriptionTiers || {};
