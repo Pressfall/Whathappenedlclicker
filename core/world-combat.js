@@ -229,6 +229,75 @@
     }
     function bowShaking(w, P) { return w.fullFor > P.shakeAfter; }
 
+    // ---- revolver: a click fires down the barrel; recoil, a cylinder of rounds, reloading (D.WEAPON_CLASSES.gun) ----
+    // The cylinder lives on the player, not on the weapon, so putting the revolver away and taking it out never refills it:
+    // { rounds, max, lastShot (s), reloadEnd (s: a whole-cylinder spin under way, else 0), nextRound (s: the next round in) }
+    function newCylinder(P) { return { rounds: P.rounds, max: P.rounds, lastShot: -99, reloadEnd: 0, nextRound: 0 }; }
+    // Can it fire now? (a round in it, and not mid-spin)
+    function gunReady(c) { return !!c && !c.reloadEnd && c.rounds > 0; }
+    // One step of reloading at game time now (s). mult: the reload time multiplier (the Gunslinger's). firing: the trigger is
+    // held (no topping up meanwhile). Empty: the whole cylinder spins in (P.reloadEmpty). Otherwise, P.reloadIdle after the
+    // last shot, one round every P.reloadRound. Returns 'spin' (a spin started), 'full', 'round' or null.
+    function gunReload(c, P, now, mult = 1, firing = false) {
+        if (c.reloadEnd) {
+            if (now < c.reloadEnd) return null;
+            c.rounds = c.max; c.reloadEnd = 0; c.nextRound = 0;
+            return 'full';
+        }
+        if (c.rounds <= 0) { c.reloadEnd = now + P.reloadEmpty * mult; return 'spin'; }
+        if (c.rounds >= c.max || firing || now - c.lastShot < P.reloadIdle * mult) { c.nextRound = 0; return null; }
+        if (!c.nextRound) c.nextRound = now + P.reloadRound * mult;
+        if (now < c.nextRound) return null;
+        c.rounds++;
+        c.nextRound = c.rounds < c.max ? now + P.reloadRound * mult : 0;
+        return 'round';
+    }
+    // Put n rounds back at once (Tumble, a Gunslinger's dash), or fill it (n = true: Quick Draw); ends a spin under way
+    function gunLoad(c, n) {
+        c.rounds = n === true ? c.max : Math.min(c.max, c.rounds + Math.max(0, Math.floor(n) || 0));
+        if (c.rounds > 0) c.reloadEnd = 0;
+        return c.rounds;
+    }
+    // Fire one round. opts: { fan (a fanned shot: the trigger held), settle (x P.settle), steadyBonus (added to the Steady
+    // multiplier), rng }. The barrel kicks (w.omega) one way or the other; the aim swings it back. Steady: not fanned, the
+    // barrel settled since the last shot and turning slowly. Returns { steady, fan, last (the cylinder's last round),
+    // angleOff (rad), mult (damage) } or null when it can't fire.
+    // (A single shot needs the hammer cocked again: P.cock s after the last one, or the click does nothing. Quick shots
+    // bloom: each adds 1 to c.heat, which cools by 1 every settle s; an unsteady shot strays up to bloom x heat rad.)
+    function gunFire(c, w, P, now, opts = {}) {
+        if (!gunReady(c)) return null;
+        if (!opts.fan && now - c.lastShot < (P.cock || 0)) return null;
+        const rng = opts.rng || Math.random;
+        const settle = P.settle * (opts.settle || 1);
+        c.heat = Math.max(0, (c.heat || 0) - Math.max(0, now - c.lastShot) / settle);
+        const settled = now - c.lastShot >= settle && Math.abs(w.omega) <= P.steadyOmega;
+        const steady = !opts.fan && settled;
+        const stray = (P.bloomBase || 0.02) + (P.bloom || 0) * Math.min(3, c.heat);
+        const angleOff = opts.fan ? (rng() * 2 - 1) * P.fanSpread : steady ? 0 : (rng() * 2 - 1) * stray;
+        c.heat = Math.min(4, c.heat + 1);
+        c.rounds--; c.lastShot = now; c.nextRound = 0;
+        w.omega = clamp(w.omega + (rng() < 0.5 ? -1 : 1) * P.recoil * (opts.fan ? 1.3 : 1), -P.wMax, P.wMax);
+        w.kick = 1; // drawn: the barrel jerks back, then eases forward
+        const mult = (opts.fan ? P.fanMult : 1) * (steady ? P.steadyMult + (opts.steadyBonus || 0) : 1);
+        return { steady, fan: !!opts.fan, last: c.rounds === 0, angleOff, mult };
+    }
+    // A bullet's damage share after it has flown d px: full up to falloffFrom, then down to falloffMin at falloffTo
+    function gunFalloff(d, P) {
+        if (d <= P.falloffFrom) return 1;
+        if (d >= P.falloffTo) return P.falloffMin;
+        return 1 - (1 - P.falloffMin) * (d - P.falloffFrom) / (P.falloffTo - P.falloffFrom);
+    }
+    // A bullet (x, y, vx, vy) that moved from (px, py) into something solid: send it back off the wall it crossed (across x,
+    // y or both, a corner) and put it back where it was. solidAt(x, y): is that point solid?
+    function bounceOff(b, px, py, solidAt) {
+        const byY = solidAt(px, b.y), byX = solidAt(b.x, py);
+        if (byY && !byX) b.vy = -b.vy;
+        else if (byX && !byY) b.vx = -b.vx;
+        else { b.vx = -b.vx; b.vy = -b.vy; }
+        b.x = px; b.y = py;
+        return b;
+    }
+
     // ---- assisted swings (setting for trackpads and motor accessibility): a click plays a scripted sweep ----
     function assistStart(w, aimAngle) {
         w.assistDir = -w.assistDir;
@@ -289,7 +358,7 @@
 
     return {
         TAU, wrap, clamp, newWeapon, track, sweepHit, contactSpeed, swingPower, hitDamage, mitigate, comboHit, staminaStep,
-        hasReach, spearStep, radialSpeed, thrustHit, staffCharge, chargeMult, waveHit, frostStack, manaStep, desperation, overBonus, overPenalty, spellCost, igniteDrain, igniteBlow, bowPull, bowStep, bowRelease, bowShaking, assistStart, assistTarget,
+        hasReach, spearStep, radialSpeed, thrustHit, staffCharge, chargeMult, waveHit, frostStack, manaStep, desperation, overBonus, overPenalty, spellCost, igniteDrain, igniteBlow, bowPull, bowStep, bowRelease, bowShaking, newCylinder, gunReady, gunReload, gunLoad, gunFire, gunFalloff, bounceOff, assistStart, assistTarget,
         segmentsCross, bladeSegment, canDamage, knockback, fromBehind, blockHit, momentumMult,
     };
 }));

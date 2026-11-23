@@ -181,7 +181,7 @@
         const safe = CS.isOn(localStorage), shown = CS.display(line.m, safe);
         WHW.toast('👥 ' + line.n + ': ' + shown, 'party');
         const r = net().remotes.get(line.u);
-        if (r) r.bubble = { m: line.m, e: false, until: E.time + O.CHAT.bubbleSec, party: true };
+        if (r) r.bubble = { m: line.m, e: false, until: E.time + O.bubbleTime(line.m), party: true };
     }
 
     // ---------------- each step ----------------

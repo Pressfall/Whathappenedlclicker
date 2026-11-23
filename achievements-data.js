@@ -116,6 +116,8 @@
         { key: 'x_clan_donate1k', cat: 'Clans', name: 'Team Player', desc: 'Put 1,000 Clan Points into clan buffs.', title: 'Patron', rarity: 'rare', badge: '🤝', stat: 'clanDonated', target: 1000 },
         { key: 'x_clan_lvl10', cat: 'Clans', name: 'Rising Power', desc: 'Be in a level 10 clan.', title: 'Banner Bearer', rarity: 'rare', badge: '🚩', stat: 'clanLevel', target: 10 },
         { key: 'x_clan_lvl20', cat: 'Clans', name: 'Legendary Clan', desc: 'Be in a max level (20) clan.', title: 'Overlord', rarity: 'legendary', badge: '⚔️', stat: 'clanLevel', target: 20 },
+        { key: 'x_clan_quests', cat: 'Clans', name: 'Quest Giver', desc: 'Bring your clan 300 XP by finishing daily and weekly challenges.', title: 'Quartermaster', rarity: 'uncommon', badge: '📋', stat: 'clanQuestXp', target: 300 },
+        { key: 'x_clan_hunt', cat: 'Clans', name: 'Monster Hunter', desc: 'Defeat 250 monsters for your clan during Wilds Hunts.', title: 'Huntmaster', rarity: 'rare', badge: '🌲', stat: 'clanHunted', target: 250 },
         // ---- lootboxes and items (items.js) ----
         { key: 'x_box_first', cat: 'Lootboxes', name: 'Finders Keepers', desc: 'Grab a lootbox before it vanishes.', title: 'Treasure Hunter', rarity: 'common', badge: '🎁', stat: 'boxesCollected', target: 1 },
         { key: 'x_box_merge', cat: 'Lootboxes', name: 'Three Become One', desc: 'Merge three lootboxes into a better one.', title: 'Alchemist', rarity: 'common', badge: '⚗️', stat: 'boxesMerged', target: 1 },
@@ -138,8 +140,12 @@
         { key: 'w_coast', cat: 'The Wilds', name: 'Beyond the Waystone', desc: 'Open Saltspray Coast, the first of the Far Reaches.', title: 'Far Wanderer', rarity: 'rare', badge: '🗿', stat: 'wildsZones', target: 6 },
         { key: 'w_sky', cat: 'The Wilds', name: 'Edge of the World', desc: 'Open every zone, all the way to the Skyreach Isles.', title: 'Skywalker', rarity: 'epic', badge: '☁️', stat: 'wildsZones', target: 9 },
         { key: 'w_ward1', cat: 'The Wilds', name: 'Seal Breaker', desc: 'Break a ward stone in the Far Reaches.', title: 'Seal Breaker', rarity: 'rare', badge: '🗝️', stat: 'wildsWards', target: 1 },
-        { key: 'w_wards_all', cat: 'The Wilds', name: 'Unsealed', desc: 'Break all 14 ward stones of the Far Reaches.', title: 'Wardbreaker', rarity: 'legendary', badge: '🔓', stat: 'wildsWards', target: 14 },
+        { key: 'w_wards_all', cat: 'The Wilds', name: 'Unsealed', desc: 'Break the 14 ward stones from Saltspray Coast to the Skyreach Isles.', title: 'Wardbreaker', rarity: 'legendary', badge: '🔓', stat: 'wildsWards', target: 14 },
         { key: 'w_boss8', cat: 'The Wilds', name: 'Eight Down', desc: 'Defeat all eight bosses, Vrill WH included.', title: 'Bane of the Reaches', rarity: 'legendary', badge: '🐉', stat: 'wildsBosses', target: 8 },
+        // the Neon Arcade, past Vrill (its own achievements, so the ones above keep their numbers)
+        { key: 'w_arcade', cat: 'The Wilds', name: 'Insert Coin', desc: 'Open the Neon Arcade, past the Skyreach Isles.', title: 'Arcade Rat', rarity: 'epic', badge: '🕹️', stat: 'wildsZones', target: 10 },
+        { key: 'w_coins', cat: 'The Wilds', name: 'Every Coin Slot', desc: 'Break all 18 ward stones, the coin slots of the Neon Arcade included.', title: 'Token Breaker', rarity: 'legendary', badge: '🪙', stat: 'wildsWards', target: 18 },
+        { key: 'w_boss9', cat: 'The Wilds', name: 'Game Over', desc: 'Defeat all nine bosses, the 8-Bit WH included.', title: 'High Score', rarity: 'mythic', badge: '👾', stat: 'wildsBosses', target: 9 },
         { key: 'w_starmetal', cat: 'The Wilds', name: 'Forged from the Sky', desc: 'Own a piece of Starmetal gear (tier 9).', title: 'Starsmith', rarity: 'legendary', badge: '🌠', stat: 'wildsTopTier', target: 9 },
         { key: 'w_gather500', cat: 'The Wilds', name: 'Resource Goblin', desc: 'Chop, mine or pick 500 resources.', title: 'Resource Goblin', rarity: 'uncommon', badge: '⛏️', stat: 'wildsGathered', target: 500 },
         { key: 'w_craft1', cat: 'The Wilds', name: 'Apprentice Smith', desc: 'Craft your first piece of gear.', title: 'Apprentice Smith', rarity: 'common', badge: '🔨', stat: 'wildsCrafted', target: 1 },
@@ -152,9 +158,9 @@
         { key: 'w_quest10', cat: 'The Wilds', name: 'Errand Runner', desc: 'Hand in 10 quests.', title: 'Errand Runner', rarity: 'uncommon', badge: '📜', stat: 'wildsQuests', target: 10 },
         { key: 'w_quest50', cat: 'The Wilds', name: 'Odd Job Legend', desc: 'Hand in 50 quests.', title: 'Odd Jobber', rarity: 'rare', badge: '📚', stat: 'wildsQuests', target: 50 },
         { key: 'w_class1', cat: 'The Wilds', name: 'Career Change', desc: 'Unlock a second class.', title: 'Class Act', rarity: 'uncommon', badge: '🎭', stat: 'wildsClasses', target: 1 },
-        { key: 'w_class5', cat: 'The Wilds', name: 'Jack of All Trades', desc: 'Unlock all six classes.', title: 'Jack of All Trades', rarity: 'epic', badge: '🃏', stat: 'wildsClasses', target: 5 },
+        { key: 'w_class5', cat: 'The Wilds', name: 'Jack of All Trades', desc: 'Unlock all seven classes.', title: 'Jack of All Trades', rarity: 'epic', badge: '🃏', stat: 'wildsClasses', target: 6 },
         { key: 'w_skills20', cat: 'The Wilds', name: 'Skill Tree Hugger', desc: 'Learn 20 skills.', title: 'Skilled', rarity: 'uncommon', badge: '🌳', stat: 'wildsSkills', target: 20 },
-        { key: 'w_skills_all', cat: 'The Wilds', name: 'Skill Issue? Not Anymore', desc: 'Learn every skill of every class.', title: 'Fully Skilled', rarity: 'legendary', badge: '🧠', stat: 'wildsSkills', target: 72 },
+        { key: 'w_skills_all', cat: 'The Wilds', name: 'Skill Issue? Not Anymore', desc: 'Learn every skill of every class.', title: 'Fully Skilled', rarity: 'legendary', badge: '🧠', stat: 'wildsSkills', target: 84 },
         { key: 'w_god1', cat: 'The Wilds', name: 'Say Your Prayers', desc: 'Raise a statue in the Hall of Gods.', title: 'Faithful', rarity: 'uncommon', badge: '🏛️', stat: 'wildsGodsRaised', target: 1 },
         { key: 'w_god6', cat: 'The Wilds', name: 'Full Pantheon', desc: 'Raise all six statues in the Hall of Gods.', title: 'Pantheon Keeper', rarity: 'rare', badge: '🕍', stat: 'wildsGodsRaised', target: 6 },
         { key: 'w_god10', cat: 'The Wilds', name: 'Devout', desc: 'Bring a god to level 10.', title: 'Devout', rarity: 'rare', badge: '🙏', stat: 'wildsGodTop', target: 10 },
@@ -174,7 +180,7 @@
         { key: 'w_vault_duo', cat: 'The Wilds', name: 'Just the Two of Us', desc: 'Beat the Drowned King with a party of exactly two.', title: 'Dynamic Duo', rarity: 'legendary', badge: '🫂', stat: 'wildsVaultDuo', target: 1 },
         { key: 'w_vault10', cat: 'The Wilds', name: 'Regular at the Bottom', desc: 'Beat the Drowned King 10 times.', title: 'Deep Regular', rarity: 'legendary', badge: '🌊', stat: 'wildsVaultKills', target: 10 },
         // the hidden dungeons, the Crucible and the market (core/world-dungeons.js, core/world-relics.js, core/world-market.js)
-        { key: 'w_dungeons_all', cat: 'The Wilds', name: 'Under Every Stone', desc: 'Beat the boss of every hidden dungeon, one under each zone.', title: 'Delver of the Deep Places', rarity: 'legendary', badge: '🕳️', stat: 'wildsDungeonBosses', target: 8 },
+        { key: 'w_dungeons_all', cat: 'The Wilds', name: 'Under Every Stone', desc: 'Beat the boss of every hidden dungeon, one under each zone.', title: 'Delver of the Deep Places', rarity: 'legendary', badge: '🕳️', stat: 'wildsDungeonBosses', target: 9 },
         { key: 'w_relic1', cat: 'The Wilds', name: 'Out of the Crucible', desc: 'Forge a relic at the Crucible.', title: 'Relic Smith', rarity: 'uncommon', badge: '⚗️', stat: 'wildsRelicBest', target: 1 },
         { key: 'w_relic_mythic', cat: 'The Wilds', name: 'Once in a Blue Moon', desc: 'Forge a Mythic relic or better.', title: 'Mythsmith', rarity: 'mythic', badge: '🌙', stat: 'wildsRelicBest', target: 6 },
         { key: 'w_trade1', cat: 'The Wilds', name: 'Fair Exchange', desc: 'Trade with another player.', title: 'Trader', rarity: 'uncommon', badge: '🤝', stat: 'wildsTrades', target: 1 },
@@ -240,6 +246,7 @@
             divineAssassin: Number(s.divineAssassinLevel) || 0, divineCollector: Number(s.divineCollectorLevel) || 0,
             divineMoneyMan: Number(s.divineMoneyManLevel) || 0, divineSpirit: Number(s.divineSpiritLevel) || 0,
             divineVillager: Number(s.divineSimpleVillagerLevel) || 0, divineBrileyism: Number(s.divineBrileyismLevel) || 0,
+            divineComboMan: Number(s.divineComboManLevel) || 0,
         };
         const cs = readJSON('whathappened_casino_stats') || {};
         const checkin = readJSON('whathappened_clan_checkin') || {};
@@ -274,6 +281,8 @@
             clanLevel: inClan ? num('whathappened_clan_level') : 0,
             clanStreakBest: Number(checkin.best) || 0,
             clanDonated: num('whathappened_clan_donated'),
+            // clan XP brought in from challenges (clan-game.js) and monsters sent to Wilds Hunts (clan-wilds.js)
+            clanQuestXp: num('whathappened_clan_quest_xp'), clanHunted: num('whathappened_clan_hunted'),
             inClan, clanRole,
             playHours: num('whathappened_playtime_seconds') / 3600,
             boxesCollected: Number(items.collected) || 0,
@@ -317,7 +326,7 @@
         // every kind of upgrade bought at least once, in any run (whathappened_upgrade_best keeps the best level of each)
         const best = readJSON('whathappened_upgrade_best') || {};
         if (!('upgradesEver' in (live || {}))) snap.upgradesEver = ups.filter((l, i) => Math.max(l, Number(best[i + 1]) || 0) >= 1).length;
-        snap.divineTotal = snap.divineArgon + snap.divineSomalian + snap.divineAssassin + snap.divineCollector + snap.divineMoneyMan + snap.divineSpirit + snap.divineVillager + snap.divineBrileyism;
+        snap.divineTotal = snap.divineArgon + snap.divineSomalian + snap.divineAssassin + snap.divineCollector + snap.divineMoneyMan + snap.divineSpirit + snap.divineVillager + snap.divineBrileyism + (snap.divineComboMan || 0);
         // every statue level in the Hall of Gods, the hidden one included
         snap.wildsGodLevels = Object.keys(wGods).reduce((a, g) => a + wc(wGods[g]), 0);
         // Renown (core/renown.js), the rank made of both games

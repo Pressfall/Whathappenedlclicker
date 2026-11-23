@@ -84,34 +84,42 @@ function addToCount(v) {
 }
 
 // ========== Clan stats sync (Firestore members + profile) ==========
-// Syncs main currency and golden currency to clan member doc and player profile.
+// Syncs main currency and golden currency to clan member doc and player profile. Called with each autosave (30 s): the
+// member doc is the clan page's "online" light, so it is only written while this tab is in view; the profile (read by the
+// clan page for titles and by older pages) at most every 5 minutes.
+let _clanProfileSyncAt = 0, _clanWildsCardAt = 0, _clanWildsCard = null;
+const CLAN_PROFILE_SYNC_MS = 5 * 60 * 1000;
 async function syncClanStats() {
     try {
-        console.debug('syncClanStats: called');
         const clanId = localStorage.getItem('player_clanId');
         const username = localStorage.getItem('player_username');
 
         // If the player isn't in a clan, do nothing (nor once the clan document says they left it: clan-game.js)
-        if (!clanId || !username || clanId === 'undefined') {
-            console.debug('syncClanStats: abort — missing clanId/username', { clanId, username });
-            return;
-        }
+        if (!clanId || !username || clanId === 'undefined' || clanId === 'null') return;
         if (window.WHClanGame && WHClanGame.member() === false) return;
+        if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+        const profileDue = Date.now() - _clanProfileSyncAt >= CLAN_PROFILE_SYNC_MS;
+        // the player's Wilds (class, arena rating, best wave, monsters) for the clan's member list, read with the profile
+        if (profileDue || !_clanWildsCardAt) {
+            _clanWildsCardAt = Date.now();
+            try { _clanWildsCard = window.WHClanEvents ? WHClanEvents.wildsCard(JSON.parse(localStorage.getItem('whathappened_world') || 'null')) : null; } catch (e) { _clanWildsCard = null; }
+        }
 
         // Ensure we are sending Numbers, not Decimal objects
         const ptsValue = (typeof count !== 'undefined') ? (isDecimalInstance(count) ? count.toNumber() : Number(count)) : 0;
         const gptsValue = (typeof goldenWhat !== 'undefined') ? (isDecimalInstance(goldenWhat) ? goldenWhat.toNumber() : Number(goldenWhat)) : 0;
         const cpValue = (typeof clanPoints !== 'undefined') ? Number(clanPoints) : 0;
         let cpsVal = 0, clickPowerVal = 0;
-        try { cpsVal = (typeof cps !== 'undefined' && isDecimalInstance(cps)) ? cps.toNumber() : Number(cps) || 0; } catch (e) {}
-        try { clickPowerVal = (typeof clickPower !== 'undefined' && isDecimalInstance(clickPower)) ? clickPower.toNumber() : Number(clickPower) || 0; } catch (e) {}
+        try { cpsVal = cpsWithoutCombo(); } catch (e) {} // the Divine Combo Man combo is left out: it only lasts while clicking
+        try { clickPowerVal = clickPowerWithoutCombo(); } catch (e) {}
         try { if (!cpsVal && localStorage.getItem('whathappened_current_cps')) cpsVal = Number(localStorage.getItem('whathappened_current_cps')) || 0; } catch (e) {}
         try { if (!clickPowerVal && localStorage.getItem('whathappened_current_clickpower')) clickPowerVal = Number(localStorage.getItem('whathappened_current_clickpower')) || 0; } catch (e) {}
 
-        console.log('syncClanStats: preparing update', { clanId, username, points: ptsValue, gpoints: gptsValue });
         if (typeof doc === 'function' && typeof db !== 'undefined') {
             const memberRef = doc(db, 'clans', clanId, 'members', username);
-            const payload = { points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastCps: cpsVal, lastClickPower: clickPowerVal, lastUpdate: Date.now() };
+            const payload = { points: ptsValue, gpoints: gptsValue, clanPoints: cpValue, lastCps: cpsVal, lastClickPower: clickPowerVal, lastUpdate: Date.now(),
+                prestiges: Number(typeof prestigeTimes !== 'undefined' ? prestigeTimes : 0) || 0 };
+            if (_clanWildsCard) payload.wilds = _clanWildsCard;
             // Prefer setDoc with merge so the member doc is created if missing
             if (typeof setDoc === 'function') {
                 await setDoc(memberRef, payload, { merge: true });
@@ -143,6 +151,8 @@ async function syncClanStats() {
         }
 
         // Also update the player's profile document so clan pages and queries reflect the latest totals
+        if (!profileDue) return;
+        _clanProfileSyncAt = Date.now();
         try {
             const profilePayload = {
                 username: username,
@@ -163,15 +173,11 @@ async function syncClanStats() {
             } else if (typeof firebase !== 'undefined' && firebase.firestore) {
                 const fs = firebase.firestore();
                 await fs.collection('profiles').doc(username).set(profilePayload, { merge: true });
-            } else {
-                console.debug('syncClanStats: no Firestore API available to write profile');
             }
-            console.log('syncClanStats: profile updated');
         } catch (e) {
+            _clanProfileSyncAt = 0; // try again next time
             console.warn('syncClanStats: profile update failed', e);
         }
-        
-        console.log("Clan stats synced to cloud.");
     } catch (e) {
         console.warn("Clan sync failed:", e);
     }
@@ -380,13 +386,14 @@ function liveAchievementData(specials) {
     const upgrades = [0];
     for (let i = 1; i <= UPGRADE_COUNT; i++) upgrades.push(numericLevel(getUpgradeLevel(i)));
     const live = {
-        cps: Number(cps) || 0, clickPower: Number(clickPower) || 0,
+        cps: cpsWithoutCombo(), clickPower: clickPowerWithoutCombo(),
         prestiges: Number(prestigeTimes) || 0, goldenEver: Math.max(Number(totalGoldenEver) || 0, Number(goldenWhat) || 0), gems: Number(diamonds) || 0,
         upgrades,
         divineArgon: Number(divineArgonLevel) || 0, divineSomalian: Number(divineSomalianLevel) || 0,
         divineAssassin: Number(divineAssassinLevel) || 0, divineCollector: Number(divineCollectorLevel) || 0,
         divineMoneyMan: Number(divineMoneyManLevel) || 0, divineSpirit: Number(divineSpiritLevel) || 0,
         divineVillager: Number(divineSimpleVillagerLevel) || 0, divineBrileyism: Number(divineBrileyismLevel) || 0,
+        divineComboMan: Number(divineComboManLevel) || 0,
     };
     if (specials && window.SPECIAL_UPGRADES) {
         live.specialsOwned = window.SPECIAL_UPGRADES.filter(sp => { try { return !!(new Function('return ' + sp.owned))(); } catch (e) { return false; } }).length;
@@ -545,6 +552,46 @@ function populateTitleSelect() {
 // populate on load and when storage changes
 try { document.addEventListener('DOMContentLoaded', populateTitleSelect); } catch (e) {}
 try { window.addEventListener('storage', populateTitleSelect); } catch (e) {}
+
+// The colour your name shows in chat (core/name-colors.js; Settings > Profile > Name color). index.html sends it with each
+// message and shows everyone's.
+function renderNameColorPicker() {
+    try {
+        const NC = window.WHNameColors, box = document.getElementById('nameColorPicker');
+        if (!NC || !box) return;
+        const cur = NC.get(localStorage);
+        if (!box.childElementCount) {
+            for (const c of NC.COLORS) {
+                const b = document.createElement('button');
+                b.type = 'button';
+                b.className = 'name-color-swatch';
+                b.dataset.nameColor = c.id;
+                b.title = c.name;
+                b.setAttribute('aria-label', c.name);
+                b.style.setProperty('--c', c.hex);
+                b.addEventListener('click', () => setNameColor(c.id));
+                box.appendChild(b);
+            }
+        }
+        for (const b of box.children) b.setAttribute('aria-pressed', String(b.dataset.nameColor === cur));
+        const c = NC.COLORS.find((x) => x.id === cur);
+        const label = document.getElementById('nameColorValue');
+        if (label) label.textContent = c ? c.name : '';
+        const preview = document.getElementById('nameColorPreview');
+        if (preview) {
+            const who = document.createElement('b');
+            who.textContent = (localStorage.getItem('player_username') || '').trim() || 'You';
+            who.style.color = NC.hexOf(cur);
+            preview.replaceChildren(who, ': hello everyone!');
+        }
+    } catch (e) {}
+}
+function setNameColor(id) {
+    try { window.WHNameColors.set(localStorage, id); } catch (e) {}
+    renderNameColorPicker();
+}
+try { document.addEventListener('DOMContentLoaded', renderNameColorPicker); } catch (e) {}
+try { window.addEventListener('storage', renderNameColorPicker); } catch (e) {}
 
 function refreshEquippedTitleDisplay(){
     try {
@@ -957,7 +1004,9 @@ const UPGRADE_COUNT = UPGRADE_NAMES.length - 1;
 // Later upgrades take longer to pay for themselves, so each new one is a goal rather than an instant unlock.
 const UPGRADE_CPS = [0, 1, 1, 5, 20, 100, 500, 5000, 20000, 100000, 500000, 1500000, 5000000,
     20000000, 50000000, 500000000, 2000000000, 10000000000, 150000000000, 2000000000000, 50000000000000, 1e15, 5e16, 5e17, 1e18,
-    1e19, 1e20, 1e21, 1e22, 1e23, 1e24];
+    1e19, 1e20, 5e21, 1e22, 1e23, 1e24];
+// (Evil Somalian Pirate, 27, was buffed from 1e21 to 5e21 per level on 2026-11-21: still under O'algo's 1e22, and his pay-back
+// time drops from 3e10 to 6e9 seconds of his own income, between Hypergamy's and O'algo's)
 // Costs from CR lurker (12) on were tuned with a simulated player so each new upgrade takes a bit longer to reach than the last
 // (about 5 minutes apart at CR lurker, 10-13 minutes apart by Easton Bundy) instead of the whole late game unlocking in two minutes.
 // Evil Somalian Pirate (27) and O'algo (28) are meant for after prestiges: out of reach in a first run, Evil Pirate after about
@@ -1707,6 +1756,8 @@ let shopWHhackerPurchased = false;
 let shopWHchadPurchased = false;
 let shopWHbreadPurchased = false;
 let shopWHlightningPurchased = false;
+// 8-Bit WH skin (made by tools/make-8bit-skin.js)
+let shopWH8bitPurchased = false;
 // Mobile Man skin (new)
 let shopMobileManPurchased = false;
 // Shop: collection background purchase state (collectionbg.png)
@@ -1741,6 +1792,7 @@ const SHOP_SKINS = [
     { id: 'WHchad', title: 'WH Chad', path: 'mainimage/WHchad.png', cost: 50, color: '#f0e68c', owned: () => shopWHchadPurchased, grant: () => { shopWHchadPurchased = true; } },
     { id: 'WHbread', title: 'WH Bread', path: 'mainimage/WHbread.png', cost: 50, color: '#deb887', owned: () => shopWHbreadPurchased, grant: () => { shopWHbreadPurchased = true; } },
     { id: 'WHlightning', title: 'WH Lightning', path: 'mainimage/WHlightning.png', cost: 50, color: '#2a2a4a', owned: () => shopWHlightningPurchased, grant: () => { shopWHlightningPurchased = true; } },
+    { id: 'WH8bit', title: '8-Bit WH', path: 'mainimage/wh8bit.png', cost: 75, color: '#f8b800', owned: () => shopWH8bitPurchased, grant: () => { shopWH8bitPurchased = true; } },
     { id: 'CasinoDealer', title: 'Casino Dealer', path: 'mainimage/casinoDeal.png', cost: null, unlockText: 'Win 10 blackjack hands', color: '#8b0000', owned: () => shopCasinoDealerPurchased, grant: () => { shopCasinoDealerPurchased = true; } }
 ];
 function findShopSkin(path) {
@@ -1838,6 +1890,16 @@ let divineBrileyismLevel = 0;
 let divineBrileyismCost = 2;
 const DIVINE_BRILEYISM_PER_LEVEL = 0.05;
 
+// Divine Combo Man: each click on the image adds 1 to a combo; every combo point raises CPS and click power by 0.01% per
+// level. 30 seconds without a click and the combo is gone.
+let divineComboManLevel = 0;
+let divineComboManCost = 1;
+const DIVINE_COMBO_PER_LEVEL = 0.0001; // +0.01% per level, per combo point
+const COMBO_TIMEOUT_MS = 30000;
+let comboCount = 0;          // the combo now (0 when there is none)
+let comboLastClickAt = 0;    // when it last grew (ms)
+let _comboMultApplied = 1;   // the combo multiplier updateDisplays last put into cps and clickPower
+
 // Golden cost of the next level of each Divine upgrade, from its current level.
 //  Argonian / Somalian: x3 per level (each level roughly doubles CPS / multiplies click power by 5)
 //  Assassin: level n costs n (+5% crit chance per level, max 19). It used to double, so the last levels cost 260K+.
@@ -1845,6 +1907,7 @@ const DIVINE_BRILEYISM_PER_LEVEL = 0.05;
 //  Money Man: 1, 2, 3, 5, 9, 17... (each level is a x10 bigger head start)
 //  Spirit: Fibonacci 1, 2, 3, 5, 8... (each level doubles crit damage)
 //  Brileyism: 2, 4, 6, 9, 14, 21... (x1.6 per level; it boosts everything else by a flat 5% per level)
+//  Combo Man: 1, 2, 3, 5, 7, 11... (x1.6 per level; its bonus adds up per level)
 function divineCostFor(kind, level) { return calc.divineCostFor(kind, level); }
 
 // ---------- Divine effects ----------
@@ -1866,6 +1929,18 @@ function getDivineCritMult(level) { const L = lvlOr(level, divineSpiritLevel); r
 function getDivineCollectorBonus(level) { return DIVINE_COLLECTOR_PER_LEVEL * lvlOr(level, divineCollectorLevel) * getBrileyismBoost(); }
 // Divine Money Man: start each run with 100K, x10 per level
 function getDivineMoneyManStart(level) { const L = lvlOr(level, divineMoneyManLevel); return L > 0 ? DIVINE_MONEYMAN_BASE * Math.pow(10, L - 1) * getBrileyismBoost() : 0; }
+// Divine Combo Man: the combo still running at `now` (0 once 30 s have passed since the last click)
+function comboNow(now) {
+    const t = now === undefined ? Date.now() : now;
+    return comboCount > 0 && t - comboLastClickAt < COMBO_TIMEOUT_MS ? comboCount : 0;
+}
+// +0.01% CPS and click power per level per combo point, as a fraction (0.25 = +25%)
+function getComboBonus(level, combo) {
+    const L = lvlOr(level, divineComboManLevel);
+    const n = combo === undefined ? comboNow() : Math.max(0, Number(combo) || 0);
+    return L > 0 && n > 0 ? DIVINE_COMBO_PER_LEVEL * L * n * getBrileyismBoost() : 0;
+}
+function getComboMult(level, combo) { return 1 + getComboBonus(level, combo); }
 // Recompute every next-cost from the levels (fixes saves made under the old cost curves)
 function syncDivineCostsFromLevels() {
     divineArgonCost = divineCostFor('argon', divineArgonLevel);
@@ -1876,6 +1951,7 @@ function syncDivineCostsFromLevels() {
     divineMoneyManCost = divineCostFor('moneyMan', divineMoneyManLevel);
     divineSpiritCost = divineCostFor('spirit', divineSpiritLevel);
     divineBrileyismCost = divineCostFor('brileyism', divineBrileyismLevel);
+    divineComboManCost = divineCostFor('comboMan', divineComboManLevel);
 }
 // Divine Simple Villager: upgrade prices divided by (1 + 25% per level)
 function getSimpleVillagerMultiplier(level) { return 1 / (1 + 0.25 * lvlOr(level, divineSimpleVillagerLevel) * getBrileyismBoost()); }
@@ -1972,6 +2048,19 @@ function getFollowerBonuses() {
 const NO_ITEM_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, boxRate: 0, offline: 0, cpsMult: 1, clickMult: 1 };
 function getItemBonuses() {
     try { return (window.WHI && window.WHI.bonuses()) || NO_ITEM_BONUS; } catch (e) { return NO_ITEM_BONUS; }
+}
+// ---------- The monthly 2x click power / 2x CPS bought with Holy What Happeneds (premium.js boosts(), core/premium.js buffMults) ----------
+// cps / click / offline: multipliers; crit: percentage points; offlineUntil: when the offline buff ends (ms, 0 for none)
+const NO_HOLY_BOOST = { cps: 1, click: 1, offline: 1, crit: 0, offlineUntil: 0, offlineBuffMult: 1 };
+function getHolyBoosts() {
+    try { const b = window.WHBeans && window.WHBeans.boosts(); return b ? { cps: Number(b.cps) || 1, click: Number(b.click) || 1, offline: Number(b.offline) || 1, crit: Number(b.crit) || 0, offlineUntil: (b.until && Number(b.until.offline)) || 0, offlineBuffMult: Number(b.offlineBuffMult) || 1 } : NO_HOLY_BOOST; } catch (e) { return NO_HOLY_BOOST; }
+}
+// The offline buff for a time away of `seconds` ending now: its multiplier for the part of that time it was running
+function holyOfflineMult(seconds) {
+    const hb = getHolyBoosts(), away = Math.max(0, Number(seconds) || 0) * 1000;
+    if (!(hb.offlineBuffMult > 1) || !hb.offlineUntil || !away) return 1;
+    const covered = Math.max(0, Math.min(away, hb.offlineUntil - (Date.now() - away)));
+    return 1 + (hb.offlineBuffMult - 1) * covered / away;
 }
 // ---------- Gear for the game (gear-panel.js, forged in the Wilds' Crucible): worn pieces' boosts, their own multiplier ----------
 const NO_GEAR_BONUS = { cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, boxRate: 0, offline: 0 };
@@ -2401,8 +2490,8 @@ function updateDisplays() {
     } catch (e) {}
     // Items: equipped charms and running consumable boosts
     try {
-        const ib = getItemBonuses();
-        const iCps = (1 + (ib.cps || 0) / 100) * (ib.cpsMult || 1), iClick = (1 + (ib.click || 0) / 100) * (ib.clickMult || 1);
+        const ib = getItemBonuses(), hb = getHolyBoosts();
+        const iCps = (1 + (ib.cps || 0) / 100) * (ib.cpsMult || 1) * hb.cps, iClick = (1 + (ib.click || 0) / 100) * (ib.clickMult || 1) * hb.click;
         if (hasDecimal) {
             cps = cps.times(D(iCps));
             clickPower = clickPower.times(D(iClick));
@@ -2442,6 +2531,22 @@ function updateDisplays() {
             clickPower = clickPower * rClick;
         }
     } catch (e) {}
+    // Divine Combo Man: the click combo raises CPS and click power while it lasts. Applied last and remembered, so offline
+    // gains, timelapses and the saved stats can leave it out (cpsWithoutCombo).
+    try {
+        const m = getComboMult();
+        _comboMultApplied = m > 0 && Number.isFinite(m) ? m : 1;
+        if (_comboMultApplied !== 1) {
+            if (hasDecimal) {
+                cps = (isDecimalInstance(cps) ? cps : D(cps)).times(D(_comboMultApplied));
+                clickPower = (isDecimalInstance(clickPower) ? clickPower : D(clickPower)).times(D(_comboMultApplied));
+            } else {
+                cps = cps * _comboMultApplied;
+                clickPower = clickPower * _comboMultApplied;
+            }
+        }
+    } catch (e) { _comboMultApplied = 1; }
+    try { renderCombo(); } catch (e) {}
     // who of the crew is in Wildgate (cheap: only rewrites the tags when something changed; best levels at most every 2 s)
     try {
         if (Date.now() - (window._lastCrewCheck || 0) > 2000) { window._lastCrewCheck = Date.now(); noteUpgradeBest(); renderCrewTags(); renderGuildLooks(); }
@@ -2451,8 +2556,9 @@ function updateDisplays() {
     // (written at most once a second: updateDisplays runs many times a second and localStorage writes are slow)
     if (Date.now() - (window._lastRatePersist || 0) > 1000) {
         window._lastRatePersist = Date.now();
-        try { localStorage.setItem('whathappened_current_cps', String(isDecimalInstance(cps) ? cps.toNumber() : Number(cps) || 0)); } catch (e) {}
-        try { localStorage.setItem('whathappened_current_clickpower', String(isDecimalInstance(clickPower) ? clickPower.toNumber() : Number(clickPower) || 0)); } catch (e) {}
+        // without the combo: other pages, achievements and clan challenges read these long after it has run out
+        try { localStorage.setItem('whathappened_current_cps', String(cpsWithoutCombo())); } catch (e) {}
+        try { localStorage.setItem('whathappened_current_clickpower', String(clickPowerWithoutCombo())); } catch (e) {}
     }
     try { checkDataAchievements(); } catch (e) {}
     // ------------------ Stats panel fields ------------------
@@ -2669,6 +2775,19 @@ function updateDisplays() {
             if (brBtn.disabled) { brBtn.setAttribute('disabled', 'true'); brBtn.style.opacity = '0.6'; }
             else { brBtn.removeAttribute('disabled'); brBtn.style.opacity = ''; brBtn.tabIndex = 0; }
             brBtn.style.pointerEvents = 'auto';
+        }
+    } catch (e) {}
+    // update Divine Combo Man button label and cost display if present
+    try {
+        const cmBtn = document.getElementById('divineComboManBtn');
+        if (cmBtn) {
+            const lvl = numericLevel(divineComboManLevel);
+            const per = (L) => formatComboPct(getComboBonus(L, 1) * 100);
+            setHtmlIfChanged(cmBtn.querySelector('.upgrade-label'), divineCardHtml('Divine Combo Man', lvl, `Per combo click: +${per(lvl)}% → +${per(lvl + 1)}% CPS & click power`, divineComboManCost || 1));
+            cmBtn.disabled = !goldenCanAfford(divineComboManCost);
+            if (cmBtn.disabled) { cmBtn.setAttribute('disabled', 'true'); cmBtn.style.opacity = '0.6'; }
+            else { cmBtn.removeAttribute('disabled'); cmBtn.style.opacity = ''; cmBtn.tabIndex = 0; }
+            cmBtn.style.pointerEvents = 'auto';
         }
     } catch (e) {}
     document.getElementById('cps').innerText = formatNumber(cps);
@@ -2921,11 +3040,92 @@ setInterval(_flushClickCounters, 2000);
 try { window.addEventListener('beforeunload', _flushClickCounters); } catch (e) {}
 try { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') _flushClickCounters(); }); } catch (e) {}
 
+// ========== Divine Combo Man: the click combo ==========
+// Only your own clicks on the image build it (not the Auto Clicker). It lives on this device only, in COMBO_KEY, so a
+// reload within 30 s of the last click (an update, a cloud sync) keeps it; it is no part of the save or the account.
+const COMBO_KEY = 'whathappened_combo'; // { n, at }
+let _comboDirty = false;
+try {
+    const v = JSON.parse(localStorage.getItem(COMBO_KEY) || 'null');
+    const n = v && Math.floor(Number(v.n)), at = v && Number(v.at), now = Date.now();
+    if (n > 0 && Number.isFinite(n) && at <= now && now - at < COMBO_TIMEOUT_MS) { comboCount = n; comboLastClickAt = at; }
+} catch (e) {}
+function saveComboState() {
+    _comboDirty = false;
+    try { if (comboNow() > 0) localStorage.setItem(COMBO_KEY, JSON.stringify({ n: comboCount, at: comboLastClickAt })); else localStorage.removeItem(COMBO_KEY); } catch (e) {}
+}
+setInterval(() => { if (_comboDirty) saveComboState(); }, 2000);
+try { window.addEventListener('beforeunload', saveComboState); } catch (e) {}
+try { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveComboState(); }); } catch (e) {}
+// One of your clicks: the combo goes up by 1 (starting again from 1 if it had run out)
+function noteComboClick(now) {
+    if (numericLevel(divineComboManLevel) <= 0) return;
+    const t = now === undefined ? Date.now() : now;
+    comboCount = comboNow(t) + 1;
+    comboLastClickAt = t;
+    _comboDirty = true;
+    renderCombo();
+}
+// 30 s without a click: the combo is gone, and CPS and click power drop back at once
+function comboTick() {
+    if (comboCount > 0 && !comboNow()) {
+        comboCount = 0; comboLastClickAt = 0;
+        saveComboState();
+        try { updateDisplays(); } catch (e) {}
+    }
+    renderCombo();
+}
+setInterval(comboTick, 250);
+// What the game makes without the combo's share: for offline-style income (timelapses) and the stats other pages read
+function cpsWithoutCombo() {
+    const c = isDecimalInstance(cps) ? cps.toNumber() : Number(cps) || 0;
+    return _comboMultApplied > 1 ? c / _comboMultApplied : c;
+}
+function clickPowerWithoutCombo() {
+    const c = isDecimalInstance(clickPower) ? clickPower.toNumber() : Number(clickPower) || 0;
+    return _comboMultApplied > 1 ? c / _comboMultApplied : c;
+}
+// Seconds of CPS to pay for the time from t0 to now. cps carries the combo, which only counts until it ran out: a
+// background tab's ticks can be a minute apart, a sleeping computer's hours.
+function cpsSecondsSince(t0, now) {
+    const sec = Math.max(0, now - t0) / 1000;
+    const M = _comboMultApplied;
+    if (!(M > 1)) return sec;
+    const comboSec = Math.min(sec, Math.max(0, Math.min(now, comboLastClickAt + COMBO_TIMEOUT_MS) - t0) / 1000);
+    return (sec + (M - 1) * comboSec) / M;
+}
+// "+0.05%", "+12.3%", "+1,850%"
+function formatComboPct(p) { return p < 10 ? p.toFixed(2) : p < 100 ? p.toFixed(1) : Math.round(p).toLocaleString('en-US'); }
+// The combo meter under the image: shown while a combo runs
+let _comboEls = null, _comboShown = '';
+function renderCombo() {
+    if (!_comboEls) {
+        const box = document.getElementById('comboMeter');
+        if (!box) return;
+        _comboEls = { box, count: document.getElementById('comboCount'), bonus: document.getElementById('comboBonus'), bar: document.getElementById('comboTimerBar'), secs: document.getElementById('comboSecs') };
+    }
+    const E = _comboEls, n = comboNow();
+    const on = n > 0 && numericLevel(divineComboManLevel) > 0;
+    if (E.box.hidden !== !on) E.box.hidden = !on;
+    if (!on) return;
+    const left = Math.max(0, COMBO_TIMEOUT_MS - (Date.now() - comboLastClickAt));
+    const key = n + '|' + getComboBonus();
+    if (key !== _comboShown) {
+        _comboShown = key;
+        if (E.count) E.count.textContent = n.toLocaleString('en-US');
+        if (E.bonus) E.bonus.textContent = '+' + formatComboPct(getComboBonus() * 100) + '% CPS & click power';
+    }
+    if (E.bar) E.bar.style.width = (left / COMBO_TIMEOUT_MS * 100).toFixed(1) + '%';
+    if (E.secs) { const s = Math.ceil(left / 1000) + 's'; if (E.secs.textContent !== s) E.secs.textContent = s; }
+}
+
 // opts.auto: a click from the Auto Clicker charm. It earns like any click (crits too), but finds no gems, counts toward no
 // click stats, achievements or clan events, and skips the heavier effects.
 function increment(opts) {
     const auto = !!(opts && opts.auto);
     let critOccurred = false;
+    // Divine Combo Man: your clicks build the combo (the Auto Clicker's don't)
+    if (!auto) try { noteComboClick(); } catch (e) {}
     // compute base click reward (clickPower already includes Somalian and clickMultiplier effects)
     let reward;
     if (hasDecimal) {
@@ -2945,6 +3145,7 @@ function increment(opts) {
         // Followers and items (charms, Loaded Dice): extra crit chance (percentage points)
         chance += (getFollowerBonuses().critChance || 0) / 100;
         chance += (getItemBonuses().critChance || 0) / 100;
+        chance += (getHolyBoosts().crit || 0) / 100; // the monthly Lucky Streak (Holy What Happeneds)
         chance += (getGodBonuses().critChance || 0) / 100; // the Hall of Gods (Fortuna)
         chance += (getGearBonuses().critChance || 0) / 100; // gear for the game (Keen)
         chance = Math.min(1, chance);
@@ -2992,7 +3193,7 @@ function increment(opts) {
                 } catch (e) {}
             }
     } catch (e) {}
-    try { spawnClickFloat(reward, critOccurred); } catch (e) {}
+    try { spawnClickFloat(reward, critOccurred, auto); } catch (e) {}
     // reset consecutive crit counter if this click was not a crit
     if (!auto) try {
         if (!critOccurred) {
@@ -4805,6 +5006,17 @@ function buyDivineBrileyism() {
     saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
 }
 
+function buyDivineComboMan() {
+    if (!goldenCanAfford(divineComboManCost)) {
+        notify('Not enough Golden What Happeneds — need ' + divineComboManCost + '.');
+        return;
+    }
+    goldenWhat -= divineComboManCost;
+    divineComboManLevel = numericLevel(divineComboManLevel) + 1;
+    divineComboManCost = divineCostFor('comboMan', divineComboManLevel);
+    saveGame(); try { playSfx('purchase.wav'); } catch (e) {} updateDisplays();
+}
+
 function buySpecial1() {
     if (special1Purchased) return;
     if (upgrade1Level < 10) { notify('Unlocks at OP mouse level 10.'); return; }
@@ -6216,11 +6428,13 @@ function initApp() {
                 const now = Date.now();
                 const elapsedMs = Math.min(MAX_TICK_GAP_MS, Math.max(0, now - _lastCpsTickAt));
                 _lastCpsTickAt = now;
-                const frac = elapsedMs / 1000; // so total per second = cps
+                // so total per second = cps (the Divine Combo Man combo's share only until the combo ran out)
+                const frac = cpsSecondsSince(now - elapsedMs, now);
                 // a long gap means the computer slept with the tab open: report it like offline gains
                 if (elapsedMs > 5 * 60000 && Number(cps) > 0) {
-                    try { showWelcomeBackModal(Number(cps) * frac, Math.floor(frac)); } catch (e) {}
+                    try { showWelcomeBackModal(Number(cps) * frac, Math.floor(elapsedMs / 1000)); } catch (e) {}
                 }
+                if (comboCount > 0 && !comboNow(now)) { try { comboTick(); } catch (e) {} } // and drop it from cps now
                 if (hasBig) {
                     const cpsVal = D(cps);
                     const isPositive = (typeof cpsVal === 'number' && cpsVal > 0) || (cpsVal && typeof cpsVal.gt === 'function' ? cpsVal.gt(0) : Number(cpsVal) > 0);
@@ -6352,13 +6566,11 @@ function initApp() {
             });
         }
     } catch (e) {}
-    // autosave every 5 seconds
-    console.debug('setting autosave interval (saves every 30s)');
+    // autosave every 30 seconds, and the clan's copy of this player's stats with it
     setInterval(() => {
-    saveGame();
-    syncClanStats(); // Add this line
-    console.log ('Game auto-saved');
-}, 30000); // Syncs every 30 seconds
+        saveGame();
+        syncClanStats();
+    }, 30000);
     // save on unload
     window.addEventListener('beforeunload', saveGame);
     // mobile browsers often kill a backgrounded tab without firing beforeunload: save whenever the tab is hidden
@@ -6462,8 +6674,9 @@ if (document.readyState === 'loading') {
     initAppOnce();
 }
 
-// "+N" that floats up from where you clicked (skipped on Low performance; at most 14 on screen)
-function spawnClickFloat(amount, crit) {
+// "+N" that floats up from where you clicked (skipped on Low performance; at most 14 on screen). With a click-number look
+// from the Holy What Happeneds shop worn, your own clicks (auto: the Auto Clicker's) also get its burst there (premium.js clickFx).
+function spawnClickFloat(amount, crit, auto) {
     if (window._perfCritIndicator === false) return;
     let layer = document.getElementById('clickFloatLayer');
     if (!layer) { layer = document.createElement('div'); layer.id = 'clickFloatLayer'; layer.setAttribute('aria-hidden', 'true'); document.body.appendChild(layer); }
@@ -6476,6 +6689,7 @@ function spawnClickFloat(amount, crit) {
         const r = btn ? btn.getBoundingClientRect() : { left: innerWidth / 2, top: innerHeight / 2, width: 0, height: 0 };
         x = r.left + r.width / 2; y = r.top + r.height / 2;
     }
+    if (!auto && window.WHBeans && typeof window.WHBeans.clickFx === 'function') { try { window.WHBeans.clickFx(x, y, crit); } catch (e) {} }
     const el = document.createElement('span');
     el.className = 'click-float' + (crit ? ' crit' : '');
     el.textContent = '+' + formatNumber(amount);
@@ -6570,6 +6784,7 @@ function toggleSettingsMenu() {
         if (el.classList.contains('open')) {
             document.body.classList.add('overlay-open-settings');
             try { closeNavSideBar(); } catch (e) {}
+            try { renderNameColorPicker(); } catch (e) {} // the preview shows the chat name as it is now
         } else {
             document.body.classList.remove('overlay-open-settings');
         }
@@ -6724,9 +6939,9 @@ function spendGems(cost, details) {
     });
 }
 // Rewards from items.js consumables
-// Instantly earn `seconds` of the current CPS. Returns the amount added.
+// Instantly earn `seconds` of the current CPS (without the Divine Combo Man combo: it lasts seconds, not hours). Returns the amount added.
 function addCpsSeconds(seconds) {
-    const gain = hasDecimal ? (isDecimalInstance(cps) ? cps : D(cps)).times(Number(seconds) || 0) : (Number(cps) || 0) * (Number(seconds) || 0);
+    const gain = hasDecimal ? D(cpsWithoutCombo()).times(Number(seconds) || 0) : cpsWithoutCombo() * (Number(seconds) || 0);
     addToCount(gain);
     try { updateDisplays(); } catch (e) {}
     return gain;
@@ -7284,11 +7499,12 @@ function equipBgImage(path) {
 }
 
 // Secret codes live in Firestore, one document per code: collection "codes", document id = the code in UPPER CASE.
-// Fields: type ('count' | 'golden' | 'diamonds' | 'rubies' | 'clanPoints' | 'clanXp'), amount (number, or a string like '1e100' for count), message (optional),
-// ('clanPoints' goes to the player's Clan Points, 'clanXp' to the XP of the clan they are in; that one needs a clan)
+// Fields: type ('count' | 'golden' | 'diamonds' | 'rubies' | 'clanPoints' | 'clanXp' | 'holy'), amount (number, or a string like '1e100' for count), message (optional),
+// ('clanPoints' goes to the player's Clan Points, 'clanXp' to the XP of the clan they are in; that one needs a clan; 'holy' gives
+// earned Holy What Happeneds 👼 (premium.js grantCode, at most 100,000), paid once per code even across devices)
 // enabled (optional, false turns the code off), expiresAt (optional timestamp). Add, change or delete them in the Firebase
 // console; no redeploy needed. Players can only read a code they already know (see firestore-codes.rules).
-const CODE_TYPES = ['count', 'golden', 'diamonds', 'rubies', 'clanPoints', 'clanXp'];
+const CODE_TYPES = ['count', 'golden', 'diamonds', 'rubies', 'clanPoints', 'clanXp', 'holy'];
 const CODE_LOOKUP_MS = 8000;
 const REDEEMED_KEY = 'whathappened_redeemed_codes';
 
@@ -7444,6 +7660,17 @@ async function redeemSecretCode() {
                 return showSecretCodeStatus("Couldn't add the Clan XP to your clan. Check your connection and try again.", false);
             }
             showSecretCodeStatus(reward.message || ('Your clan received ' + amt.toLocaleString() + ' Clan XP!'), true);
+            inp.value = '';
+        } else if (reward.type === 'holy') {
+            // earned Holy What Happeneds, kept under the code in their own state so it pays once on every device
+            const amt = Math.floor(Number(reward.amount) || 0);
+            const r = window.WHBeans && typeof window.WHBeans.grantCode === 'function' ? await window.WHBeans.grantCode(code, amt) : null;
+            if (!r || !r.ok) {
+                if (r && r.reason === 'used') return showSecretCodeStatus('Code already redeemed.', false); // on another device: stays redeemed
+                saveRedeemedCodes(getRedeemedCodes().filter(c => c !== code)); // nothing was given: the code can be tried again
+                return showSecretCodeStatus("Couldn't add the Holy What Happeneds. Reload the page and try again.", false);
+            }
+            showSecretCodeStatus(reward.message || ('You received ' + r.n.toLocaleString() + ' ' + r.name + '! 👼'), true);
             inp.value = '';
         } else if (reward.type === 'diamonds') {
             // add gems (integer); they fly from the Redeem button into the counter
@@ -7665,6 +7892,7 @@ function buildSaveObject() {
             shopWHchadPurchased,
             shopWHbreadPurchased,
             shopWHlightningPurchased,
+            shopWH8bitPurchased,
             shopMobileManPurchased,
             shopCasinoDealerPurchased,
             shopSilverPurchased,
@@ -7690,6 +7918,8 @@ function buildSaveObject() {
             divineMoneyManLevel, divineMoneyManCost,
             // divine Prophit of Brileyism
             divineBrileyismLevel, divineBrileyismCost,
+            // divine Combo Man (the combo itself is not saved here: COMBO_KEY)
+            divineComboManLevel, divineComboManCost,
             // permanent divine unlock
             divineUnlocked,
             lastSaved: Date.now(),
@@ -7970,6 +8200,7 @@ function loadGame() {
         shopWHchadPurchased = !!s.shopWHchadPurchased;
         shopWHbreadPurchased = !!s.shopWHbreadPurchased;
         shopWHlightningPurchased = !!s.shopWHlightningPurchased;
+        shopWH8bitPurchased = !!s.shopWH8bitPurchased;
         shopMobileManPurchased = !!s.shopMobileManPurchased;
         shopSilverPurchased = !!s.shopSilverPurchased;
         shopGoldPurchased = !!s.shopGoldPurchased;
@@ -8102,6 +8333,9 @@ function loadGame() {
         // divine Prophit of Brileyism keys
         if (typeof s.divineBrileyismLevel === 'number') divineBrileyismLevel = s.divineBrileyismLevel;
         if (typeof s.divineBrileyismCost === 'number') divineBrileyismCost = s.divineBrileyismCost;
+        // divine Combo Man keys
+        if (typeof s.divineComboManLevel === 'number') divineComboManLevel = s.divineComboManLevel;
+        if (typeof s.divineComboManCost === 'number') divineComboManCost = s.divineComboManCost;
         // if this save was written by a prestige operation, apply one-time prestige effects (e.g. Divine Money Man)
         try {
             if (s.prestige) {
@@ -8181,6 +8415,7 @@ function loadGame() {
             divineMoneyManLevel = normalizeNumericValue(divineMoneyManLevel, divineMoneyManLevel); divineMoneyManCost = normalizeNumericValue(divineMoneyManCost, divineMoneyManCost);
             divineAssassinLevel = normalizeNumericValue(divineAssassinLevel, divineAssassinLevel); divineAssassinCost = normalizeNumericValue(divineAssassinCost, divineAssassinCost);
             divineBrileyismLevel = normalizeNumericValue(divineBrileyismLevel, divineBrileyismLevel); divineBrileyismCost = normalizeNumericValue(divineBrileyismCost, divineBrileyismCost);
+            divineComboManLevel = normalizeNumericValue(divineComboManLevel, divineComboManLevel); divineComboManCost = normalizeNumericValue(divineComboManCost, divineComboManCost);
         } catch (e) { console.warn('Numeric sanitization failed', e); }
 
         // compute offline gains based on lastSaved (the rules live in core/calc.js)
@@ -8241,7 +8476,8 @@ function loadGame() {
                             godCpsPercent: gb.cps, godOfflinePercent: gb.offline,
                             gearCpsPercent: gear.cps, gearOfflinePercent: gear.offline,
                         });
-                        const gained = totalCps * seconds;
+                        // the monthly 2x offline buff (Holy What Happeneds) for the part of the time away it ran
+                        const gained = totalCps * seconds * holyOfflineMult(seconds);
                         if (gained > 0) {
                             count = (typeof count === 'number' ? count : Number(count)) + Number(gained);
                             try { showWelcomeBackModal(gained, seconds); } catch (e) {}

@@ -23,16 +23,15 @@
         // Your Ko-fi page.
         kofiPage: 'https://ko-fi.com/whathappenedclicker',
 
-        // OWNER: the address of the deployed worker (docs/kofi-setup.md, step 4), e.g. 'https://wh-kofi.yourname.workers.dev'.
-        // The game sends "claim a payment" requests here. No trailing slash.
-        workerUrl: 'https://OWNER-WORKER.workers.dev',
+        // The deployed worker (docs/kofi-setup.md, step 4). The game sends "claim a payment" requests here. No trailing slash.
+        // Setting it is what opens buying in the game (with the Ko-fi page and the tip packs), so publish it only once tested.
+        workerUrl: 'https://wh-kofi.lincolnstracker.workers.dev',
 
-        // THE PRICE TABLE: packs paid as Ko-fi tips. The player tips the pack's amount on your Ko-fi page (any amount from $1
-        // works there) with their link code in the tip's message, and gets that pack. An amount between packs is paid at the
-        // rate of the biggest pack it reaches (e.g. $7 at the $5 pack's rate: 770); under the smallest pack, at its rate.
+        // Packs paid as Ko-fi tips (folded under the Shop packs in the game). The player tips the pack's amount on your Ko-fi
+        // page (any amount from $1 works there) with their link code in the tip's message, and gets that pack. An amount
+        // between packs is paid at the rate of the biggest pack it reaches (e.g. $7 at the $5 pack's rate: 770); under the
+        // smallest pack, at its rate.
         //   dollars: the tip, in tipCurrency (your Ko-fi page's currency)   beans: what that tip gives   name: shown in the game
-        // Tips are used rather than Ko-fi Shop items because a Shop checkout has no message box, so a shop order can't carry
-        // the player's link code (checked on ko-fi.com, 2026-11-19).
         tipCurrency: 'USD',
         tipPacks: [
             { name: 'Small', dollars: 2, beans: 200 },
@@ -41,12 +40,18 @@
             { name: 'Huge', dollars: 20, beans: 2600 },
         ],
 
-        // Ko-fi Shop items that sell Holy What Happeneds (not used: see above). One row per item:
+        // THE SHOP PACKS: Ko-fi Shop items that sell Holy What Happeneds, shown first in the game's Get more tab. One row per item:
         //   code:  the item's code, the part after ko-fi.com/s/ in its link (Ko-fi sends it as shop_items[].direct_link_code)
         //   beans: how many Holy What Happeneds ONE of that item gives (a quantity of 2 gives twice as many)
         //   name, price: what the game's Get more tab shows. The price is only a label: Ko-fi charges what the item costs there.
-        // Shop orders arrive without a link code, so each one has to be claimed (docs/kofi-setup.md "Fixing a payment").
-        packs: [],
+        // A Shop order can't carry a link code, so the worker matches the email it was paid with to the account whose verified
+        // sign-in email that is (docs/kofi-setup.md, "Shop packs and the buyer's email"). Same amounts as the tip packs.
+        packs: [
+            { code: 'f2573687e6', beans: 200, name: 'Small', price: '$2' },
+            { code: 'dc4903b0ae', beans: 550, name: 'Medium', price: '$5' },
+            { code: 'b78f4ef959', beans: 1200, name: 'Large', price: '$10' },
+            { code: '3acb924dfd', beans: 2600, name: 'Huge', price: '$20' },
+        ],
 
         // Optional: a flat rate for tips in OTHER currencies than tipCurrency, per 1 unit, e.g. { EUR: 100, GBP: 120 }.
         // Left empty, a tip in another currency gives nothing and nothing is stored.

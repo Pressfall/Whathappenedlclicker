@@ -121,12 +121,13 @@
         // Golden price of the next level of a Divine upgrade.
         //  Argonian / Somalian: x3 per level. Assassin: 1, 2, 3... Collector / Simple Villager: x1.6 per level.
         //  Money Man: 1, 2, 3, 5, 9, 17... Spirit: Fibonacci 1, 2, 3, 5, 8... Brileyism: 2, 4, 6, 9, 14, 21... (x1.6 per level)
+        //  Combo Man: 1, 2, 3, 5, 7, 11... (x1.6 per level, like the other additive ones)
         function divineCostFor(kind, level) {
             const L = Math.max(0, Math.floor(Number(level) || 0));
             switch (kind) {
                 case 'argon': case 'somalian': return Math.pow(3, L);
                 case 'assassin': return L + 1;
-                case 'collector': case 'villager': return Math.ceil(Math.pow(1.6, L));
+                case 'collector': case 'villager': case 'comboMan': return Math.ceil(Math.pow(1.6, L));
                 case 'moneyMan': return L === 0 ? 1 : Math.pow(2, L - 1) + 1;
                 case 'spirit': return fibNumber(L + 1);
                 case 'brileyism': return Math.ceil(2 * Math.pow(1.6, L));

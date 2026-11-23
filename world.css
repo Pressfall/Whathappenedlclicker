@@ -597,6 +597,15 @@ body.is-touch .w-chat { bottom: auto; top: calc(54px + var(--sat)); }
 @keyframes w-forged-glow { 0% { box-shadow: 0 0 0 0 var(--c); } 35% { box-shadow: 0 0 34px 4px color-mix(in srgb, var(--c) 55%, transparent); } 100% { box-shadow: 0 0 14px 0 color-mix(in srgb, var(--c) 22%, transparent); } }
 @media (prefers-reduced-motion: reduce) { .w-forged, .w-forged-card { animation: none; } }
 .w-gear-piece .w-card-ico { border-color: var(--q); background: color-mix(in srgb, var(--q) 12%, rgba(0, 0, 0, 0.3)); }
+/* the Fuse tab: each relic a card you press to put in (or take out) */
+.w-fuse-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); }
+.w-fuse-pick { font: inherit; color: var(--text); text-align: left; cursor: pointer; }
+.w-fuse-pick .w-card-name, .w-fuse-pick .w-card-sub { display: block; }
+.w-fuse-pick .w-card-ico { border-color: var(--q); }
+.w-fuse-pick:hover:not([disabled]) { border-color: var(--q); }
+.w-fuse-pick.is-on { border-color: var(--q); background: color-mix(in srgb, var(--q) 14%, var(--surface-2)); box-shadow: inset 0 0 0 1px var(--q); }
+.w-fuse-pick[disabled] { opacity: 0.45; cursor: default; }
+.w-fuse-rubies { gap: 6px; margin: 8px 0; font-size: 13px; }
 /* a relic's boosts: each kept in one piece, with what it does in quieter type; its sockets as coloured dots */
 .w-asps { display: flex; flex-wrap: wrap; gap: 3px 12px; }
 .w-asp { white-space: nowrap; }

@@ -78,6 +78,8 @@
             if (!save(s)) { say('Could not save. Nothing was claimed; try again.'); return null; }
             give(total);
             say('📋 ' + (notes.length ? 'Done ' + notes.join(' and ') + '! ' : 'Challenge done! ') + '+' + rewardText(total), 6000);
+            // in a clan, each claimed challenge gives the clan XP too (clan-game.js; a little later, so the two notes don't overlap)
+            try { if (window.WHClanGame && WHClanGame.quests) setTimeout(() => { WHClanGame.quests().catch(() => {}); }, 2500); } catch (e) {}
             render(); updateChip();
             return total;
         });

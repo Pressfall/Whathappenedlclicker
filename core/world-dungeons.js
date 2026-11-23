@@ -11,11 +11,16 @@
  *   is down). A wipe (everyone down) puts it back to 'break' at the room before, so only that room is fought again. A run
  *   nobody touches for 30 minutes starts over.
  * - The boss: the zone's shared boss (world-online.js), its health scaled by the players in the fight (bossHp).
+ * - The rest (2026-11-22, was: the boss's big reward once a week): once a dungeon's boss falls to you, that dungeon rests for
+ *   COOLDOWN_MS (30 minutes, each dungeon on its own clock); then you can run it again. A boss beaten while its dungeon is
+ *   resting for you (a party member who stayed down) pays nothing.
  * - Rewards (core/world-logic.js dungeonRoomCleared / dungeonBossLoot): rubies for each room (up to roomPaysPerDay rooms a
- *   day, all dungeons together) and a chest of essences for the first essRoomsPerDay rooms a day (chestRoll); the boss's
- *   first kill each week pays its Heart, rubies and maybe a Catalyst. The Sunken Vault's Drowned King also pays Glory, Vault
- *   Seals and a Golden Chest for the game, as before. Room monsters drop nothing, so a dungeon is no way around the zones'
- *   own materials.
+ *   day, all dungeons together) and a chest of essences, up to essRoomsPerDay chests a day (chestRoll). The boss's first kill
+ *   each week is the boosted one: its Heart, rubies, a good chance of a Catalyst and a big boss chest. Every later kill opens
+ *   a small boss chest (one of the day's chests: rooms and bosses share them), with rubies and a small chance of the Heart
+ *   and a Catalyst; once the day's chests are gone, only a few rubies, as before. The Sunken Vault's Drowned King also pays Glory, Vault
+ *   Seals and a Golden Chest for the game, on his weekly first kill only (they sit under the Glory and lootbox limits).
+ *   Room monsters drop nothing, so a dungeon is no way around the zones' own materials.
  * Pure: callers pass `now` (ms), a seed and an rng.
  *
  * Works in a browser (<script src="core/world-dungeons.js"> after world-data.js sets window.WHWorldDungeons) and in Node.
@@ -33,14 +38,22 @@
     const RUN = { readySec: 6, idleResetMs: 30 * 60 * 1000, batch: 5, batchSec: 4, maxAlive: 18 };
     const ROOM_COUNT = 3;
     const KING_ROOM = ROOM_COUNT + 1; // 4: the boss's chamber
-    // what they pay. room: rubies per room cleared, x the room's number (the Vault: vaultRoom), up to roomPaysPerDay rooms a day;
-    // the first essRoomsPerDay rooms a day also open a chest of essences. boss: the first kill of a (Wilds) week, x the zone's
-    // tier; later kills that week pay repeat x tier rubies and sometimes a common essence. vaultKing: the Drowned King's extras.
+    // what they pay. room: rubies per room cleared, x the room's number (the Vault: vaultRoom), up to roomPaysPerDay rooms a day.
+    // essRoomsPerDay: the day's chests of essences, all dungeons together, opened by rooms and by later boss kills alike.
+    // boss: the first kill of a (Wilds) week, boosted: the Heart, rubies x the zone's tier, a Catalyst at `catalyst` and a big
+    // boss chest (bossChest: two essences; once a week per dungeon, outside the day's chests). Later kills (each after the
+    // dungeon's rest), while the day's chests last: `repeat` x tier rubies, a small boss chest (one essence), the Heart at
+    // `heart` and a Catalyst at `repeatCatalyst`; once they are gone, `capped` x tier rubies and sometimes (`cappedEssence`) a
+    // common essence, as before. vaultKing: the Drowned King's weekly extras; kingRepeat / kingCapped: his later kills'
+    // rubies, with / past the day's chests.
+    // (Kept inside the day's chests on purpose: tools/simulate-relics.js shows every essence a day speeding up the Crucible's
+    // rare relics, the clicker's gear among them.)
+    const COOLDOWN_MS = 30 * 60 * 1000;
     const REWARDS = {
         room: 60, vaultRoom: 400, roomPaysPerDay: 9, essRoomsPerDay: 6,
-        boss: { rubies: 500, catalyst: 0.3, repeat: 80, repeatEssence: 0.15 },
+        boss: { rubies: 500, catalyst: 0.35, repeat: 150, heart: 0.03, repeatCatalyst: 0.02, capped: 80, cappedEssence: 0.15 },
         vaultKing: { rubies: 6000, glory: 300, seals: 3, box: 2 }, // box: a Golden Chest (core/world-data.js BOX_NAMES index)
-        kingRepeat: 800,
+        kingRepeat: 1200, kingCapped: 800,
     };
     const MID_RE = /^w[1-3]_\d{1,3}$/;
     const ID_RE = new RegExp('^(' + IDS.join('|') + ')$');
@@ -132,11 +145,25 @@
         return { gen: cp.gen, seed: cp.seed, start: 1, wave: cp.wave, st: 'break', n: 1, at: now, t: now };
     }
 
+    // ---------------- the rest between runs ----------------
+    // How long (ms) until a dungeon can be run again, its boss having last fallen to this player at `at` (ms; 0: never):
+    // 0 when it can. A kill stamped in the future (the clock was turned back) still rests no longer than COOLDOWN_MS.
+    function restLeft(at, now) {
+        const t = Number(at) || 0;
+        if (!(t > 0)) return 0;
+        return Math.max(0, Math.min(COOLDOWN_MS, t + COOLDOWN_MS - now));
+    }
+    // the rest left in whole minutes, rounded up (for the words on screen): 1 for anything under a minute
+    const restMinutes = (ms) => Math.max(1, Math.ceil(ms / 60000));
+
     // ---------------- who may come in ----------------
-    // partySize: the party members going in (0 or 1: alone), open: whether this player has beaten the zone's boss.
-    // Returns { ok, reason? }: 'locked' (the zone's boss isn't beaten yet), 'size' (more than PARTY.max)
-    function mayEnter(partySize, open) {
+    // partySize: the party members going in (0 or 1: alone), open: whether this player has beaten the zone's boss,
+    // rest: what restLeft says for this player in this dungeon (ms).
+    // Returns { ok, reason?, rest? }: 'locked' (the zone's boss isn't beaten yet), 'resting' (its boss fell to you less than
+    // COOLDOWN_MS ago), 'size' (more than PARTY.max)
+    function mayEnter(partySize, open, rest) {
         if (!open) return { ok: false, reason: 'locked' };
+        if (rest > 0) return { ok: false, reason: 'resting', rest };
         if ((partySize || 0) > PARTY.max) return { ok: false, reason: 'size' };
         return { ok: true };
     }
@@ -152,14 +179,14 @@
         return [Math.max(10, 70 - 7 * t), (22 + 2 * t) * boost, (3 + 1.6 * t) * boost, (0.3 + 0.22 * t) * boost, (0.01 + 0.006 * t) * Math.min(1.5, boost)];
     }
     const BY_RARITY = [0, 1, 2, 3, 4].map(r => D.ESSENCES.filter(e => e[3] === r && !IDS.some(id => D.DUNGEONS[id].essence === e[0] || D.DUNGEONS[id].heart === e[0])).map(e => e[0]));
-    // A room's chest: { essence id: n }. One essence (two from the third room), each a rarity from rarityWeights and then one
-    // of that rarity at random; and a chance (higher in later rooms) of the dungeon's own rare essence.
-    function chestRoll(id, room, rng, luck, n) {
+    // A room's chest: { essence id: n }. One essence (two from the third room; count: as many as asked), each a rarity from
+    // rarityWeights and then one of that rarity at random; and a chance (higher in later rooms) of the dungeon's own rare essence.
+    function chestRoll(id, room, rng, luck, n, count) {
         const dd = def(id), out = {};
         if (!dd) return out;
         const w = rarityWeights(id, room, luck, n), total = w.reduce((a, b) => a + b, 0);
         const add = (e) => { out[e] = (out[e] || 0) + 1; };
-        for (let i = 0; i < (room >= ROOM_COUNT ? 2 : 1); i++) {
+        for (let i = 0; i < (count || (room >= ROOM_COUNT ? 2 : 1)); i++) {
             let x = rng() * total, r = 0;
             while (r < w.length - 1 && x >= w[r]) { x -= w[r]; r++; }
             const list = BY_RARITY[r];
@@ -168,7 +195,11 @@
         if (rng() < 0.06 + 0.05 * room) add(dd.essence);
         return out;
     }
+    // A boss chest, at the third room's odds with a chance of the dungeon's own essence: big (the week's boosted kill) holds
+    // two essences like the third room's chest, small (a later kill) one
+    function bossChest(id, rng, luck, n, big) { return chestRoll(id, ROOM_COUNT, rng, luck, n, big ? 2 : 1); }
 
-    return { IDS, PARTY, SCALE, RUN, ROOM_COUNT, KING_ROOM, REWARDS, MID_RE, ID_RE, def, underZone, tierOf, roomComposition, bossHp, cleared, doorOpen,
-        nextRoom, kingOpen, runNeedsReset, newRun, wiped, checkpoint, cleanCheckpoint, resumeRun, mayEnter, instanceKey, rarityWeights, chestRoll, BY_RARITY };
+    return { IDS, PARTY, SCALE, RUN, ROOM_COUNT, KING_ROOM, REWARDS, COOLDOWN_MS, MID_RE, ID_RE, def, underZone, tierOf, roomComposition, bossHp, cleared, doorOpen,
+        nextRoom, kingOpen, runNeedsReset, newRun, wiped, checkpoint, cleanCheckpoint, resumeRun, restLeft, restMinutes, mayEnter, instanceKey, rarityWeights, chestRoll,
+        bossChest, BY_RARITY };
 }));

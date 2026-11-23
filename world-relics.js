@@ -8,7 +8,7 @@
  */
 (function () {
     'use strict';
-    const D = window.WHWorldData, W = window.WHWorld, R = window.WHWorldRelics, Gr = window.WHGear;
+    const D = window.WHWorldData, W = window.WHWorld, R = window.WHWorldRelics, Gr = window.WHGear, Fu = window.WHWorldFuse;
     const WHW = window.WHW;
     const UI = () => WHW.ui;
     const game = () => WHW.game;
@@ -17,10 +17,14 @@
     const ess = (id) => D.MATERIALS_BY_ID[id];
 
     let tab = 'forge', kind = 'weapon', picked = [], useCat = false, infuseUid = 0;
-    const TABS = { forge: 'Forge', blueprints: 'Blueprints', infuse: 'Infuse', upgrade: 'Upgrade', satchel: 'Relic Satchel' };
+    // the Fuse tab: the relics chosen (uids), the essences fed in, ruby steps, a Catalyst, and the Fuse button's first press
+    let fusePick = [], fuseEss = [], fuseSteps = 0, fuseCat = false, fuseArmed = false;
+    const TABS = { forge: 'Forge', blueprints: 'Blueprints', infuse: 'Infuse', upgrade: 'Upgrade', fuse: 'Fuse', satchel: 'Relic Satchel' };
     const reasonText = { busy: 'Finish your other craft first.', count: 'Put in ' + R.FORGE.min + ' to ' + R.FORGE.max + ' essences.', materials: "You don't have those essences.",
         catalyst: 'You have no Catalyst.', rubies: 'Not enough rubies.', full: 'No room: ', unknown: "That can't go in.", socket: 'No such socket.', max: 'Already +' + Gr.MAX_LEVEL + '.',
-        owned: 'You already have that blueprint.', order: 'Buy the blueprint before it first.', glory: 'Not enough Glory.' };
+        owned: 'You already have that blueprint.', order: 'Buy the blueprint before it first.', glory: 'Not enough Glory.',
+        lent: 'Not while you wear a lent tournament kit.', equipped: 'Take it off first.', plain: 'Only relics fuse.', unique: "Uniques can't be fused.", kind: "Weapons and armor don't mix.",
+        tier: 'All five must be one tier.', top: 'Mythic and Primordial only come from a forge.', blueprint: "Your blueprints don't reach that tier yet.", feed: 'Too many essences fed in.' };
 
     function open(t) {
         if (t) tab = t;
@@ -32,7 +36,7 @@
         if (!body) return;
         const s = game().state;
         let html = UI().tabs(Object.keys(TABS), tab, null, Object.assign({}, TABS, { satchel: 'Relic Satchel (' + s.satchel.length + ')' }));
-        html += tab === 'forge' ? forgeHtml(s) : tab === 'blueprints' ? blueprintsHtml(s) : tab === 'infuse' ? infuseHtml(s) : tab === 'upgrade' ? upgradeHtml(s) : satchelHtml(s);
+        html += tab === 'forge' ? forgeHtml(s) : tab === 'blueprints' ? blueprintsHtml(s) : tab === 'infuse' ? infuseHtml(s) : tab === 'upgrade' ? upgradeHtml(s) : tab === 'fuse' ? fuseHtml(s) : satchelHtml(s);
         body.innerHTML = html;
         UI().wireTabs(body, (t) => { tab = t; render(); });
         wire(body, s);
@@ -57,7 +61,7 @@
             <p>Its <b>relic tier</b>, from Common to Primordial, comes from the essences' rarity most of all, then how many you put in (each counts a little less), your score, your luck, <b>Resonance</b> (every essence of one aspect), a <b>Catalyst</b> (never Common) and your bad luck so far (each forge without a Legendary helps the next a little). Its boosts follow the aspects you put in, and its colours are your essences'. <b>Mythic and Primordial stay rare whatever you put in</b>: at most ${R.FORGE.caps[5] * 100}% and ${R.FORGE.caps[6] * 100}% a forge.</p>
             <p>Without <b>blueprints</b> the Crucible makes at most a <b style="color:${Gr.TIERS[R.BASE_MAX].color}">${esc(Gr.TIERS[R.BASE_MAX].name)}</b>. Each blueprint (Blueprints tab) lets every forge after it reach one tier higher, for good; a roll above what you can make comes out as the best tier you can.</p></details>
             <div class="w-chips w-make" role="group" aria-label="Make">
-                <button class="w-chip${kind === 'weapon' ? ' is-on' : ''}" data-kind="weapon" aria-pressed="${kind === 'weapon'}">⚔️ Weapon <small>a sword, dagger, spear, bow or staff at gear tier ${W.relicGearTier(s)}</small></button>
+                <button class="w-chip${kind === 'weapon' ? ' is-on' : ''}" data-kind="weapon" aria-pressed="${kind === 'weapon'}">⚔️ Weapon <small>a sword, dagger, spear, bow, revolver or staff at gear tier ${W.relicGearTier(s)}</small></button>
                 <button class="w-chip${kind === 'armor' ? ' is-on' : ''}" data-kind="armor" aria-pressed="${kind === 'armor'}">🛡️ Armor <small>a helmet, chest, boots or shield at gear tier ${W.relicGearTier(s)}</small></button>
                 <button class="w-chip${kind === 'game' ? ' is-on' : ''}" data-kind="game" aria-pressed="${kind === 'game'}">🖱️ Gear for the game <small>a cursor, crown, cloak, ring or relic for the clicker</small></button>
             </div>`;
@@ -168,6 +172,97 @@
         return html;
     }
 
+    // ---------------- fuse (core/world-fuse.js) ----------------
+    // Five Wilds relics of one tier and kind in; one a tier higher out, or all five lost. Essences, rubies and a Catalyst fed
+    // in raise the chance.
+    const pct = (p) => Math.round(p * 100) + '%';
+    function fuseState(s) {
+        // what was chosen, kept only while it still can go in (traded away, worn, or the tab came back later)
+        fusePick = fusePick.filter(uid => { const it = W.findGear(s, uid); return it && it.r && !it.r.q && Fu.partOf(it) && !W.isEquipped(s, uid); });
+        const first = W.findGear(s, fusePick[0]);
+        fusePick = fusePick.filter(uid => { const it = W.findGear(s, uid); return !first || (it.r.t === first.r.t && Fu.partOf(it) === Fu.partOf(first)); }).slice(0, Fu.COUNT);
+        const counts = {};
+        fuseEss = fuseEss.filter(id => (counts[id] = (counts[id] || 0) + 1) <= W.count(s, id)).slice(0, Fu.FEED.maxEss);
+        if (fuseCat && !W.count(s, 'catalyst')) fuseCat = false;
+        return first;
+    }
+    function fuseHtml(s) {
+        const first = fuseState(s), bp = Math.min(s.relics.bp, Fu.MAX_TARGET);
+        const target = first ? first.r.t + 1 : 0, items = fusePick.map(uid => W.findGear(s, uid));
+        const c = W.canFuse(s, fusePick, { ess: fuseEss, steps: fuseSteps, catalyst: fuseCat });
+        let html = `<details class="w-how"><summary>Put in <b>${Fu.COUNT} Wilds relics</b> of one tier and kind (weapons, or armor): they fuse into <b>one relic a tier higher</b>, or <b>all ${Fu.COUNT} are lost</b>.</summary>
+            <p>The chance starts lower the rarer the result: ${Fu.BASE.slice(1).map((p, i) => `<b style="color:${Gr.TIERS[i + 1].color}">${esc(Gr.TIERS[i + 1].name)}</b> ${pct(p)}`).join(', ')}. Feed in <b>essences</b> (rarer ones count more, and each counts less the rarer the result), <b>rubies</b> (up to ${Fu.FEED.steps} steps of +${pct(Fu.FEED.step)}) and a <b>Crucible Catalyst</b> (+${pct(Fu.FEED.catalyst)}) to raise it, up to ${Fu.CAP.slice(1).map((p, i) => pct(p) + ' for ' + esc(Gr.TIERS[i + 1].name)).join(', ')}: never certain.</p>
+            <p>It never makes a tier your blueprints don't reach yet, and never <b>Mythic</b> or <b>Primordial</b> (those come only from a forge). Uniques, pieces you wear and gear for the game can't go in. What comes out is one of the five's kinds at the best gear tier among them, with their average quality and boosts drawn from theirs; it starts at +0. Essences set in the five come back to you either way; upgrades are lost.</p></details>`;
+        // the relics that could go in, rarest first; once one is chosen, only its tier and kind
+        const all = s.gear.filter(it => it.r && Fu.partOf(it)).sort((a, b) => b.r.t - a.r.t || (Fu.partOf(a) < Fu.partOf(b) ? -1 : 1) || b.score - a.score);
+        html += `<div class="w-forge"><section class="w-panel"><h3>Your Wilds relics</h3>`;
+        if (!all.length) html += '<p class="w-empty">None yet. Forge a weapon or armor in the Forge tab: every relic of the same tier and kind can be fused, five at a time.</p>';
+        for (let t = Gr.TIERS.length - 1; t >= 0; t--) {
+            const tierList = all.filter(it => it.r.t === t);
+            if (!tierList.length) continue;
+            const can = t + 1 <= bp;
+            html += `<h4 style="color:${Gr.TIERS[t].color}">${esc(Gr.TIERS[t].name)} <small class="muted">${can ? '→ ' + esc(Gr.TIERS[t + 1].name) : t + 1 > Fu.MAX_TARGET ? '(fusing stops at ' + esc(Gr.TIERS[Fu.MAX_TARGET].name) + ')' : '(needs the ' + esc(Gr.TIERS[t + 1].name) + ' blueprint)'}</small></h4><div class="w-grid w-fuse-grid">`;
+            html += tierList.map(it => {
+                const on = fusePick.includes(it.uid), worn = W.isEquipped(s, it.uid), uniq = !!it.r.q;
+                const clash = first && !on && (it.r.t !== first.r.t || Fu.partOf(it) !== Fu.partOf(first));
+                const why = worn ? 'worn' : uniq ? 'unique' : '';
+                const off = worn || uniq || !can || clash || (!on && fusePick.length >= Fu.COUNT);
+                const extra = [it.r.lv ? '+' + it.r.lv + ' (lost)' : '', it.k && it.k.some(Boolean) ? 'socketed (essences back)' : ''].filter(Boolean).join(' · ');
+                return `<button class="w-card w-fuse-pick${on ? ' is-on' : ''}" data-fpick="${it.uid}" ${off && !on ? 'disabled' : ''} aria-pressed="${on}" style="--q:${Gr.TIERS[t].color}">
+                    <span class="w-card-top"><span class="w-card-ico">${UI().iconFor(W.baseOf(it), it)}</span><span><span class="w-card-name" style="color:${Gr.TIERS[t].color}">${esc(W.gearName(it))}</span>
+                    <span class="w-card-sub">${Fu.partOf(it) === 'weapon' ? '⚔️ Weapon' : '🛡️ Armor'} · ${esc(W.qualityOf(it.score).name)}${why ? ' · ' + why : ''}${extra ? ' · ' + extra : ''}</span></span></span></button>`;
+            }).join('') + '</div>';
+        }
+        html += `</section><section class="w-panel"><h3>To fuse <span class="muted">${fusePick.length} / ${Fu.COUNT}</span></h3>`;
+        html += `<div class="w-ess-picked">${items.map(it => `<button class="w-ess is-on" data-funpick="${it.uid}" style="--c:${Gr.TIERS[it.r.t].color}" title="Take it out"><span class="w-ess-dot"></span>${esc(W.gearName(it))} ✕</button>`).join('') || '<span class="muted">Empty. Pick five relics of one tier and kind from your list.</span>'}</div>`;
+        if (!first) return html + `<p class="w-note">Pick a relic to see what the five would become, its chance and what feeding it costs.</p><p class="w-note">Fused so far: <b>${fmt(s.relics.fused)}</b> of ${fmt(s.relics.fuseTries)} tries</p></section></div>`;
+        html += `<p class="w-note">${fusePick.length} ${esc(Gr.TIERS[first.r.t].name)} ${Fu.partOf(first) === 'weapon' ? 'weapons' : 'armor pieces'} → <b style="color:${(Gr.TIERS[target] || Gr.TIERS[first.r.t]).color}">${target <= Fu.MAX_TARGET ? esc(Gr.TIERS[target].name) : '—'}</b>${c.reason === 'blueprint' || c.reason === 'top' ? ` <span style="color:#ffb3bb">${esc(reasonText[c.reason])}</span>` : ''}</p>`;
+        // feeding it: essences, rubies, a Catalyst (the chance shown for what these would become, even past the limits)
+        const list = owned(s), tgt = Math.max(1, Math.min(Fu.MAX_TARGET, target));
+        const left = (id) => W.count(s, id) - fuseEss.filter(x => x === id).length;
+        html += `<h4>Feed it <small class="muted">(${fuseEss.length} / ${Fu.FEED.maxEss} essences)</small></h4>`;
+        html += `<div class="w-ess-picked">${fuseEss.map((id, i) => `<button class="w-ess is-on" data-fdel="${i}" style="--c:${ess(id).color}" title="Take it out"><span class="w-ess-dot"></span>${ess(id).icon} ${esc(ess(id).name)} +${(Fu.essBoost(id, tgt) * 100).toFixed(1)}% ✕</button>`).join('') || '<span class="muted">No essences fed in.</span>'}</div>`;
+        if (list.length) html += `<label class="w-sort">Add an essence <select id="fuseAdd"><option value="">Choose…</option>${list.slice().sort((a, b) => ess(b).rar - ess(a).rar).map(id => `<option value="${id}" ${left(id) <= 0 || fuseEss.length >= Fu.FEED.maxEss ? 'disabled' : ''}>${ess(id).icon} ${esc(ess(id).name)} (${esc(D.ESSENCE_RARITY[ess(id).rar].name)}) ×${left(id)} · +${(Fu.essBoost(id, tgt) * 100).toFixed(1)}%</option>`).join('')}</select></label>`;
+        html += `<div class="w-row w-fuse-rubies"><span>♦ Rubies: <b>${fuseSteps}</b> / ${Fu.FEED.steps} steps (+${pct(fuseSteps * Fu.FEED.step)}) · ♦ ${fmt(Fu.rubyCost(tgt, fuseSteps))}</span>
+            <button class="btn btn-ghost btn-sm" data-fsteps="-1" ${fuseSteps <= 0 ? 'disabled' : ''} aria-label="One ruby step less">−</button><button class="btn btn-ghost btn-sm" data-fsteps="1" ${fuseSteps >= Fu.FEED.steps ? 'disabled' : ''} aria-label="One ruby step more">+</button>
+            <small class="muted">each step ♦ ${fmt(Fu.rubyCost(tgt, 1))}</small></div>`;
+        const cat = W.count(s, 'catalyst');
+        if (cat) html += `<label class="w-check"><input type="checkbox" id="fuseCat" ${fuseCat ? 'checked' : ''}> ⚗️ Feed in a Crucible Catalyst (you have ${cat}): +${pct(Fu.FEED.catalyst)}</label>`;
+        // the chance, and the button (a second press to be sure: failing loses all five)
+        const p = c.chance !== undefined ? c.chance : Fu.chance(tgt, { ess: fuseEss, steps: fuseSteps, catalyst: fuseCat });
+        html += `<div class="w-odds"><div class="w-odds-row"><span style="color:${Gr.TIERS[tgt].color}">Fuses</span><i><b style="width:${(p * 100).toFixed(1)}%;background:${Gr.TIERS[tgt].color}"></b></i><em>${pct(p)}</em></div>
+            <div class="w-odds-row"><span>All lost</span><i><b style="width:${((1 - p) * 100).toFixed(1)}%;background:#ff5a6e"></b></i><em>${pct(1 - p)}</em></div></div>`;
+        html += `<div class="w-card-actions"><button class="btn ${fuseArmed ? 'btn-danger' : 'btn-gold'}" id="doFuse" ${c.ok ? '' : 'disabled'}>${fuseArmed ? 'Sure? ' + pct(1 - p) + ' to lose all ' + Fu.COUNT : 'Fuse · ' + pct(p)}</button>${fusePick.length || fuseEss.length || fuseSteps ? '<button class="btn btn-ghost btn-sm" id="fuseClear">Empty it</button>' : ''}</div>`;
+        if (!c.ok && fusePick.length === Fu.COUNT && c.reason !== 'blueprint' && c.reason !== 'top') html += `<p class="w-note" style="color:#ffb3bb">${esc(reasonText[c.reason] || "Can't fuse that.")}</p>`;
+        html += `<p class="w-note">Fused so far: <b>${fmt(s.relics.fused)}</b> of ${fmt(s.relics.fuseTries)} tries</p></section></div>`;
+        return html;
+    }
+    function fuse() {
+        const g = game(), s = g.state;
+        const name = WHW.online && WHW.online.name ? WHW.online.name() : '';
+        const r = W.fuseRelics(s, fusePick.slice(), { ess: fuseEss.slice(), steps: fuseSteps, catalyst: fuseCat }, Math.random, Date.now(), name);
+        fuseArmed = false;
+        if (!r.ok) { WHW.toast(reasonText[r.reason] || "Can't fuse that.", 'bad'); render(); return; }
+        fusePick = []; fuseEss = []; fuseSteps = 0; fuseCat = false;
+        WHW.save(); WHW.refreshPlayer();
+        const back = Object.entries(r.back || {}).map(([id, n]) => (n > 1 ? n + ' ' : '') + ess(id).icon + ' ' + esc(ess(id).name)).join(', ');
+        const t = Gr.TIERS[r.target];
+        let html;
+        if (r.fused) {
+            const b = W.baseOf(r.item);
+            html = `<p class="w-forged${r.target >= 4 ? ' is-high' : ''}" style="--c:${t.color}"><b>${r.target >= 4 ? '✨ ' : ''}Fused: ${esc(t.name)}${r.target >= 4 ? ' ✨' : ''}</b></p>
+                <div class="w-card w-forged-card" style="--c:${t.color}"><div class="w-card-top"><div class="w-card-ico">${UI().iconFor(b, r.item)}</div><div><div class="w-card-name" style="color:${t.color}">${esc(W.gearName(r.item))}</div><div class="w-card-sub">${esc(b.name)} · it's in your backpack</div></div></div>${UI().statLine(b, r.item)}</div>`;
+            WHW.sfx(r.target >= 4 ? 'boss' : 'craft');
+        } else {
+            html = `<p class="w-forged" style="--c:#ff5a6e"><b>The Crucible flares and goes dark</b></p><p class="w-note" style="text-align:center">The fusion failed (it had a ${pct(r.chance)} chance): all ${Fu.COUNT} relics are lost.</p>`;
+            WHW.sfx('hurt');
+        }
+        if (back) html += `<p class="w-note" style="text-align:center">Back from their sockets: ${back}.</p>`;
+        html += '<div class="w-row" style="justify-content:center;margin-top:12px"><button class="btn btn-primary" id="resOk">Back to the Crucible</button></div>';
+        const body = UI().modal(r.fused ? 'Fused' : 'Lost', html);
+        body.querySelector('#resOk').addEventListener('click', () => open('fuse'));
+    }
+
     // ---------------- the satchel ----------------
     function pieceCard(p, actions) {
         const u = p.q && Gr.UNIQUES_BY_ID[p.q];
@@ -227,6 +322,19 @@
             const got = W.scrapPiece(s, id);
             WHW.toast('Scrapped for ' + fmt(got) + ' rubies.'); WHW.save(); render();
         });
+        // the Fuse tab
+        on('[data-fpick]', (d) => { const uid = Number(d.fpick), i = fusePick.indexOf(uid); if (i >= 0) fusePick.splice(i, 1); else if (fusePick.length < Fu.COUNT) fusePick.push(uid); fuseArmed = false; render(); });
+        on('[data-funpick]', (d) => { fusePick = fusePick.filter(u => u !== Number(d.funpick)); fuseArmed = false; render(); });
+        on('[data-fdel]', (d) => { fuseEss.splice(Number(d.fdel), 1); fuseArmed = false; render(); });
+        on('[data-fsteps]', (d) => { fuseSteps = Math.max(0, Math.min(Fu.FEED.steps, fuseSteps + Number(d.fsteps))); fuseArmed = false; render(); });
+        const fAdd = body.querySelector('#fuseAdd');
+        if (fAdd) fAdd.addEventListener('change', () => { if (fAdd.value && fuseEss.length < Fu.FEED.maxEss) fuseEss.push(fAdd.value); fuseArmed = false; render(); });
+        const fCat = body.querySelector('#fuseCat');
+        if (fCat) fCat.addEventListener('change', () => { fuseCat = fCat.checked; fuseArmed = false; render(); });
+        const fClr = body.querySelector('#fuseClear');
+        if (fClr) fClr.addEventListener('click', () => { fusePick = []; fuseEss = []; fuseSteps = 0; fuseCat = false; fuseArmed = false; render(); });
+        const fGo = body.querySelector('#doFuse');
+        if (fGo) fGo.addEventListener('click', () => { if (!fuseArmed) { fuseArmed = true; render(); return; } fuse(); });
         on('[data-send]', (d) => send([Number(d.send)]));
         const all = body.querySelector('#sendAll');
         if (all) all.addEventListener('click', () => send(s.satchel.map(p => p.id)));
@@ -291,5 +399,5 @@
             onCancel: () => { W.abortCraft(s); WHW.save(); WHW.toast('Cancelled: your essence is back.', 'bad'); } });
     }
 
-    WHW.relics = { open, forge, infuse, send, pieceCard, oddsBars, state: () => ({ tab, kind, picked: picked.slice() }) };
+    WHW.relics = { open, forge, infuse, send, pieceCard, oddsBars, state: () => ({ tab, kind, picked: picked.slice(), fusePick: fusePick.slice(), fuseEss: fuseEss.slice(), fuseSteps }) };
 })();

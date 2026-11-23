@@ -12,7 +12,7 @@
 //   - Your own edits in the Firebase console and the Ko-fi worker (a service account) are never limited by these rules.
 //
 // The list of open collections is every collection the game's code uses (checked 2026-11-19: clans, clan_chat, global_chat,
-// profiles, leaderboard, events, saves, codes, wallets, kofi_links). A new collection in the code needs a rule here, or its
+// profiles, leaderboard, events, saves, codes, wallets, kofi_links; kofi_requests added 2026-11-21). A new collection in the code needs a rule here, or its
 // reads and writes are refused.
 //
 // Before you Publish, try the checklist at the bottom in the Rules Playground. NOT run against the Firestore emulator.
@@ -74,6 +74,14 @@ service cloud.firestore {
       allow list, update, delete: if false;
     }
 
+    // the player's request to the Ko-fi worker, which answers every minute by replacing it (kofi-worker/src/index.js
+    // runRequests). Written here rather than sent to the worker because school networks block *.workers.dev.
+    match /kofi_requests/{uid} {
+      allow get: if beansOwner(uid);
+      allow create, update: if beansOwner(uid) && beansAccount() && beansValidRequest();
+      allow list, delete: if false;
+    }
+
     match /kofi_payments/{txid} {
       allow read, write: if false;
     }
@@ -101,6 +109,15 @@ service cloud.firestore {
     // a real account (email or Google), not the Wilds' anonymous sign-in: bought Holy What Happeneds belong to an account
     function beansAccount() {
       return request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    // a pending "collect" (nothing else in it) or "claim" (a transaction id and the email it was paid with)
+    function beansValidRequest() {
+      let d = request.resource.data;
+      return d.status == 'pending' && d.at == request.time
+        && ((d.kind == 'collect' && d.keys().hasOnly(['kind', 'status', 'at']))
+          || (d.kind == 'claim' && d.keys().hasOnly(['kind', 'status', 'at', 'txid', 'email'])
+            && d.txid is string && d.txid.size() >= 8 && d.txid.size() <= 64
+            && d.email is string && d.email.size() >= 3 && d.email.size() <= 254));
     }
     // sha256('kofi-link:' + uid) as 64 upper-case hex digits (core/kofi.js linkIdForUid takes the first 12)
     function beansLinkHex(uid) {

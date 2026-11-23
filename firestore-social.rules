@@ -38,21 +38,23 @@ service cloud.firestore {
     }
 
     // ---- global chat ----
-    // Messages are append-only. Trimming (the game deletes the oldest when there are too many) is allowed only for messages
-    // older than an hour, so a visitor cannot wipe the live conversation.
+    // Players write {name, message, title, fx, nameColor, createdAt, scrollToBottom}: fx is the sender's chat effect and
+    // nameColor the colour of their name (each null for none, and always sent, so a rule without them refuses every
+    // message). Messages are append-only. Trimming (the game deletes the oldest when there are too many) is allowed only
+    // for messages older than an hour, so a visitor cannot wipe the live conversation.
     match /global_chat/{id} {
       allow read: if true;
-      allow create: if validChat(['name', 'message', 'title', 'createdAt', 'scrollToBottom']);
+      allow create: if validChat(['name', 'message', 'title', 'fx', 'nameColor', 'createdAt', 'scrollToBottom']);
       allow update: if false;
       allow delete: if isOldMessage();
     }
 
     // ---- clan chat ----
-    // Players write {clanId, name, message, title, createdAt, scrollToBottom}; the game also posts SYSTEM lines
+    // Players write {clanId, name, message, title, fx, nameColor, createdAt, scrollToBottom}; the game also posts SYSTEM lines
     // (joined, left, level up) with system / color flags. Pinning edits only the three pin fields.
     match /clan_chat/{id} {
       allow read: if true;
-      allow create: if validChat(['clanId', 'name', 'message', 'title', 'createdAt', 'scrollToBottom', 'system', 'color']) && request.resource.data.clanId is string;
+      allow create: if validChat(['clanId', 'name', 'message', 'title', 'fx', 'nameColor', 'createdAt', 'scrollToBottom', 'system', 'color']) && request.resource.data.clanId is string;
       allow update: if request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pinned', 'pinnedBy', 'pinnedByRole'])
         && request.resource.data.pinned is bool;
       allow delete: if isOldMessage();                    // see note 1
@@ -81,7 +83,7 @@ service cloud.firestore {
       allow read: if true;
       allow create: if signedIn() && isAccount() && validNewClan();
       allow delete: if signedIn() && claimed(resource.data) && resource.data.ownerUid == request.auth.uid;
-      allow update: if signedIn() && (claimLegacy() || joinOrLeave() || progress()
+      allow update: if signedIn() && (claimLegacy() || joinOrLeave() || progress() || renameSelf()
         || (claimed(resource.data) && (transfer() || rename() || roleChange() || kick() || manage())));
     }
 
@@ -94,8 +96,8 @@ service cloud.firestore {
     function roleIn(d, u) { return d.get('ownerUid', '') == u ? 'leader' : d.get('roles', {}).get(u, ''); }
     function changedKeys() { return request.resource.data.diff(resource.data).affectedKeys(); }
     function mapChanged(field) { return request.resource.data.get(field, {}).diff(resource.data.get(field, {})).affectedKeys(); }
-    function memberFields() { return ['clanXp', 'checkin', 'activeBuffs', 'activeBuff', 'buffProgress', 'cpDonated', 'clanShopIconsUnlocked', 'eventXpAwarded']; }
-    function manageFields() { return ['description', 'clanIcon', 'clanCustomLogoUrl', 'maxMembers']; }
+    function memberFields() { return ['clanXp', 'checkin', 'activeBuffs', 'activeBuff', 'buffProgress', 'cpDonated', 'clanShopIconsUnlocked', 'eventXpAwarded', 'contrib']; }
+    function manageFields() { return ['description', 'clanIcon', 'clanCustomLogoUrl', 'maxMembers', 'joinMode', 'minPrestige']; }
 
     function validNewClan() {
       let a = request.resource.data;
@@ -121,7 +123,7 @@ service cloud.firestore {
       return mapChanged('roles') == [me].toSet() && mapChanged('names').hasOnly([me]) && mapChanged('acct').hasOnly([me]) && mapChanged('kicks').size() == 0
         && changedKeys().hasOnly(['roles', 'names', 'acct', 'members', 'leaders'])
         && ((was == '' && now == 'member' && a.names[me] is string && a.get('acct', {}).get(me, false) == isAccount()
-              && (!claimed(b) || a.roles.keys().size() <= b.get('maxMembers', 30)))
+              && (!claimed(b) || (a.roles.keys().size() <= b.get('maxMembers', 30) && b.get('joinMode', 'open') != 'closed')))
           || (was != '' && now == '' && b.get('ownerUid', '') != me));
     }
     // shared progress: anyone in a claimed clan; anyone signed in for an old one (as today)
@@ -139,6 +141,17 @@ service cloud.firestore {
         && changedKeys().hasOnly(['ownerUid', 'roles', 'owner', 'leaders']);
     }
     function rename() { return changedKeys().hasOnly(['name']) && rankOf(roleIn(resource.data, request.auth.uid)) >= 5; }
+    // a member's own new name (core/names.js): only their names entry; the old name lists may swap it; the owner's owner field follows
+    function renameSelf() {
+      let a = request.resource.data;
+      let b = resource.data;
+      let me = request.auth.uid;
+      return roleIn(b, me) != '' && mapChanged('roles').size() == 0 && mapChanged('names') == [me].toSet()
+        && a.names[me] is string && a.names[me].size() > 0 && a.names[me].size() <= 32
+        && mapChanged('acct').size() == 0 && mapChanged('kicks').size() == 0
+        && changedKeys().hasOnly(['names', 'members', 'leaders', 'owner'])
+        && (!changedKeys().hasAny(['owner']) || (b.get('ownerUid', '') == me && a.owner == a.names[me]));
+    }
     function manage() { return changedKeys().hasOnly(manageFields()) && rankOf(roleIn(resource.data, request.auth.uid)) >= 4; }
     // a role change: one member's role, never the owner's, up to just below mine (anything, for the leader); co-leader
     // only for someone with an account
@@ -187,6 +200,8 @@ service cloud.firestore {
         && d.name is string && d.name.size() > 0 && d.name.size() <= 32
         && d.message is string && d.message.size() > 0 && d.message.size() <= 500
         && (!('title' in d) || d.title == null || (d.title is string && d.title.size() <= 64))
+        && (!('fx' in d) || d.fx == null || (d.fx is string && d.fx.size() <= 32))   // a chat effect's id (core/premium.js cf_*)
+        && (!('nameColor' in d) || d.nameColor == null || (d.nameColor is string && d.nameColor.size() <= 16))   // core/name-colors.js
         && (!('scrollToBottom' in d) || d.scrollToBottom is bool)
         && (!('system' in d) || d.system is bool)
         && (!('color' in d) || (d.color is string && d.color.size() <= 16))
@@ -233,6 +248,9 @@ service cloud.firestore {
 //   leaderboard create with score -1, or type 'x', or an extra field 'admin': true, or name of 33 chars  DENY
 //   leaderboard update / delete anything                                                                  DENY
 //   global_chat create {name:'A', message:'hi', title:null, createdAt: request.time, scrollToBottom:true} ALLOW
+//   the same with fx:null, and with fx:'cf_gold' (a chat effect), in global_chat and in clan_chat (with clanId) ALLOW
+//   either chat with fx of 33 characters, or fx:5                                                          DENY
+//   either chat with nameColor:'gold' or null ALLOW; nameColor of 17 characters, or nameColor:true       DENY
 //   global_chat create with a message of 501 characters, or createdAt set to a past time                  DENY
 //   global_chat delete of a message created 2 hours ago ALLOW; of one created 1 minute ago                DENY
 //   clan_chat create with clanId, then pin: update {pinned:true, pinnedBy:'A', pinnedByRole:'leader'}     ALLOW

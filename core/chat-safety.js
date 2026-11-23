@@ -83,17 +83,24 @@
     }
 
     // Consecutive messages from the same sender with the same text become one entry with repeat = how many.
-    // get(item) -> { name, message } picks the fields; returns [{ item, repeat }] in order.
+    // get(item) -> { name, message, t } picks the fields; returns [{ item, repeat }] in order.
+    // t (ms, optional): with it, only copies sent within FOLD_MS of the one before fold. The send limiter already refuses the
+    // same text within that time, so a repeat from a normal page always gets its own line: saying "test" again two days
+    // later used to fold into the old line (a "×2" and nothing new, so the message seemed never to arrive). A copy whose
+    // time isn't known yet (null: a message still on its way to the server) never folds.
+    const FOLD_MS = LIMITS.repeatMs;
     function collapse(list, get) {
         const out = [];
         for (const item of list || []) {
             const f = get ? get(item) : item, prev = out[out.length - 1];
             const key = String(f && f.name) + '\u0000' + norm(f && f.message);
-            if (prev && prev.key === key) { prev.repeat++; prev.item = item; continue; } // keep the newest (its time)
-            out.push({ item, repeat: 1, key });
+            const t = f && f.t !== undefined ? f.t : undefined;
+            const near = t === undefined || (prev && Number.isFinite(t) && Number.isFinite(prev.t) && Math.abs(t - prev.t) <= FOLD_MS);
+            if (prev && prev.key === key && near) { prev.repeat++; prev.item = item; prev.t = t; continue; } // keep the newest (its time)
+            out.push({ item, repeat: 1, key, t });
         }
         return out.map(x => ({ item: x.item, repeat: x.repeat }));
     }
 
-    return { KEY, WORDS, LIMITS, isOn, setOn, censor, squash, display, norm, limiter, collapse };
+    return { KEY, WORDS, LIMITS, FOLD_MS, isOn, setOn, censor, squash, display, norm, limiter, collapse };
 }));

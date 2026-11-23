@@ -36,14 +36,23 @@
     const SYNC_KEYS = new Set([
         SAVE_KEY, 'whathappened_followers', 'whathappened_items',
         'unlocked_titles', 'equipped_title', 'whathappened_ach_new',
+        // the colour your name shows in chat (core/name-colors.js), chosen in Settings like the title
+        'whathappened_name_color',
         'whathappened_lifetime_clicks', 'whathappened_clicks_since_prestige', 'whathappened_playtime_seconds',
         'whathappened_prestige_times', 'whathappened_total_golden', 'whathappened_last_prestige_ts', 'whathappened_golden',
         'whathappened_redeemed_codes', 'whathappened_casino_stats', 'gamba_total_wins', 'shopCasinoDealerPurchased',
         'whathappened_specials_owned', 'whathappened_specials_total', 'whathappened_specials_fullsets',
         'player_username', 'player_clanId', 'player_clanName', 'player_clanRole',
+        // the Wilds' name: the same as the chat name since 2026-11-20 (core/names.js), so it goes along with it
+        'whathappened_world_name',
         'whathappened_clan_level', 'whathappened_clan_donated', 'whathappened_clan_checkin',
         // when the player joined their clan (events that ended before that aren't theirs to collect: core/clan-events.js)
         'whathappened_clan_joined',
+        // which finished daily and weekly challenges already gave the clan XP (core/clan-levels.js questXpOwed), and the sign-in
+        // id the clan knows this player by (so a new name doesn't lose the clan: core/clan-roles.js memberIn)
+        'whathappened_clan_quests', 'whathappened_clan_uid',
+        // clan XP brought in from challenges and monsters sent to Wilds Hunts (two achievements count them)
+        'whathappened_clan_quest_xp', 'whathappened_clan_hunted',
         'whathappened_world', 'whathappened_world_ack', 'whathappened_world_inbox', 'whathappened_world_owed', 'whathappened_golden_trades',
         // the best level each upgrade ever reached (the crew in the Wilds) and the game's Renown milestone claims
         'whathappened_upgrade_best', 'whathappened_renown',
@@ -55,7 +64,7 @@
     ]);
     // achievement flags (ach_<key>) and clan event rewards already claimed (so they can't be claimed again on another device)
     const SYNC_PREFIXES = ['ach_', 'whathappened_pp_claimed_', 'whathappened_bf_claimed_', 'whathappened_eb_claimed_',
-        'whathappened_cvc_claimed_', 'whathappened_race_claimed_', 'whathappened_con_claimed_'];
+        'whathappened_cvc_claimed_', 'whathappened_race_claimed_', 'whathappened_con_claimed_', 'whathappened_wh_claimed_'];
     function isSyncKey(k) { return typeof k === 'string' && k.length <= 120 && (SYNC_KEYS.has(k) || SYNC_PREFIXES.some((p) => k.startsWith(p))); }
 
     function syncError(code, message) { const e = new Error(message); e.code = code; return e; }

@@ -182,8 +182,10 @@
         const id = dungeonId();
         if (!id || !WV.run || WV.run.st === 'over') return;
         setState({ st: 'over', wave: Dg.KING_ROOM });
-        WHW.banner(D.BOSSES[Dg.def(id).boss].name + ' is beaten!', Dg.def(id).name + ' is yours. Start over from the first room any time.');
+        WHW.banner(D.BOSSES[Dg.def(id).boss].name + ' is beaten!', Dg.def(id).name + ' rests now: run it again in ' + Math.round(Dg.COOLDOWN_MS / 60000) + ' minutes.');
     };
+    // how long this dungeon still rests for this player (core/world-dungeons.js restLeft: its boss fell to them lately), ms
+    const resting = () => { const id = dungeonId(), s = game() && game().state; return id && s ? W.dungeonRest(s, id, Date.now()) : 0; };
     function clearMonsters() { for (const m of game().actors) if (m.wave) m.dead = true; WV.snap = new Map(); WV.pending = {}; }
     WV.dropStale = dropStale;
     function dropStale() {
@@ -224,6 +226,8 @@
     // A dungeon: start the next room (a fresh run when there is none, it went quiet, or the boss is already down)
     function startRoom(now) {
         const r = WV.run, fresh = !r || Dg.runNeedsReset(r, now) || r.st === 'over';
+        // a new run waits out the dungeon's rest (a party's run already going may still be joined: its boss pays nothing then)
+        if (fresh && resting() > 0) { WHW.toast(Dg.def(dungeonId()).name + ' is resting since you beat ' + D.BOSSES[Dg.def(dungeonId()).boss].name + '. Run it again in ' + Dg.restMinutes(resting()) + ' min.', 'bad'); return; }
         const next = fresh ? 1 : Dg.nextRoom(r);
         if (!next) { WHW.toast(r.st === 'fight' || r.st === 'ready' ? 'A room is already going.' : 'Every room is clear: ' + D.BOSSES[Dg.def(dungeonId()).boss].name + ' waits at the far end.'); return; }
         const at = now + Dg.RUN.readySec * 1000;
@@ -238,7 +242,7 @@
     WV.vaultReady = function () {
         const g = game(), r = WV.run, now = sNow();
         if (!isVault() || !g.map.rooms) return null;
-        const next = !r || Dg.runNeedsReset(r, now) || r.st === 'over' ? 1 : Dg.nextRoom(r);
+        const next = !r || Dg.runNeedsReset(r, now) || r.st === 'over' ? 1 : Dg.nextRoom(r); // (resting: its prompt says so)
         if (next) return g.map.rooms[next - 1].ready;
         if (r && r.st === 'ready') return g.map.rooms[r.wave - 1].ready;
         return null;
@@ -247,7 +251,9 @@
         const r = WV.run, now = sNow();
         if (isVault()) {
             if (r && r.st === 'ready' && !needsReset(r, now)) return { text: rooms()[r.wave - 1].name + ' in ' + Math.max(0, Math.ceil((r.at - now) / 1000)) + 's: get in!', can: false };
-            const next = !r || needsReset(r, now) || r.st === 'over' ? 1 : Dg.nextRoom(r);
+            const fresh = !r || needsReset(r, now) || r.st === 'over';
+            if (fresh && resting() > 0) return { text: Dg.def(dungeonId()).icon + ' ' + Dg.def(dungeonId()).name + ' is resting: run it again in ' + Dg.restMinutes(resting()) + ' min', can: false };
+            const next = fresh ? 1 : Dg.nextRoom(r);
             return { text: '<kbd>E</kbd>' + Dg.def(dungeonId()).icon + ' Start ' + rooms()[next - 1].name + (WV.players() > 1 ? ' with ' + (WV.players() - 1) + ' other' + (WV.players() > 2 ? 's' : '') : ''), can: true };
         }
         if (!r || Wv.runNeedsReset(r, now)) return { text: '<kbd>E</kbd>⚔️ Start the waves' + (WV.players() > 1 ? ' with ' + (WV.players() - 1) + ' other' + (WV.players() > 2 ? 's' : '') : ''), can: true };

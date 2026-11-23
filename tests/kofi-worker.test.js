@@ -3,7 +3,8 @@
 // - fake Ko-fi: payloads posted the way Ko-fi posts them (form field `data` holding JSON), built from the example in
 //   Ko-fi's help article "Does Ko-fi have an API or webhook?"
 // - fake Google: the OAuth token endpoint (checks the service account's signed JWT), Firestore's REST API (documents,
-//   atomic commits with preconditions, increments and server times), and the sign-in keys for Firebase ID tokens.
+//   atomic commits with preconditions, increments and server times, one-field queries), Firebase Authentication's account
+//   lookups, and the sign-in keys for Firebase ID tokens.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { webcrypto } = require('node:crypto');
@@ -59,8 +60,10 @@ async function idToken(claims, opts = {}) {
 function fakeGoogle(k) {
     const docs = new Map(); // full name -> { fields, updateTime }
     let clock = 1;
-    const calls = { token: 0, commits: 0, reads: 0 };
-    const fail = { commit: false };
+    const calls = { token: 0, commits: 0, reads: 0, queries: 0, lookups: 0 };
+    const fail = { commit: false, auth: false };
+    // Firebase Authentication's accounts: uid -> { email, emailVerified, disabled, providers }
+    const accounts = new Map();
     const root = 'projects/' + PROJECT + '/databases/(default)/documents/';
     const res = (status, body, headers) => new Response(body === undefined ? null : JSON.stringify(body), { status, headers: Object.assign({ 'content-type': 'application/json' }, headers || {}) });
     async function checkAssertion(jwt) {
@@ -70,7 +73,7 @@ function fakeGoogle(k) {
         const ok = await subtle.verify('RSASSA-PKCS1-v1_5', key, Buffer.from(s.replace(/-/g, '+').replace(/_/g, '/'), 'base64'), Buffer.from(h + '.' + p));
         const claims = JSON.parse(Buffer.from(p.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString());
         return ok && claims.iss === 'worker@whleaderboard.iam.gserviceaccount.com' && claims.aud === 'https://oauth2.googleapis.com/token'
-            && claims.scope === 'https://www.googleapis.com/auth/datastore' && claims.exp > claims.iat;
+            && claims.scope === 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit' && claims.exp > claims.iat;
     }
     function applyTransforms(fields, transforms) {
         for (const t of transforms || []) {
@@ -90,6 +93,20 @@ function fakeGoogle(k) {
             return res(200, { access_token: 'ya29.fake', expires_in: 3600, token_type: 'Bearer' });
         }
         if (url.startsWith('https://www.googleapis.com/service_accounts/v1/jwk/')) return res(200, { keys: [k.fbJwk] }, { 'cache-control': 'public, max-age=3600' });
+        if (url === 'https://identitytoolkit.googleapis.com/v1/projects/' + PROJECT + '/accounts:lookup') {
+            // what the Admin SDK's getUserByEmail / getUser ask; 403 without the "Firebase Authentication Viewer" role
+            calls.lookups++;
+            assert.equal((init.headers || {}).authorization, 'Bearer ya29.fake');
+            if (fail.auth) return res(403, { error: { code: 403, status: 'PERMISSION_DENIED' } });
+            const by = JSON.parse(init.body);
+            const users = [];
+            for (const [uid, a] of accounts) {
+                if ((by.email && by.email.includes(String(a.email || '').toLowerCase())) || (by.localId && by.localId.includes(uid)))
+                    users.push({ localId: uid, email: a.email, emailVerified: !!a.emailVerified, disabled: !!a.disabled,
+                        providerUserInfo: (a.providers || ['google.com']).map((providerId) => ({ providerId, email: a.email })) });
+            }
+            return res(200, users.length ? { kind: 'identitytoolkit#GetAccountInfoResponse', users } : { kind: 'identitytoolkit#GetAccountInfoResponse' });
+        }
         if (!url.startsWith('https://firestore.googleapis.com/v1/')) throw new Error('unexpected fetch ' + url);
         assert.equal((init.headers || {}).authorization, 'Bearer ya29.fake', 'Firestore calls carry the access token');
         const name = url.slice('https://firestore.googleapis.com/v1/'.length);
@@ -121,11 +138,27 @@ function fakeGoogle(k) {
             for (const [a, b] of next) docs.set(a, b);
             return res(200, { writeResults: writes.map(() => ({})) });
         }
+        if (method === 'POST' && name.endsWith('/documents:runQuery')) {
+            // what the worker asks: one collection, one equality filter, a limit
+            calls.queries++;
+            const q = JSON.parse(init.body).structuredQuery;
+            assert.equal(q.from.length, 1);
+            const f = q.where.fieldFilter;
+            assert.equal(f.op, 'EQUAL');
+            const col = root + q.from[0].collectionId + '/', want = JSON.stringify(f.value);
+            const out = [];
+            for (const [n, d] of docs) {
+                if (!n.startsWith(col) || n.slice(col.length).includes('/')) continue;
+                if (JSON.stringify(d.fields[f.field.fieldPath]) === want) out.push({ document: { name: n, fields: d.fields, updateTime: d.updateTime }, readTime: 'x' });
+                if (q.limit && out.length >= q.limit) break;
+            }
+            return res(200, out.length ? out : [{ readTime: 'x' }]); // Firestore's answer when nothing matches
+        }
         throw new Error('unexpected ' + method + ' ' + url);
     }
     const plain = (n) => { const d = docs.get(root + n); return d ? google.fromFields(d.fields) : null; };
     const put = (n, obj) => docs.set(root + n, { fields: google.toFields(obj), updateTime: 't' + (clock++) });
-    return { fetch: fetchFake, docs, calls, fail, plain, put };
+    return { fetch: fetchFake, docs, calls, fail, plain, put, accounts };
 }
 
 // ---------------- fake Ko-fi ----------------
@@ -430,6 +463,259 @@ test('tip packs (the shipped config): the tip\'s amount picks the pack; the same
     assert.deepEqual(await body(lost), { ok: true, beans: small.beans, matched: false });
 });
 
+test('Ko-fi calls a tip "Tip" now (its own example still says "Donation"): both pay the same pack', async () => {
+    const { g, call, linkFor } = await setup();
+    const code = await linkFor('uid_tia');
+    const p = RealConfig.activeTipPacks()[1] || RealConfig.activeTipPacks()[0];
+    for (const [n, type] of [[50, 'Tip'], [51, 'Donation']]) {
+        const r = await call(kofiPost(payload({ type, kofi_transaction_id: TX(n), amount: p.dollars.toFixed(2), currency: RealConfig.tipCurrency, message: code })), RealConfig);
+        assert.deepEqual(await body(r), { ok: true, beans: p.beans, matched: true }, type);
+    }
+    assert.equal(g.plain('wallets/uid_tia').balance, p.beans * 2);
+    assert.equal(g.plain('kofi_payments/' + TX(50)).type, 'Donation', 'stored under one name');
+});
+
+// /collect, as the game calls it: the player's ID token, from the game's site, no body
+const collectReq = async (claims, headers, tokenOpts) => new Request('https://w.example/collect', {
+    method: 'POST',
+    headers: Object.assign({ origin: ORIGIN, authorization: 'Bearer ' + (await idToken(claims, tokenOpts)) }, headers),
+});
+const googleUser = (sub, email) => ({ sub, email, email_verified: true, firebase: { sign_in_provider: 'google.com' } });
+
+test('shop packs: paid with the email the player signs in with; /collect hands over what was waiting, and later orders arrive by themselves', async () => {
+    const { g, call, env, linkFor } = await setup();
+    const order = (n, items, over) => call(kofiPost(payload(Object.assign({ type: 'Shop Order', kofi_transaction_id: TX(n), message: null, email: 'Nia.Buyer@Example.com', shop_items: items }, over))));
+    // bought before the game ever said whose this email is: kept, with only the keyed hash
+    assert.deepEqual(await body(await order(60, [{ direct_link_code: 'beanpouch1', variation_name: null, quantity: 1 }])), { ok: true, beans: 120, matched: false });
+    assert.equal(g.plain('kofi_payments/' + TX(60)).status, 'unmatched');
+    // the player opens Get more: the game calls /collect
+    const r = await call(await collectReq(googleUser('uid_nia', 'nia.buyer@example.com')));
+    assert.equal(r.status, 200);
+    assert.equal(r.headers.get('access-control-allow-origin'), ORIGIN);
+    assert.deepEqual(await body(r), { ok: true, beans: 120, count: 1 });
+    assert.equal(g.plain('wallets/uid_nia').balance, 120);
+    const pay = g.plain('kofi_payments/' + TX(60));
+    assert.deepEqual([pay.status, pay.uid, pay.by, pay.emailHash], ['credited', 'uid_nia', 'email', undefined]);
+    const hash = await Kofi.emailHash('nia.buyer@example.com', env.EMAIL_PEPPER, subtle);
+    assert.equal(g.plain('kofi_emails/' + hash).uid, 'uid_nia');
+    assert.ok(![...g.docs.keys()].some((k) => k.toLowerCase().includes('nia.buyer')), 'never the address itself');
+    // again: nothing new, nothing written
+    const commits = g.calls.commits;
+    assert.deepEqual(await body(await call(await collectReq(googleUser('uid_nia', 'nia.buyer@example.com')))), { ok: true, beans: 0, count: 0 });
+    assert.equal(g.calls.commits, commits);
+    // the next order (any case in the address) is credited at once, and so is a tip with no code from that email
+    assert.deepEqual(await body(await order(61, [{ direct_link_code: 'beansack9', quantity: 1 }], { email: 'NIA.BUYER@example.com' })), { ok: true, beans: 1000, matched: true });
+    assert.equal(g.plain('kofi_payments/' + TX(61)).by, 'email');
+    assert.deepEqual(await body(await order(62, null, { type: 'Donation', amount: '3.00', message: 'love the game' })), { ok: true, beans: 300, matched: true });
+    assert.equal(g.plain('wallets/uid_nia').balance, 1420);
+    // a link code in the message still decides: Nia tipping for a friend
+    const friend = await linkFor('uid_oli');
+    assert.deepEqual(await body(await order(63, null, { type: 'Donation', amount: '1.00', message: 'for you ' + friend })), { ok: true, beans: 100, matched: true });
+    assert.equal(g.plain('wallets/uid_oli').balance, 100);
+    assert.equal(g.plain('kofi_payments/' + TX(63)).by, 'code');
+    assert.equal(g.plain('wallets/uid_nia').balance, 1420);
+});
+
+test('the shipped Shop packs: the same price and amount as each tip pack, and an order of each, paid with a noted email, credits it', async () => {
+    const { g, call } = await setup();
+    const shop = RealConfig.activePacks(), tips = RealConfig.activeTipPacks();
+    assert.equal(shop.length, tips.length);
+    shop.forEach((p, i) => {
+        assert.equal(p.beans, tips[i].beans, p.name);
+        assert.equal(p.price, '$' + tips[i].dollars, p.name);
+        assert.match(p.code, /^[0-9a-f]{10}$/, 'a real Ko-fi item code');
+    });
+    assert.ok(!RealConfig.packByCode('b4b54189d5'), 'the "submit a background/song/skin" item is not a pack');
+    assert.equal(RealConfig.maxBeansPerPayment, 100000);
+    assert.equal((await call(await collectReq(googleUser('uid_pax', 'pax@example.com')), RealConfig)).status, 200);
+    let n = 80, total = 0;
+    for (const p of shop) {
+        const r = await call(kofiPost(payload({ type: 'Shop Order', kofi_transaction_id: TX(n++), amount: p.price.slice(1) + '.00', message: null, email: 'pax@example.com',
+            shop_items: [{ direct_link_code: p.code, variation_name: null, quantity: 1 }] })), RealConfig);
+        assert.deepEqual(await body(r), { ok: true, beans: p.beans, matched: true }, p.name);
+        total += p.beans;
+    }
+    assert.equal(g.plain('wallets/uid_pax').balance, total);
+});
+
+// Ko-fi's own examples, exactly as ko-fi.com/manage/webhooks showed them on 2026-11-21 (its tip still says "Donation";
+// the page's text says "Tip"). Only the verification token, the transaction id and the shop item codes are swapped in.
+const KOFI_EXAMPLES = {
+    tip: { verification_token: '', message_id: 'f73b83cb-0de2-4d74-a6df-7980f1e81f7b', timestamp: '2026-11-21T21:04:16Z', type: 'Donation', is_public: true,
+        from_name: 'Jo Example', message: 'Good luck with the integration!', amount: '3.00', url: 'https://ko-fi.com/Home/CoffeeShop?txid=00000000-1111-2222-3333-444444444444',
+        email: 'jo.example@example.com', currency: 'USD', is_subscription_payment: false, is_first_subscription_payment: false,
+        kofi_transaction_id: '00000000-1111-2222-3333-444444444444', shop_items: null, tier_name: null, shipping: null, discord_username: 'Jo#4105', discord_userid: '012345678901234567' },
+    shop: { verification_token: '', message_id: '8442e418-3a99-451f-af66-dea739b3bd74', timestamp: '2026-11-21T21:04:16Z', type: 'Shop Order', is_public: true,
+        from_name: 'Jo Example', message: null, amount: '27.95', url: 'https://ko-fi.com/Home/CoffeeShop?txid=00000000-1111-2222-3333-444444444444',
+        email: 'jo.example@example.com', currency: 'USD', is_subscription_payment: false, is_first_subscription_payment: false,
+        kofi_transaction_id: '00000000-1111-2222-3333-444444444444',
+        shop_items: [{ direct_link_code: '1a2b3c4d5e', variation_name: 'Blue', quantity: 1 }, { direct_link_code: 'a1b2c3d4e5', variation_name: 'Large', quantity: 5 }],
+        tier_name: null, shipping: { full_name: 'Ko-fi Mail Room', street_address: '123 The Old Exchange, High Street', city: 'Bigville', state_or_province: 'Kansas',
+            postal_code: '12345', country: 'United States', country_code: 'US', telephone: '+1-212-456-7890' }, discord_username: 'Jo#4105', discord_userid: '012345678901234567' },
+};
+
+test('Ko-fi\'s own current examples go through: a Shop order of two packs (with shipping and Discord fields) and a tip, as "Donation" and as "Tip"', async () => {
+    const { g, call, linkFor } = await setup();
+    const [small, , large] = RealConfig.activePacks();
+    // Ko-fi's test transaction id is ignored on purpose; a real payment has its own
+    const test = await call(kofiPost(Object.assign({}, KOFI_EXAMPLES.shop, { verification_token: TOKEN })), RealConfig);
+    assert.deepEqual(await body(test), { ok: true, test: true });
+    // the shop example with our items: 1 Small + 5 Large, paid with an email the game already noted
+    assert.equal((await call(await collectReq(googleUser('uid_jo', 'jo.example@example.com')), RealConfig)).status, 200);
+    const shop = Object.assign({}, KOFI_EXAMPLES.shop, { verification_token: TOKEN, kofi_transaction_id: TX(90),
+        shop_items: [{ direct_link_code: small.code, variation_name: 'Blue', quantity: 1 }, { direct_link_code: large.code, variation_name: 'Large', quantity: 5 }] });
+    assert.deepEqual(await body(await call(kofiPost(shop), RealConfig)), { ok: true, beans: small.beans + 5 * large.beans, matched: true });
+    const rec = g.plain('kofi_payments/' + TX(90));
+    assert.deepEqual([rec.type, rec.by, rec.amount], ['Shop Order', 'email', '27.95']);
+    assert.ok(!JSON.stringify(rec).includes('Mail Room') && !JSON.stringify(rec).includes('Jo#4105'), 'no shipping or Discord details kept');
+    // the tip example, with a link code in its message, under both names
+    const code = await linkFor('uid_kai');
+    for (const [n, type] of [[91, 'Donation'], [92, 'Tip']]) {
+        const tip = Object.assign({}, KOFI_EXAMPLES.tip, { verification_token: TOKEN, kofi_transaction_id: TX(n), type, message: 'Good luck with the integration! ' + code });
+        assert.deepEqual(await body(await call(kofiPost(tip), RealConfig)), { ok: true, beans: RealConfig.tipBeans(3, 'USD'), matched: true }, type);
+    }
+    assert.equal(g.plain('wallets/uid_kai').balance, 2 * RealConfig.tipBeans(3, 'USD'));
+});
+
+test('/collect needs the game\'s site, a real account and a verified email, and only ever finds that email\'s payments', async () => {
+    const { g, call } = await setup();
+    g.put('kofi_payments/' + TX(70), { status: 'unmatched', beans: 50, type: 'Shop Order', items: [], emailHash: 'someone-elses' });
+    const status = async (req) => { const r = await call(req); return [r.status, (await body(r)).reason || '']; };
+    assert.deepEqual(await status(await collectReq(googleUser('u1', 'a@b.c'), { origin: 'https://evil.example' })), [403, '']);
+    const pre = await call(new Request('https://w.example/collect', { method: 'OPTIONS', headers: { origin: ORIGIN } }));
+    assert.equal(pre.status, 204);
+    assert.deepEqual(await status(await collectReq(googleUser('u1', 'a@b.c'), {}, { badSigner: true })), [401, '']);
+    assert.deepEqual(await status(await collectReq({ sub: 'u1', firebase: { sign_in_provider: 'anonymous' } })), [403, '']);
+    // a password account that hasn't clicked the link in its verification email yet, and one with no email at all
+    assert.deepEqual(await status(await collectReq({ sub: 'u1', email: 'a@b.c', email_verified: false })), [403, 'unverified']);
+    assert.deepEqual(await status(await collectReq({ sub: 'u1' })), [403, 'unverified']);
+    assert.equal(g.calls.commits, 0);
+    // verified: noted, but someone else's payment stays where it is
+    assert.deepEqual(await status(await collectReq({ sub: 'u1', email: 'a@b.c', email_verified: true })), [200, '']);
+    assert.equal(g.plain('kofi_payments/' + TX(70)).status, 'unmatched');
+    assert.equal(g.plain('wallets/u1'), null);
+});
+
+test('a Shop order paid with the email a game account signs in with is credited at once, with no step in the game (school networks block the worker)', async () => {
+    const { g, call } = await setup();
+    const [small] = RealConfig.activePacks();
+    g.accounts.set('uid_sam', { email: 'Sam.Player@School.org', emailVerified: true });
+    g.accounts.set('uid_una', { email: 'una@example.com', emailVerified: false, providers: ['password'] });
+    const order = (n, email) => call(kofiPost(payload({ type: 'Shop Order', kofi_transaction_id: TX(n), message: null, email,
+        shop_items: [{ direct_link_code: small.code, variation_name: null, quantity: 1 }] })), RealConfig);
+    assert.deepEqual(await body(await order(100, 'sam.player@school.org')), { ok: true, beans: small.beans, matched: true });
+    assert.equal(g.plain('wallets/uid_sam').balance, small.beans);
+    assert.equal(g.plain('kofi_payments/' + TX(100)).by, 'account');
+    // an email nobody has verified, or no account at all: kept, for a collect or a claim later
+    assert.deepEqual(await body(await order(101, 'una@example.com')), { ok: true, beans: small.beans, matched: false });
+    assert.deepEqual(await body(await order(102, 'nobody@example.com')), { ok: true, beans: small.beans, matched: false });
+    assert.equal(g.plain('wallets/uid_una'), null);
+    // without the role the lookup is refused: still a 200 for Ko-fi, kept as unmatched, nothing lost
+    g.fail.auth = true;
+    assert.deepEqual(await body(await order(103, 'sam.player@school.org')), { ok: true, beans: small.beans, matched: false });
+    assert.equal(g.plain('kofi_payments/' + TX(103)).status, 'unmatched');
+});
+
+test('the game\'s requests in Firestore, answered every minute: collect hands over what waited for a newly verified email; claim checks the email; the answer replaces the request', async () => {
+    const { g, call, env } = await setup();
+    const deps = { fetch: g.fetch };
+    const [small, medium] = RealConfig.activePacks();
+    // Una paid before verifying her email; Vic paid with his school email, not the one he signs in with
+    g.accounts.set('uid_una', { email: 'una@example.com', emailVerified: false, providers: ['password'] });
+    g.accounts.set('uid_vic', { email: 'vic@home.example', emailVerified: true });
+    const order = (n, email, item) => call(kofiPost(payload({ type: 'Shop Order', kofi_transaction_id: TX(n), message: null, email,
+        shop_items: [{ direct_link_code: item.code, quantity: 1 }] })), RealConfig);
+    await order(110, 'una@example.com', small);
+    await order(111, 'vic@school.example', medium);
+    const ask = (uid, fields) => g.put('kofi_requests/' + uid, Object.assign({ status: 'pending', at: 'now' }, fields));
+    // not verified yet: told so, nothing handed over
+    ask('uid_una', { kind: 'collect' });
+    assert.equal(await worker.runRequests(env, deps), 1);
+    let a = g.plain('kofi_requests/uid_una');
+    assert.deepEqual([a.kind, a.status, a.reason], ['collect', 'failed', 'unverified']);
+    // she clicks the link in her email, then Check now: handed over, and her email is noted for next time
+    g.accounts.get('uid_una').emailVerified = true;
+    ask('uid_una', { kind: 'collect' });
+    assert.equal(await worker.runRequests(env, deps), 1);
+    a = g.plain('kofi_requests/uid_una');
+    assert.deepEqual([a.status, a.beans, a.count], ['done', small.beans, 1]);
+    assert.equal(g.plain('wallets/uid_una').balance, small.beans);
+    assert.equal(g.plain('kofi_emails/' + await Kofi.emailHash('una@example.com', env.EMAIL_PEPPER, subtle)).uid, 'uid_una');
+    // nothing pending: nothing to do
+    assert.equal(await worker.runRequests(env, deps), 0);
+    // Vic claims with the wrong email, then the right one; the email he typed doesn't stay in Firestore
+    ask('uid_vic', { kind: 'claim', txid: TX(111), email: 'vic@home.example' });
+    await worker.runRequests(env, deps);
+    a = g.plain('kofi_requests/uid_vic');
+    assert.equal(a.status, 'failed');
+    assert.match(a.error, /No unclaimed payment matches/);
+    ask('uid_vic', { kind: 'claim', txid: TX(111), email: ' VIC@school.example ' });
+    await worker.runRequests(env, deps);
+    a = g.plain('kofi_requests/uid_vic');
+    assert.deepEqual([a.status, a.beans, a.email, a.txid], ['done', medium.beans, undefined, undefined]);
+    assert.equal(g.plain('wallets/uid_vic').balance, medium.beans);
+    // the same claim again: already handed over
+    ask('uid_vic', { kind: 'claim', txid: TX(111), email: 'vic@school.example' });
+    await worker.runRequests(env, deps);
+    assert.equal(g.plain('kofi_requests/uid_vic').status, 'failed');
+    assert.equal(g.plain('wallets/uid_vic').balance, medium.beans);
+    // an anonymous account (the Wilds' sign-in) or one that doesn't exist gets nothing
+    g.accounts.set('uid_anon', { email: '', providers: [] });
+    ask('uid_anon', { kind: 'collect' });
+    ask('uid_ghost', { kind: 'collect' });
+    assert.equal(await worker.runRequests(env, deps), 2);
+    assert.match(g.plain('kofi_requests/uid_anon').error, /Sign in to an account/);
+    assert.match(g.plain('kofi_requests/uid_ghost').error, /Sign in to an account/);
+    // without the role: the request is answered with a "try again later", and the worker says what's missing
+    g.fail.auth = true;
+    ask('uid_una', { kind: 'collect' });
+    await worker.runRequests(env, deps);
+    assert.match(g.plain('kofi_requests/uid_una').error, /can't check accounts yet/);
+});
+
+test('a request the player replaced while it was being answered is left for the next minute', async () => {
+    const { g, env } = await setup();
+    g.accounts.set('uid_wes', { email: 'wes@example.com', emailVerified: true });
+    g.put('kofi_requests/uid_wes', { kind: 'collect', status: 'pending', at: 'now' });
+    // the player asks again between the worker's read and its answer: the answer's precondition fails
+    const realFetch = g.fetch;
+    let replaced = false;
+    const fetchRacing = async (url, init) => {
+        if (!replaced && String(url).endsWith('/documents:commit') && JSON.parse(init.body).writes.some((w) => w.update.name.endsWith('kofi_requests/uid_wes'))) {
+            replaced = true;
+            g.put('kofi_requests/uid_wes', { kind: 'claim', status: 'pending', at: 'later', txid: 'aaaa-bbbb-cccc', email: 'w@x.yz' });
+        }
+        return realFetch(url, init);
+    };
+    assert.equal(await worker.runRequests(env, { fetch: fetchRacing }), 0);
+    assert.equal(g.plain('kofi_requests/uid_wes').kind, 'claim');
+    assert.equal(g.plain('kofi_requests/uid_wes').status, 'pending', 'answered next time');
+});
+
+test('tools/kofi-test-payment.js connects like a browser: HTTPS_PROXY when set, and the certificates Windows trusts', () => {
+    const T = require('../tools/kofi-test-payment.js');
+    const allowed = new Set(['--use-system-ca', '--disable-warning']);
+    // a proxy named in the environment: Node is told to use it (it ignores HTTPS_PROXY otherwise)
+    const prox = T.relaunch({ PATH: 'x', HTTP_PROXY: 'http://proxy.example:3128' }, allowed);
+    assert.deepEqual(prox.args, ['--disable-warning=UNDICI-EHPA', '--use-system-ca']);
+    assert.equal(prox.env.HTTPS_PROXY, 'http://proxy.example:3128');
+    assert.equal(prox.env.NODE_USE_ENV_PROXY, '1');
+    assert.match(prox.env.NO_PROXY, /localhost/, 'wrangler dev on localhost stays direct');
+    assert.equal(prox.env.WH_KOFI_TEST_RELAUNCHED, '1', 'started again only once');
+    // what is already set is left as it is
+    const set = T.relaunch({ HTTPS_PROXY: 'http://corp:3128', NO_PROXY: '.corp' }, allowed);
+    assert.equal(set.env.HTTPS_PROXY, 'http://corp:3128');
+    assert.equal(set.env.NO_PROXY, '.corp');
+    // no proxy: direct, still trusting Windows' certificates (a network that inspects HTTPS)
+    const direct = T.relaunch({}, allowed);
+    assert.deepEqual(direct.args, ['--use-system-ca']);
+    assert.equal(direct.env.NODE_USE_ENV_PROXY, undefined);
+    assert.equal(direct.env.HTTPS_PROXY, undefined);
+    // an older Node without the flag
+    assert.deepEqual(T.relaunch({}, new Set()).args, []);
+    assert.equal(T.parseArgs(['--check']).check, true);
+});
+
 test('tools/kofi-test-payment.js sends what the worker takes: credited once, a repeat refused, no code kept for claiming', async () => {
     const T = require('../tools/kofi-test-payment.js');
     const { g, call, linkFor } = await setup();
@@ -454,7 +740,7 @@ test('tools/kofi-test-payment.js sends what the worker takes: credited once, a r
     const lost = T.buildPayload({ token: TOKEN, amount: 2, email: 'me@example.com' });
     const kept = await send(lost);
     assert.equal(kept.b.matched, false);
-    assert.match(kept.says, new RegExp('Claim it in the game[\\s\\S]*' + lost.kofi_transaction_id + '[\\s\\S]*me@example\\.com'));
+    assert.match(kept.says, new RegExp('Get more[\\s\\S]*claim it[\\s\\S]*' + lost.kofi_transaction_id + '[\\s\\S]*me@example\\.com'));
     // a wrong token is refused, and the script says so
     const bad = await send(T.buildPayload({ token: 'wrong', code, amount: 5 }));
     assert.equal(bad.status, 401);
@@ -464,4 +750,15 @@ test('tools/kofi-test-payment.js sends what the worker takes: credited once, a r
     assert.throws(() => T.webhookUrl('http://example.com'), /https/);
     assert.equal(T.webhookUrl('http://localhost:8787/'), 'http://localhost:8787/kofi');
     assert.deepEqual(T.parseArgs(['--code', 'WH-1', '--amount=5', '--twice']), { code: 'WH-1', amount: '5', twice: true });
+});
+
+test('tools/kofi-test-payment.js knows a web filter\'s block page from the worker, even when the filter answers 200', () => {
+    const T = require('../tools/kofi-test-payment.js');
+    const ck = '<!-- CK-BLOCK -->\n<!DOCTYPE html><html><head><title>ContentKeeper Content Filtering</title></head><body>Blocked</body></html>';
+    assert.equal(T.isFilterPage(ck), true);
+    assert.equal(T.checkResult(200, ck).ok, false, 'a 200 block page is not the worker');
+    assert.match(T.checkResult(200, ck).text, /web filter/);
+    assert.equal(T.checkResult(200, 'What Happened Clicker: Ko-fi webhook. Ko-fi posts payments to /kofi.\n').ok, true);
+    assert.equal(T.checkResult(200, '<html>some other site</html>').ok, false);
+    assert.equal(T.isFilterPage(JSON.stringify({ ok: true, beans: 200, matched: true })), false);
 });

@@ -195,8 +195,8 @@ time { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
 /* ---------- finding / creating clans ---------- */
 .find-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
 .find-head h2 { margin: 0; }
-.find-tools { display: flex; gap: 8px; flex: 1; justify-content: flex-end; min-width: 260px; }
-.find-tools input { flex: 1; max-width: 340px; }
+.find-tools { display: flex; gap: 8px; flex: 1; justify-content: flex-end; align-items: center; flex-wrap: wrap; min-width: 260px; }
+.find-tools input[type="text"] { flex: 1; max-width: 340px; }
 .lock-note { padding: 10px 14px; border-radius: var(--radius); background: rgba(255, 200, 61, 0.1); border: 1px solid rgba(255, 200, 61, 0.35); color: var(--gold); font-weight: 700; margin-bottom: 12px; }
 .clan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; max-height: 620px; overflow: auto; padding: 2px; }
 .clan-grid > .muted { grid-column: 1 / -1; padding: 20px; text-align: center; }
@@ -334,6 +334,41 @@ time { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
 .ev-row-main .ev-reward { color: var(--gold); font-weight: 700; }
 .ev-admin { border-style: dashed; }
 
+/* ---------- added in the clans overhaul ---------- */
+.ev-wh { --ev: #8fd85a; }
+a.btn { text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
+.meter.hunt i { background: linear-gradient(90deg, #2f7d3a, #8fd85a); }
+.tag.bad { background: rgba(255, 91, 107, 0.16); color: #ffb3bb; }
+.tag.wilds { background: rgba(143, 216, 90, 0.16); color: #c4f0a2; }
+.dot.wilds { background: #8fd85a; box-shadow: 0 0 8px #8fd85a; }
+.m-wilds { font-size: 12px; color: #c4f0a2; margin-top: 2px; opacity: 0.9; }
+.mini-select { padding: 4px 8px; font-size: 12px; border-radius: 999px; }
+.find-filter { white-space: nowrap; }
+.field.span2 { grid-column: 1 / -1; }
+.field input[type="number"] { max-width: 120px; }
+.manage-grid .row-gap input { flex: 1; min-width: 160px; }
+.week-card .ev-people { margin-top: 4px; }
+.week-how { margin: 10px 0 0; }
+
+/* the strip under the banner */
+.clan-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 8px; margin-top: 14px; }
+.clan-stats:empty { display: none; }
+.cs-chip { display: grid; grid-template-columns: auto 1fr; column-gap: 8px; align-items: center; padding: 8px 12px; border-radius: var(--radius); background: rgba(0, 0, 0, 0.28); border: 1px solid var(--border); }
+.cs-chip span { grid-row: span 2; font-size: 20px; }
+.cs-chip b { font-size: 16px; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.cs-chip small { font-size: 11px; color: var(--text-dim); font-weight: 700; }
+
+/* in-page dialogs (ask() in clan-page.js) */
+.dlg-wrap { position: fixed; inset: 0; z-index: 4000; display: flex; align-items: center; justify-content: center; padding: 16px; background: rgba(5, 6, 10, 0.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: dlgFade 0.15s ease both; }
+.dlg { width: min(440px, 100%); padding: 20px; border-radius: var(--radius-lg); background: var(--surface-solid); border: 1px solid var(--border-strong); box-shadow: var(--shadow-lg); animation: dlgPop 0.18s ease both; }
+.dlg h3 { margin: 0 0 8px; font-size: 18px; }
+.dlg p { margin: 0 0 12px; color: var(--text-dim); line-height: 1.45; }
+.dlg-input { width: 100%; box-sizing: border-box; margin-bottom: 12px; }
+.dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+@keyframes dlgFade { from { opacity: 0; } }
+@keyframes dlgPop { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+@media (prefers-reduced-motion: reduce) { .dlg-wrap, .dlg, .toast { animation: none; } }
+
 @media (max-width: 860px) {
     .clan-cols { grid-template-columns: 1fr; }
     .manage-grid { grid-template-columns: 1fr; }
@@ -351,7 +386,7 @@ time { color: var(--text-faint); font-size: 11px; white-space: nowrap; }
     .cc-actions { flex-direction: row; width: 100%; }
     .cc-actions .btn { flex: 1; }
     .find-tools { min-width: 0; width: 100%; }
-    .find-tools input { max-width: none; }
+    .find-tools input[type="text"] { max-width: none; }
     .me-chip { align-items: flex-start; width: 100%; }
     .msg { max-width: 92%; }
     .versus { grid-template-columns: 1fr; }

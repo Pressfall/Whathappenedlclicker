@@ -328,6 +328,15 @@
                         g.fillStyle = shade(P.wall, 1 + tileHash(tx, ty, 3 + i) * 0.5);
                         g.beginPath(); g.arc(X + 8 + tileHash(tx, ty, 5 + i) * 16, Y + 8 + tileHash(tx, ty, 7 + i) * 16, 12 + tileHash(tx, ty, 9 + i) * 6, 0, Math.PI * 2); g.fill();
                     }
+                } else if (zone.gen === 'arcade') {
+                    // the Neon Arcade: a cabinet on every tile, its screen lit in one of a few neon colours, a marquee on top
+                    const NEON = ['#ff4fd8', '#5ee7ff', '#f8b800', '#3dff9a', '#ff6a3a'];
+                    g.fillStyle = shade(P.wall, 2.2); g.fillRect(X + 2, Y, TILE - 4, TILE - (below !== T.WALL ? 8 : 0));
+                    const neon = NEON[Math.floor(r1 * NEON.length) % NEON.length];
+                    g.fillStyle = neon; g.fillRect(X + 4, Y + 2, TILE - 8, 3);
+                    g.fillStyle = '#05040a'; g.fillRect(X + 6, Y + 7, TILE - 12, 11);
+                    g.fillStyle = neon; g.globalAlpha = 0.55 + r2 * 0.35; g.fillRect(X + 7, Y + 8, TILE - 14, 9); g.globalAlpha = 1;
+                    if (detail) { g.fillStyle = 'rgba(0,0,0,0.45)'; for (let i = 0; i < 3; i++) g.fillRect(X + 8, Y + 9 + i * 3, TILE - 16, 1); g.fillStyle = '#d8d8e0'; g.fillRect(X + 10, Y + 21, 3, 3); g.fillStyle = neon; g.fillRect(X + 18, Y + 21, 3, 3); }
                 } else {
                     g.fillStyle = shade(P.wall, 1.25 + r1 * 0.2);
                     g.fillRect(X, Y, TILE, TILE - (below !== T.WALL ? 10 : 0));
@@ -365,6 +374,19 @@
                 } else {
                     g.strokeStyle = 'rgba(0,0,0,0.45)'; g.lineWidth = 1; g.strokeRect(X + 0.5, Y + 0.5, TILE - 1, TILE - 1);
                     if (detail && r1 < 0.18) { g.strokeStyle = 'rgba(255,255,255,0.05)'; g.beginPath(); g.moveTo(X + r2 * 24, Y + 4); g.lineTo(X + 8 + r1 * 40, Y + 18); g.lineTo(X + 4 + r2 * 20, Y + 30); g.stroke(); }
+                }
+            } else if (zone.gen === 'arcade') {
+                // the Neon Arcade's carpet: little neon shapes; its aisles (paths) edged in light
+                if (t === T.PATH) {
+                    g.fillStyle = 'rgba(255,79,216,0.45)';
+                    if (G.get(m, tx - 1, ty) !== T.PATH) g.fillRect(X, Y, 2, TILE);
+                    if (G.get(m, tx + 1, ty) !== T.PATH) g.fillRect(X + TILE - 2, Y, 2, TILE);
+                    if (G.get(m, tx, ty - 1) !== T.PATH) g.fillRect(X, Y, TILE, 2);
+                    if (G.get(m, tx, ty + 1) !== T.PATH) g.fillRect(X, Y + TILE - 2, TILE, 2);
+                } else if (detail && r1 < 0.45) {
+                    g.fillStyle = ['rgba(94,231,255,0.35)', 'rgba(255,79,216,0.35)', 'rgba(248,184,0,0.35)'][Math.floor(r2 * 3) % 3];
+                    const sx = X + 6 + tileHash(tx, ty, 11) * 18, sy = Y + 6 + tileHash(tx, ty, 12) * 18;
+                    if (r1 < 0.15) { g.fillRect(sx, sy, 5, 2); g.fillRect(sx + 1.5, sy - 1.5, 2, 5); } else if (r1 < 0.3) g.fillRect(sx, sy, 3, 3); else { g.beginPath(); g.arc(sx, sy, 2, 0, Math.PI * 2); g.fill(); }
                 }
             } else if (detail) {
                 // speckles: grass tufts, pebbles, ash or snow

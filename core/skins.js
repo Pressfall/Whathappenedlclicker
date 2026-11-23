@@ -32,6 +32,7 @@
         { id: 'WHchad', title: 'WH Chad', path: 'mainimage/WHchad.png', cost: 50, flag: 'shopWHchadPurchased' },
         { id: 'WHbread', title: 'WH Bread', path: 'mainimage/WHbread.png', cost: 50, flag: 'shopWHbreadPurchased' },
         { id: 'WHlightning', title: 'WH Lightning', path: 'mainimage/WHlightning.png', cost: 50, flag: 'shopWHlightningPurchased' },
+        { id: 'WH8bit', title: '8-Bit WH', path: 'mainimage/wh8bit.png', cost: 75, flag: 'shopWH8bitPurchased' },
         { id: 'CasinoDealer', title: 'Casino Dealer', path: 'mainimage/casinoDeal.png', cost: null, unlockText: 'Win 10 blackjack hands', flag: 'shopCasinoDealerPurchased' },
     ];
     // The small picture for a skin path (the same rule as main.js thumbFor); the default has no thumbnail

@@ -44,6 +44,8 @@
         capMult: 9,       // most a hit can be worth: best quality x Perfect x 3-combo x crit x backstab
         minGapMult: 0.6,    // hits from one attacker at least this share of the weapon's hit cooldown apart
         arrowGap: 0.15,
+        // a revolver: its bullets fly speed x life (a ricochet can come round a corner: half again), shots fanGap apart at the fastest
+        shotRange: 1100, shotGap: 0.06,
         hitR: 13,
         // abilities: most a hit can be worth (x weapon damage x the ability's own dmg): best quality x Berserk x Hunter's Mark x
         // ability perks; momentum abilities x3 and Execute x2 on top. Casts of one ability at least this share of its cooldown apart
@@ -52,7 +54,9 @@
     };
     const LOOT = { share: 0.3, ownerSec: 10, lifeSec: 300, maxTypes: 12, maxEach: 999, pickR: 30 };
     const BOSS = { idleResetSec: 60, minShare: 0.03, hostHz: 8, flushSec: 0.25, confirmSec: 4 };
-    const CHAT = { maxLen: 60, bubbleSec: 6, gapSec: 1.2, logMax: 40 };
+    // maxLen: a message's longest (zone and party chat, and database.rules.json says the same: raised from 60, which cut
+    // sentences off, on 2026-11-21). bubbleSec: how long a short line stays over the speaker; longer ones stay longer.
+    const CHAT = { maxLen: 150, bubbleSec: 6, bubbleMax: 12, gapSec: 1.2, logMax: 40 };
     const EMOTES = ['👋', '😂', '😮', '😡', '❤️', '👍', '🔥', 'GG'];
     const FLAGS = { shield: 1, dead: 2, dash: 4, protect: 8, draw: 16 };
     // the game's chat filter (core/chat-safety.js), shared with every other chat
@@ -143,6 +147,37 @@
         const s = String(text || '').replace(/[\u0000-\u001f\u007f]/g, '').replace(/\s+/g, ' ').trim().slice(0, CHAT.maxLen);
         return s || null;
     }
+    // seconds a chat bubble stays up: 6 for a short line, a little more for each character past 40, at most 12
+    function bubbleTime(text) {
+        const n = String(text || '').length;
+        return Math.min(CHAT.bubbleMax, CHAT.bubbleSec + Math.max(0, n - 40) * 0.06);
+    }
+    // A chat bubble's lines: words wrapped to fit maxW (measure(text) gives a width), a word too long for one line broken
+    // where it must. Never cuts a message off unless it needs more than maxLines (then the last line ends in …).
+    function wrapLines(text, measure, maxW, maxLines = 8) {
+        const words = String(text || '').split(' ').filter(Boolean), lines = [];
+        let cur = '';
+        const push = (s) => { lines.push(s); };
+        for (let w of words) {
+            const tryLine = cur ? cur + ' ' + w : w;
+            if (measure(tryLine) <= maxW) { cur = tryLine; continue; }
+            if (cur) { push(cur); cur = ''; }
+            // a word wider than a whole line: as many characters as fit, then the rest on the next line(s)
+            while (measure(w) > maxW && w.length > 1) {
+                let k = w.length - 1;
+                while (k > 1 && measure(w.slice(0, k)) > maxW) k--;
+                push(w.slice(0, k)); w = w.slice(k);
+            }
+            cur = w;
+        }
+        if (cur) push(cur);
+        if (lines.length <= maxLines) return lines;
+        const out = lines.slice(0, maxLines);
+        let last = out[maxLines - 1];
+        while (last.length > 1 && measure(last + '…') > maxW) last = last.slice(0, -1);
+        out[maxLines - 1] = last + '…';
+        return out;
+    }
     const censor = CS.censor;
     const tierOf = (id, slot) => { const b = D.GEAR_BY_ID[id]; return b && b.slot === slot ? b.tier : 0; };
     // A player's look and gear as shown to others: { n, f, w, q, sh, c, h, b, say }, and for the arena: r (rating), ti (title),
@@ -167,7 +202,15 @@
     // The looks of a player's relics (core/world-relics.js lookOf), shared as one short string lk so others draw them in their
     // own colours and shapes: per piece (w weapon, c chest, h helmet, b boots, s shield) its relic tier, its unique's shape,
     // and two colours. Looks only: nothing about how strong it is travels or is trusted.
+    // The same string also carries the Holy What Happeneds looks (core/premium.js WILDS_KINDS), as '~' and the item's id
+    // (~ws_gilded, ~tr_light, ~hd_horns, ~bk_wings, ~ta_demon, ~of_easton), after the relics: looks.p = { weapon, trail, head,
+    // back, tail, outfit } ids, the id's prefix saying which. Pages made before them skip those parts (they don't match
+    // LOOK_RE), and the database rules only limit lk's length, so nothing had to be published again. Like the relics' looks,
+    // nothing here is trusted beyond how a player is drawn.
     const LOOK_RE = /^([wchbs])([0-6])(?:\.([a-z]{2,14}))?:([0-9a-f]{6}):([0-9a-f]{6})$/;
+    const PREMIUM_LOOK_RE = /^~((tr|ws|hd|bk|ta|of)_[a-z0-9_]{2,16})$/;
+    const PREMIUM_LOOK_KIND = { ws: 'weapon', hd: 'head', bk: 'back', of: 'outfit', tr: 'trail', ta: 'tail' };
+    const PREMIUM_SLOTS = ['weapon', 'head', 'back', 'outfit', 'trail', 'tail']; // the order they are packed in, most seen first
     const LOOK_MAX = 200;
     function packLooks(looks) {
         const out = [];
@@ -177,14 +220,28 @@
             const shape = /^[a-z]{2,14}$/.test(l.shape || '') ? '.' + l.shape : '';
             out.push(k + Math.max(0, Math.min(6, Math.floor(l.tier) || 0)) + shape + ':' + l.main.slice(1).toLowerCase() + ':' + l.trim.slice(1).toLowerCase());
         }
-        return out.join(';').slice(0, LOOK_MAX);
+        const p = looks && isObj(looks.p) ? looks.p : null;
+        if (p) for (const k of PREMIUM_SLOTS) {
+            const m = PREMIUM_LOOK_RE.exec('~' + String(p[k] || ''));
+            if (m && PREMIUM_LOOK_KIND[m[2]] === k) out.push('~' + m[1]);
+        }
+        // whole parts only, the relics first (their tiers matter to PvP checks), while they fit
+        let str = '';
+        for (const part of out) if ((str ? str.length + 1 : 0) + part.length <= LOOK_MAX) str += (str ? ';' : '') + part;
+        return str;
     }
     function unpackLooks(str) {
         const out = {};
         if (typeof str !== 'string' || !str || str.length > LOOK_MAX) return out;
         for (const part of str.split(';')) {
             const m = LOOK_RE.exec(part);
-            if (m && !out[m[1]]) out[m[1]] = { tier: Number(m[2]), shape: m[3] || '', main: '#' + m[4], trim: '#' + m[5] };
+            if (m && !out[m[1]]) { out[m[1]] = { tier: Number(m[2]), shape: m[3] || '', main: '#' + m[4], trim: '#' + m[5] }; continue; }
+            const pm = PREMIUM_LOOK_RE.exec(part);
+            if (pm) {
+                if (!out.p) { out.p = {}; for (const k of PREMIUM_SLOTS) out.p[k] = ''; }
+                const k = PREMIUM_LOOK_KIND[pm[2]];
+                if (!out.p[k]) out.p[k] = pm[1];
+            }
         }
         return out;
     }
@@ -240,6 +297,7 @@
     function reachFor(weaponId, kind) {
         const b = D.GEAR_BY_ID[weaponId];
         if (kind === 'arrow') return PVP.arrowRange;
+        if (kind === 'shot') return PVP.shotRange;
         if (kind === 'parry') return 260;
         if (!b) return 0;
         if (kind === 'spell') {
@@ -268,7 +326,8 @@
             case 'charge': r = a.dist + a.width; break;
             case 'leap': r = a.dist + a.radius; break;
             case 'line': case 'beam': r = a.len + a.width; break;
-            case 'knives': case 'volley': case 'shot': r = a.speed * a.life; break;
+            case 'knives': case 'volley': case 'shot': case 'fan': r = a.speed * a.life; break;
+            case 'deadshot': r = Math.max(a.range, a.speed * a.life); break;
             case 'chain': r = a.range + a.jump * a.jumps; break;
             case 'step': r = a.range + 40; break;
             case 'hook': case 'parry': r = a.range; break;
@@ -282,7 +341,7 @@
         if (a.charges > 1) return { n: a.charges, span: a.cd * PVP.abilityCdMin }; // every charge at once
         if (a.kind === 'field') return { n: Math.floor((a.time - (a.delay || 0)) / a.tick + 1e-6) + 1, span: a.time + 1 };
         if (a.kind === 'beam') return { n: Math.ceil(a.maxTime / a.tick) + 1, span: a.maxTime + 1 };
-        if (a.kind === 'knives' || a.kind === 'volley') return { n: a.count, span: a.life + 1 };
+        if (a.kind === 'knives' || a.kind === 'volley' || a.kind === 'fan' || a.kind === 'deadshot') return { n: a.count, span: a.life + 1 };
         return { n: 1, span: 1 };
     }
     // The most one hit of this ability can be worth, from the weapon the caster is showing
@@ -326,7 +385,7 @@
         const rule = pvpRule(ctx.zone);
         if (rule === 'off') return { ok: false, reason: 'town' };
         if (rule === 'arena' && !ctx.arenaOk) return { ok: false, reason: 'arena' };
-        const kind = ['melee', 'thrust', 'bash', 'arrow', 'spell', 'parry', 'ab'].includes(hit.k) ? hit.k : null;
+        const kind = ['melee', 'thrust', 'bash', 'arrow', 'shot', 'spell', 'parry', 'ab'].includes(hit.k) ? hit.k : null;
         if (!kind) return { ok: false, reason: 'kind' };
         const a = ctx.attacker;
         if (!a || (a.fl & FLAGS.dead)) return { ok: false, reason: 'attacker' };
@@ -337,15 +396,16 @@
         const b = D.GEAR_BY_ID[hit.w];
         if (kind !== 'parry' && (!b || b.slot !== 'weapon')) return { ok: false, reason: 'weapon' };
         if (kind === 'arrow' && b.cls !== 'bow') return { ok: false, reason: 'weapon' };
+        if (kind === 'shot' && b.cls !== 'gun') return { ok: false, reason: 'weapon' };
         if ((kind === 'thrust' || kind === 'bash') && !D.WEAPON_CLASSES[b.cls].reachMax) return { ok: false, reason: 'weapon' };
-        if (kind === 'melee' && (b.cls === 'bow' || D.WEAPON_CLASSES[b.cls].reachMax)) return { ok: false, reason: 'weapon' };
+        if (kind === 'melee' && (b.cls === 'bow' || b.cls === 'gun' || D.WEAPON_CLASSES[b.cls].reachMax)) return { ok: false, reason: 'weapon' };
         if (kind === 'spell' && !D.STAFF_MAGIC[b.magic]) return { ok: false, reason: 'weapon' };
         // only a class the staff's magic names can cast with it (checked when the attacker's page shows its class)
         if (kind === 'spell' && ctx.cls && !D.STAFF_MAGIC[b.magic].users.includes(ctx.cls)) return { ok: false, reason: 'class' };
         const d = Math.hypot(a.x - ctx.me.x, a.y - ctx.me.y);
         if (d > reachFor(hit.w, kind)) return { ok: false, reason: 'range' };
         if (kind === 'parry') return { ok: true, dmg: 0 };
-        const gap = kind === 'arrow' ? PVP.arrowGap : (kind === 'spell' ? D.WEAPON_CLASSES.staff.shotCd : D.WEAPON_CLASSES[b.cls].cd) * PVP.minGapMult;
+        const gap = kind === 'arrow' ? PVP.arrowGap : kind === 'shot' ? PVP.shotGap : (kind === 'spell' ? D.WEAPON_CLASSES.staff.shotCd : D.WEAPON_CLASSES[b.cls].cd) * PVP.minGapMult;
         if (ctx.lastAt !== undefined && ctx.now - ctx.lastAt < gap) return { ok: false, reason: 'rate' };
         const dmg = Number(hit.dmg);
         if (!Number.isFinite(dmg) || dmg <= 0) return { ok: false, reason: 'dmg' };
@@ -421,7 +481,7 @@
 
     return {
         ROOT, RATE, PVP, LOOT, BOSS, CHAT, EMOTES, FLAGS, SAFE_WORDS,
-        packPos, unpackPos, posChange, sendMode, sendDue, interpDelay, packLooks, unpackLooks, LOOK_MAX, nextGap, addSample, sanitizeName, cleanChat, censor, sanitizeInfo, infoFor, clanId, sameClan, pvpRule,
+        packPos, unpackPos, posChange, sendMode, sendDue, interpDelay, packLooks, unpackLooks, LOOK_MAX, nextGap, addSample, sanitizeName, cleanChat, bubbleTime, wrapLines, censor, sanitizeInfo, infoFor, clanId, sameClan, pvpRule,
         maxHit, relicCap, reachFor, validateHit, makeHit, abilityById, abilityReach, abilityBurst, abilityMaxHit, playerStun, sanitizeLoot, canClaim, lootExpired,
         sanitizeBoss, bossNeedsReset, bossDeadFor, earnedReward, hostOf, sanitizeHost, lerpAngle, interpolate,
     };

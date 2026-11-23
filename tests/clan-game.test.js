@@ -128,3 +128,47 @@ test('what the clan page changed in the save while the game was open reaches the
     assert.equal(g.eval('diamonds'), before.d + 15, 'a change the loaded save already had');
     g.close();
 });
+
+// ---------------------------------------------------------------- the clans overhaul (2026-11-21)
+test('a new name (the Wilds name took over the chat name) no longer reads as a kick, and the clan hears the new name', async () => {
+    // the id was learnt on an earlier visit, while the name still matched
+    const first = page({ 'clans/c1': clanDoc() });
+    await first.eval('refreshClanBuff()');
+    assert.equal(first.storage.getItem('whathappened_clan_uid'), 'u1', 'learnt from the document by name');
+    first.close();
+    const g = page({ 'clans/c1': clanDoc() }, { player_username: 'NewMe', whathappened_clan_uid: 'u1', player_clanName: 'Testers' });
+    g.eval(`window.__updates = []; window.updateDoc = async (ref, patch) => { window.__updates.push({ path: ref.path, patch: JSON.parse(JSON.stringify(patch)) }); };`);
+    await g.eval('refreshClanBuff()');
+    assert.equal(g.storage.getItem('player_clanId'), 'c1', 'still in the clan');
+    assert.equal(g.eval('WHClanGame.member()'), true);
+    assert.equal(g.storage.getItem('player_clanRole'), 'co-leader');
+    await new Promise((r) => setTimeout(r, 0));
+    const [u] = JSON.parse(JSON.stringify(g.window.__updates));
+    assert.deepEqual(u, { path: 'clans/c1', patch: { 'names.u1': 'NewMe', members: ['Olive', 'NewMe'] } });
+    // the change it sends is one the rules allow
+    const after = JSON.parse(JSON.stringify(clanDoc())); after.names.u1 = 'NewMe'; after.members = u.patch.members;
+    assert.equal(require('../core/clan-roles').classifyClanUpdate(clanDoc(), after, 'u1', false).ok, true);
+    g.close();
+});
+
+test('claimed challenges give the clan XP once and count toward this week; outside a clan they are only noted', async () => {
+    const challenges = JSON.stringify({ day: { key: 'd1', ids: ['d_clicks', 'd_play', 'd_levels'], claimed: { d_clicks: true } }, week: { key: 'w1', ids: ['w_play'], claimed: { w_play: true } } });
+    // set after the page loads (the challenges panel starts a fresh state for today on load)
+    const g = page({ 'clans/c1': clanDoc({ clanXp: 100 }) });
+    await g.eval('refreshClanBuff()');
+    g.storage.setItem('whathappened_challenges', challenges);
+    assert.equal(await g.eval('WHClanGame.quests()'), 10 + 30);
+    const d = g.window.__docs['clans/c1'];
+    assert.equal(d.clanXp, 140);
+    assert.deepEqual(require('../core/clan-levels').contributors(d.contrib, NOW), [['Me', 40]]);
+    assert.equal(g.storage.getItem('whathappened_clan_quest_xp'), '40');
+    assert.equal(await g.eval('WHClanGame.quests()'), 0, 'once');
+    assert.equal(g.window.__docs['clans/c1'].clanXp, 140);
+    g.close();
+    // not in a clan: nothing is paid, and joining later doesn't pour the old ones in
+    const solo = page({}, { player_clanId: '' });
+    solo.storage.setItem('whathappened_challenges', challenges);
+    assert.equal(await solo.eval('WHClanGame.quests()'), 0);
+    assert.equal(JSON.parse(solo.storage.getItem('whathappened_clan_quests')).length, 2);
+    solo.close();
+});

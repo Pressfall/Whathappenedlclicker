@@ -84,6 +84,26 @@ test('team battles: a round ends only when the whole team is down; a 3v3 invitat
     assert.equal(A.reduce(m, { type: 'tick', now: NOW + 4100 })[0].winner, 'b');
 });
 
+test('arena rounds last three minutes, and a tournament pairing has room for a late opponent and a full five-round duel', () => {
+    assert.equal(A.RULES.roundSec, 180);
+    const T = require('../core/world-tour'), R = A.RULES;
+    const longest = R.inviteSec + R.readySec + R.maxRounds * (R.roundSec + R.graceSec) + (R.maxRounds - 1) * (R.breakSec + R.countdownSec);
+    assert.ok(T.TOUR.noShowSec + longest <= T.TOUR.windowSec, `${T.TOUR.noShowSec + longest}s > ${T.TOUR.windowSec}s`);
+});
+
+test('healing in the Arena gives a quarter of its usual health; everywhere else is untouched', () => {
+    assert.equal(W.healMult('arena'), 0.25);
+    for (const z of Object.keys(D.ZONES)) if (z !== 'arena') assert.equal(W.healMult(z), 1, z);
+    assert.equal(W.healMult('nowhere'), 1);
+    // every heal on the page goes through one helper that applies it (world-actors.js healPlayer)
+    const fs = require('fs'), path = require('path');
+    const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+    // (capped at max health first, so the Max Potion's 9999 is a quarter of your health there, not still a full refill)
+    assert.match(src('world-actors.js'), /p\.hp = Math\.min\(p\.maxHp, p\.hp \+ Math\.min\(amount, p\.maxHp\) \* W\.healMult\(g\.zoneId\)\)/);
+    const direct = /p\.hp = Math\.min\(p\.maxHp, p\.hp \+ (?!Math\.min\(amount, p\.maxHp\) \* W\.healMult)(?!D\.COMBAT\.player\.regenTown)/;
+    for (const f of ['world-actors.js', 'world.js']) assert.doesNotMatch(src(f), direct, f + ' heals the player without healPlayer');
+});
+
 test('a round nobody wins times out; a match that never ends is a draw and gives the stakes back', () => {
     const m = A.newMatch(ask({ stake: 500 }), 'uidAAAA');
     let t = NOW;

@@ -72,11 +72,10 @@ const JOINED_KEY = 'whathappened_clan_joined';
 function setMyClan(id, name, role) {
     ls.set('player_clanId', id); ls.set('player_clanName', name || ''); ls.set('player_clanRole', role || 'member');
 }
-function clearMyClan() { ['player_clanId', 'player_clanName', 'player_clanRole', JOINED_KEY].forEach(ls.del); }
+function clearMyClan() { ['player_clanId', 'player_clanName', 'player_clanRole', JOINED_KEY, 'whathappened_clan_uid'].forEach(ls.del); }
 const toMillis = (v) => EV.toMs(v);
 
-// Non-blocking toasts. alert() is routed here so status messages don't freeze the page; confirm() and prompt() stay native
-// for real decisions.
+// Non-blocking toasts. alert() is routed here so status messages don't freeze the page; real decisions use ask() below.
 function notify(msg, kind) {
     const box = $id('clanToasts');
     if (!box) return;
@@ -156,14 +155,72 @@ function checkClanAchievements() {
         window.WHA.checkAll(window.WHA.snapshot()).forEach((a, i) => setTimeout(() => notify(`🏆 ${a.name}: ${a.desc} Title: ${a.title}`, 'gold'), i * 700));
     } catch (e) {}
 }
-function ensureUsername() {
-    let u = playerName().slice(0, 32);
+// In-page dialogs in place of confirm() and prompt(): ask({ title, text, ok, cancel, danger, input: { placeholder, value, max } })
+// resolves to true / false, or with an input to the text typed (null when cancelled). Escape or a click outside cancels.
+function ask(o) {
+    return new Promise((resolve) => {
+        const wrap = document.createElement('div');
+        wrap.className = 'dlg-wrap';
+        wrap.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="dlgTitle">
+          <h3 id="dlgTitle">${esc(o.title || 'Are you sure?')}</h3>${o.text ? `<p>${esc(o.text)}</p>` : ''}
+          ${o.input ? `<input class="dlg-input" type="text" maxlength="${Number(o.input.max) || 200}" placeholder="${esc(o.input.placeholder || '')}" value="${esc(o.input.value || '')}" aria-label="${esc(o.input.placeholder || o.title || 'Answer')}">` : ''}
+          <div class="dlg-actions"><button type="button" class="btn btn-ghost btn-sm" data-r="no">${esc(o.cancel || 'Cancel')}</button><button type="button" class="btn btn-sm ${o.danger ? 'btn-danger' : 'btn-primary'}" data-r="yes">${esc(o.ok || 'OK')}</button></div></div>`;
+        const input = wrap.querySelector('.dlg-input'), prev = document.activeElement;
+        const onKey = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); done(false); }
+            else if (e.key === 'Enter' && input && document.activeElement === input) { e.preventDefault(); done(true); }
+        };
+        function done(yes) {
+            wrap.remove();
+            document.removeEventListener('keydown', onKey, true);
+            try { if (prev && prev.focus) prev.focus(); } catch (e) {}
+            resolve(o.input ? (yes ? String(input.value || '').trim() : null) : !!yes);
+        }
+        wrap.addEventListener('click', (e) => { const b = e.target.closest('[data-r]'); if (b) done(b.dataset.r === 'yes'); else if (e.target === wrap) done(false); });
+        document.addEventListener('keydown', onKey, true);
+        document.body.appendChild(wrap);
+        (input || wrap.querySelector('[data-r="yes"]')).focus();
+    });
+}
+// One name for chat and the Wilds (core/names.js): the Wilds' name wins when there is one
+async function ensureUsername() {
+    const N = window.WHNames;
+    let u = (N ? N.sync(localStorage) : playerName()).slice(0, 32);
     if (!u) {
-        u = String(prompt('Choose a username (max 32 characters):', '') || '').trim().slice(0, 32);
-        if (!u) return null;
-        ls.set('player_username', u);
+        const raw = await ask({ title: 'Choose your name', text: 'It is the name for chat, clans and the Wilds (' + (N ? N.RULES : 'max 16 characters') + ').', ok: 'Use this name', input: { placeholder: 'Your name', max: 16 } });
+        if (!raw) return null;
+        u = N ? N.set(localStorage, raw) : raw.slice(0, 16);
+        if (!u) { notify('That name won\'t work: use ' + N.RULES + '.', 'bad'); return null; }
+        if (!N) ls.set('player_username', u);
     }
     return u;
+}
+// clan names and descriptions are typed by players and shown to everyone: through the same swear filter as chat
+const clanText = (t) => esc(CHAT_SAFETY.display(String(t == null ? '' : t), CHAT_SAFETY.isOn(localStorage)));
+const prestigeCount = () => Math.max(num(ls.get('whathappened_prestige_times')), num((readSave() || {}).prestigeTimes));
+const UID_KEY = 'whathappened_clan_uid'; // the sign-in id my clan knows me by (clan-game.js checks membership with it)
+// the Wilds' classes, for the member list (core/world-data.js CLASSES; an id this page doesn't know shows as an adventurer)
+const WILDS_CLASSES = { warrior: ['⚔️', 'Warrior'], guardian: ['🛡️', 'Guardian'], rogue: ['🗡️', 'Rogue'], ranger: ['🏹', 'Ranger'], lancer: ['🔱', 'Lancer'],
+    mystic: ['🔮', 'Mystic'], gunslinger: ['🤠', 'Gunslinger'] };
+const WILDS_LIVE_MS = 3 * 60000; // a Wilds heartbeat (clan-wilds.js, once a minute) newer than this: "In the Wilds" now
+// open to new members, and the prestiges a clan asks for (set under ⚙️ Manage)
+const isClosed = (c) => !!c && c.joinMode === 'closed';
+const minPrestigeOf = (c) => Math.max(0, Math.min(999, Math.floor(num(c && c.minPrestige))));
+// Chat effects bought with Holy What Happeneds (core/premium.js kind chatfx): the one this player has on is sent with each
+// message, and each message shows the one it was sent with (an id this page doesn't know shows plain)
+function myChatFx() {
+    try { const P = window.WHPremium; return P ? P.clean(JSON.parse(ls.get('whathappened_premium') || 'null')).equip.chatfx || null : null; } catch (e) { return null; }
+}
+// Name colours (core/name-colors.js, chosen in the game's Settings): sent with each message as nameColor; only a palette id
+// ever becomes a colour (anything else shows the default)
+function myNameColor() { try { return window.WHNameColors.forMessage(localStorage); } catch (e) { return null; } }
+// (no colour chosen: the page's own, which is gold for your own messages)
+function nameColorAttr(m) {
+    try { const NC = window.WHNameColors, id = NC.clean(m && m.nameColor); return id ? ` style="color:${NC.hexOf(id)}"` : ''; } catch (e) { return ''; }
+}
+function chatFxWrap(fx, html) {
+    const P = window.WHPremium, it = P && typeof fx === 'string' ? P.BY_ID[fx] : null;
+    return it && it.kind === 'chatfx' ? `<span class="bn-chatfx bn-chatfx-${it.id.replace(/^cf_/, '')}">${html}</span>` : html;
 }
 async function clanSystemMessage(clanId, message, color, extra) {
     try { await addDoc(collection(db, 'clan_chat'), Object.assign({ clanId, name: 'SYSTEM', message, createdAt: serverTimestamp(), system: true, color: color || 'green' }, extra || {})); } catch (e) {}
@@ -282,6 +339,8 @@ async function loadClanDetail(clanId) {
                 // what the game and the achievements read: level, name and role (a promotion made by someone else shows too)
                 ls.set('whathappened_clan_level', String(Levels.levelFromXp(c.clanXp)));
                 if (myClanId() === clanId) { ls.set('player_clanName', c.name || ''); ls.set('player_clanRole', _view.viewerRole); updatePlayerClanStatus(); }
+                // the game page checks membership by this id, so a new name (core/names.js) never loses the clan
+                if (_myUid && Roles.roleOf(raw, _myUid)) { ls.set(UID_KEY, _myUid); maybeRenameSelf(clanId, raw); }
             }
             if (_view.shellFor !== (isMember ? 'member' : 'guest')) renderClanShell(clanId, isMember);
             renderClanBanner(clanId, c, isMember);
@@ -328,12 +387,15 @@ function renderClanShell(clanId, isMember) {
     const area = $id('clanDetailArea');
     if (!area) return;
     area.innerHTML = `
-      <section class="card clan-banner"><div id="bannerTop"></div><div class="manage-panel" id="managePanel" hidden></div><div id="bannerLevel"></div></section>
+      <section class="card clan-banner"><div id="bannerTop"></div><div class="clan-stats" id="clanStats"></div><div class="manage-panel" id="managePanel" hidden></div><div id="bannerLevel"></div></section>
       <div class="clan-cols">
         <div class="clan-col">
           ${isMember ? '<section class="card checkin-card" id="checkinCard"></section>' : ''}
+          <section class="card week-card" id="weekCard"></section>
           <section class="card members-card">
-            <div class="sec-head"><h2>Members <span class="count" id="memberCount"></span></h2><span class="online-count" id="onlineCount"></span></div>
+            <div class="sec-head"><h2>Members <span class="count" id="memberCount"></span></h2>
+              <div class="row-gap"><span class="online-count" id="onlineCount"></span>
+                <select id="memberSort" class="mini-select" aria-label="Sort members"><option value="rank">By rank</option><option value="week">Most XP this week</option><option value="cps">Highest CPS</option><option value="seen">Recently online</option></select></div></div>
             <div id="membersList" class="members-list">${skeleton('rows', 6)}</div>
           </section>
         </div>
@@ -348,6 +410,12 @@ function renderClanShell(clanId, isMember) {
     _view.ui.manage = false;
     const list = $id('membersList');
     if (list) list.addEventListener('click', (e) => onMemberListClick(e, clanId));
+    const sort = $id('memberSort');
+    if (sort) {
+        try { sort.value = localStorage.getItem('whathappened_clan_member_sort') || 'rank'; } catch (e) {}
+        if (!sort.value) sort.value = 'rank';
+        sort.addEventListener('change', () => { try { localStorage.setItem('whathappened_clan_member_sort', sort.value); } catch (e) {} if (_view.doc) renderMembers(clanId, _view.doc); });
+    }
     if (isMember) {
         $id('clanChatForm').addEventListener('submit', (e) => { e.preventDefault(); sendClanChat(clanId); });
         const safe = $id('clanChatSafe');
@@ -375,16 +443,18 @@ function renderClanBanner(clanId, c, isMember) {
     const canManage = isMember && Roles.claimed(c) && Roles.canEditDescription(role);
     const founded = toMillis(c.createdAt);
     const myClan = myClanId();
-    const joinable = !isMember && !myClan && n < max && clansUnlocked();
-    const joinNote = isMember ? '' : myClan ? 'Leave your clan to join this one.' : n >= max ? 'This clan is full.' : !clansUnlocked() ? 'Clans unlock after your first prestige.' : '';
+    const minP = minPrestigeOf(c), closed = isClosed(c);
+    const joinable = !isMember && !myClan && n < max && clansUnlocked() && !closed && prestigeCount() >= minP;
+    const joinNote = isMember ? '' : myClan ? 'Leave your clan to join this one.' : n >= max ? 'This clan is full.' : !clansUnlocked() ? 'Clans unlock after your first prestige.'
+        : closed ? 'This clan isn\'t taking new members right now.' : prestigeCount() < minP ? `This clan asks for ${minP} prestige${minP === 1 ? '' : 's'}: you have ${prestigeCount()}.` : '';
     const iOwn = isMember && role === 'leader';
     top.innerHTML = `
       <div class="banner-main">
         <div class="emblem">${clanIconHtml(c)}</div>
         <div class="banner-text">
-          <div class="banner-title"><h2>${esc(c.name || 'Clan')}</h2><span class="lvl-badge">Lv ${Levels.levelFromXp(c.clanXp)}</span>${isMember ? '<span class="tag">Your clan</span>' : ''}</div>
+          <div class="banner-title"><h2>${clanText(c.name || 'Clan')}</h2><span class="lvl-badge">Lv ${Levels.levelFromXp(c.clanXp)}</span>${isMember ? '<span class="tag">Your clan</span>' : ''}${closed ? '<span class="tag" title="Not taking new members">🔒 Closed</span>' : ''}${minP ? `<span class="tag" title="Prestiges needed to join">🔁 ${minP}+ prestiges</span>` : ''}</div>
           <div class="banner-meta">👑 ${esc(c.owner || '?')} · 👥 ${n}/${max} members${founded ? ' · Founded ' + timeAgo(founded) : ''}</div>
-          <p class="banner-desc">${c.description ? esc(c.description) : (canManage ? '<span class="muted">No description yet. Add one under ⚙️ Manage so people know what your clan is about.</span>' : '')}</p>
+          <p class="banner-desc">${c.description ? clanText(c.description) : (canManage ? '<span class="muted">No description yet. Add one under ⚙️ Manage so people know what your clan is about.</span>' : '')}</p>
         </div>
         <div class="banner-actions" id="clanHeaderActions">
           ${isMember ? '' : `<button class="btn btn-primary" id="joinClanBtn"${joinable ? '' : ' disabled'}>Join clan</button>`}
@@ -411,7 +481,11 @@ function renderClanBanner(clanId, c, isMember) {
     const on = (id, fn) => { const el = $id(id); if (el) el.addEventListener('click', fn); };
     on('joinClanBtn', () => joinClan(clanId));
     on('closeClanPreview', () => { closeClanView(); const fa = $id('findArea'); if (fa) fa.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
-    on('leaveClanBtn', () => { if (confirm(iOwn ? 'Leave your clan? Leadership passes to the highest-ranked member with an account (or the clan is deleted if you are the last one).' : `Leave ${c.name || 'this clan'}?`)) leaveClan(clanId); });
+    on('leaveClanBtn', async () => {
+        const ok = await ask({ title: 'Leave ' + (c.name || 'this clan') + '?', ok: 'Leave clan', danger: true,
+            text: iOwn ? 'Leadership passes to the highest-ranked member with an account, or the clan is deleted if you are the last one.' : 'Your clan perks and buffs stop, and rewards for events still running won\'t be yours.' });
+        if (ok) leaveClan(clanId);
+    });
     on('manageClanBtn', () => { _view.ui.manage = !_view.ui.manage; fillManagePanel(clanId); renderClanBanner(clanId, _view.doc, _view.member); });
     on('perksToggle', () => { _view.ui.perks = !_view.ui.perks; renderClanBanner(clanId, _view.doc, _view.member); });
 }
@@ -430,20 +504,53 @@ function fillManagePanel(clanId) {
     const cur = c.clanIcon || 'default';
     panel.innerHTML = `
       <div class="manage-grid">
-        ${canEdit ? `<label class="field"><span>Description</span><textarea id="descInput" maxlength="400" rows="3" placeholder="What's your clan about? Activity, goals, rules…">${esc(c.description || '')}</textarea></label>` : ''}
+        ${canEdit ? `<label class="field span2"><span>Description</span><textarea id="descInput" maxlength="400" rows="3" placeholder="What's your clan about? Activity, goals, rules…">${esc(c.description || '')}</textarea></label>` : ''}
         ${canEdit ? `<label class="field"><span>Clan icon</span><select id="clanIconSelect">${icons.map((ic) => `<option value="${ic.id}"${ic.id === cur ? ' selected' : ''}>${ic.emoji} ${esc(ic.label)}</option>`).join('')}</select><small class="muted">More icons unlock with clan levels and in the Clan Shop.</small></label>` : ''}
+        ${canEdit ? `<label class="field"><span>Who can join</span><select id="joinModeSelect"><option value="open"${isClosed(c) ? '' : ' selected'}>🔓 Anyone (open)</option><option value="closed"${isClosed(c) ? ' selected' : ''}>🔒 Nobody new (closed)</option></select><small class="muted">A closed clan keeps its members but takes no new ones.</small></label>` : ''}
+        ${canEdit ? `<label class="field"><span>Prestiges needed to join</span><input id="minPrestigeInput" type="number" min="0" max="999" step="1" value="${minPrestigeOf(c)}"><small class="muted">0 lets anyone in. Members already in stay.</small></label>` : ''}
+        ${isOwner ? `<label class="field"><span>Clan name</span><div class="row-gap"><input id="renameInput" type="text" maxlength="24" value="${esc(c.name || '')}" autocomplete="off"><button type="button" class="btn btn-sm" id="renameBtn">Rename</button></div><small class="muted">3–24 characters, not taken by another clan.</small></label>` : ''}
       </div>
       <div class="manage-actions">
-        ${canEdit ? '<button class="btn btn-primary btn-sm" id="saveDescBtn">Save description</button>' : ''}
+        ${canEdit ? '<button class="btn btn-primary btn-sm" id="saveDescBtn">Save changes</button>' : ''}
         ${isOwner ? '<button class="btn btn-danger btn-sm" id="deleteClanBtn">Delete clan</button>' : ''}
       </div>
       ${isOwner ? '<p class="muted small">To hand the clan to someone else, open the ⋯ menu next to their name.</p>' : ''}`;
     const save = $id('saveDescBtn');
     if (save) save.addEventListener('click', async () => {
-        const val = String($id('descInput').value || '').trim().slice(0, 400);
+        const typed = String($id('descInput').value || '').trim().slice(0, 400), val = CHAT_SAFETY.censor(typed);
+        const patch = {};
+        if (val !== String(c.description || '')) patch.description = val;
+        const mode = ($id('joinModeSelect') || {}).value === 'closed' ? 'closed' : 'open';
+        if (mode !== (isClosed(c) ? 'closed' : 'open')) patch.joinMode = mode;
+        const minP = Math.max(0, Math.min(999, Math.floor(num(($id('minPrestigeInput') || {}).value))));
+        if (minP !== minPrestigeOf(c)) patch.minPrestige = minP;
+        if (!Object.keys(patch).length) { notify('Nothing changed.'); return; }
         save.disabled = true;
-        try { await updateDoc(doc(db, 'clans', clanId), { description: val }); notify('Description saved.', 'good'); _view.ui.manage = false; fillManagePanel(clanId); renderClanBanner(clanId, _view.doc, _view.member); }
-        catch (e) { notify('Saving the description failed.', 'bad'); save.disabled = false; }
+        try {
+            await updateDoc(doc(db, 'clans', clanId), patch);
+            notify(val !== typed ? 'Saved. A few words in the description were filtered out.' : 'Clan settings saved.', 'good');
+            if (patch.joinMode) clanSystemMessage(clanId, patch.joinMode === 'closed' ? '🔒 The clan is closed to new members for now.' : '🔓 The clan is open to new members.', 'green');
+            _view.ui.manage = false; fillManagePanel(clanId); renderClanBanner(clanId, _view.doc, _view.member);
+        } catch (e) { notify('Saving the clan settings failed.', 'bad'); save.disabled = false; }
+    });
+    const renameBtn = $id('renameBtn');
+    if (renameBtn) renameBtn.addEventListener('click', async () => {
+        const name = String(($id('renameInput') || {}).value || '').replace(/\s+/g, ' ').trim();
+        if (name === String(c.name || '').trim()) { notify('That is already the clan\'s name.'); return; }
+        let list = [];
+        try { list = await fetchClanList(true); } catch (e) {}
+        const err = validateClanName(name, list.filter((x) => x.id !== clanId));
+        if (err) { notify(err, 'bad'); return; }
+        if (!(await ask({ title: 'Rename the clan to "' + name + '"?', text: 'Everyone sees the new name at once, in the clan finder too.', ok: 'Rename' }))) return;
+        renameBtn.disabled = true;
+        try {
+            await updateDoc(doc(db, 'clans', clanId), { name });
+            setMyClan(clanId, name, _view.viewerRole);
+            clanSystemMessage(clanId, `👑 The clan is now called ${name}.`, 'gold');
+            notify('The clan is now called ' + name + '.', 'good');
+            _clanList.at = 0;
+            updatePlayerClanStatus();
+        } catch (e) { notify('Renaming the clan failed.', 'bad'); renameBtn.disabled = false; }
     });
     const sel = $id('clanIconSelect');
     if (sel) sel.addEventListener('change', async () => {
@@ -451,17 +558,25 @@ function fillManagePanel(clanId) {
         catch (e) { notify('Changing the icon failed.', 'bad'); }
     });
     const del = $id('deleteClanBtn');
-    if (del) del.addEventListener('click', () => { if (confirm(`Delete ${c.name || 'this clan'} for everyone? This can't be undone.`)) deleteClan(clanId); });
+    if (del) del.addEventListener('click', async () => {
+        if (await ask({ title: 'Delete ' + (c.name || 'this clan') + '?', text: 'The clan, its chat and its progress are gone for everyone. This can\'t be undone.', ok: 'Delete for everyone', danger: true })) deleteClan(clanId);
+    });
 }
 
 // ---- the daily check-in (days are UTC, so the whole clan shares one) ----
 const CHECKIN_KEY = 'whathappened_clan_checkin';
 function readCheckinState() { try { return JSON.parse(ls.get(CHECKIN_KEY) || '{}') || {}; } catch (e) { return {}; } }
 function checkedInToday(c) { const day = Levels.utcDay(Date.now()); return c.checkin && c.checkin.day === day && Array.isArray(c.checkin.names) ? c.checkin.names : []; }
+// by name, or by sign-in id (so a member who just took a new name can't check in twice)
+function iCheckedIn(c) {
+    const ci = c && c.checkin;
+    if (!ci || ci.day !== Levels.utcDay(Date.now())) return false;
+    return (Array.isArray(ci.names) && ci.names.includes(playerName())) || (!!_myUid && Array.isArray(ci.uids) && ci.uids.includes(_myUid));
+}
 function renderCheckin(clanId, c) {
     const card = $id('checkinCard');
     if (!card) return;
-    const now = Date.now(), names = checkedInToday(c), done = names.includes(playerName());
+    const now = Date.now(), names = checkedInToday(c), done = iCheckedIn(c);
     const st = readCheckinState(), streak = Levels.currentStreak(st, now), next = Levels.nextStreak(st, now), n = memberCount(c);
     card.innerHTML = `
       <div class="sec-head"><h2>Daily check-in</h2><span class="muted small">Resets in ${fmtLeft(msUntilUtcMidnight())}</span></div>
@@ -476,7 +591,7 @@ function renderCheckin(clanId, c) {
     if (btn) btn.addEventListener('click', () => clanCheckIn(clanId));
 }
 async function clanCheckIn(clanId) {
-    const name = ensureUsername();
+    const name = await ensureUsername();
     if (!name) return;
     const btn = $id('checkinBtn');
     if (btn) btn.disabled = true;
@@ -489,12 +604,15 @@ async function clanCheckIn(clanId) {
             const d = snap.data() || {};
             clanName = d.name || '';
             if (!isMemberOf(normalizeClan(d), name)) throw new Error('you are not in this clan');
-            const names = d.checkin && d.checkin.day === day && Array.isArray(d.checkin.names) ? d.checkin.names.slice() : [];
-            if (names.includes(name)) { already = true; return; }
+            const today = d.checkin && d.checkin.day === day;
+            const names = today && Array.isArray(d.checkin.names) ? d.checkin.names.slice() : [];
+            const uids = today && Array.isArray(d.checkin.uids) ? d.checkin.uids.slice() : [];
+            if (names.includes(name) || (_myUid && uids.includes(_myUid))) { already = true; return; }
             names.push(name);
+            if (_myUid) uids.push(_myUid);
             const xp = num(d.clanXp);
             before = Levels.levelFromXp(xp); after = Levels.levelFromXp(xp + Levels.CHECKIN_XP);
-            tx.update(ref, { checkin: { day, names }, clanXp: xp + Levels.CHECKIN_XP });
+            tx.update(ref, { checkin: { day, names, uids }, clanXp: xp + Levels.CHECKIN_XP, contrib: Levels.addContribution(d.contrib, name, Levels.CHECKIN_XP, Date.now()) });
         });
     } catch (e) { notify('Check-in failed: ' + (e.message || 'try again'), 'bad'); if (btn) btn.disabled = false; return; }
     if (already) notify('You already checked in today.');
@@ -535,22 +653,32 @@ function renderMembers(clanId, c) {
     const checked = new Set(checkedInToday(c));
     const donated = c.cpDonated && typeof c.cpDonated === 'object' ? c.cpDonated : {};
     const now = Date.now();
+    const week = new Map(Levels.contributors(c.contrib, now));
     const rows = members.map((m) => {
         const p = data.profiles[m] || {}, st = data.stats[m] || {};
+        const w = st.wilds && typeof st.wilds === 'object' ? st.wilds : null, wildsAt = num(st.wildsAt);
         return { name: m, role: memberRole(c, m, p), title: String(p.title || ''), cps: num(st.lastCps),
             golden: num(st.gpoints != null ? st.gpoints : (p.goldenWhat != null ? p.goldenWhat : p.golden)),
-            seen: num(st.lastUpdate), checked: checked.has(m), donated: num(donated[m]),
+            seen: Math.max(num(st.lastUpdate), wildsAt), inWilds: now - wildsAt < WILDS_LIVE_MS, wilds: w, checked: checked.has(m), donated: num(donated[m]),
+            week: week.get(m) || 0, prestiges: num(st.prestiges),
             acct: Roles.claimed(c) ? uidsOfName(c, m).some((u) => c.acct && c.acct[u] === true) : false };
-    }).sort((a, b) => roleRank(b.role) - roleRank(a.role) || b.cps - a.cps || a.name.localeCompare(b.name));
-    const online = rows.filter((r) => now - r.seen < 120000).length;
+    });
+    const sortBy = ($id('memberSort') || {}).value || 'rank';
+    const byRank = (a, b) => roleRank(b.role) - roleRank(a.role) || b.cps - a.cps || a.name.localeCompare(b.name);
+    rows.sort(sortBy === 'week' ? (a, b) => b.week - a.week || byRank(a, b) : sortBy === 'cps' ? (a, b) => b.cps - a.cps || byRank(a, b)
+        : sortBy === 'seen' ? (a, b) => b.seen - a.seen || byRank(a, b) : byRank);
+    const isOnline = (r) => now - r.seen < 120000 || r.inWilds;
+    const online = rows.filter(isOnline).length;
     const countEl = $id('memberCount');
     if (countEl) countEl.textContent = `${members.length}/${c.maxMembers || 30}`;
     const onEl = $id('onlineCount');
     if (onEl) onEl.innerHTML = online ? `<span class="dot on"></span>${online} online` : '';
+    renderClanStats(c, rows, online, now);
+    renderWeekCard(c, now);
     const open = _view.ui.openMenu;
     list.innerHTML = rows.map((r) => {
-        const isOn = now - r.seen < 120000;
-        const seenText = isOn ? 'Online' : r.seen ? 'Seen ' + timeAgo(r.seen) : 'Not seen yet';
+        const isOn = isOnline(r);
+        const seenText = isOn ? 'Online' : r.seen ? 'Seen ' + timeAgo(r.seen) : 'Not seen yet'; // (the 🌲 tag says where)
         const actions = [];
         if (isMember && r.name !== name && Roles.claimed(c)) {
             for (const role of ['co-leader', 'elder', 'eleite member', 'member']) {
@@ -561,16 +689,44 @@ function renderMembers(clanId, c) {
             if (isOwnerViewer && r.acct) actions.push('<button type="button" data-act="owner">👑 Make clan leader</button>');
             if (Roles.canKick(viewer, r.role, r.role === 'leader')) actions.push('<button type="button" data-act="kick" class="danger">Kick from clan</button>');
         }
-        const stats = [r.cps ? `⚡ ${fmtShort(r.cps)} CPS` : '', `🪙 ${fmtShort(r.golden)} Golden`, r.donated ? `🤝 ${fmtShort(r.donated)} CP given` : ''].filter(Boolean).join(' · ');
+        const stats = [r.cps ? `⚡ ${fmtShort(r.cps)} CPS` : '', `🪙 ${fmtShort(r.golden)} Golden`, r.prestiges ? `🔁 ${fmtShort(r.prestiges)}` : '',
+            r.donated ? `🤝 ${fmtShort(r.donated)} CP given` : '', r.week ? `⭐ ${fmtShort(r.week)} XP this week` : ''].filter(Boolean).join(' · ');
+        const wc = r.wilds && WILDS_CLASSES[r.wilds.cls] ? WILDS_CLASSES[r.wilds.cls] : ['🧭', 'Adventurer'];
+        const wildsLine = r.wilds ? `<div class="m-wilds" title="Their adventure in the Wilds">${wc[0]} ${esc(wc[1])}${num(r.wilds.r) ? ` · 🏟️ ${fmtShort(r.wilds.r)} rating` : ''}${num(r.wilds.wb) ? ` · 🌊 wave ${fmtShort(r.wilds.wb)}` : ''}${num(r.wilds.k) ? ` · ☠️ ${fmtShort(r.wilds.k)} monsters` : ''}</div>` : '';
         return `<div class="member${r.name === name ? ' is-me' : ''}" data-name="${esc(r.name)}">
-        <span class="dot ${isOn ? 'on' : (r.seen && now - r.seen < 86400000 ? 'recent' : '')}" title="${esc(seenText)}"></span>
+        <span class="dot ${r.inWilds ? 'wilds' : isOn ? 'on' : (r.seen && now - r.seen < 86400000 ? 'recent' : '')}" title="${esc(seenText)}"></span>
         <div class="m-main">
-          <div class="m-name">${r.title ? `<span class="m-title" style="color:${titleColor(r.title)}">${esc(r.title)}</span>` : ''}<b>${esc(r.name)}</b>${r.name === name ? '<span class="muted small">(you)</span>' : ''}<span class="role role-${esc(roleLabel(r.role).replace(/\s+/g, '-'))}">${esc(roleLabel(r.role))}</span>${r.checked ? '<span class="tag good" title="Checked in today">✓ in</span>' : ''}</div>
+          <div class="m-name">${r.title ? `<span class="m-title" style="color:${titleColor(r.title)}">${esc(r.title)}</span>` : ''}<b>${esc(r.name)}</b>${r.name === name ? '<span class="muted small">(you)</span>' : ''}<span class="role role-${esc(roleLabel(r.role).replace(/\s+/g, '-'))}">${esc(roleLabel(r.role))}</span>${r.checked ? '<span class="tag good" title="Checked in today">✓ in</span>' : ''}${r.inWilds ? '<span class="tag wilds" title="Playing in the Wilds right now">🌲 In the Wilds</span>' : ''}</div>
           <div class="m-stats">${stats} · <span class="${isOn ? 'online' : 'muted'}">${esc(seenText)}</span></div>
+          ${wildsLine}
         </div>
         ${actions.length ? `<div class="m-actions"><button type="button" class="icon-btn" data-act="menu" aria-label="Manage ${esc(r.name)}" aria-expanded="${open === r.name}">⋯</button><div class="m-menu"${open === r.name ? '' : ' hidden'}>${actions.join('')}</div></div>` : ''}
       </div>`;
     }).join('') || '<div class="muted">No members.</div>';
+}
+// the strip under the banner: who is around, today's check-ins, the clan's combined CPS and this week's XP
+function renderClanStats(c, rows, online, now) {
+    const el = $id('clanStats');
+    if (!el) return;
+    const n = rows.length, checked = rows.filter((r) => r.checked).length, wilds = rows.filter((r) => r.inWilds).length;
+    const cps = rows.reduce((t, r) => t + r.cps, 0), weekXp = Levels.contributors(c.contrib, now).reduce((t, e) => t + e[1], 0);
+    const chip = (icon, val, label, title) => `<div class="cs-chip" title="${esc(title || label)}"><span>${icon}</span><b>${val}</b><small>${esc(label)}</small></div>`;
+    el.innerHTML = chip('🟢', online, 'online now', online + ' of ' + n + ' members played in the last few minutes')
+        + chip('✅', `${checked}/${n}`, 'checked in today')
+        + chip('🌲', wilds, 'in the Wilds', 'Members playing in the Wilds right now')
+        + chip('⚡', fmtShort(cps), 'clan CPS', 'Everyone\'s CPS added up')
+        + chip('⭐', fmtShort(weekXp), 'XP this week', 'Clan XP from check-ins and challenges since Monday (UTC)');
+}
+// This week's contributors: clan XP each member brought in since Monday (check-ins, finished challenges)
+function renderWeekCard(c, now) {
+    const card = $id('weekCard');
+    if (!card) return;
+    const top = Levels.contributors(c.contrib, now), me = playerName(), myPos = top.findIndex((e) => e[0] === me);
+    const row = (e, i) => `<div class="ev-person${e[0] === me ? ' you' : ''}"><span class="pos">${['🥇', '🥈', '🥉'][i] || i + 1}</span><b>${esc(e[0])}</b>${e[0] === me ? '<span class="muted small">(you)</span>' : ''}<span class="amt">${fmtShort(e[1])} XP</span></div>`;
+    card.innerHTML = `<div class="sec-head"><h2>This week's top contributors</h2><span class="muted small">New week in ${fmtLeft(Levels.weekEndsAt(now) - now)}</span></div>
+      ${top.length ? `<div class="ev-people">${top.slice(0, 5).map(row).join('')}${myPos >= 5 ? row(top[myPos], myPos) : ''}</div>`
+        : '<p class="muted">Nobody has brought in XP this week yet.</p>'}
+      <p class="muted small week-how">Clan XP comes from the daily check-in (+${Levels.CHECKIN_XP}), each daily challenge you claim in the game (+${Levels.QUEST_XP.day}) and each weekly one (+${Levels.QUEST_XP.week}).</p>`;
 }
 function onMemberListClick(e, clanId) {
     const btn = e.target.closest('[data-act]');
@@ -589,8 +745,13 @@ function onMemberListClick(e, clanId) {
     }
     _view.ui.openMenu = null;
     if (act === 'role') promoteMember(clanId, target, btn.dataset.role);
-    else if (act === 'kick') { if (confirm(`Kick ${target} from the clan?`)) kickMember(clanId, target, (prompt('A reason they will see (optional):', '') || '').trim().slice(0, 200)); else reloadMembers(clanId); }
-    else if (act === 'owner') { if (confirm(`Make ${target} the clan leader? You'll become a co-leader.`)) transferOwnership(clanId, target); else reloadMembers(clanId); }
+    else if (act === 'kick') {
+        ask({ title: 'Kick ' + target + '?', text: 'They leave the clan at once. You can give a reason they will see (optional).', ok: 'Kick', danger: true, input: { placeholder: 'Reason (optional)', max: 200 } })
+            .then((reason) => { if (reason !== null) kickMember(clanId, target, reason.slice(0, 200)); else reloadMembers(clanId); });
+    } else if (act === 'owner') {
+        ask({ title: 'Make ' + target + ' the clan leader?', text: 'You become a co-leader. Only the new leader can hand it back.', ok: 'Hand over' })
+            .then((ok) => { if (ok) transferOwnership(clanId, target); else reloadMembers(clanId); });
+    }
 }
 // close an open member menu when clicking anywhere else
 document.addEventListener('click', (e) => {
@@ -604,7 +765,8 @@ document.addEventListener('click', (e) => {
 const chatLimiter = CHAT_SAFETY.limiter();
 const chatText = (raw) => esc(CHAT_SAFETY.display(String(raw || ''), CHAT_SAFETY.isOn(localStorage)));
 const chatName = (raw) => esc(CHAT_SAFETY.display(String(raw || 'Anon'), CHAT_SAFETY.isOn(localStorage)));
-const collapseChat = (list) => CHAT_SAFETY.collapse(list, (m) => ({ name: m && (m.system ? '\u0000system' : m.name), message: m && m.message })).map((x) => Object.assign({}, x.item, { _repeat: x.repeat }));
+// (t: only copies sent close together fold, so a message said again later still shows; null while one is still sending)
+const collapseChat = (list) => CHAT_SAFETY.collapse(list, (m) => ({ name: m && (m.system ? '\u0000system' : m.name), message: m && m.message, t: (m && m.createdAt && toMillis(m.createdAt)) || null })).map((x) => Object.assign({}, x.item, { _repeat: x.repeat }));
 const repeatBadge = (m) => (m && m._repeat > 1 ? ` <span class="muted">×${m._repeat}</span>` : '');
 function chatAllowed(txt) { const r = chatLimiter.check('clan', txt, Date.now()); if (!r.ok) { notify(r.message, 'bad'); return false; } return true; }
 const CHAT_KEEP = 100;
@@ -622,7 +784,20 @@ function loadClanChat(clanId) {
         msgs.sort((a, b) => ts(a) - ts(b));
         _view.chat = msgs;
         renderChat();
+        // The query has no order (that would need an index), so past 200 messages the newest might not be among those read:
+        // keep the chat short from here too, whoever sent the messages (the game's side panel doesn't trim)
+        if (msgs.length > CHAT_KEEP + 10 && Date.now() - (_view.trimAt || 0) > 60000) {
+            _view.trimAt = Date.now();
+            setTimeout(() => { if (_view.id === clanId) trimChat(); }, 1000 + Math.floor(Math.random() * 8000));
+        }
     }, (err) => console.warn('chat snapshot error', err));
+}
+// delete the oldest messages past the newest CHAT_KEEP (pinned ones stay), from what the listener already has
+function trimChat() {
+    const msgs = (_view.chat || []).slice();
+    if (msgs.length <= CHAT_KEEP + 10) return;
+    const old = msgs.slice(0, msgs.length - CHAT_KEEP).filter((m) => !m.pinned);
+    Promise.all(old.map((m) => deleteDoc(doc(db, 'clan_chat', m.id)).catch(() => {}))).catch(() => {});
 }
 function renderChat() {
     const box = $id('clanChatBox');
@@ -633,7 +808,7 @@ function renderChat() {
     const ts = (m) => toMillis(m.createdAt) || Date.now();
     const pinnedEl = $id('clanChatPinned');
     if (pinnedEl) pinnedEl.innerHTML = msgs.filter((m) => m.pinned && !m.system).map((m) =>
-        `<div class="pin-msg"><span>📌 <b>${chatName(m.name)}</b>: ${chatText(m.message)}</span>${canPin && roleRank(role) >= roleRank(m.pinnedByRole || 'member') ? `<button type="button" class="link-btn" data-unpin="${esc(m.id)}">Unpin</button>` : ''}</div>`).join('');
+        `<div class="pin-msg"><span>📌 <b${nameColorAttr(m)}>${chatName(m.name)}</b>: ${chatText(m.message)}</span>${canPin && roleRank(role) >= roleRank(m.pinnedByRole || 'member') ? `<button type="button" class="link-btn" data-unpin="${esc(m.id)}">Unpin</button>` : ''}</div>`).join('');
     let html = '', prev = null;
     for (const m of collapseChat(msgs)) {
         const t = ts(m), when = `<time data-ts="${t}" title="${esc(new Date(t).toLocaleString())}">${timeAgo(t)}</time>`;
@@ -645,8 +820,8 @@ function renderChat() {
         const who = String(m.name || 'Anon'), mine = who === name, grouped = prev && prev.name === who && t - prev.t < 5 * 60000;
         const title = m.title ? String(m.title) : (mine ? (ls.get('equipped_title') || '') : '');
         html += `<div class="msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.pinned ? ' pinned' : ''}">`
-            + (grouped ? '' : `<div class="msg-head">${title ? `<span class="msg-title" style="color:${titleColor(title)}">${esc(title)}</span>` : ''}<b>${chatName(who)}</b>${when}</div>`)
-            + `<div class="msg-text"><span>${chatText(m.message)}${repeatBadge(m)}</span>${canPin && !m.pinned ? `<button type="button" class="pin-btn" data-pin="${esc(m.id)}" title="Pin this message" aria-label="Pin this message">📌</button>` : ''}</div></div>`;
+            + (grouped ? '' : `<div class="msg-head">${title ? `<span class="msg-title" style="color:${titleColor(title)}">${esc(title)}</span>` : ''}<b${nameColorAttr(m)}>${chatName(who)}</b>${when}</div>`)
+            + `<div class="msg-text"><span>${chatFxWrap(m.fx, chatText(m.message))}${repeatBadge(m)}</span>${canPin && !m.pinned ? `<button type="button" class="pin-btn" data-pin="${esc(m.id)}" title="Pin this message" aria-label="Pin this message">📌</button>` : ''}</div></div>`;
         prev = { name: who, t };
     }
     box.innerHTML = html || '<div class="muted chat-empty">No messages yet. Say hi!</div>';
@@ -658,21 +833,16 @@ async function sendClanChat(clanId) {
     const input = $id('clanChatInput'), btn = $id('clanChatSend');
     const txt = String((input && input.value) || '').trim();
     if (!txt) return;
-    const name = ensureUsername();
+    const name = await ensureUsername();
     if (!name) { notify('Pick a username first.', 'bad'); return; }
     if (!chatAllowed(txt)) return;
     if (btn) btn.disabled = true;
     try {
         chatLimiter.note('clan', txt, Date.now());
-        try { await addDoc(collection(db, 'clan_chat'), { clanId, name, message: txt.slice(0, 500), title: ls.get('equipped_title') || null, createdAt: serverTimestamp(), scrollToBottom: true }); }
+        try { await addDoc(collection(db, 'clan_chat'), { clanId, name, message: txt.slice(0, 500), title: ls.get('equipped_title') || null, fx: myChatFx(), nameColor: myNameColor(), createdAt: serverTimestamp(), scrollToBottom: true }); }
         catch (e) { chatLimiter.undo('clan'); throw e; }
         if (input) input.value = '';
-        // keep the newest messages (pinned ones stay), from what the listener already has: no extra download
-        const msgs = (_view.chat || []).slice();
-        if (msgs.length > CHAT_KEEP + 10) {
-            const old = msgs.slice(0, msgs.length - CHAT_KEEP).filter((m) => !m.pinned);
-            Promise.all(old.map((m) => deleteDoc(doc(db, 'clan_chat', m.id)).catch(() => {}))).catch(() => {});
-        }
+        trimChat(); // keep the newest messages (pinned ones stay): no extra download
     } catch (e) { console.warn('clan send failed', e); notify('Sending failed. Try again.', 'bad'); }
     if (btn) btn.disabled = false;
     if (input) input.focus();
@@ -711,6 +881,25 @@ async function maybeClaim(clanId, raw) {
         }
     } catch (e) { console.warn('clan claim failed', e); }
 }
+// My name changed since the clan last saw it (a new chat or Wilds name: core/names.js keeps them the same): my own names entry
+// follows, and so do the old name lists and my profile, so check-ins, kicks and the member list use the new name. Once a visit.
+const _renameTried = {};
+async function maybeRenameSelf(clanId, raw) {
+    const name = playerName(), old = raw && raw.names ? raw.names[_myUid] : null;
+    if (!name || !old || old === name || _renameTried[clanId + ':' + name]) return;
+    _renameTried[clanId + ':' + name] = true;
+    const swap = (list) => list.map((n) => (n === old ? name : n)).filter((n, i, a) => a.indexOf(n) === i);
+    const patch = { ['names.' + _myUid]: name };
+    if (Array.isArray(raw.members)) patch.members = swap(raw.members);
+    if (Array.isArray(raw.leaders) && raw.leaders.includes(old)) patch.leaders = swap(raw.leaders);
+    if (raw.ownerUid === _myUid) patch.owner = name;
+    try {
+        await updateDoc(doc(db, 'clans', clanId), patch);
+        setProfile(name, { clanId, clanName: raw.name || '', clanRole: Roles.roleOf(raw, _myUid) });
+        setProfile(old, { clanId: null, clanName: null, clanRole: null });
+        clanSystemMessage(clanId, `✏️ ${old} is now called ${name}.`, 'green');
+    } catch (e) { console.warn('renaming my clan entry failed', e); }
+}
 // Kicked from a claimed clan: the notice is in the clan. Returns true when it was this player (the view is closed).
 function checkKicked(clanId, raw) {
     if (!Roles.claimed(raw) || !_myUid || Roles.roleOf(raw, _myUid) || myClanId() !== clanId) return false;
@@ -727,7 +916,7 @@ function checkKicked(clanId, raw) {
 
 async function createClan() {
     try {
-        const name = ensureUsername();
+        const name = await ensureUsername();
         if (!name) { notify('You need a username first.', 'bad'); return; }
         if (!clansUnlocked()) { notify('Clans unlock after you prestige once.', 'bad'); return; }
         const save = readSave();
@@ -735,14 +924,14 @@ async function createClan() {
         const have = num(save.goldenWhat);
         if (have < 10) { notify('You need 10 Golden What Happeneds to start a clan. You have ' + have + '.', 'bad'); return; }
         const nameInp = $id('newClanName');
-        const cname = String(nameInp.value || '').trim();
+        const cname = String(nameInp.value || '').replace(/\s+/g, ' ').trim();
         let list = [];
         try { list = await fetchClanList(true); } catch (e) {}
         const err = validateClanName(cname, list);
         if (err) { notify(err, 'bad'); updateCreateHint(); return; }
         const who = await me();
         if (!who || !who.account) { notify('Creating a clan needs an account, so you keep it on any device. Sign in on the Account page first.', 'bad'); return; }
-        if (!confirm(`Create the clan "${cname}" for 10 Golden What Happeneds?`)) return;
+        if (!(await ask({ title: 'Create "' + cname + '"?', text: 'It costs 10 Golden What Happeneds. You will be its leader.', ok: 'Create clan' }))) return;
         const btn = $id('createClan');
         if (btn) btn.disabled = true;
         const ref = await addDoc(collection(db, 'clans'), { name: cname, owner: name, members: [name], leaders: [name], createdAt: serverTimestamp(), maxMembers: 30, clanIcon: 'default', clanXp: 0, description: '',
@@ -750,6 +939,7 @@ async function createClan() {
         // charged only once the clan exists
         changeSave((s) => { s.goldenWhat = Math.max(0, num(s.goldenWhat) - 10); });
         setMyClan(ref.id, cname, 'leader');
+        ls.set(UID_KEY, who.uid);
         ls.set(JOINED_KEY, JSON.stringify({ clanId: ref.id, at: Date.now() }));
         try { const ach = window.WHA && window.WHA.unlock('clan_created'); if (ach) setTimeout(() => notify(`🏆 ${ach.name}: ${ach.desc} Title: ${ach.title}`, 'gold'), 600); } catch (e) {}
         setProfile(name, { clanId: ref.id, clanName: cname, clanRole: 'leader' });
@@ -765,7 +955,7 @@ async function createClan() {
 
 async function joinClan(clanId) {
     try {
-        const name = ensureUsername();
+        const name = await ensureUsername();
         if (!name) { notify('Pick a username first.', 'bad'); return; }
         if (!clansUnlocked()) { notify('Clans unlock after you prestige once.', 'bad'); return; }
         const current = myClanId();
@@ -778,7 +968,10 @@ async function joinClan(clanId) {
         const members = Array.isArray(data.members) ? data.members : [];
         if (Roles.roleOf(data, who.uid) || (!Roles.claimed(data) && members.includes(name))) { notify('You are already a member.'); return; }
         if (members.length >= (data.maxMembers || 30)) { notify('That clan is full.', 'bad'); return; }
+        if (Roles.claimed(data) && isClosed(data)) { notify('That clan isn\'t taking new members right now.', 'bad'); return; }
+        if (prestigeCount() < minPrestigeOf(data)) { notify(`That clan asks for ${minPrestigeOf(data)} prestiges. You have ${prestigeCount()}.`, 'bad'); return; }
         await updateDoc(ref, Object.assign({ members: arrayUnion(name) }, joinFields(who, name)));
+        ls.set(UID_KEY, who.uid);
         clanSystemMessage(clanId, `${name} joined the clan!`, 'green', { scrollToBottom: true });
         setProfile(name, { clanId, clanName: data.name, clanRole: 'member' });
         try { await setDoc(doc(db, 'clans', clanId, 'members', name), { clanRole: 'member', uid: who.uid }, { merge: true }); } catch (e) {}
@@ -794,7 +987,7 @@ async function joinClan(clanId) {
 
 async function leaveClan(clanId) {
     try {
-        const name = ensureUsername();
+        const name = await ensureUsername();
         if (!name) return;
         const ref = doc(db, 'clans', clanId), snap = await getDoc(ref);
         if (!snap.exists()) { clearMyClan(); updatePlayerClanStatus(); closeClanView(); showRecommendedClans(); return; }
@@ -937,6 +1130,8 @@ async function deleteClan(clanId, leaving) {
         if (!snap.exists()) { notify('That clan no longer exists.', 'bad'); return; }
         const c = normalizeClan(snap.data());
         await Promise.all((Array.isArray(c.members) ? c.members : []).map((m) => setProfile(m, { clanId: null, clanName: null, clanRole: null })));
+        // the members' stats (clans/{id}/members) would otherwise stay behind for good
+        try { const ms = await getDocs(collection(db, 'clans', clanId, 'members')); await Promise.all(ms.docs.map((d) => deleteDoc(d.ref).catch(() => {}))); } catch (e) {}
         await deleteDoc(ref);
         try { const s = await getDocs(query(collection(db, 'clan_chat'), where('clanId', '==', clanId))); await Promise.all(s.docs.map((d) => deleteDoc(doc(db, 'clan_chat', d.id)).catch(() => {}))); } catch (e) {}
         if (myClanId() === clanId) clearMyClan();
@@ -956,7 +1151,7 @@ function updatePlayerClanStatus() {
         if (!myName) status.innerHTML = '<span class="muted">No username yet</span><button type="button" class="btn btn-sm btn-ghost" id="ensureNameBtn">Pick a name</button>';
         else status.innerHTML = `<span class="me-name">${esc(myName)}</span>` + (cid ? `<span class="me-clan">🛡️ ${esc(cname || 'Your clan')} · ${esc(roleLabel(role || 'member'))}</span>` : '<span class="me-clan muted">Not in a clan</span>');
         const nb = $id('ensureNameBtn');
-        if (nb) nb.addEventListener('click', () => { if (ensureUsername()) { updatePlayerClanStatus(); watchMyProfile(); } });
+        if (nb) nb.addEventListener('click', async () => { if (await ensureUsername()) { updatePlayerClanStatus(); watchMyProfile(); } });
     }
     // the clan finder is only for players without a clan
     const fa = $id('findArea');
@@ -971,9 +1166,11 @@ function updatePlayerClanStatus() {
     updateCreateHint();
 }
 function validateClanName(name, list) {
-    const n = String(name || '').trim();
+    const n = String(name || '').replace(/\s+/g, ' ').trim();
     if (n.length < 3) return 'Clan names need at least 3 characters.';
     if (n.length > 24) return 'Clan names can be at most 24 characters.';
+    if (CHAT_SAFETY.censor(n) !== n) return 'Pick a clan name without swear words.';
+    if (/[<>{}\[\]\\`]/.test(n)) return 'Clan names can\'t use < > { } [ ] \\ or `.';
     if ((list || []).some((c) => String(c.name || '').trim().toLowerCase() === n.toLowerCase())) return 'That name is already taken.';
     return '';
 }
@@ -1002,15 +1199,17 @@ async function fetchClanList(force) {
 }
 function clanCardHtml(r, unlocked, inClan) {
     const c = r.c, full = r.n >= r.max, desc = String(c.description || '').slice(0, 140);
-    return `<article class="clan-card${full ? ' is-full' : ''}">
+    const closed = isClosed(c), minP = minPrestigeOf(c), short = prestigeCount() < minP;
+    const why = full ? 'This clan is full' : closed ? 'Not taking new members' : short ? `Needs ${minP} prestiges` : '';
+    return `<article class="clan-card${full || closed ? ' is-full' : ''}">
       <div class="emblem sm">${clanIconHtml(c)}</div>
       <div class="cc-body">
-        <div class="cc-title"><b>${esc(c.name || c.id)}</b><span class="lvl-badge">Lv ${r.lvl}</span>${full ? '<span class="tag">Full</span>' : ''}</div>
+        <div class="cc-title"><b>${clanText(c.name || c.id)}</b><span class="lvl-badge">Lv ${r.lvl}</span>${full ? '<span class="tag">Full</span>' : closed ? '<span class="tag">🔒 Closed</span>' : ''}${minP ? `<span class="tag${short ? ' bad' : ''}" title="Prestiges needed to join">🔁 ${minP}+</span>` : ''}</div>
         <div class="cc-meta">👑 ${esc(c.owner || '?')} · 👥 ${r.n}/${r.max}</div>
         <div class="bar thin"><i style="width:${Math.min(100, r.n / r.max * 100)}%"></i></div>
-        ${desc ? `<p class="cc-desc">${esc(desc)}</p>` : ''}
+        ${desc ? `<p class="cc-desc">${clanText(desc)}</p>` : ''}
       </div>
-      <div class="cc-actions"><button type="button" class="btn btn-ghost btn-sm" data-view="${esc(c.id)}">View</button><button type="button" class="btn btn-primary btn-sm" data-join="${esc(c.id)}"${full || !unlocked || inClan ? ' disabled' : ''}>Join</button></div>
+      <div class="cc-actions"><button type="button" class="btn btn-ghost btn-sm" data-view="${esc(c.id)}">View</button><button type="button" class="btn btn-primary btn-sm" data-join="${esc(c.id)}"${full || closed || short || !unlocked || inClan ? ' disabled' : ''}${why ? ` title="${esc(why)}"` : ''}>Join</button></div>
     </article>`;
 }
 async function renderClanBrowser(force) {
@@ -1021,9 +1220,11 @@ async function renderClanBrowser(force) {
     try { list = await fetchClanList(force); } catch (e) { console.warn('clan list failed', e); box.innerHTML = '<div class="muted">Couldn\'t load clans. Check your connection and try again.</div>'; return; }
     const term = String(($id('searchClanName') || {}).value || '').trim().toLowerCase();
     const sort = ($id('clanSort') || {}).value || 'recommended';
+    const joinableOnly = !!($id('clanJoinableOnly') || {}).checked;
     const rows = list.filter((c) => memberCount(c) > 0 && (!term || String(c.name || '').toLowerCase().includes(term) || String(c.description || '').toLowerCase().includes(term)))
-        .map((c) => ({ c, lvl: Levels.levelFromXp(c.clanXp), n: memberCount(c), max: c.maxMembers || 30 }));
-    const full = (r) => (r.n >= r.max ? 1 : 0);
+        .map((c) => ({ c, lvl: Levels.levelFromXp(c.clanXp), n: memberCount(c), max: c.maxMembers || 30 }))
+        .filter((r) => !joinableOnly || (r.n < r.max && !isClosed(r.c) && prestigeCount() >= minPrestigeOf(r.c)));
+    const full = (r) => (r.n >= r.max || isClosed(r.c) ? 1 : 0); // clans you can't join go last
     const sorters = {
         level: (a, b) => b.lvl - a.lvl || b.n - a.n,
         members: (a, b) => b.n - a.n || b.lvl - a.lvl,
@@ -1033,7 +1234,7 @@ async function renderClanBrowser(force) {
         recommended: (a, b) => full(a) - full(b) || (b.lvl * 3 + Math.min(b.n, 20)) - (a.lvl * 3 + Math.min(a.n, 20)),
     };
     rows.sort(sorters[sort] || sorters.recommended);
-    if (!rows.length) { box.innerHTML = term ? `<div class="muted empty">No clans match “${esc(term)}”. Why not start one?</div>` : '<div class="muted empty">No clans yet. Start the first one!</div>'; return; }
+    if (!rows.length) { box.innerHTML = term ? `<div class="muted empty">No clans match “${esc(term)}”. Why not start one?</div>` : joinableOnly ? '<div class="muted empty">No clan you can join right now. Untick the filter to see them all, or start your own.</div>' : '<div class="muted empty">No clans yet. Start the first one!</div>'; return; }
     box.innerHTML = rows.map((r) => clanCardHtml(r, clansUnlocked(), !!myClanId())).join('');
     updateCreateHint();
 }
@@ -1166,8 +1367,18 @@ async function purchaseClanShopIcon(ic) {
     const clanId = myClanId();
     if (!clanId) { notify('You are not in a clan.', 'bad'); return; }
     if (clanPointsHave() < ic.cost) { notify(`Not enough Clan Points. That icon costs ${ic.cost} CP.`, 'bad'); return; }
-    try { await updateDoc(doc(db, 'clans', clanId), { clanShopIconsUnlocked: arrayUnion(ic.id) }); }
-    catch (e) { notify('Buying the icon failed: ' + (e.message || 'try again'), 'bad'); return; }
+    // in a transaction: if a clanmate bought it a moment ago, nobody pays twice for it
+    let already = false;
+    try {
+        await runTransaction(db, async (tx) => {
+            const ref = doc(db, 'clans', clanId), snap = await tx.get(ref);
+            if (!snap.exists()) throw new Error('clan not found');
+            const owned = Array.isArray((snap.data() || {}).clanShopIconsUnlocked) ? snap.data().clanShopIconsUnlocked : [];
+            if (owned.includes(ic.id)) { already = true; return; }
+            tx.update(ref, { clanShopIconsUnlocked: owned.concat([ic.id]) });
+        });
+    } catch (e) { notify('Buying the icon failed: ' + (e.message || 'try again'), 'bad'); return; }
+    if (already) { notify(`Your clan already has the ${ic.label} icon: no CP spent.`); renderClanShopTab(); return; }
     const left = changeClanPoints(-ic.cost);
     notify(`Unlocked the ${ic.label} icon for your clan. ${num(left).toLocaleString()} CP left.`, 'good');
     renderClanShopTab();
@@ -1255,6 +1466,8 @@ function initClanUI() {
     if (search) search.addEventListener('input', () => renderClanBrowser());
     const sort = $id('clanSort');
     if (sort) sort.addEventListener('change', () => renderClanBrowser());
+    const joinable = $id('clanJoinableOnly');
+    if (joinable) joinable.addEventListener('change', () => renderClanBrowser());
     const results = $id('searchResults');
     if (results) results.addEventListener('click', (e) => {
         const view = e.target.closest('[data-view]'), join = e.target.closest('[data-join]');

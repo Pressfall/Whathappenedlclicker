@@ -51,19 +51,22 @@
     ];
     // what a forge of Wilds gear can turn out: [class or slot, how it's named in GEAR]. You choose a weapon or armor (a shield
     // counts as armor); which one of those is random.
-    const WEAPON_BASES = ['sword', 'dagger', 'spear', 'bow', 'firestaff', 'lightningstaff', 'froststaff'];
+    const WEAPON_BASES = ['sword', 'dagger', 'spear', 'bow', 'gun', 'firestaff', 'lightningstaff', 'froststaff'];
     const ARMOR_BASES = ['helmet', 'chest', 'boots', 'shield'];
     const PARTS = { weapon: WEAPON_BASES, armor: ARMOR_BASES };
     const RELIC_BASES = WEAPON_BASES.concat(ARMOR_BASES);
     // Blueprints: without one, a forge makes at most a Rare (BASE_MAX); each one, bought for good and in order, lets every
     // forge after it reach one tier higher. Epic and Legendary cost rubies (at the Crucible), Mythic and Primordial Glory.
     // A tier the forge would have rolled above what you can make comes out as the best tier you can.
+    // (2026-11-22: the Glory ones were 12,000 and 40,000, months of the Arena's daily Glory caps; now a few hours of play each,
+    // measured against those caps: about 600 Glory a day from matches, the Pit and waves, about 200 from waves alone. A blueprint
+    // only opens the chance: Mythic and Primordial stay capped per forge, and fusing never makes them.)
     const BASE_MAX = 2;
     const BLUEPRINTS = [
         { tier: 3, rubies: 20000 },
         { tier: 4, rubies: 75000 },
-        { tier: 5, glory: 12000 },
-        { tier: 6, glory: 40000 },
+        { tier: 5, glory: 1200 },
+        { tier: 6, glory: 3000 },
     ];
     const BLUEPRINT_BY_TIER = Object.fromEntries(BLUEPRINTS.map(b => [b.tier, b]));
     const isObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);

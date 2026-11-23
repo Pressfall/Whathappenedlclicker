@@ -510,6 +510,16 @@
                 </div>
             </button>
         </li>
+        <li>
+            <button id="divineComboManBtn" onclick="buyDivineComboMan()">
+                <img class="upgrade-img" src="mainimage/thumbs/comboman.svg" loading="lazy" decoding="async" alt="Divine Combo Man" width="52" height="52">
+                <div class="divine-info">
+                    <div class="divine-name">Divine Combo Man</div>
+                    <div class="divine-level">Level: <span id="divineComboManLevel">0</span></div>
+                    <div class="divine-cost">Cost: <span id="divineComboManCost">1</span> golden</div>
+                </div>
+            </button>
+        </li>
         <!-- data-upgrade-processed: the upgrade layout script below leaves these rows as they are -->
         <li class="divine-exchange divine-gods" data-upgrade-processed="1">
             <div class="divine-exchange-title">🏛️ Hall of Gods</div>
@@ -571,6 +581,13 @@
                 <button id="autoClickerStop" type="button" class="btn btn-sm btn-ghost" onclick="setAutoTarget(null)" hidden>Stop</button>
             </div>
             <div id="autoClickerBadge" class="auto-clicker-badge" hidden aria-hidden="true">🖲️</div>
+            <!-- Divine Combo Man (main.js renderCombo): shown while a click combo runs -->
+            <div id="comboMeter" class="combo-meter" hidden>
+                <span class="combo-count">🔥 <b id="comboCount">0</b> combo</span>
+                <span id="comboBonus" class="combo-bonus"></span>
+                <span id="comboSecs" class="combo-secs" title="Click before it runs out"></span>
+                <span class="combo-timer" aria-hidden="true"><span id="comboTimerBar" class="combo-timer-bar"></span></span>
+            </div>
             <!-- Counters card centered below the main image -->
             <div class="info-card glass-panel" role="region" aria-label="Main counters">
                 <div class="stat-hero">
@@ -820,6 +837,12 @@
                     <div id="titleHelp" class="setting-help">Unlock titles via achievements.</div>
                 </div>
                 <div class="setting-row">
+                    <label id="nameColorLabel">Name color <span class="setting-value" id="nameColorValue"></span></label>
+                    <div id="nameColorPicker" class="name-color-picker" role="group" aria-labelledby="nameColorLabel"></div>
+                    <div id="nameColorPreview" class="name-color-preview" aria-hidden="true"></div>
+                    <div class="setting-help">How your name looks in global and clan chat, to everyone, on the messages you send from now on.</div>
+                </div>
+                <div class="setting-row">
                     <label for="secretCodeInput">Codes</label>
                     <div class="setting-inline">
                         <input id="secretCodeInput" type="text" maxlength="64" placeholder="Enter code">
@@ -1046,14 +1069,20 @@
             window.runTransaction = runTransaction;
         }catch(e){}
         // Ensure player has a local username for chat/clan participation
+        // One name for chat and the Wilds (core/names.js): the Wilds' name wins when there is one. Linked as the page loads,
+        // and again whenever a name is needed.
+        try{ if (window.WHNames) window.WHNames.sync(localStorage); }catch(e){}
         function ensureUsername(){
             try{
-                let u = localStorage.getItem('player_username') || '';
+                const N = window.WHNames;
+                let u = N ? N.sync(localStorage) : (localStorage.getItem('player_username') || '');
                 u = (u || '').trim().slice(0,32);
                 if (!u) {
-                    u = (prompt('Choose a username (max 32 chars) to use for global chat and clans:', '')||'').trim().slice(0,32);
-                    if (!u) return null;
-                    localStorage.setItem('player_username', u);
+                    const raw = (prompt('Choose a name for chat, clans and the Wilds (' + (N ? N.RULES : 'max 16 characters') + '):', '')||'').trim();
+                    if (!raw) return null;
+                    u = N ? N.set(localStorage, raw) : raw.slice(0,16);
+                    if (!u) { try{ notify('That name won\'t work: use ' + N.RULES + '.'); }catch(e){} return null; }
+                    if (!N) localStorage.setItem('player_username', u);
                 }
                 return u;
             }catch(e){return null}
@@ -1072,8 +1101,23 @@
         function censorForSafeMode(txt){ return CHAT_SAFETY.display(txt, getChatSafeMode()); }
         function chatText(raw){ return escapeHtml(censorForSafeMode(String(raw||''))); }
         function chatName(raw){ return escapeHtml(censorForSafeMode(String(raw||'Anon'))); }
-        function collapseChat(list){ return CHAT_SAFETY.collapse(list, d => ({ name: d && d.name, message: d && d.message })).map(x => Object.assign({}, x.item, { _repeat: x.repeat })); }
+        // (t: only copies sent close together fold, so a message said again later still gets its own line; null while still sending)
+        function chatMillis(d){ try{ return d && d.createdAt && typeof d.createdAt.toMillis === 'function' ? d.createdAt.toMillis() : null; }catch(e){ return null; } }
+        function collapseChat(list){ return CHAT_SAFETY.collapse(list, d => ({ name: d && d.name, message: d && d.message, t: chatMillis(d) })).map(x => Object.assign({}, x.item, { _repeat: x.repeat })); }
+        // Global chat reads the newest messages (newest-first, so one just sent is always among them, even before the oldest is
+        // trimmed: reading the oldest 100 of a full chat left a new message off screen until the trim's round trips were done,
+        // or for good if the trim failed) and shows them oldest-first.
+        function globalChatQuery(){ return query(collection(db,'global_chat'), orderBy('createdAt','desc'), limit(100)); }
+        function oldestFirst(snap){ const out = []; snap.forEach(s => out.push(s)); return out.reverse(); }
         function repeatBadge(d){ return d && d._repeat > 1 ? ` <span style="color:#999;font-size:11px">×${d._repeat}</span>` : ''; }
+        // Chat effects bought with Holy What Happeneds (premium.js): each message carries the sender's in `fx`, shown here for
+        // everyone (an id this page doesn't know shows plain); myChatFx is the one this player has on, sent with theirs
+        function chatFxWrap(fx, html){ try{ const c = window.WHBeans && window.WHBeans.chatFxClass(fx); return c ? '<span class="' + c + '">' + html + '</span>' : html; }catch(e){ return html; } }
+        function myChatFx(){ try{ return (window.WHBeans && window.WHBeans.chatFx()) || null; }catch(e){ return null; } }
+        // Name colours (core/name-colors.js, chosen in Settings > Profile): each message carries the sender's as `nameColor`, and
+        // only a palette id ever becomes a colour here (anything else shows the default)
+        function chatNameColor(d){ try{ return window.WHNameColors.hexOf(d && d.nameColor); }catch(e){ return '#99ccff'; } }
+        function myNameColor(){ try{ return window.WHNameColors.forMessage(localStorage); }catch(e){ return null; } }
         // the sender's own limits (a short gap, a burst cap, no exact repeats soon after); false (and says why) when blocked
         function chatAllowed(channel, txt){ const r = chatLimiter.check(channel, txt, Date.now()); if(!r.ok){ try{ notify(r.message); }catch(e){} return false; } return true; }
         function chatSent(channel, txt){ chatLimiter.note(channel, txt, Date.now()); }
@@ -1103,22 +1147,20 @@
                 stopGlobalQuickListener();
                 const messagesEl = document.getElementById('chatMessages');
                 if(!messagesEl) return;
-                const col = collection(db,'global_chat');
-                const q = query(col, orderBy('createdAt','asc'), limit(100));
-                globalChatQuickUnsub = onSnapshot(q, snap => {
+                globalChatQuickUnsub = onSnapshot(globalChatQuery(), snap => {
                     try {
                         const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
                         const prevScrollTop = messagesEl.scrollTop;
                         messagesEl.innerHTML = '';
                         let lastData = null;
-                        const all = []; snap.forEach(docSnap => all.push(docSnap.data()));
+                        const all = []; oldestFirst(snap).forEach(docSnap => all.push(docSnap.data()));
                         collapseChat(all).forEach(d => {
                             lastData = d;
                             const name = chatName(d.name);
-                            const msg = chatText(d.message) + repeatBadge(d);
+                            const msg = chatFxWrap(d.fx, chatText(d.message)) + repeatBadge(d);
                             const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                             const row = document.createElement('div'); row.style.padding='4px 0';
-                            row.innerHTML = `<span style="color:#9cf;font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
+                            row.innerHTML = `<span style="color:${chatNameColor(d)};font-weight:700">${name}</span>: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
                             messagesEl.appendChild(row);
                         });
                         if (lastData && lastData.scrollToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1161,9 +1203,7 @@
             try{
                 const messagesEl = document.getElementById('chatMessages');
                 if (!messagesEl) return;
-                const col = collection(db,'global_chat');
-                const q = query(col, orderBy('createdAt','asc'), limit(200));
-                const snap = await getDocs(q);
+                const snap = await getDocs(globalChatQuery());
                 try {
                     const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
                     const prevScrollTop = messagesEl.scrollTop;
@@ -1172,16 +1212,16 @@
                     // gather unique usernames and fetch titles
                     const docs = [];
                     const names = new Set();
-                    snap.forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
+                    oldestFirst(snap).forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                     const titles = await getProfileTitles(Array.from(names));
                     function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                     for(const d of collapseChat(docs)){
                         const nameRaw = String(d.name||'Anon');
                         const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:${chatNameColor(d)};font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = chatText(d.message) + repeatBadge(d);
+                        const msg = chatFxWrap(d.fx, chatText(d.message)) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div');
                         row.style.padding='4px 0';
@@ -1205,7 +1245,7 @@
                 if (!txt) return;
                 if(!chatAllowed('global', txt)) return;
                 chatSent('global', txt);
-                try{ await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('global'); throw e; }
+                try{ await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), fx: myChatFx(), nameColor: myNameColor(), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('global'); throw e; }
                 input.value = '';
                 try{ await trimCollection('global_chat', 100); }catch(e){}
                 // ensure sender sees latest immediately
@@ -1285,9 +1325,7 @@
             try{
                 const messagesEl = document.getElementById(containerId);
                 if (!messagesEl) return;
-                const col = collection(db,'global_chat');
-                const q = query(col, orderBy('createdAt','asc'), limit(200));
-                const snap = await getDocs(q);
+                const snap = await getDocs(globalChatQuery());
                 try {
                     const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && messagesEl.offsetParent !== null && messagesEl.clientHeight > 0);
                     const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
@@ -1295,16 +1333,16 @@
                     messagesEl.innerHTML = '';
                     let lastData = null;
                     const docs = []; const names = new Set();
-                    snap.forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
+                    oldestFirst(snap).forEach(doc => { const d = doc.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                     const titles = await getProfileTitles(Array.from(names));
                     function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                     for(const d of collapseChat(docs)){
                         const nameRaw = String(d.name||'Anon');
                         const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:${chatNameColor(d)};font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = chatText(d.message) + repeatBadge(d);
+                        const msg = chatFxWrap(d.fx, chatText(d.message)) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1330,9 +1368,7 @@
             try{
                 if(globalChatBadgeUnsub) return;
                 if(typeof db === 'undefined' || !collection || !query || !orderBy || !limit || !onSnapshot) return;
-                const col = collection(db,'global_chat');
-                const q = query(col, orderBy('createdAt','asc'), limit(100));
-                globalChatBadgeUnsub = onSnapshot(q, snap => {
+                globalChatBadgeUnsub = onSnapshot(globalChatQuery(), snap => {
                     try{
                         if(typeof isChatPanelVisible === 'function' && isChatPanelVisible()){ setChatUnreadBadge(0); return; }
                         const lastRead = getChatLastRead();
@@ -1357,9 +1393,7 @@
                 stopGlobalListener();
                 const messagesEl = document.getElementById(containerId);
                 if(!messagesEl) return;
-                const col = collection(db,'global_chat');
-                const q = query(col, orderBy('createdAt','asc'), limit(100));
-                globalChatUnsub = onSnapshot(q, async snap => {
+                globalChatUnsub = onSnapshot(globalChatQuery(), async snap => {
                     try {
                         const isViewing = (typeof document !== 'undefined' && document.visibilityState === 'visible' && messagesEl.offsetParent !== null && messagesEl.clientHeight > 0);
                         const wasNearBottom = (messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight) <= 50;
@@ -1367,16 +1401,16 @@
                         messagesEl.innerHTML = '';
                         let lastData = null;
                         const docs = []; const names = new Set();
-                        snap.forEach(docSnap => { const d = docSnap.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
+                        oldestFirst(snap).forEach(docSnap => { const d = docSnap.data(); docs.push(d); lastData = d; names.add(String(d.name||'Anon')); });
                         const titles = await getProfileTitles(Array.from(names));
                     function titleHtmlWithColor(t){ try{ if(!t) return ''; const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rarity = (rarityMap && rarityMap[t]) ? rarityMap[t] : 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = (typeof RARITY_COLORS !== 'undefined' && RARITY_COLORS[rarity]) ? RARITY_COLORS[rarity] : (FALLBACK[rarity] || FALLBACK.common); return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(t)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                     for(const d of collapseChat(docs)){
                         const nameRaw = String(d.name||'Anon');
                         const title = (d && d.title) ? String(d.title||'') : (titles[nameRaw] || '');
                         const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:${chatNameColor(d)};font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = chatText(d.message) + repeatBadge(d);
+                        const msg = chatFxWrap(d.fx, chatText(d.message)) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1409,7 +1443,8 @@
                 if(!messagesEl) return;
                 const clanId = localStorage.getItem('player_clanId') || null;
                 if(!clanId){ messagesEl.innerHTML = '<div class="chat-empty">Join a clan to chat with your clanmates.</div>'; document.getElementById('sideClanInfo').innerHTML = '<a href="clan.html">Find a clan →</a>'; return; }
-                document.getElementById('sideClanInfo').innerHTML = `Chatting with <b>${escapeHtml(localStorage.getItem('player_clanName') || 'your clan')}</b> · <a href="clan.html">Open clan page →</a>`;
+                // the clan's level and the event running now (clan-game.js has the schedule), next to the link
+                document.getElementById('sideClanInfo').innerHTML = sideClanHeader();
                                 const col = collection(db,'clan_chat');
                                 const q = query(col, where('clanId','==',clanId), limit(200));
                                 clanChatUnsub = onSnapshot(q, async snap => {
@@ -1420,17 +1455,26 @@
                                             messagesEl.innerHTML = '';
                                             const msgs = [];
                                             const names = new Set();
-                                            snap.forEach(docSnap => { const d = docSnap.data(); msgs.push(d); names.add(String(d.name||'Anon')); });
+                                            lastClanSnap = { clanId, docs: snap.docs ? snap.docs.slice() : [] };
+                                            snap.forEach(docSnap => { const d = docSnap.data(); msgs.push(d); if (!d.system) names.add(String(d.name||'Anon')); });
                                             msgs.sort((a,b)=>{ const ta = (a.createdAt && a.createdAt.toDate) ? a.createdAt.toDate().getTime() : 0; const tb = (b.createdAt && b.createdAt.toDate) ? b.createdAt.toDate().getTime() : 0; return ta - tb; });
                                             const titles = await getProfileTitles(Array.from(names));
                                             function titleHtmlWithColor(t){ try{ if(!t) return ''; const s = String(t||''); const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rColors = (typeof RARITY_COLORS !== 'undefined') ? RARITY_COLORS : {}; let rarity = (rarityMap && typeof rarityMap[s] !== 'undefined') ? rarityMap[s] : null; if(!rarity){ const low = s.toLowerCase(); for(const k in rarityMap){ if(String(k||'').toLowerCase() === low){ rarity = rarityMap[k]; break; } } } if(!rarity){ try{ if(typeof getUnlockedTitles === 'function'){ const ul = getUnlockedTitles(); const found = (ul||[]).find(x => String(x.name||'').toLowerCase() === String(s||'').toLowerCase()); if(found) rarity = found.rarity || (rarityMap[found.name]||'common'); } }catch(e){} } if(!rarity) rarity = 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = rColors[rarity] || FALLBACK[rarity] || FALLBACK.common; return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(s)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                                             collapseChat(msgs).forEach(d => {
+                                                // the clan's own notes (joined, left, level up, buffs) as centred lines, like on the clan page
+                                                if (d.system) {
+                                                    const row = document.createElement('div');
+                                                    row.className = 'side-sys side-sys-' + (['red', 'gold'].includes(d.color) ? d.color : 'green');
+                                                    row.innerHTML = chatText(d.message) + repeatBadge(d);
+                                                    messagesEl.appendChild(row);
+                                                    return;
+                                                }
                                                 const nameRaw = String(d.name||'Anon');
-                                                const title = (titles[nameRaw] || '');
+                                                const title = (titles[nameRaw] || d.title || '');
                                                 const titleHtml = title ? titleHtmlWithColor(title) + ' ' : '';
-                                                const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
+                                                const nameHtml = `<span style="color:${chatNameColor(d)};font-weight:700">${chatName(nameRaw)}</span>`;
                                                 const displayHtml = titleHtml + nameHtml;
-                                                const msg = chatText(d.message) + repeatBadge(d);
+                                                const msg = chatFxWrap(d.fx, chatText(d.message)) + repeatBadge(d);
                                                 const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                                                 const row = document.createElement('div'); row.style.padding='4px 0';
                                                 row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1483,17 +1527,24 @@
             }catch(e){ return {}; }
         }
 
+        // the clan tab's header: name, level, and the clan event running now (clan-game.js keeps the schedule)
+        function sideClanHeader(){
+            let evNow = '';
+            try { const sc = window.WHClanGame && WHClanGame._state.sched, E = window.WHClanEvents, k = sc && E ? E.kindOf(sc.cur) : null; if (k) evNow = ` · ${E.KINDS[k].icon} <a href="clan.html#events">${escapeHtml(E.KINDS[k].name)} on now</a>`; } catch (e) {}
+            return `🛡️ <b>${escapeHtml(localStorage.getItem('player_clanName') || 'your clan')}</b> · Lv ${Number(localStorage.getItem('whathappened_clan_level')) || 1}${evNow} · <a href="clan.html">Clan page →</a>`;
+        }
+        // Keep a clan's chat short, from what the listener already read (no extra download, and no orderBy: with the clanId
+        // filter that needs a composite index, and the query failed without one). Pinned messages stay, as on the clan page.
+        let lastClanSnap = null; // { clanId, docs } from startClanListener
         async function trimClanMessages(clanId, maxMessages){
             try{
-                if(!clanId) return;
-                const colRef = collection(db, 'clan_chat');
-                const qAll = query(colRef, where('clanId','==',clanId), orderBy('createdAt','asc'));
-                const snap = await getDocs(qAll);
-                if (!snap || snap.size <= maxMessages) return;
-                const toDelete = snap.size - maxMessages;
-                let i = 0; const ops = [];
-                snap.forEach(docSnap => { if(i < toDelete){ ops.push(deleteDoc(doc(db, 'clan_chat', docSnap.id))); } i++; });
-                if(ops.length) await Promise.all(ops);
+                if(!clanId || !lastClanSnap || lastClanSnap.clanId !== clanId) return;
+                const docs = lastClanSnap.docs.slice();
+                if (docs.length <= maxMessages + 10) return;
+                const ms = (d) => { const c = (d.data() || {}).createdAt; return c && c.toMillis ? c.toMillis() : Date.now(); };
+                docs.sort((a, b) => ms(a) - ms(b));
+                const old = docs.slice(0, docs.length - maxMessages).filter((d) => !(d.data() || {}).pinned);
+                await Promise.all(old.map((d) => deleteDoc(doc(db, 'clan_chat', d.id)).catch(() => {})));
             }catch(e){ console.warn('trimClanMessages failed', e); }
         }
 
@@ -1503,7 +1554,7 @@
                 const input = document.getElementById('sideGlobalInput'); const txt = (input.value||'').trim(); if(!txt) return;
                 if(!chatAllowed('global', txt)) return;
                 chatSent('global', txt);
-                try{ await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('global'); throw e; }
+                try{ await addDoc(collection(db,'global_chat'), { name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), fx: myChatFx(), nameColor: myNameColor(), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('global'); throw e; }
                 input.value = '';
                 try{ await trimCollection('global_chat', 100); }catch(e){}
                 // live listener will update; ensure immediate refresh as fallback
@@ -1519,7 +1570,8 @@
                 const clanId = localStorage.getItem('player_clanId') || null;
                 if(!clanId){ messagesEl.innerHTML = '<div class="chat-empty">Join a clan to chat with your clanmates.</div>'; document.getElementById('sideClanInfo').innerHTML = '<a href="clan.html">Find a clan →</a>'; return; }
                 // show info
-                document.getElementById('sideClanInfo').innerHTML = `Chatting with <b>${escapeHtml(localStorage.getItem('player_clanName') || 'your clan')}</b> · <a href="clan.html">Open clan page →</a>`;
+                // the clan's level and the event running now (clan-game.js has the schedule), next to the link
+                document.getElementById('sideClanInfo').innerHTML = sideClanHeader();
                 const col = collection(db,'clan_chat');
                 const q = query(col, where('clanId','==',clanId), limit(200));
                 const snap = await getDocs(q);
@@ -1538,9 +1590,9 @@
                         const title = (titles[nameRaw] || '');
                                             function titleHtmlWithColor(t){ try{ if(!t) return ''; const rarityMap = (typeof TITLE_RARITIES !== 'undefined') ? TITLE_RARITIES : {}; const rarity = (rarityMap && rarityMap[t]) ? rarityMap[t] : 'common'; const FALLBACK = { common:'#bfc7c9', uncommon:'#6bd26b', rare:'#4da6ff', epic:'#b86cff', legendary:'#ffb84d' }; const color = (typeof RARITY_COLORS !== 'undefined' && RARITY_COLORS[rarity]) ? RARITY_COLORS[rarity] : (FALLBACK[rarity] || FALLBACK.common); return `<span style="color:${color};font-weight:700;font-size:12px">${escapeHtml(t)}</span>`; }catch(e){ return escapeHtml(t||''); } }
                                             const titleHtml = title ? titleHtmlWithColor(title) + ': ' : '';
-                        const nameHtml = `<span style="color:#9cf;font-weight:700">${chatName(nameRaw)}</span>`;
+                        const nameHtml = `<span style="color:${chatNameColor(d)};font-weight:700">${chatName(nameRaw)}</span>`;
                         const displayHtml = titleHtml + nameHtml;
-                        const msg = chatText(d.message) + repeatBadge(d);
+                        const msg = chatFxWrap(d.fx, chatText(d.message)) + repeatBadge(d);
                         const when = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleTimeString() : '';
                         const row = document.createElement('div'); row.style.padding='4px 0';
                         row.innerHTML = `${displayHtml}: <span>${msg}</span> <span style="color:#777;font-size:11px">${when}</span>`;
@@ -1562,7 +1614,7 @@
                 const input = document.getElementById('sideClanInput'); const txt = (input.value||'').trim(); if(!txt) return;
                 if(!chatAllowed('clan', txt)) return;
                 chatSent('clan', txt);
-                try{ await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('clan'); throw e; }
+                try{ await addDoc(collection(db,'clan_chat'), { clanId, name: username, message: txt.slice(0,500), title: (localStorage.getItem('equipped_title') || null), fx: myChatFx(), nameColor: myNameColor(), createdAt: serverTimestamp(), scrollToBottom: true }); }catch(e){ chatLimiter.undo('clan'); throw e; }
                 input.value = '';
                 try{ await trimClanMessages(clanId, 100); }catch(e){}
                 try { const m = document.getElementById('sideClanMessages'); if (m) m.scrollTop = m.scrollHeight; } catch (e) {}
@@ -1739,6 +1791,7 @@
         <script src="core/clan-events.js"></script>
         <script src="core/clan-roles.js"></script>
         <script src="core/chat-safety.js"></script>
+        <script src="core/name-colors.js"></script>
         <script src="core/gear.js"></script>
         <script src="core/world-bridge.js"></script>
         <script src="core/world-gods.js"></script>
@@ -1748,6 +1801,8 @@
         <script src="core/premium-config.js"></script>
         <script src="core/kofi.js"></script>
         <script src="core/premium.js"></script>
+        <!-- one name for chat and the Wilds -->
+        <script src="core/names.js"></script>
         <script src="core/world-guilds.js"></script>
         <script src="followers-data.js"></script>
         <script src="achievements-data.js"></script>

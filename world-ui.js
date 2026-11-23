@@ -12,7 +12,8 @@
     const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', '\'': '&#39;' })[c]);
     const fmt = (n) => Math.floor(Number(n) || 0).toLocaleString();
     const game = () => WHW.game;
-    const ICONS = { sword: '🗡️', axe: '🪓', pickaxe: '⛏️', dagger: '🔪', spear: '🔱', staff: '🪄', bow: '🏹', helmet: '⛑️', chest: '🦺', boots: '🥾', ring: '💍', shield: '🛡️', offhand: '🛡️' };
+    const GUN_ICON = '<svg class="w-gun-ico" viewBox="0 0 24 24" role="img" aria-label="Revolver"><path d="M3 8h15l1-1.5h2V10H9.5l-1 1.2.6 1.2-1.4 1.1L9 19H4.4l1.4-6.2L3 11z" fill="#8a93a6"/><path d="M4.4 19 5.8 12.8h3.1L10 19z" fill="#7a5230"/><circle cx="11.2" cy="9.2" r="2.1" fill="#5d6470"/><path d="M9 12.2a2.2 2.2 0 0 0 3.6 1.6" stroke="#3a3f4a" stroke-width="1.1" fill="none"/></svg>';
+    const ICONS = { sword: '🗡️', axe: '🪓', pickaxe: '⛏️', dagger: '🔪', spear: '🔱', staff: '🪄', bow: '🏹', gun: GUN_ICON, helmet: '⛑️', chest: '🦺', boots: '🥾', ring: '💍', shield: '🛡️', offhand: '🛡️' };
     const STATION_TABS = { forge: ['craft', 'basic', 'reforge'], workbench: ['craft', 'basic', 'reforge'], altar: ['boxes', 'craft', 'basic', 'reforge'] };
 
     // ---------------- modal ----------------
@@ -298,7 +299,7 @@
             const ready = W.renownClaimable(s).length > 0;
             if (rn._ready !== ready) { rn._ready = ready; rn.classList.toggle('has-claim', ready); rn.title = 'Renown ' + lv + ': one rank for the game and the Wilds together' + (ready ? '. A reward is waiting!' : ''); }
         }
-        const key = s.equip.offhand + '|' + s.hotbar.join(',') + '|' + s.sel + '|' + s.cons.potion_small + s.cons.potion_big + s.cons.potion_max + '|' + s.cons.arrow + '|' + s.gear.length + '|' + s.classes.active + W.abilityKit(s).join(',') + '|' + (WHW.potionsLeft ? WHW.potionsLeft() : '');
+        const key = s.equip.offhand + '|' + s.hotbar.join(',') + '|' + s.sel + '|' + s.cons.potion_small + s.cons.potion_big + s.cons.potion_max + '|' + s.cons.arrow + '|' + s.gear.length + '|' + s.classes.active + W.abilityKit(s).join(',') + '|' + (WHW.potionsLeft ? WHW.potionsLeft() : '') + '|' + W.healMult(g.zoneId);
         if (key !== hotbarKey) { hotbarKey = key; renderHotbar(); }
         renderQuests();
         // boss bar
@@ -322,7 +323,8 @@
         for (let i = 0; i < D.RULES.hotbarSlots; i++) {
             const it = W.findGear(s, s.hotbar[i]), b = W.baseOf(it);
             const q = it ? W.qualityOf(it.score) : null;
-            const extra = b && b.cls === 'bow' ? `<span class="n">${fmt(s.cons.arrow)}</span>` : '';
+            const cyl = b && b.cls === 'gun' && WHW.actors && WHW.actors.cylinder ? WHW.actors.cylinder() : null;
+            const extra = b && b.cls === 'bow' ? `<span class="n">${fmt(s.cons.arrow)}</span>` : cyl ? `<span class="n">${cyl.reloadEnd ? '⟳' : cyl.rounds + '/' + cyl.max}</span>` : '';
             html += `<button class="w-slot${i === s.sel ? ' is-sel' : ''}" data-slot="${i}" title="${b ? esc(W.gearName(it)) : 'Empty slot'}" aria-label="Slot ${i + 1}: ${b ? esc(W.gearName(it)) : 'empty'}">
                 <span class="k">${i + 1}</span>${b ? iconFor(b, it) : ''}${extra}${q ? `<i class="q" style="background:${q.color}"></i>` : ''}</button>`;
         }
@@ -333,7 +335,7 @@
         // in an arena match, the Pit or a wave run: how many of this fight's potions are left
         const lim = WHW.potionsLeft ? WHW.potionsLeft() : null;
         const limTxt = lim === null ? '' : `<span class="lim" title="Potions left in this fight">${lim}/${D.RULES.potionsPerMatch}</span>`;
-        html += `<button class="w-slot w-slot--cons${lim === 0 ? ' is-out' : ''}" data-potion="1" title="Drink a potion (Z). Small, Big and Max potions need 6, 10 and 20 seconds before the next.${lim === null ? '' : ' In arena matches, the Pit and the waves you may drink ' + D.RULES.potionsPerMatch + ' per fight.'}" aria-label="Drink a potion, ${potions} left"><span class="k">Z</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span>${limTxt}<span class="cd" hidden></span></button>`;
+        html += `<button class="w-slot w-slot--cons${lim === 0 ? ' is-out' : ''}" data-potion="1" title="Drink a potion (Z). Small, Big and Max potions need 6, 10 and 20 seconds before the next.${lim === null ? '' : ' In arena matches, the Pit and the waves you may drink ' + D.RULES.potionsPerMatch + ' per fight.'}${W.healMult(g.zoneId) < 1 ? ' Here they heal only ' + Math.round(W.healMult(g.zoneId) * 100) + '% as much.' : ''}" aria-label="Drink a potion, ${potions} left"><span class="k">Z</span>${D.CONSUMABLES_BY_ID[pot].icon}<span class="n">${potions}</span>${limTxt}<span class="cd" hidden></span></button>`;
         const cls = W.classOf(s);
         W.abilityKit(s).forEach((id, i) => {
             const a = D.ABILITIES[id], k = D.ABILITY_KEYS[i];
@@ -470,7 +472,10 @@
             case 'ward': return 'Break ' + (n === 1 ? 'a ward stone' : n + ' ward stones') + zone;
             case 'rival': return 'Beat ' + n + ' ' + plural(n, 'rival adventurer');
             case 'harvest': return (goal.tool === 'axe' ? 'Chop ' + n + ' ' + plural(n, 'tree') : goal.tool === 'pickaxe' ? 'Mine ' + n + (n === 1 ? ' rock or ore vein' : ' rocks or ore veins') : 'Gather ' + n + ' times (ore, wood or plants)') + zone;
-            case 'craft': return 'Craft ' + n + ' ' + plural(n, 'piece') + ' of ' + (goal.tier ? D.TIERS[goal.tier].name + ' ' : '') + 'gear' + (goal.minScore ? ' of ' + W.qualityOf(goal.minScore).name + ' quality or better' : '');
+            case 'craft':
+                if (goal.set) return 'Craft ' + n + ' ' + plural(n, 'piece') + ' of the ' + D.SETS[goal.set].name;
+                if (goal.boosted) return 'Craft or reforge ' + n + ' ' + plural(n, 'piece') + ' of gear with an arcade add-in in it';
+                return 'Craft ' + n + ' ' + plural(n, 'piece') + ' of ' + (goal.tier ? D.TIERS[goal.tier].name + ' ' : '') + 'gear' + (goal.minScore ? ' of ' + W.qualityOf(goal.minScore).name + ' quality or better' : '');
             case 'box': return 'Craft a lootbox at the Rune Altar';
             case 'deliver': return 'Bring ' + Object.entries(goal.mats).map(([id, k]) => k + ' ' + matName(id)).join(' and ');
             case 'visit': return 'Step inside the ' + D.ZONES[goal.zone].name;
@@ -819,12 +824,13 @@
         let minMark, fullMark;
         if (mode) { minMark = 0; fullMark = 1; }
         else if (b.cls === 'bow') { minMark = P.minDraw; fullMark = 0.95; }
+        else if (b.cls === 'gun') { minMark = 0; fullMark = 1; }
         else { minMark = P.vMin / P.vFull; fullMark = (P.vMin + (P.vFull - P.vMin) * D.COMBAT.perfect.at) / P.vFull; }
         if (meter._cls !== b.cls + mode) {
             meter._cls = b.cls + mode;
             meter.querySelector('.w-power-min').style.left = (minMark * 100) + '%';
             meter.querySelector('.w-power-full').style.left = (Math.min(1, fullMark) * 100) + '%';
-            meter.title = mode === 'fire' ? 'Burning Stick: the longer it burns, the bigger the blow' : mode === 'charge' ? 'Staff charge: hold the staff drawn back (cursor close to you) to charge your next spell' : 'Swing speed: the blade only hurts past the first mark';
+            meter.title = mode === 'fire' ? 'Burning Stick: the longer it burns, the bigger the blow' : !mode && b.cls === 'gun' ? 'The barrel settling after a shot: once full, the next shot is Steady (+30%). Empty while reloading.' : mode === 'charge' ? 'Staff charge: hold the staff drawn back (cursor close to you) to charge your next spell' : 'Swing speed: the blade only hurts past the first mark';
         }
         p.powerShown = mode ? p.power : Math.max(p.power, (p.powerShown || 0) * 0.9);
         setStyle(f, 'width', Math.min(100, p.powerShown * 100).toFixed(1) + '%');
@@ -883,7 +889,9 @@
             }
             if (src.kind === 'monster') return [SOURCE_ICON.monster, 'Defeat a ' + src.name + pct(src.chance), where(src.zones)];
             if (src.kind === 'elite') return [SOURCE_ICON.elite, src.name + ', an elite' + pct(src.chance), where(src.zones)];
-            if (src.kind === 'boss') return [SOURCE_ICON.boss, src.name + (src.weekly ? ', the first time each week' : src.first ? ', the first time you beat it' : pct(src.chance)), where(src.zones) + ' boss'];
+            // (a dungeon boss's Heart and Catalyst: on its boosted first kill each week, and a smaller chance on later kills)
+            const weekly = (x) => (x.chance < 1 ? ' · ' + Math.round(x.chance * 100) + '% on' : ', on') + ' its first kill each week' + (x.again ? ', ' + Math.round(x.again * 100) + '% on later ones' : '');
+            if (src.kind === 'boss') return [SOURCE_ICON.boss, src.name + (src.weekly ? weekly(src) : src.first ? ', the first time you beat it' : pct(src.chance)), where(src.zones) + ' boss'];
             if (src.kind === 'craft') return [D.STATIONS[src.station].icon, src.name + ': ' + Object.entries(src.inputs).map(([k, n]) => n + ' ' + matName(k)).join(' + ') + (src.n > 1 ? ' makes ' + src.n : ''), 'in town'];
             return [SOURCE_ICON.trader, 'Buy ' + src.n + ' for ♦ ' + fmt(src.price), 'the Trader, in town'];
         });
@@ -946,9 +954,30 @@
             if (base.speed) out.push(`<span>Speed <b>+${Math.round((st ? st.speed : base.speed) * 100)}%</b></span>`);
             if (base.fireResist) out.push('<span>Fire resist</span>');
         }
-        if (it && it.aff && it.aff.length) out.push(...it.aff.map(a => `<span style="color:#ffe7a3">${esc(D.AFFIXES[a].name)}: ${esc(D.AFFIXES[a].desc)}</span>`));
+        if (it && it.aff && it.aff.length) out.push(...it.aff.map(a => `<span style="color:${D.AFFIXES[a].arcade ? '#ff8fe6' : '#ffe7a3'}">${esc(D.AFFIXES[a].name)}: ${esc(D.AFFIXES[a].desc)}</span>`));
         if (it && (it.r || it.k)) out.push(relicLine(it));
+        // a gear set's piece (core/world-data.js SETS): which set, and (for the worn pieces) how many of it are on
+        const S = base.set && D.SETS[base.set];
+        if (S) {
+            if (!it && base.slot !== 'offhand') out.push(`<span style="color:#ff8fe6">Comes with an arcade-only affix</span>`);
+            if (S.pieces.includes(base.id)) {
+                const worn = (W.setsWorn(game().state)[base.set] || 0);
+                out.push(`<span style="color:${S.color}">${esc(S.name)} (${worn}/${S.pieces.length} worn): ${S.bonuses.map(b => `<i style="opacity:${worn >= b.n ? 1 : 0.55}">${b.n}: ${esc(b.desc)}</i>`).join(' · ')}</span>`);
+            } else out.push(`<span style="color:${S.color}">${esc(S.name)} weapon</span>`);
+        }
         return `<div class="w-card-stats">${out.join('')}</div>`;
+    }
+    // The Neon Arcade's add-ins (core/world-data.js POWERUPS), picked at a station for the next craft (kind: gear | reforge |
+    // box). The pick is kept in WHW.craftBoosts and cleared once a craft starts with it (world.js).
+    function boostStrip(s, kind) {
+        WHW.craftBoosts = WHW.craftBoosts || new Set();
+        const btns = Object.keys(D.POWERUPS).map(id => {
+            const P = D.POWERUPS[id], m = D.MATERIALS_BY_ID[id], have = W.count(s, id), fits = P.on.includes(kind);
+            if (!have || !fits) WHW.craftBoosts.delete(id);
+            const on = WHW.craftBoosts.has(id);
+            return `<button class="btn btn-sm ${on ? 'btn-gold' : 'btn-ghost'}" data-boost="${id}" aria-pressed="${on}" ${have && fits ? '' : 'disabled'} title="${esc(P.desc)}">${m.icon} ${esc(P.name)} <span class="muted">×${fmt(have)}</span></button>`;
+        }).join('');
+        return `<div class="w-section"><div class="w-card-sub"><b>Arcade add-ins</b> for your next ${kind === 'box' ? 'lootbox' : kind === 'reforge' ? 'reforge' : 'craft'} (one of each, used up when it starts): ${Object.keys(D.POWERUPS).map(id => esc(D.POWERUPS[id].name + ': ' + D.POWERUPS[id].desc)).join(' · ')}</div><div class="w-row" style="flex-wrap:wrap;gap:6px;margin-top:6px">${btns}</div></div>`;
     }
     // a relic's tier, boosts, sockets, combos and (a unique's) words; any gear's socketed essences
     function relicLine(it) {
@@ -998,7 +1027,7 @@
         return `<svg class="w-staff-ico" viewBox="0 0 24 24" role="img" aria-label="${esc(sm.name)} staff"><circle cx="17.5" cy="7" r="6" fill="${sm.color}" opacity="0.25"/>`
             + `<path d="M4 22.5 15.6 10.6" stroke="#8a5a32" stroke-width="2.6" stroke-linecap="round"/><path d="M14 9.6l3 3" stroke="#c9b38f" stroke-width="1.6" stroke-linecap="round"/>${head}</svg>`;
     }
-    const TYPE_ORDER = ['sword', 'dagger', 'spear', 'staff', 'bow', 'axe', 'pickaxe', 'helmet', 'chest', 'boots', 'offhand', 'ring'];
+    const TYPE_ORDER = ['sword', 'dagger', 'spear', 'staff', 'bow', 'gun', 'axe', 'pickaxe', 'helmet', 'chest', 'boots', 'offhand', 'ring'];
     const MAT_SORTS = { kind: 'Kind', amount: 'Amount', name: 'Name', value: 'Sell value' };
     const MAT_KINDS = { raw: 'Gathered', bar: 'Bars', plank: 'Planks', part: 'Monster parts and crafted parts', trophy: 'Boss trophies (the Trader pays well)', essence: 'Essences (for the Crucible; never lost)', key: 'Keys' };
     const gearGroup = (b) => (b.slot === 'weapon' ? (b.cls === 'axe' || b.cls === 'pickaxe' ? 'tool' : 'weapon') : b.slot === 'helmet' || b.slot === 'chest' || b.slot === 'boots' ? 'armor' : b.slot);
@@ -1197,6 +1226,9 @@
         const labels = { craft: id === 'altar' ? 'Rings' : 'Gear', basic: id === 'forge' ? 'Smelting' : id === 'altar' ? 'Potions' : 'Materials', reforge: 'Reforge', boxes: 'Lootboxes' };
         let html = tabs(STATION_TABS[id], tab, null, labels);
         html += `<p class="w-note">${esc(D.STATIONS[id].desc)}. ${tab === 'craft' || tab === 'boxes' || tab === 'reforge' ? 'Crafting plays a minigame: <b>the better you play, the better it turns out.</b> Materials and the ruby fee are paid when you start; quitting gives the materials back but not the fee. Try it free with <b>Practice</b>.' : 'Instant: no minigame.'}</p>`;
+        // the Neon Arcade's add-ins, once that zone is open (or some are in the bag)
+        const boostKind = tab === 'craft' ? 'gear' : tab === 'boxes' ? 'box' : tab === 'reforge' ? 'reforge' : '';
+        if (boostKind && (s.unlocked.zones.arcade || Object.keys(D.POWERUPS).some(k => W.count(s, k) > 0))) html += boostStrip(s, boostKind);
         if (tab === 'basic') {
             const all = D.BASIC_RECIPES.filter(r => r.station === id);
             const reachable = (mat) => W.count(s, mat) > 0 || W.materialSources(mat).some(src => !src.zone || s.unlocked.zones[src.zone]);
@@ -1216,8 +1248,12 @@
             }).join('')}</div>`;
         } else if (tab === 'craft') {
             const top = maxZoneTier(s) + 1;
-            const list = D.GEAR.filter(b => b.recipe && b.recipe.station === id && b.tier <= top).sort((a, b) => a.tier - b.tier || a.cls.localeCompare(b.cls));
-            const hidden = D.GEAR.filter(b => b.recipe && b.recipe.station === id && b.tier > top).length;
+            // a gear set's pieces (D.SETS) have their own section, once their zone is open
+            const shown = (b) => b.tier <= top && (!b.zone || s.unlocked.zones[b.zone]);
+            const all = D.GEAR.filter(b => b.recipe && b.recipe.station === id);
+            const list = all.filter(b => shown(b) && !b.set).sort((a, b) => a.tier - b.tier || a.cls.localeCompare(b.cls));
+            const sets = all.filter(b => shown(b) && b.set);
+            const hidden = all.filter(b => !shown(b)).length;
             const card = (b) => {
                 const c = W.canCraft(s, 'gear', b.id, now);
                 const why = c.ok ? '' : c.reason === 'busy' ? 'Finish your other craft first' : c.reason === 'full' ? 'Your bag of gear is full' : '';
@@ -1233,6 +1269,10 @@
             for (let t = 1; t <= top; t++) {
                 const tier = list.filter(b => b.tier === t);
                 if (tier.length) html += `<div class="w-section"><h3 style="color:${D.TIERS[t].color}">Tier ${t} · ${esc(D.TIERS[t].name)}</h3><div class="w-grid">${tier.map(card).join('')}</div></div>`;
+            }
+            for (const setId of [...new Set(sets.map(b => b.set))]) {
+                const S = D.SETS[setId];
+                html += `<div class="w-section"><h3 style="color:${S.color}">${esc(S.name)}</h3><p class="w-note">Starmetal-tier gear from the Neon Arcade, a little stronger, every piece but the shield with an arcade-only affix. Wear the ${esc(S.pieces.map(p => D.GEAR_BY_ID[p].name).join(', '))} together for:${S.bonuses.map(b => '<b>' + b.n + '</b> ' + esc(b.name) + ' (' + esc(b.desc) + ')').join(', ')}.</p><div class="w-grid">${sets.filter(b => b.set === setId).map(card).join('')}</div></div>`;
             }
             if (hidden) html += `<p class="muted">${hidden} more recipe${hidden > 1 ? 's' : ''} appear as you open new zones.</p>`;
         } else if (tab === 'boxes') {
@@ -1268,6 +1308,7 @@
         on(body, '[data-box]', (d) => WHW.actions.startCraft('box', d.box));
         on(body, '[data-reforge]', (d) => WHW.actions.reforge(Number(d.reforge)));
         on(body, '[data-practice]', (d) => WHW.actions.practice(id, Number(d.practice), !!d.bow));
+        on(body, '[data-boost]', (d) => { const B = WHW.craftBoosts; if (B.has(d.boost)) B.delete(d.boost); else B.add(d.boost); renderStation(id); });
     }
     // After a minigame: what came out
     function showResult(res, again) {
@@ -1275,6 +1316,8 @@
         let html = '';
         const q = W.qualityOf(res.score);
         html += `<div class="w-result"><div class="score" style="color:${q.color}">${res.score}</div><div class="quality" style="color:${q.color}">${esc(q.name)}</div></div>`;
+        // the arcade add-ins that went in (a Bonus Round's points on top of what was played)
+        if (res.boost && res.boost.length) html += `<p class="w-note" style="text-align:center">${res.boost.map(id => D.MATERIALS_BY_ID[id].icon + ' ' + esc(D.POWERUPS[id].name)).join(' · ')}${res.played !== undefined && res.played < res.score ? ` (you played ${res.played}, +${res.score - res.played})` : ''}</p>`;
         if (res.kind === 'practice') {
             html += `<p class="w-note" style="text-align:center">Practice only: a real craft with this score would be <b style="color:${q.color}">${esc(q.name)}</b> (stats ×${W.qualityMult(res.score).toFixed(2)}).</p>`;
         } else if (res.kind === 'gear' && res.item) {
@@ -1381,8 +1424,9 @@
     function dungeonLine(s, zone) {
         const id = window.WHWorldDungeons && window.WHWorldDungeons.underZone(zone);
         if (!id || !W.dungeonOpen(s, id)) return '';
-        const dd = D.DUNGEONS[id], wk = s.dungeons.weeks[id] === W.weekKey(Date.now());
-        return s.dungeons.found[id] ? ' · ' + dd.icon + ' ' + esc(dd.name) + (wk ? ' (boss beaten this week)' : '') : ' · 🕳️ a way down is hidden here';
+        const dd = D.DUNGEONS[id], now = Date.now(), wk = s.dungeons.weeks[id] === W.weekKey(now), rest = W.dungeonRest(s, id, now);
+        const note = rest > 0 ? ' (resting: ' + window.WHWorldDungeons.restMinutes(rest) + ' min)' : wk ? ' (boosted reward taken this week)' : ' (boosted reward ready)';
+        return s.dungeons.found[id] ? ' · ' + dd.icon + ' ' + esc(dd.name) + note : ' · 🕳️ a way down is hidden here';
     }
     // Inside a dungeon, the map's list is its rooms: cleared, being fought, next, still shut, and the boss at the far end
     function dungeonRoomsHtml(id) {
@@ -1440,10 +1484,11 @@
         return `<ul>
             <li><b>Getting in</b>: every zone hides a way down, a boulder that splits open once you have beaten that zone's boss (the camp's keeper says roughly where). Go down alone or with a party of up to ${Dg.PARTY.max}: a party online shares one copy, alone it is all yours (offline too).</li>
             <li><b>${Dg.ROOM_COUNT} rooms, then the boss</b>: walk to a room's <b>ready circle</b> and press <kbd>E</kbd>. A few seconds later the room <b>seals</b> with everyone inside and its monsters pour in; clear them all to open the way on. After the last room, the boss waits in its chamber. Monsters and the boss grow with every player in the party.</li>
-            <li><b style="color:#7fe8ff">The Shared Burden</b>: ${when} marks one player with a <b>blue circle</b> that follows them and bursts when its count reaches 0. Its damage is <b>split between everyone standing inside</b>: four players take a quarter each. Alone you take all of it: most of your health, and in the deeper dungeons enough to knock you out even at full health. So with a party, <b>gather in the marked player's circle</b>; alone, <b>dash just as it bursts</b> (a dash makes you untouchable for a moment) and keep your health up in case you miss. Shields can't block it.</li>
+            <li><b style="color:#7fe8ff">The Shared Burden</b>: ${when} marks one player with a <b>blue circle</b> that follows them and bursts when its count reaches 0. Its damage is <b>split between everyone standing inside</b>: four players take a quarter each. Alone you take all of it: about half your health, and in the deeper dungeons most of it. So with a party, <b>gather in the marked player's circle</b>; alone, <b>dash when it flashes white</b> (its last moments: a dash then dodges it) and keep your health up in case you miss. Shields can't block it.</li>
             <li><b>The frenzy</b>: ${frenzy}. Don't drag the fight out.</li>
             <li><b>Going down</b>: if everyone in a room is knocked out, only that room is lost: start it again from its ready circle. Rooms you cleared stay cleared, even if the page reloads, until nobody has been in the dungeon for ${Math.round(Dg.RUN.idleResetMs / 60000)} minutes. Knocked out outside a room fight, you are back on your feet at the entrance in a moment. Nothing you carry is ever lost in a dungeon. You may drink <b>${pots} potions</b> in each room and ${pots} in the boss fight.</li>
-            <li><b>Rewards</b>: each room cleared pays rubies (${R.roomPaysPerDay} rooms a day, all dungeons together), and the first ${R.essRoomsPerDay} a day also open a chest of <b>essences</b> for the Crucible (rarer ones in later rooms and deeper dungeons; luck and a bigger party help). The room monsters drop nothing. Each boss's <b>first kill of the week</b> gives its <b>Heart</b>, rubies and sometimes a Crucible Catalyst; after that, a few rubies until Monday.</li>
+            <li><b>Rewards</b>: each room cleared pays rubies (${R.roomPaysPerDay} rooms a day, all dungeons together), and opens a chest of <b>essences</b> for the Crucible (rarer ones in later rooms and deeper dungeons; luck and a bigger party help), up to ${R.essRoomsPerDay} chests a day. The room monsters drop nothing. Each boss's <b>first kill of the week</b> is boosted: its <b>Heart</b>, rubies, a ${Math.round(R.boss.catalyst * 100)}% chance of a Crucible Catalyst and a big <b>boss chest</b> (two essences). Later kills pay rubies, a small boss chest (one essence, one of the day's ${R.essRoomsPerDay} chests) and a small chance of the Heart (${Math.round(R.boss.heart * 100)}%) or a Catalyst (${Math.round(R.boss.repeatCatalyst * 100)}%); once the day's chests are opened, only a few rubies until tomorrow.</li>
+            <li><b>Resting</b>: once a dungeon's boss falls to you, that dungeon rests for <b>${Math.round(Dg.COOLDOWN_MS / 60000)} minutes</b> before you can run it again (each dungeon on its own clock, so you can go down another one meanwhile).</li>
         </ul>`;
     }
     // The first time down any dungeon: how they work (the game waits while it is open; the first room only starts from its circle)
@@ -1470,6 +1515,7 @@
             <li><b>Staffs</b> (made at the Rune Altar) move like spears but hit weakly up close. In a <b>Mystic</b>'s hands, a thrust that touches nobody casts the staff's bolt and a fast swing that touches nobody sends out its wave. <b>Fire</b> staffs are for single targets (a heavy fireball), <b>Lightning</b> for groups (a bolt that jumps between enemies, and a wide thunderclap), <b>Frost</b> a bit of both, and every third frost hit on someone slows them. Hold the staff drawn back, with the cursor close to you, to <b>charge</b> the next spell: the meter under your hotbar fills, and a full charge hits much harder. Keep holding past full to <b>overcharge</b> it for a little more damage, but not for long: once the meter turns red it turns on you until you cast. A fire staff sets you alight (worse the longer you hold), a frost staff slows you right down (and for a while after), and a lightning staff stuns you when it lets go (or goes off by itself if you hold it too long). Anyone else only gets the weak blows.</li>
             <li><b>Mana</b> (the Mystic's blue bar): abilities and staff spells cost mana, not stamina (dashing and swinging still use stamina). It comes back slowly; stand still for a moment and it comes back faster, but the quickest way to refill it is to land staff blows up close, since every one gives some back.</li>
             <li><b>Bows</b>: press anywhere, pull the mouse <i>away</i> from where you want to shoot, and let go. Hold a full draw briefly for a steady shot. They need arrows.</li>
+            <li><b>Revolvers</b>: click to fire down the barrel. Each shot kicks it off target; wait for it to settle (the dotted sight turns gold) for a <b>Steady</b> shot, 30% stronger. Hold the button to fan the hammer. Six rounds: stop firing and they slip back in, or empty it and the cylinder spins in. Bullets ricochet off walls once and weaken at long range. No ammunition needed.</li>
             <li><b>Daggers</b> are quick and hit much harder from behind.</li></ul>
             <h3>Gathering</h3>
             <p>Swing an <b>axe</b> at trees and a <b>pickaxe</b> at rocks and ores. Each zone has its own materials, and the best ores sit deeper in. Hit the <b style="color:#ffe14d">glowing crack</b> for double progress and a chance of extra. Better tools are needed for harder ores. Pick herbs and fiber by holding <kbd>E</kbd>.</p>
@@ -1490,11 +1536,11 @@
             <h3>Hidden dungeons</h3>
             ${dungeonHelpHtml(D.ZONES[game().zoneId] && D.ZONES[game().zoneId].dungeon)}
             <h3>Essences and the Crucible</h3>
-            <p><b>Essences</b> are rare materials: any rock or ore vein you mine can hold one (hitting the glowing crack and luck help), and dungeon chests and bosses give them too. They are always kept safe in town. At the <b>Crucible</b>, east of the Rune Altar, put in 3 to 8 essences, choose <b>Wilds gear</b> or <b>gear for the clicker</b>, and play its minigame: pour each essence to its mark, press as the needle crosses each rune, then seal it. You get one random <b>relic</b>, from Common to Primordial: rarer essences count most, then how many you used, your score, your luck, all of one aspect (Resonance) and a Catalyst. Its boosts follow the essences' aspects, and its colours are theirs. The Crucible can also <b>infuse</b> an essence into a socket of your gear and <b>upgrade</b> a relic up to +5. Gear for the clicker waits in the <b>Relic Satchel</b> until you send it home; wear it there under Items › Gear.</p>
+            <p><b>Essences</b> are rare materials: any rock or ore vein you mine can hold one (hitting the glowing crack and luck help), and dungeon chests and bosses give them too. They are always kept safe in town. At the <b>Crucible</b>, east of the Rune Altar, put in 3 to 8 essences, choose <b>Wilds gear</b> or <b>gear for the clicker</b>, and play its minigame: pour each essence to its mark, press as the needle crosses each rune, then seal it. You get one random <b>relic</b>, from Common to Primordial: rarer essences count most, then how many you used, your score, your luck, all of one aspect (Resonance) and a Catalyst. Its boosts follow the essences' aspects, and its colours are theirs. The Crucible can also <b>infuse</b> an essence into a socket of your gear, <b>upgrade</b> a relic up to +5, and <b>fuse</b> five Wilds relics of one tier and kind into one a tier higher (or lose all five: essences, rubies and a Catalyst fed in raise the chance). Gear for the clicker waits in the <b>Relic Satchel</b> until you send it home; wear it there under Items › Gear.</p>
             <h3>Trading and the Auction Hall</h3>
             <p>Walk up to another player, press <kbd>E</kbd> and choose <b>Offer a trade</b>: each of you puts in up to 4 items and some rubies, accepts, then confirms; it goes through only when you both confirmed the same deal, and anything you offered comes back if it is called off. <b>Ottoline the Auctioneer</b> on the plaza runs the Auction Hall: list up to 5 items with a starting price, an optional buy-now price and a length, or bid on others' (beat the top bid by 5%; your rubies come back if you are outbid). The winner claims the piece, the seller is paid less 5%. Both need online play; worn gear and the starter kit can't be traded.</p>
             <h3>The Far Reaches</h3>
-            <p>Beat Frozen WH and the <b>Waystone</b> south of the plaza wakes: it carries you to four more zones, Saltspray Coast, Stormspire Heights, the Cinder Capital and the Skyreach Isles. They are built to take longer: monsters there are tuned for that zone's own gear (tiers 6 to 9), each zone's best ore needs the previous zone's pickaxe, bars are alloys that need monster parts, and every boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, press <kbd>E</kbd> at a ward to wake it, and beat its guardian; the key is only used up when you win. Watch your footing: tide flats slow you, lightning strikes on the heights (never at the camp), and on the isles the wind can blow you off an edge (a dash can carry you over a narrow gap).</p>
+            <p>Beat Frozen WH and the <b>Waystone</b> south of the plaza wakes: it carries you to four more zones, Saltspray Coast, Stormspire Heights, the Cinder Capital and the Skyreach Isles, and once Vrill WH falls, to a fifth: <b>the Neon Arcade</b>, where claw machines drag you in, cabinets fire lasers along a red line, and the 8-Bit WH waits. Its materials make the <b>Arcade Set</b> and the <b>add-ins</b> you can put into any craft (pick them above the recipes at a station). They are built to take longer: monsters there are tuned for that zone's own gear (tiers 6 to 9), each zone's best ore needs the previous zone's pickaxe, bars are alloys that need monster parts, and every boss's lair is <b>sealed by ward stones</b>. Make the zone's Ward Key at the Rune Altar, press <kbd>E</kbd> at a ward to wake it, and beat its guardian; the key is only used up when you win. Watch your footing: tide flats slow you, lightning strikes on the heights (never at the camp), on the isles the wind can blow you off an edge (a dash can carry you over a narrow gap), and in the Arcade blocks of pixels drop from the ceiling.</p>
             <h3>Danger</h3>
             <p>Watch for <b style="color:#ff6b7a">red shapes</b>: that's where an attack is about to land. Dash out of them (a dash also carries you safely <i>through</i> a ring sweeping across the ground). A boss that charges into a wall is stunned for a moment; a gold glow after the Gilded Golem's or the Gold Tyrant's slam is its core, which takes double damage. Swirling rings pull you in: walk out before they burst. A copy of a boss does nothing to the real one when beaten. A <b style="color:#7fe8ff">blue circle</b> with a count is a dungeon boss's Shared Burden (see Hidden dungeons above). If you're knocked out, part of what you've carried since leaving town drops where you fell; go back and pick it up. Rubies and gear are never lost. Rival adventurers roam each zone and fight with the same weapons you do.</p>
         </div>`, { wide: true });
@@ -1508,6 +1554,7 @@
             <label class="w-setting"><span>Damage numbers</span><input type="checkbox" id="setNums" ${S.dmgNumbers ? 'checked' : ''}></label>
             <label class="w-setting"><span>Screen shake and hit pause</span><input type="checkbox" id="setShake" ${S.shake ? 'checked' : ''}></label>
             <label class="w-setting"><span>Sound volume<small>Also follows the game's sound settings.</small></span><input type="range" id="setVol" min="0" max="1" step="0.05" value="${S.volume}"></label>
+            <label class="w-setting"><span>Music<small>A tune for every zone, and another when a boss fight starts. Its volume follows the game's music volume too.</small></span><input type="checkbox" id="setMusic" ${S.music !== false ? 'checked' : ''}></label>
             ${E.isTouch ? `<h3 class="w-setting-h">Touch controls</h3>
             <label class="w-setting"><span>Button size</span>
                 <select id="setTouchSize">${opts([['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']], S.touchSize)}</select></label>
@@ -1528,6 +1575,7 @@
         body.querySelector('#setNums').addEventListener('change', (e) => { S.dmgNumbers = e.target.checked; save(); });
         body.querySelector('#setShake').addEventListener('change', (e) => { S.shake = e.target.checked; save(); });
         body.querySelector('#setVol').addEventListener('input', (e) => { S.volume = Number(e.target.value); save(); });
+        body.querySelector('#setMusic').addEventListener('change', (e) => { S.music = e.target.checked; save(); });
         const touch = (key, val) => { S[key] = val; save(); WHW.applyTouch(); };
         const ts = body.querySelector('#setTouchSize'), tl = body.querySelector('#setLefty');
         if (ts) ts.addEventListener('change', (e) => touch('touchSize', e.target.value));

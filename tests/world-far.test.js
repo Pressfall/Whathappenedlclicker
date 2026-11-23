@@ -9,7 +9,8 @@ const NOW = new Date(2026, 10, 3, 12, 0, 0).getTime();
 const FAR = D.ZONE_ORDER.filter(z => D.ZONES[z].via === 'waystone');
 
 test('the Far Reaches come after Frostveil, one tier each, reached by the Waystone', () => {
-    assert.deepEqual(FAR, ['coast', 'storm', 'ruins', 'sky']);
+    // (the Neon Arcade, past the isles, is the fifth: tier 9, opened by Vrill WH's sigil)
+    assert.deepEqual(FAR, ['coast', 'storm', 'ruins', 'sky', 'arcade']);
     FAR.forEach((z, i) => assert.equal(D.ZONES[z].tier, 5 + i, z));
     // each one opens with the boss before it, and Frozen WH's sigil finally means something
     assert.equal(D.ZONES.coast.gate, 'sigil_frost');

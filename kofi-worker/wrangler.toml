@@ -10,10 +10,17 @@ main = "src/index.js"
 compatibility_date = "2025-06-01"
 workers_dev = true
 
+# Every minute: answer the game's "collect" and "claim" requests (Firestore kofi_requests). The game writes them to Firestore
+# instead of calling this worker, because school networks block *.workers.dev. One small Firestore query a minute when
+# nothing is waiting (about 1,440 reads a day of the free 50,000).
+[triggers]
+crons = ["* * * * *"]
+
 [vars]
 FIREBASE_PROJECT_ID = "whleaderboard"
 # The site(s) the game runs on, comma separated, exactly as the browser shows them (https://..., no trailing slash).
 # Only these may send "claim a payment" requests. Add a custom domain here if the game moves to one.
-# http://localhost:8000 is the game run on your own computer (npm start), for testing before you push; a claim still needs
-# a signed-in account, the transaction id and the payer's email, so it opens nothing to anyone else.
-ALLOWED_ORIGINS = "https://whathappenedclicker.netlify.app,http://localhost:8000"
+# http://localhost:8000 is the game run on your own computer (npm start), for testing before you push (8001 when 8000 is
+# taken, as the Claude app's preview does); a claim still needs a signed-in account, the transaction id and the payer's
+# email, and a collect a signed-in account with a verified email, so they open nothing to anyone else.
+ALLOWED_ORIGINS = "https://whathappenedclicker.netlify.app,http://localhost:8000,http://localhost:8001"

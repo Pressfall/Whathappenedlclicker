@@ -23,7 +23,8 @@ test('waves march through the zones, five each, with elites every fifth and a ch
     assert.equal(Wv.zoneFor(1), 'greenwood');
     assert.equal(Wv.zoneFor(6), 'mines');
     assert.equal(Wv.zoneFor(36), 'sky');
-    assert.equal(Wv.zoneFor(400), 'sky');
+    assert.equal(Wv.zoneFor(41), 'arcade');
+    assert.equal(Wv.zoneFor(400), D.ZONE_ORDER[D.ZONE_ORDER.length - 1]);
     const w4 = Wv.composition(1, 4, 1), w5 = Wv.composition(1, 5, 1), w10 = Wv.composition(1, 10, 1);
     assert.ok(w4.every(m => !m.elite));
     assert.ok(w5.some(m => m.elite) && !w5.some(m => m.champion));

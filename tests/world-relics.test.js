@@ -252,7 +252,7 @@ test('blueprints: without any the forge stops at Rare; each one, bought in order
     assert.equal(W.buyBlueprint(s, 3).reason, 'owned');
     s.rubies = 75000; W.buyBlueprint(s, 4);
     assert.equal(W.buyBlueprint(s, 5).reason, 'glory');
-    s.arena.glory = 12000; assert.equal(W.buyBlueprint(s, 5).ok, true); assert.equal(s.arena.glory, 0);
+    s.arena.glory = R.BLUEPRINT_BY_TIER[5].glory; assert.equal(W.buyBlueprint(s, 5).ok, true); assert.equal(s.arena.glory, 0);
     assert.equal(W.nextBlueprint(s).tier, 6);
     assert.equal(reload(s).relics.bp, 5, 'kept in the save');
     s.rubies = 1e7;

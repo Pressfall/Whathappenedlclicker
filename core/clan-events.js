@@ -28,7 +28,10 @@
     const KEEP_PROGRESS_MS = 30 * DAY; // progress older than this is dropped from the progress documents
     const LATE_PRESTIGE_MS = HOUR;     // a prestige still reaches an event that ended this recently (the page reloads after one)
     const SETTLE_MS = 2 * MIN;         // an event is paid this long after it ends, once the last sends have landed
-    const DEFAULT_TYPES = ['Bossfight', 'ClanVClan clicks', 'Clan Race', 'prestige party', 'construction event', 'Endless boss'];
+    const DEFAULT_TYPES = ['Bossfight', 'ClanVClan clicks', 'Clan Race', 'prestige party', 'construction event', 'Endless boss', 'Wilds Hunt'];
+    // the lists events/config held by default before (written there by the first page to roll a schedule): a config that is
+    // still one of these gets the new default list, so new kinds of event join the schedule without a trip to the console
+    const OLD_DEFAULT_TYPES = [['Bossfight', 'ClanVClan clicks', 'Clan Race', 'prestige party', 'construction event', 'Endless boss']];
     const BOT_ID = '__bot__';
     const BOT = { id: BOT_ID, name: 'Bot Clan', isBot: true };
 
@@ -51,6 +54,8 @@
             how: 'Prestige in the game. Every prestige by anyone in your clan adds to the total.' },
         con: { type: 'construction', name: 'Construction', icon: '🏗️', doc: 'construction_progress', unit: 'points',
             how: 'Pick a challenge, finish it by playing, and claim its points here. The clan\'s points build toward reward tiers.' },
+        wh: { type: 'wilds_hunt', name: 'Wilds Hunt', icon: '🌲', doc: 'wilds_hunt_progress', unit: 'monsters',
+            how: 'Head into the Wilds and defeat monsters: every monster anyone in your clan defeats there counts toward the clan\'s total.' },
     };
     // an event's kind ('bf', 'eb', 'cvc', 'race', 'pp', 'con') from its name or type; downtime and anything else: null
     function kindOf(ev) {
@@ -62,6 +67,7 @@
         if (n.includes('construction') || t === 'construction') return 'con';
         if ((n.includes('clan') && n.includes('click')) || t.includes('clan_v_clan')) return 'cvc';
         if (n.includes('race') || t.includes('clan_race')) return 'race';
+        if (n.includes('wilds') || n.includes('hunt') || t === 'wilds_hunt') return 'wh';
         return null;
     }
     function displayName(ev) { const k = kindOf(ev); return k ? KINDS[k].name : (ev && ev.isDowntime ? 'Downtime' : String((ev && ev.name) || 'Event')); }
@@ -85,9 +91,15 @@
         race: [{ place: 1, gems: 40, clanXp: 350, clanPoints: 70 }, { place: 2, gems: 25, clanXp: 200, clanPoints: 45 }, { place: 3, gems: 15, clanXp: 120, clanPoints: 25 },
             { place: 4, gems: 8, clanXp: 60, clanPoints: 12 }],
         raceJoin: { gems: 5, clanXp: 30, clanPoints: 5 },
+        // monsters the clan defeated in the Wilds: the highest tier reached
+        wh: [{ at: 50, gems: 3, clanXp: 30, clanPoints: 5 }, { at: 150, gems: 8, clanXp: 80, clanPoints: 15 }, { at: 400, gems: 15, clanXp: 150, clanPoints: 30 },
+            { at: 800, gems: 25, clanXp: 300, clanPoints: 55 }, { at: 1500, gems: 38, clanXp: 480, clanPoints: 85 }, { at: 2500, gems: 55, clanXp: 700, clanPoints: 120 }],
     };
     // extra for the clan's top three contributors (the rest of the clan gets the tier reward only)
-    const TOP3 = { pp: [{ gems: 15, cp: 10 }, { gems: 8, cp: 5 }, { gems: 3, cp: 2 }], bf: [{ gems: 20, cp: 15 }, { gems: 10, cp: 8 }, { gems: 5, cp: 3 }] };
+    const TOP3 = { pp: [{ gems: 15, cp: 10 }, { gems: 8, cp: 5 }, { gems: 3, cp: 2 }], bf: [{ gems: 20, cp: 15 }, { gems: 10, cp: 8 }, { gems: 5, cp: 3 }],
+        wh: [{ gems: 15, cp: 10 }, { gems: 8, cp: 5 }, { gems: 3, cp: 2 }] };
+    // monsters one send from the Wilds may add (a Wilds page sends every 15 s; more than this is a counter that jumped)
+    const WILDS_SEND_MAX = 60;
     const RACE_GOAL = 500;
     const PP_GOAL = 100;
 
@@ -185,7 +197,7 @@
         { id: 'c15', name: 'Prestige two', desc: 'Reach {target} prestiges in total.', type: 'reach', stat: 'prestigeTimes', points: 16, scale: (s) => Math.max(1, P(s) + 2) },
         { id: 'c16', name: 'Click power gain', desc: 'Raise your click power by {target}.', type: 'gain', stat: 'clickPower', points: 16, scale: (s) => Math.max(10, Math.floor(15 * (1 + P(s) * 0.1) + Math.min(5000, num(s.clickPower) * 0.05))) },
     ];
-    const DIVINE_KEYS = ['divineArgonLevel', 'divineSomalianLevel', 'divineAssassinLevel', 'divineCollectorLevel', 'divineMoneyManLevel', 'divineSpiritLevel', 'divineSimpleVillagerLevel'];
+    const DIVINE_KEYS = ['divineArgonLevel', 'divineSomalianLevel', 'divineAssassinLevel', 'divineCollectorLevel', 'divineMoneyManLevel', 'divineSpiritLevel', 'divineSimpleVillagerLevel', 'divineComboManLevel'];
     // what the challenges count, from the game's save and the few numbers the game keeps beside it
     function statsFrom(save, store) {
         const s = isObj(save) ? save : {};
@@ -358,6 +370,9 @@
         } else if (kind === 'con') {
             r = sumTier(REWARDS.con, block.total, false);
             text = 'Your clan built ' + fmt(block.total) + ' points.';
+        } else if (kind === 'wh') {
+            r = sumTier(REWARDS.wh, block.total, false);
+            text = 'Your clan defeated ' + fmt(block.total) + ' monster' + (block.total === 1 ? '' : 's') + ' in the Wilds.';
         } else if (kind === 'cvc') {
             const p = i.pairing;
             if (!p) return null;
@@ -456,15 +471,39 @@
     async function upkeepTx(tx, ref, now, stamp) {
         const s = await tx.get(ref('state')), c = await tx.get(ref('config'));
         const cfg = c.exists() ? (c.data() || {}) : {};
-        const types = Array.isArray(cfg.types) && cfg.types.length ? cfg.types : DEFAULT_TYPES;
-        const roll = rollSchedule(s.exists() ? (s.data() || {}).upcoming : [], now, types);
-        if (s.exists() && !roll.changed) return [];
+        const t = typesFrom(cfg);
+        const roll = rollSchedule(s.exists() ? (s.data() || {}).upcoming : [], now, t.types);
+        if (s.exists() && !roll.changed && !t.upgrade) return [];
         const e = await tx.get(ref('last_ended_event')), p = await tx.get(ref('pairings'));
         const ended = roll.ended.map((ev) => attachResult(ev, p.exists() ? p.data() : null));
-        if (!c.exists()) tx.set(ref('config'), { types: DEFAULT_TYPES });
+        if (!c.exists() || t.upgrade) tx.set(ref('config'), Object.assign({}, cfg, { types: DEFAULT_TYPES }));
         tx.set(ref('state'), { upcoming: roll.upcoming, updatedAt: stamp });
         if (ended.length) tx.set(ref('last_ended_event'), withEnded(e.exists() ? e.data() : null, ended, now));
         return ended;
+    }
+    // the event types to schedule from events/config: { types, upgrade } (upgrade: the config still holds an older default list)
+    function typesFrom(cfg) {
+        const list = cfg && Array.isArray(cfg.types) ? cfg.types.map(String).filter(Boolean) : [];
+        if (!list.length) return { types: DEFAULT_TYPES.slice(), upgrade: false };
+        const same = (a, b) => a.length === b.length && a.slice().sort().join('|') === b.slice().sort().join('|');
+        if (OLD_DEFAULT_TYPES.some((old) => same(old, list))) return { types: DEFAULT_TYPES.slice(), upgrade: true };
+        return { types: list, upgrade: false };
+    }
+    // monsters to send from the Wilds: the kill counter now less the one last sent, capped (a counter that went down, or jumped,
+    // sends nothing past the cap). { send, mark }: mark is the counter to compare with next time.
+    function wildsKillDelta(lastMark, killsNow, cap) {
+        const now = Math.max(0, Math.floor(num(killsNow))), last = Math.floor(num(lastMark));
+        if (!(lastMark >= 0) || now < last) return { send: 0, mark: now };
+        return { send: Math.min(now - last, cap || WILDS_SEND_MAX), mark: now };
+    }
+    // what a clan's member list shows of someone's Wilds (sent with their stats while they play there): class, arena rating,
+    // best wave and monsters defeated, bounded; null for no Wilds save
+    function wildsCard(state) {
+        if (!isObj(state)) return null;
+        const cls = isObj(state.classes) && typeof state.classes.active === 'string' && /^[a-z]{2,16}$/.test(state.classes.active) ? state.classes.active : 'warrior';
+        const ar = isObj(state.arena) ? state.arena : {}, st = isObj(state.stats) ? state.stats : {};
+        const int = (v, max) => Math.max(0, Math.min(max, Math.floor(num(v))));
+        return { cls, r: int(ar.rating || 1000, 99999), wb: int(ar.waveBest, 9999), k: int(st.kills, 1e9) };
     }
     const current = (upcoming, now) => (Array.isArray(upcoming) ? upcoming : []).find((it) => it && toMs(it.start) <= now && toMs(it.end) > now) || null;
     const nextEvent = (upcoming, now) => (Array.isArray(upcoming) ? upcoming : []).find((it) => it && !it.isDowntime && toMs(it.start) > now) || null;
@@ -603,7 +642,8 @@
     }
 
     return {
-        DAY, EVENT_MS, DOWNTIME_MS, SCHEDULE_LEN, HISTORY_MAX, PAY_WINDOW_MS, KEEP_PROGRESS_MS, SETTLE_MS, LATE_PRESTIGE_MS, DEFAULT_TYPES, BOT_ID, BOT, KINDS, REWARDS, TOP3,
+        DAY, EVENT_MS, DOWNTIME_MS, SCHEDULE_LEN, HISTORY_MAX, PAY_WINDOW_MS, KEEP_PROGRESS_MS, SETTLE_MS, LATE_PRESTIGE_MS, DEFAULT_TYPES, OLD_DEFAULT_TYPES, BOT_ID, BOT, KINDS, REWARDS, TOP3,
+        WILDS_SEND_MAX, typesFrom, wildsKillDelta, wildsCard,
         RACE_GOAL, PP_GOAL, GIMMICKS, CHALLENGES, PENDING_KEY, ENDLESS_SCALE, ENDLESS_BASE_HP, BOSS_BASE_HP,
         toMs, kindOf, displayName, gimmick, makeBossMeta, makeEndlessMeta, memberStrength, phaseOf, currentGimmick, bossDamage, endless,
         statsFrom, pickChallenges, challengeFor, challengeProgress, challengePoints,

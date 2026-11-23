@@ -59,7 +59,7 @@
         const gear = D.GEAR_BY_ID[rv.cls + '_' + rt.tier];
         const r = base('rival', 'rival', x, y, 13);
         Object.assign(r, { name: rv.name + (rt.title ? ' ' + rt.title : ''), face: rv.face, color: rv.color, cls: rv.cls, tier: rt.tier, rt, weapon: C.newWeapon(rv.cls, 0), hp: rt.hp, maxHp: rt.hp,
-            armor: rt.tier * 12, baseArmor: rt.tier * 12, dmg: gear.dmg * 0.9, speed: 135, home: { x, y }, aggro: false, mass: 1,
+            armor: rt.tier * 12, baseArmor: rt.tier * 12, dmg: gear.dmg * (rt.hit || 0.9), speed: 135, home: { x, y }, aggro: false, mass: 1,
             ai: { next: 0, attackUntil: 0, aimX: x, aimY: y, strafe: rnd() < 0.5 ? 1 : -1, strafeT: 0, dodgeCd: 0, staggerUntil: 0, iframes: 0, drawing: false }, combo: {} });
         return r;
     };
@@ -81,6 +81,17 @@
     // deal damage from inside (then not for D.CAMP.lockSec seconds)
     A.inCamp = function (x, y) { const c = game().map.camp; return !!c && !game().inTown && Math.hypot(x - c.x, y - c.y) <= D.CAMP.r; };
     A.playerSafe = function () { const p = game().player; return !!p && !(p.campLockUntil > E.time) && A.inCamp(p.x, p.y); };
+    // Every heal of my player goes through here (potions, Second Wind, Sanctuary, lifesteal, regen), so a zone that
+    // heals less (the Arena: a quarter, W.healMult) holds for all of them. A heal is never more than your max health
+    // before that share is taken, so a Max Potion (9999) there gives a quarter of your health, not a full refill.
+    // Returns the health actually gained.
+    A.healPlayer = function (amount) {
+        const g = game(), p = g.player;
+        if (!p || p.dead || !(amount > 0)) return 0;
+        const before = p.hp;
+        p.hp = Math.min(p.maxHp, p.hp + Math.min(amount, p.maxHp) * W.healMult(g.zoneId));
+        return p.hp - before;
+    };
     A.hurtPlayer = function (dmg, opts = {}) {
         const g = game(), p = g.player;
         if (p.dead || p.iframes > 0 || g.inTown || A.playerSafe()) return 0;
@@ -142,6 +153,18 @@
         if (WHW.settings.dmgNumbers) E.floatText(p.x, p.y - 22, '-' + Math.round(d), '#ff6b7a', 15);
         E.addShake(4 + d / 8);
         WHW.sfx('hurt');
+        // the full Arcade Set's Extra Life (core/world-data.js SETS): the knockout blow leaves you on a quarter of your
+        // health instead, once every st.extraLife s of play
+        if (p.hp <= 0 && st.extraLife && !(g.extraLifeAt > E.time)) {
+            g.extraLifeAt = E.time + st.extraLife;
+            p.hp = Math.max(1, Math.round(p.maxHp * 0.25));
+            p.iframes = 1.5;
+            E.floatText(p.x, p.y - 40, 'EXTRA LIFE!', '#f8b800', 18, 1.6);
+            E.burst(p.x, p.y, '#f8b800', 30, 220, { life: 0.8 });
+            WHW.sfx('perfect');
+            WHW.toast('🕹️ Extra Life! The next one is ready in ' + Math.round(st.extraLife / 60) + ' minutes.', 'gold');
+            return d;
+        }
         if (p.hp <= 0) { p.hp = 0; p.dead = true; WHW.onPlayerDeath && WHW.onPlayerDeath(); }
         return d;
     };
@@ -263,6 +286,8 @@
         const l = Math.hypot(dx, dy) || 1;
         p.dashX = dx / l; p.dashY = dy / l;
         p.dashT = DA.time; p.dashCd = DA.cooldown * ps.dashCd; p.iframes = Math.max(p.iframes, DA.iframes);
+        if (ps.dashReload) C.gunLoad(cylinder(p), ps.dashReload); // the Gunslinger: a dash slips rounds back into the cylinder
+        p.dashAt = E.time; // a Shared Burden's last moments: a dash then dodges it (BOSS_MOVES.burden dodge)
         p.stam.val -= cost; p.stam.idle = 0;
         E.burst(p.x, p.y + 8, 'rgba(255,255,255,0.6)', 6, 60, { life: 0.3 });
         WHW.sfx('dash');
@@ -366,6 +391,7 @@
         p.staggerUntil = Math.max(p.staggerUntil || 0, p.stunUntil);
         p.shield.up = false;
         if (p.weapon && p.weapon.drawing) { p.weapon.drawing = false; p.weapon.draw = 0; }
+        if (p.weapon) p.weapon.trigger = false;
         E.floatText(p.x, p.y - 30, 'STUNNED', '#ffe14d', 14);
     };
     // Another player cast an ability: show it. x, y: where they are now; tx, ty: where they aimed (or the area's centre).
@@ -384,6 +410,8 @@
         else if (a.kind === 'volley') { for (let i = 0; i < a.count; i++) fxShot(ang + (i / (a.count - 1) - 0.5) * a.spread, 'arrow'); }
         else if (a.kind === 'shot') fxShot(ang, a.look === 'spear' ? 'javelin' : a.look === 'knife' ? 'knife' : a.stun ? 'net' : 'arrow', { big: !!a.big });
         else if (a.kind === 'chain') boltFx({ x, y }, { x: tx, y: ty }, a.color);
+        else if (a.kind === 'fan') { for (let i = 0; i < a.count; i++) fxShot(ang + (i / (a.count - 1) - 0.5) * a.spread, 'bullet'); }
+        else if (a.kind === 'deadshot') fxShot(ang, 'bullet', { big: true });
         else if (a.kind === 'field') g.fields.push({ id, a, x: tx, y: ty, t: 0, next: a.delay || 0, base: 0, fx: true });
         else E.burst(x, y, a.color, 14, 100, { life: 0.5 }); // blinks, charges, steps, parries, heals and buffs: a flash where they are
         if (a.kind === 'buff' || a.kind === 'heal') E.floatText(x, y - 30, a.name.toUpperCase(), a.color, 13, 0.9);
@@ -461,7 +489,19 @@
         if (a.kind === 'ignite') {
             if (p.ignite) return false;
             const wb = W.baseOf(weaponItem());
-            if (!wb || wb.cls === 'bow') { WHW.hint('Hold a staff or another melee weapon to set it on fire.'); return false; }
+            if (!wb || wb.cls === 'bow' || wb.cls === 'gun') { WHW.hint('Hold a staff or another melee weapon to set it on fire.'); return false; }
+        }
+        // Fan the Hammer fires what is in the revolver in hand; High Noon needs someone in front of you to mark
+        if (a.kind === 'fan') {
+            const wb = W.baseOf(weaponItem());
+            if (!wb || wb.cls !== 'gun') { WHW.hint('Hold a revolver to fan the hammer.'); return false; }
+            if (!C.gunReady(cylinder(p))) { WHW.hint('The cylinder is empty: wait for the reload.'); return false; }
+        }
+        let marks = null;
+        if (a.kind === 'deadshot') {
+            marks = abilityTargets().filter(t => dist(p, t) <= a.range + t.r && Math.abs(C.wrap(angTo(p, t) - ang)) <= a.arc / 2 && !E.wallBetween(p.x, p.y, t.x, t.y))
+                .sort((u, v) => dist(p, u) - dist(p, v)).slice(0, a.count);
+            if (!marks.length) { WHW.hint('Nobody in front of you to mark for ' + a.name + '.'); return false; }
         }
         // momentum abilities hit harder the faster you are moving toward where you aim, like a spear thrust
         const mom = a.momentum === true ? C.momentumMult(p.vx * Math.cos(ang) + p.vy * Math.sin(ang), ps.momentum + buffSum(p, 'momentum')) : 1;
@@ -498,6 +538,7 @@
             p.iframes = Math.max(p.iframes, a.iframes);
             E.burst(x0, y0, a.color, 14, 100, { life: 0.4 });
             E.burst(p.x, p.y, a.color, 14, 100, { life: 0.4 });
+            if (a.reload) { C.gunLoad(cylinder(p), a.reload); WHW.sfx('tink'); } // Tumble: rounds back into the cylinder on the way
             WHW.sfx('dash');
         } else if (a.kind === 'charge') {
             const path = slide(p, ang, a.dist);
@@ -556,6 +597,26 @@
         } else if (a.kind === 'volley') {
             for (let i = 0; i < a.count; i++) abilityShot(p, a, ang + (i / (a.count - 1) - 0.5) * a.spread, base);
             WHW.sfx('bow');
+        } else if (a.kind === 'fan') {
+            // every round left in the cylinder at once, spread across the fan; then it is empty and spins in again
+            const c = cylinder(p), n = c.rounds, aim0 = p.weapon ? p.weapon.theta : ang;
+            for (let i = 0; i < n; i++) abilityShot(p, a, aim0 + (n > 1 ? (i / (n - 1) - 0.5) * a.spread : 0) + (rnd() - 0.5) * 0.04, base, { kind: 'bullet', r: 3, kb: a.kb, travel: 0 });
+            c.rounds = 0; c.lastShot = E.time; c.nextRound = 0;
+            p.shotSeq = (p.shotSeq || 0) + n;
+            if (p.weapon) { p.weapon.omega = (rnd() < 0.5 ? -1 : 1) * D.WEAPON_CLASSES.gun.wMax * 0.8; p.weapon.kick = 1; }
+            E.burst(p.x + Math.cos(aim0) * 24, p.y + Math.sin(aim0) * 24, '#ffd36b', 18, 220, { angle: aim0, spread: a.spread + 0.4, life: 0.15, size: 3 });
+            E.addShake(6); E.addHitStop(0.04);
+            WHW.sfx('fan'); WHW.sfx('gun');
+        } else if (a.kind === 'deadshot') {
+            // High Noon: a bullet straight at each marked enemy, all at once
+            for (const t of marks) {
+                abilityShot(p, a, angTo(p, t), base, { kind: 'bullet', r: 4, kb: a.kb, travel: 0, big: true });
+                E.floatText(t.x, t.y - t.r - 16, '✦', a.color, 18, 0.6);
+            }
+            if (p.weapon) { p.weapon.kick = 1; }
+            E.addShake(5); E.addHitStop(0.1);
+            E.floatText(p.x, p.y - 36, 'HIGH NOON', a.color, 16, 1);
+            WHW.sfx('gun'); WHW.sfx('perfect');
         } else if (a.kind === 'shot') {
             abilityShot(p, a, ang, base, { kind: a.look === 'spear' ? 'javelin' : a.look === 'knife' ? 'knife' : a.stun ? 'net' : 'arrow', r: a.big ? 6 : 5, pierce: a.pierce || 0, kb: a.kb || 260,
                 big: !!a.big, stun: a.stun || 0, stunnedMult: a.stunnedMult, text: momText || undefined });
@@ -608,9 +669,8 @@
             for (let i = 0; i < 40; i++) { const aa = rnd() * Math.PI * 2, r = rnd() * a.radius; E.burst(p.x + Math.cos(aa) * r, p.y + Math.sin(aa) * r, a.color, 1, 25, { life: 1.1, size: 7, grav: -20 }); }
             WHW.sfx('dash');
         } else if (a.kind === 'heal') {
-            const before = p.hp;
-            p.hp = Math.min(p.maxHp, p.hp + p.maxHp * a.heal);
-            E.floatText(p.x, p.y - 30, '+' + Math.round(p.hp - before), '#7dff9a', 16);
+            const got = A.healPlayer(p.maxHp * a.heal);
+            E.floatText(p.x, p.y - 30, '+' + Math.round(got), '#7dff9a', 16);
             E.burst(p.x, p.y, a.color, 18, 90, { life: 0.8, grav: -70 });
             WHW.sfx('drink');
         } else if (a.kind === 'beam') {
@@ -630,6 +690,7 @@
             WHW.sfx('boss');
         } else if (a.kind === 'buff') {
             p.buffs[id] = E.time + a.time;
+            if (a.reload) { C.gunLoad(cylinder(p), a.reload); WHW.sfx('cock'); } // Quick Draw: the cylinder spun full at once
             E.floatText(p.x, p.y - 30, a.name.toUpperCase(), a.color, 15, 1);
             E.burst(p.x, p.y, a.color, 16, 110, { life: 0.6 });
             WHW.sfx('perfect');
@@ -740,7 +801,10 @@
             while (f.t >= f.next && f.next <= a.time) {
                 const first = f.next === (a.delay || 0);
                 f.next += a.tick;
-                if (first && a.delay) { E.burst(f.x, f.y, a.color, 40, a.r * 2.4, { life: 0.6, size: 5 }); ringFx(f.x, f.y, a.r, a.color); E.addShake(f.fx ? 3 : 8); WHW.sfx('boss'); }
+                if (first && a.delay) {
+                    E.burst(f.x, f.y, a.color, 40, a.r * 2.4, { life: 0.6, size: 5 }); ringFx(f.x, f.y, a.r, a.color); E.addShake(f.fx ? 3 : 8);
+                    if (a.look === 'dynamite') { E.burst(f.x, f.y, 'rgba(120,110,100,0.6)', 24, a.r * 1.2, { life: 1.1, size: 8, grav: -40 }); WHW.sfx('boom'); } else WHW.sfx('boss');
+                }
                 if (f.fx) continue;
                 // Meteor doesn't care who is under it: you take part of the blow, and burn (a dash can still get you out)
                 if (first && a.selfHit && !p.dead && !g.inTown && Math.hypot(p.x - f.x, p.y - f.y) <= a.r + p.r) {
@@ -754,9 +818,8 @@
                     abilityHit(p, t, a, f.base, a.pull ? inward : inward + Math.PI, { kb: a.pull ? a.pull * Math.min(1, d / a.r) : a.kb || 0 });
                 }
                 if (a.heal && !p.dead && Math.hypot(p.x - f.x, p.y - f.y) <= a.r + p.r) {
-                    const before = p.hp;
-                    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * a.heal);
-                    if (p.hp - before >= 1) E.floatText(p.x, p.y - 28, '+' + Math.round(p.hp - before), '#7dff9a', 12, 0.6);
+                    const got = A.healPlayer(p.maxHp * a.heal);
+                    if (got >= 1) E.floatText(p.x, p.y - 28, '+' + Math.round(got), '#7dff9a', 12, 0.6);
                 }
             }
             // after it lands the ground burns: whoever stands in it (enemies, and you) catches fire
@@ -799,6 +862,18 @@
                     // where it lands, plainly (it hurts you too), and the rock on its way down
                     ctx.setLineDash([]); ctx.globalAlpha = 0.9; ctx.strokeStyle = '#ff4d2b'; ctx.lineWidth = 3;
                     ctx.beginPath(); ctx.arc(f.x, f.y, a.r, 0, TAU); ctx.stroke();
+                    if (a.look === 'dynamite') {
+                        // a stick of dynamite on the ground, its fuse burning down
+                        ctx.globalAlpha = 1; ctx.fillStyle = '#c0392b'; ctx.fillRect(f.x - 12, f.y - 5, 24, 10);
+                        ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.fillRect(f.x - 12, f.y + 1, 24, 4);
+                        ctx.fillStyle = '#f0e0c0'; ctx.fillRect(f.x - 4, f.y - 5, 3, 10);
+                        const fl = 14 * (1 - k), fx = f.x + 12 + fl * 0.7, fy = f.y - 4 - fl * 0.7;
+                        ctx.strokeStyle = '#5a4a3a'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(f.x + 12, f.y - 2); ctx.lineTo(fx, fy); ctx.stroke();
+                        ctx.fillStyle = Math.sin(E.time * 40) > 0 ? '#ffe14d' : '#ff7b3a'; ctx.beginPath(); ctx.arc(fx, fy, 2.5 + rnd() * 2, 0, TAU); ctx.fill();
+                        if (E.perf !== 'low' && rnd() < 0.5) E.burst(fx, fy, '#ffd36b', 1, 50, { life: 0.25, size: 2 });
+                        ctx.restore();
+                        continue;
+                    }
                     ctx.beginPath(); ctx.moveTo(f.x - 12, f.y); ctx.lineTo(f.x + 12, f.y); ctx.moveTo(f.x, f.y - 12); ctx.lineTo(f.x, f.y + 12); ctx.stroke();
                     const mx = f.x + (1 - k) * 90, my = f.y - (1 - k) * 280, mr = 9 + 9 * k;
                     ctx.globalAlpha = 0.45; ctx.fillStyle = '#ffb347';
@@ -880,7 +955,7 @@
         } else p.status.burnDps = 0;
         // regen: fast in town, slow once out of a fight for a while
         if (g.inTown) p.hp = Math.min(p.maxHp, p.hp + D.COMBAT.player.regenTown * dt);
-        else p.hp = Math.min(p.maxHp, p.hp + ((E.time - p.lastHurt > 6 ? 1.5 : 0) + st.regen) * dt);
+        else A.healPlayer(((E.time - p.lastHurt > 6 ? 1.5 : 0) + st.regen) * dt);
         p.igDrain = igniteTick(p, dt);
         if (p.dead) return;
         // mana (the Mystic's): Burning Stick eats it; otherwise it comes back, much faster standing still
@@ -913,8 +988,9 @@
         if (p.hp <= 0 && !p.dead) { p.hp = 0; p.dead = true; WHW.onPlayerDeath(); }
     }
     // A hit that drags the player toward whatever threw it (a siren's song, a tidecaller's wave)
-    function pullToward(p, src, speed) {
-        const d = dist(p, src), reach = Math.min(110, d - p.r - (src.r || 10) - 10);
+    // (max: how far at most, 110 px unless the shot says more: a claw machine's grab drags you right up to it)
+    function pullToward(p, src, speed, max) {
+        const d = dist(p, src), reach = Math.min(max || 110, d - p.r - (src.r || 10) - 10);
         if (reach > 8 && !p.dead) p.pull = { x: p.x + (src.x - p.x) / d * reach, y: p.y + (src.y - p.y) / d * reach, speed, until: E.time + reach / speed + 0.1 };
     }
     function trailPush(owner, x, y, kind) {
@@ -931,8 +1007,49 @@
         stepStats.set(it, { at: E.time, st });
         return st;
     }
+    // ---------------- the revolver (D.WEAPON_CLASSES.gun, core/world-combat.js gun*) ----------------
+    // The cylinder is the player's (p.cyl), so swapping weapons never refills it; it reloads whatever is in hand.
+    const GUN = D.WEAPON_CLASSES.gun;
+    function cylinder(p) { return p.cyl || (p.cyl = C.newCylinder(GUN)); }
+    A.cylinder = (p) => cylinder(p || game().player);
+    function gunTick(p) {
+        const w = p.weapon, c = cylinder(p), r = C.gunReload(c, GUN, E.time, game().pstats.reload, !!(w && w.cls === 'gun' && w.trigger));
+        // the hotbar shows the rounds left: drawn again whenever they change
+        const shown = c.reloadEnd ? -1 : c.rounds;
+        if (p.cylShown !== shown && w && w.cls === 'gun') { p.cylShown = shown; if (WHW.ui && WHW.ui.renderHotbar) WHW.ui.renderHotbar(); }
+        if (!r || !(w && w.cls === 'gun')) return;
+        if (r === 'spin') { WHW.sfx('spin'); E.floatText(p.x, p.y - 30, 'RELOADING', '#e0c090', 11, 0.8); }
+        else if (r === 'full') { WHW.sfx('cock'); E.burst(p.x + Math.cos(w.theta) * 12, p.y + Math.sin(w.theta) * 12, '#d8c39a', 5, 60, { life: 0.3 }); }
+        else WHW.sfx('tink');
+    }
+    // Fire one round down the barrel (fan: the trigger held, fanning the hammer). Returns whether it fired.
+    function fireGun(p, fan) {
+        const g = game(), c = cylinder(p), w = p.weapon, it = weaponItem(), b = W.baseOf(it);
+        if (!w || !b || b.cls !== 'gun') return false;
+        const ps = g.pstats;
+        const shot = C.gunFire(c, w, GUN, E.time, { fan, settle: ps.settle, steadyBonus: ps.steadyBonus, rng: rnd });
+        if (!shot) { if (!fan) WHW.sfx('tink'); return false; }
+        const st = W.gearStats(it), a = w.theta + shot.angleOff;
+        const lastRound = shot.last && ps.lastRound ? 2 : 1;
+        const ray = b.set === 'arcade';
+        const mx = p.x + Math.cos(a) * 24, my = p.y + Math.sin(a) * 24;
+        g.projectiles.push({ kind: 'bullet', team: 'player', x: mx, y: my, vx: Math.cos(a) * GUN.speed, vy: Math.sin(a) * GUN.speed, r: GUN.r, life: GUN.life, travel: 0,
+            dmg: st.dmg * shot.mult * lastRound * dmgBuff(p) * (ps.dmgBy.gun || 1), steady: shot.steady, w: it.base, kb: GUN.kb, chill: st.chill, burn: st.burn || ps.gunBurn > 0,
+            crit: st.crit + ps.crit + buffSum(p, 'crit'), lifesteal: (st.lifesteal || 0) + ps.lifesteal, bounce: GUN.bounce + ps.bounce, bounceMult: ps.bankShot ? 1 : GUN.bounceMult,
+            falloff: true, color: ray ? '#ff4fd8' : '#ffe6a0', ray, hit: new Set() });
+        p.shotSeq = (p.shotSeq || 0) + 1;
+        // the muzzle flash, a puff of smoke, a little shake
+        E.burst(mx, my, ray ? '#ff8fe6' : '#ffd36b', fan ? 5 : 8, 180, { angle: a, spread: 0.7, life: 0.12, size: 3 });
+        if (E.perf !== 'low') E.burst(mx, my, 'rgba(210,210,210,0.5)', 3, 40, { angle: a, spread: 1.2, life: 0.5, grav: -30, size: 5 });
+        E.addShake(fan ? 1.2 : 2);
+        WHW.sfx(ray ? 'laser' : fan ? 'fan' : 'gun');
+        if (shot.steady) E.floatText(p.x, p.y - 30, 'STEADY', '#ffc83d', 12);
+        if (lastRound > 1) E.floatText(p.x, p.y - 42, 'LAST ROUND', '#ff9a3d', 13);
+        return true;
+    }
     A.updatePlayerWeapon = function (p, dt) {
         const g = game();
+        gunTick(p);
         // pouring out Ice Beam: no weapon at all
         if (p.beam) { p.power = 0; p.powerMode = null; C.staminaStep(p.stam, 0, dt, g.pstats.stamRegen); return; }
         const it = weaponItem();
@@ -955,6 +1072,19 @@
             C.track(w, target, dt, P, mods);
             p.facing = w.theta;
             p.power = w.draw; p.powerHit = w.draw >= P.minDraw; p.powerPerfect = w.draw >= 0.95 && w.fullFor >= P.steadyFrom && w.fullFor <= P.steadyTo;
+        } else if (b.cls === 'gun') {
+            // aimed like any weapon (so the recoil's kick swings back by itself); held, the trigger fans the hammer
+            C.track(w, target, dt, P, mods);
+            p.facing = w.theta;
+            const c = cylinder(p);
+            if (w.trigger && !p.shield.up && !(p.staggerUntil > E.time) && E.time - w.triggerAt >= P.fanAfter && E.time >= (w.nextFan || 0) && C.gunReady(c)) {
+                w.nextFan = E.time + P.fanGap;
+                fireGun(p, true);
+            }
+            if (w.kick) w.kick = Math.max(0, w.kick - dt * 7);
+            // the meter: how settled the barrel is (full: the next shot is Steady); empty while reloading
+            const ready = Math.min(1, (E.time - c.lastShot) / (P.settle * g.pstats.settle));
+            p.power = C.gunReady(c) ? ready : 0; p.powerHit = C.gunReady(c); p.powerPerfect = C.gunReady(c) && ready >= 1 && Math.abs(w.omega) <= P.steadyOmega;
         } else {
             const assist = C.assistTarget(w, dt);
             if (assist !== null) target = assist;
@@ -992,7 +1122,12 @@
     A.press = function (p) {
         const w = p.weapon, b = W.baseOf(weaponItem());
         if (!w || !b || p.stunUntil > E.time) return;
-        if (b.cls === 'bow') {
+        if (b.cls === 'gun') {
+            // a click fires at once; keep holding and the hammer fans (updatePlayerWeapon)
+            if (p.shield.up || p.staggerUntil > E.time) return;
+            w.trigger = true; w.triggerAt = E.time; w.nextFan = E.time + D.WEAPON_CLASSES.gun.fanAfter;
+            fireGun(p, false);
+        } else if (b.cls === 'bow') {
             if (p.shield.up) return;
             if ((game().state.cons.arrow || 0) <= 0) { WHW.toast('Out of arrows. Make them at the Workbench or buy them from the Trader.', 'bad'); return; }
             w.drawing = true; w.anchorX = E.mouse.sx; w.anchorY = E.mouse.sy; w.draw = 0; w.fullFor = 0;
@@ -1002,6 +1137,7 @@
     };
     A.release = function (p) {
         const w = p.weapon;
+        if (w && w.cls === 'gun') { w.trigger = false; return; }
         if (!w || w.cls !== 'bow' || !w.drawing) return;
         w.drawing = false;
         const P = D.WEAPON_CLASSES.bow;
@@ -1040,6 +1176,7 @@
             if (rnd() < critChance) m *= 1.5;
             WHW.online.hitRemote(t, { kind: C.hasReach(cls) ? 'thrust' : 'melee', dmg: hd.dmg * m, ang: angle + dir * Math.PI / 2 * 0.7, perfect: hd.perfect, x: cx, y: cy });
             E.burst(cx, cy, hd.perfect ? '#ffc83d' : '#ffffff', hd.perfect ? 12 : 7, 160, { angle: angle + dir * Math.PI / 2, spread: 1.4, life: 0.35 });
+            A.skinHitFx(cx, cy, angle + dir * Math.PI / 2);
             E.addHitStop(D.COMBAT.hitStop * (0.5 + s));
             WHW.sfx(hd.perfect ? 'perfect' : 'hit');
             return;
@@ -1060,8 +1197,9 @@
         if (charge) text = charge;
         A.damage(t, dmg, { from: p, kbAngle: angle + dir * Math.PI / 2 * 0.7, kb: P.kb * st.kbMult, s, perfect: hd.perfect, crit, burn: st.burn, chill: st.chill, text });
         const steal = (st.lifesteal || 0) + g.pstats.lifesteal;
-        if (steal) p.hp = Math.min(p.maxHp, p.hp + dmg * steal);
+        if (steal) A.healPlayer(dmg * steal);
         E.burst(cx, cy, hd.perfect ? '#ffc83d' : '#ffffff', hd.perfect ? 12 : 7, 160, { angle: angle + dir * Math.PI / 2, spread: 1.4, life: 0.35 });
+        A.skinHitFx(cx, cy, angle + dir * Math.PI / 2);
         if (hd.perfect) p.perfectFlash = 0.25;
         E.addHitStop(D.COMBAT.hitStop * (0.5 + s));
         E.addShake(1 + 3 * s);
@@ -1299,9 +1437,10 @@
         if (crit) mult *= 1.5;
         const d = C.mitigate(dmg * mult, t.armorBrokenUntil > E.time ? 0 : t.armor);
         A.damage(t, d, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.6, perfect: pr.steady, crit, burn: pr.burn, text });
+        A.skinHitFx(t.x, t.y, ang);
         const sm = D.STAFF_MAGIC[pr.magic];
         if (pr.frost && sm && sm.frost && !t.dead) frostOn(t, sm.frost);
-        if (pr.lifesteal) p.hp = Math.min(p.maxHp, p.hp + d * pr.lifesteal);
+        if (pr.lifesteal) A.healPlayer(d * pr.lifesteal);
         WHW.sfx('hit');
     }
     // one more frost stack on t (a combatant, or the player); every few, it is slowed
@@ -1364,7 +1503,7 @@
 
     // Rivals and the player crossing fast blades: both pushed apart, the slower one staggers
     function clashCheck(p, r) {
-        if (!p.weapon || !r.weapon || p.weapon.cls === 'bow' || r.weapon.cls === 'bow') return;
+        if (!p.weapon || !r.weapon || p.weapon.cls === 'bow' || r.weapon.cls === 'bow' || p.weapon.cls === 'gun') return;
         const P1 = D.WEAPON_CLASSES[p.weapon.cls], P2 = D.WEAPON_CLASSES[r.weapon.cls];
         const s1 = C.bladeSegment(p.x, p.y, p.weapon.theta, P1.r0, C.hasReach(p.weapon.cls) ? p.weapon.r : P1.len);
         const s2 = C.bladeSegment(r.x, r.y, r.weapon.theta, P2.r0, C.hasReach(r.weapon.cls) ? r.weapon.r : P2.len);
@@ -1421,7 +1560,31 @@
         const g = game();
         g.projectiles.push(Object.assign({ kind: 'orb', team: m.team, x: m.x + Math.cos(angle) * m.r, y: m.y + Math.sin(angle) * m.r,
             vx: Math.cos(angle) * a.speed, vy: Math.sin(angle) * a.speed, r: a.pr || 7, life: 2.2, dmg: m.dmg * (a.dmg || 1), color: m.def.color,
-            burn: a.burn || m.def.burn, chill: a.chill, stun: a.stun, pull: a.pull, owner: m.id }, extra));
+            burn: a.burn || m.def.burn, chill: a.chill, stun: a.stun, pull: a.pull, pullReach: a.pullReach, owner: m.id }, extra));
+    }
+    // ---- the Neon Arcade's lasers: beams from the attacker, each stopped by the first wall or building (water lets light
+    // through). A 'laser' is one beam along k.dir; 'lasers' (a boss) a fan of count (+1 a phase) beams spread across spread rad.
+    function beamLen(x, y, dir, from, max) {
+        const c = Math.cos(dir), s = Math.sin(dir);
+        for (let d = from; d < max; d += 8) { const t = E.tileAt(x + c * d, y + s * d); if (t === G.T.WALL || t === G.T.BUILDING) return d; }
+        return max;
+    }
+    function laserBeams(m, k) {
+        const a = k.a, n = a.type === 'lasers' ? a.count + (m.phase || 0) : 1;
+        // the beams keep the same gap however many there are (more of them widen the fan), so there is always room between
+        const step = a.type === 'lasers' ? a.spread / Math.max(1, a.count - 1) : 0;
+        const out = [];
+        for (let i = 0; i < n; i++) {
+            const dir = k.dir + (i - (n - 1) / 2) * step;
+            out.push({ dir, len: beamLen(m.x, m.y, dir, m.r, a.len) });
+        }
+        return out;
+    }
+    // how far a point is from a beam (the segment from `from` to `len` along dir)
+    function beamDist(px, py, x, y, dir, from, len) {
+        const c = Math.cos(dir), s = Math.sin(dir);
+        const along = Math.max(from, Math.min(len, (px - x) * c + (py - y) * s));
+        return Math.hypot(px - (x + c * along), py - (y + s * along));
     }
     // An attack's windup is over: it lands (or starts moving). target: who it was aimed at (a shared boss may aim at another
     // player); damage is only ever checked against the player on this page.
@@ -1448,6 +1611,14 @@
             for (let i = 0; i < n; i++) shoot(m, off + i * TAU / n, a);
         } else if (a.type === 'lunge' || a.type === 'charge') {
             m.vx = Math.cos(k.dir) * a.speed; m.vy = Math.sin(k.dir) * a.speed;
+            WHW.sfx('swoosh');
+        } else if (a.type === 'laser' || a.type === 'lasers') {
+            // where the beams go is settled now (the windup showed it); they burn for the active time
+            k.beams = laserBeams(m, k);
+            WHW.sfx('laser');
+        } else if (a.type === 'claw') {
+            // a grabber on a cable: whoever it catches is dragged up to the machine (world-actors.js pullToward)
+            shoot(m, k.dir, a, { look: 'claw', life: (a.range + 80) / a.speed, color: '#d8dde8' });
             WHW.sfx('swoosh');
         } else if (a.type === 'spikes') {
             // a line of spikes (or fire, or light) bursting out of the ground toward the target
@@ -1479,6 +1650,15 @@
             const hit = C.sweepHit(m.x, m.y, k.prev === undefined ? k.from : k.prev, k.cur, m.r, a.reach, me.x, me.y, me.r);
             k.prev = k.cur;
             if (hit && !k.hit) { k.hit = true; A.hurtPlayer(m.dmg * (a.dmg || 1), { from: m, kb: 260 }); }
+        } else if (a.type === 'laser' || a.type === 'lasers') {
+            if (!k.beams) k.beams = laserBeams(m, k);
+            // one hit however many beams cross you; a shield facing the beam blocks it
+            if (!k.hit && !me.dead) for (const bm of k.beams) {
+                if (beamDist(me.x, me.y, m.x, m.y, bm.dir, m.r, bm.len) > a.width / 2 + me.r) continue;
+                k.hit = true;
+                A.hurtPlayer(m.dmg * (a.dmg || 1), { from: m, kb: 140, fromAngle: bm.dir + Math.PI });
+                break;
+            }
         }
         return false;
     }
@@ -1518,7 +1698,8 @@
             const k = m.atk;
             k.t += dt;
             if (k.phase === 'windup') {
-                if (k.a.type === 'shoot' || k.a.type === 'arc') k.dir = angTo(m, p);
+                // aimed through the windup; a laser only through its first part, then fixed (so it can be stepped out of)
+                if (k.a.type === 'shoot' || k.a.type === 'arc' || k.a.type === 'claw' || (k.a.type === 'laser' && k.t < k.a.windup * 0.6)) k.dir = angTo(m, p);
                 if (k.t >= k.a.windup) { k.phase = 'active'; k.t = 0; attackBegin(m, k, p); }
             } else {
                 const stop = attackActive(m, k, p, dt);
@@ -1602,8 +1783,14 @@
         gust: { type: 'push', windup: 0.6, active: 0.2, reach: 420, arc: 1.6, force: 380, time: 1.0, dmg: 0.4 },
         orbs: { type: 'orbs', windup: 0.6, active: 0.2, count: 3, speed: 150, life: 4.5, turn: 2.2, pr: 12, dmg: 1.1 },
         starfall: { type: 'targets', windup: 0.4, active: 0.2, count: 9, radius: 50, delay: 1.2, stagger: 0.08, around: 'arena', dmg: 1.0, stun: 0.3, bolt: true },
-        // the Sunken Vault: a mark follows one player and bursts after `delay`; its damage is split between everyone in it
-        burden: { type: 'burden', windup: 0.6, active: 0.2, radius: 95, delay: 4, dmg: 8.5 },
+        // the Neon Arcade (8-Bit WH, the Glitch King): a fan of laser beams; a claw that drags you in; blocks of pixels raining
+        lasers: { type: 'lasers', windup: 1.0, active: 0.45, count: 3, spread: 1.0, len: 600, width: 24, dmg: 1.0 },
+        claw: { type: 'claw', windup: 0.7, active: 0.2, range: 420, speed: 640, pr: 14, pull: 760, pullReach: 300, dmg: 0.7 },
+        pixels: { type: 'targets', windup: 0.4, active: 0.2, count: 10, radius: 44, delay: 1.1, stagger: 0.06, around: 'arena', dmg: 1.0, pixel: true },
+        // the dungeons: a mark follows one player and bursts after `delay`; its damage is split between everyone in it. A dash
+        // in its last `dodge` s dodges your part (the dash's own moment of i-frames was too short a window to hit).
+        // dmg was 8.5, a knockout at full health alone in the Far Reaches' dungeons; 6 is about half to three quarters
+        burden: { type: 'burden', windup: 0.6, active: 0.2, radius: 95, delay: 4, dmg: 6, dodge: 0.6 },
     };
     A.BOSS_MOVES = BOSS_MOVES;
     function bossPhase(b) { const f = b.hp / b.maxHp; return f > 0.66 ? 0 : f > 0.33 ? 1 : 2; }
@@ -1618,7 +1805,7 @@
         const s = game().state;
         if (!s || s.tutorial.burden) return;
         s.tutorial.burden = true;
-        WHW.toast('🔵 The Shared Burden: the blue circle follows the player it marks and bursts when its count reaches 0. Its damage is split between everyone standing inside, so the party should gather in it. Alone you take the whole hit, which can knock you out even at full health: dash just as it bursts (a dash makes you untouchable for a moment). Shields can\'t block it.', 'gold', 12000);
+        WHW.toast('🔵 The Shared Burden: the blue circle follows the player it marks and bursts when its count reaches 0. Its damage is split between everyone standing inside, so the party should gather in it. Alone you take the whole hit, most of your health: dash when it flashes white, in its last moments, and you dodge it. Shields can\'t block it.', 'gold', 12000);
     }
     function bossBegin(b, k, p) {
         const a = k.a, g = game();
@@ -1649,7 +1836,7 @@
                 let x, y;
                 if (a.around === 'arena') { const ang = rnd() * TAU, rr = Math.sqrt(rnd()) * (g.map.boss.r - 40); x = g.map.boss.x + Math.cos(ang) * rr; y = g.map.boss.y + Math.sin(ang) * rr; }
                 else { const ang = rnd() * TAU, rr = i === 0 ? 0 : rnd() * (a.spread || 80); x = p.x + (p.vx || 0) * 0.3 + Math.cos(ang) * rr; y = p.y + (p.vy || 0) * 0.3 + Math.sin(ang) * rr; }
-                hazard({ kind: 'circle', x, y, r: a.radius, windup: a.delay + (a.stagger || 0) * i, dmg: b.dmg * (a.dmg || 1), burn: a.burn, stun: a.stun, bolt: a.bolt, owner: b.id, lingering: a.burn && b.def.burn ? 3 : 0 });
+                hazard({ kind: 'circle', x, y, r: a.radius, windup: a.delay + (a.stagger || 0) * i, dmg: b.dmg * (a.dmg || 1), burn: a.burn, stun: a.stun, bolt: a.bolt, pixel: a.pixel, owner: b.id, lingering: a.burn && b.def.burn ? 3 : 0 });
             }
         } else if (a.type === 'spikes') {
             const ang = angTo(b, p);
@@ -1659,12 +1846,15 @@
             // on the host, aimUid is '' when it aimed at its own player; on everyone else it says who (world-online.js)
             const target = k.aimUid || (WHW.online && WHW.online.uid) || '';
             const mine = !target || !!(WHW.online && target === WHW.online.uid);
-            hazard({ kind: 'burden', target, mine, x: p.x, y: p.y, r: a.radius, windup: a.delay, dmg: b.dmg * (a.dmg || 1), owner: b.id });
+            hazard({ kind: 'burden', target, mine, x: p.x, y: p.y, r: a.radius, windup: a.delay, dodge: a.dodge || 0, dmg: b.dmg * (a.dmg || 1), owner: b.id });
             explainBurden();
         } else if (a.type === 'clone') {
             if (!g.actors.some(x => x.kind === 'clone' && !x.dead)) {
+                // inside the arena on open ground (by the ring's edge it could appear past the wall, out in the Skyreach
+                // Isles' open sky)
                 const ang = rnd() * TAU;
-                const c = A.makeBoss(b.type, b.x + Math.cos(ang) * 120, b.y + Math.sin(ang) * 120, { clone: true });
+                const at = G.openSpot(g.map, b.x, b.y, b.def.r * 0.8, { ang, dist: 120, within: g.map.boss }) || { x: b.x + Math.cos(ang) * 120, y: b.y + Math.sin(ang) * 120 };
+                const c = A.makeBoss(b.type, at.x, at.y, { clone: true });
                 c.phase = b.phase;
                 E.collideTiles(c);
                 g.actors.push(c);
@@ -1788,7 +1978,7 @@
         const staggered = E.time < ai.staggerUntil;
         // dodge a fast blade
         const pw = p.weapon;
-        if (pw && pw.cls !== 'bow' && ai.dodgeCd <= 0 && d < 80) {
+        if (pw && pw.cls !== 'bow' && pw.cls !== 'gun' && ai.dodgeCd <= 0 && d < 80) {
             const PP = D.WEAPON_CLASSES[pw.cls];
             if (Math.abs(pw.omega) * PP.len > PP.vMin && rnd() < rt.dodge * dt * 8) {
                 ai.dodgeCd = 1.6; ai.iframes = 0.2;
@@ -1845,7 +2035,7 @@
             const s = C.swingPower(C.contactSpeed(w, dt, h.contact), P.vMin, P.vFull);
             if (s >= 0) { w.hitCd.set('player', E.time + P.cd); A.hurtPlayer(r.dmg * (0.5 + 0.5 * s), { from: r, kb: P.kb }); }
         }
-        if (pw && pw.cls !== 'bow' && d < 110) clashCheck(p, r);
+        if (pw && pw.cls !== 'bow' && pw.cls !== 'gun' && d < 110) clashCheck(p, r);
     };
 
     // ---------------- projectiles and hazards ----------------
@@ -1863,9 +2053,21 @@
                     const cur = Math.atan2(pr.vy, pr.vx), turn = Math.max(-pr.homing * dt, Math.min(pr.homing * dt, C.wrap(angTo(pr, p) - cur))), sp = Math.hypot(pr.vx, pr.vy);
                     pr.vx = Math.cos(cur + turn) * sp; pr.vy = Math.sin(cur + turn) * sp;
                 }
+                const fromX = pr.x, fromY = pr.y;
                 pr.x += pr.vx * dt; pr.y += pr.vy * dt;
+                if (pr.travel !== undefined) pr.travel += Math.hypot(pr.vx, pr.vy) * dt; // a bullet's distance flown (its damage falls off)
                 const t = E.tileAt(pr.x, pr.y);
-                if (t === G.T.WALL || t === G.T.BUILDING) { pr.life = 0; E.burst(pr.x, pr.y, pr.kind === 'bolt' ? pr.color : '#c9b38f', pr.kind === 'bolt' ? 8 : 3, 60, { life: 0.3 }); continue; }
+                if (t === G.T.WALL || t === G.T.BUILDING) {
+                    // a revolver's bullet ricochets off the wall (bounce times), a little weaker each time (bounceMult)
+                    if (pr.kind === 'bullet' && pr.bounce > 0) {
+                        C.bounceOff(pr, fromX, fromY, (x, y) => { const tt = E.tileAt(x, y); return tt === G.T.WALL || tt === G.T.BUILDING; });
+                        pr.bounce--; pr.dmg *= pr.bounceMult || 0.8; pr.hit.clear(); pr.bounced = true;
+                        E.burst(fromX, fromY, '#ffe6a0', 6, 130, { life: 0.2, size: 2 });
+                        if (pr.team === 'player') WHW.sfx('ricochet');
+                        continue;
+                    }
+                    pr.life = 0; E.burst(pr.x, pr.y, pr.kind === 'bolt' ? pr.color : '#c9b38f', pr.kind === 'bolt' ? 8 : 3, 60, { life: 0.3 }); continue;
+                }
             }
             if (pr.team === 'fx') continue; // another player's arrow, only for show: its hit arrives from their page
             if (pr.team === 'player') {
@@ -1886,7 +2088,7 @@
                     }
                     if (a.kind === 'remote') {
                         if (pr.ability) WHW.online.hitRemote(a, { kind: 'ab', w: pr.abil, dmg: pr.dmg, ang });
-                        else WHW.online.hitRemote(a, { kind: 'arrow', w: pr.w, dmg: pr.dmg * (rnd() < (pr.crit || 0) ? 1.5 : 1), ang, perfect: pr.steady, x: pr.x, y: pr.y });
+                        else WHW.online.hitRemote(a, { kind: pr.kind === 'bullet' ? 'shot' : 'arrow', w: pr.w, dmg: pr.dmg * (pr.falloff ? C.gunFalloff(pr.travel || 0, GUN) : 1) * (rnd() < (pr.crit || 0) ? 1.5 : 1), ang, perfect: pr.steady, x: pr.x, y: pr.y });
                         E.burst(pr.x, pr.y, '#ffffff', 6, 120, { life: 0.3 });
                         WHW.sfx('hit');
                         if (pr.ability && pr.pierce > 0) { pr.pierce--; continue; }
@@ -1897,13 +2099,17 @@
                     if (a.def && a.def.shell && !C.fromBehind(ang, a.facing)) { mult *= a.def.shell; text = 'SHELL'; }
                     if (a.kind === 'boss' && a.exposedUntil > E.time) { mult *= a.def.exposeMult || 2; text = 'CORE HIT'; }
                     if (a.def && a.def.resist && !a.def.resistBy.includes(W.baseOf(weaponItem()) ? W.baseOf(weaponItem()).tier : 0)) mult *= 1 - a.def.resist;
+                    if (pr.falloff) mult *= C.gunFalloff(pr.travel || 0, GUN); // a revolver's bullet, weaker the further it flew
+                    if (pr.bounced && !text) text = 'RICOCHET';
                     const crit = rnd() < (pr.crit || 0);
                     if (crit) mult *= 1.5;
                     const dmg = C.mitigate(pr.dmg * mult, a.armorBrokenUntil > E.time ? 0 : a.armor);
                     A.damage(a, dmg, { from: p, kbAngle: ang, kb: pr.kb || 90, s: pr.steady ? 1 : 0.5, perfect: pr.steady, crit, burn: pr.burn, chill: pr.chill, stunnedMult: pr.stunnedMult, text });
+                    if (!pr.ability) A.skinHitFx(a.x, a.y, ang);
                     if (pr.stun) stun(a, pr.stun);
-                    if (pr.lifesteal) p.hp = Math.min(p.maxHp, p.hp + dmg * pr.lifesteal);
+                    if (pr.lifesteal) A.healPlayer(dmg * pr.lifesteal);
                     if (pr.kind === 'arrow' && !pr.ability && !pr.reflected && a.kind !== 'dummy') g.state.stats.arrowHits++;
+                    if (pr.kind === 'bullet' && !pr.ability && !pr.reflected && a.kind !== 'dummy') g.state.stats.bulletHits = (g.state.stats.bulletHits || 0) + 1; // the Gunslinger's challenge
                     WHW.sfx('hit');
                     if (pr.pierce > 0) { pr.pierce--; continue; }
                     pr.life = 0;
@@ -1914,7 +2120,8 @@
                 const from = g.actors.find(a => a.id === pr.owner) || pr;
                 const got = A.hurtPlayer(pr.dmg, { from, kb: 120, burn: pr.burn, chill: pr.chill, fire: !!pr.burn, fromAngle: Math.atan2(-pr.vy, -pr.vx), projectile: pr });
                 if (got > 0 && pr.stun) A.stunPlayer(pr.stun);
-                if (got > 0 && pr.pull && from !== pr) pullToward(p, from, pr.pull);
+                if (got > 0 && pr.pull && from !== pr) pullToward(p, from, pr.pull, pr.pullReach);
+                if (got > 0 && pr.look === 'claw') E.floatText(p.x, p.y - 32, 'GRABBED!', '#ffb3e6', 14, 1);
                 if (pr.homing) { E.burst(pr.x, pr.y, pr.color || '#b07dff', 14, 160, { life: 0.4 }); E.addShake(3); }
                 pr.life = 0;
             }
@@ -1946,8 +2153,12 @@
                 if (!h.done && h.t >= h.windup) {
                     h.done = true;
                     const others = net ? [...net.remotes.values()].filter(r => !r.stale && !r.dead && Math.hypot(r.x - h.x, r.y - h.y) <= h.r + 13).length : 0;
-                    const meIn = !p.dead && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + p.r;
+                    const inside = !p.dead && Math.hypot(p.x - h.x, p.y - h.y) <= h.r + p.r;
+                    // dashed in its last moments: your part is dodged (others' parts stay as they were)
+                    const dodged = inside && h.dodge > 0 && p.dashAt !== undefined && E.time - p.dashAt <= h.dodge;
+                    const meIn = inside && !dodged;
                     if (meIn) A.hurtPlayer(h.dmg / (1 + others), { from: h, kb: 160, unblockable: true });
+                    else if (dodged) E.floatText(p.x, p.y - 30, 'DODGED', '#9ad7ff', 15, 1.2);
                     E.burst(h.x, h.y, '#5fd3e0', 26, 220, { life: 0.6 }); E.addShake(5);
                     const n = (meIn ? 1 : 0) + others;
                     E.floatText(h.x, h.y - h.r - 10, n > 1 ? 'Split ' + n + ' ways' : n === 1 ? 'Taken alone: the full hit' : 'Nobody was in it', '#bff6ff', 13, 1.4);
@@ -2044,17 +2255,24 @@
         ctx.shadowColor = window.WHGear.TIERS[look.tier].color;
         ctx.shadowBlur = 4 + 3 * (look.tier - 3) + (look.tier >= 5 ? Math.sin(E.time * 4) * 2 : 0);
     };
+    // opts.skin: a weapon skin bought with Holy What Happeneds (core/premium.js kind 'weapon', from premium.js weaponSkin):
+    // its colours over the tier's or the relic's (a relic keeps its shape), and its glow
     A.drawWeapon = function (ctx, x, y, w, cls, tier, opts = {}) {
         if (!w) return;
         const P = D.WEAPON_CLASSES[cls];
-        const look = opts.look || null, shape = look ? look.shape : '';
-        const col = look ? look.main : tierColor(tier), trim = look ? look.trim : null;
+        const look = opts.look || null, shape = look ? look.shape : '', skin = opts.skin || null;
+        let col = look ? look.main : tierColor(tier), trim = look ? look.trim : null;
+        if (skin) { col = skin.fx === 'prism' ? 'hsl(' + Math.floor((E.time * 70) % 360) + ', 85%, 72%)' : skin.main; trim = skin.trim; }
         const th = w.theta;
         ctx.save();
         ctx.translate(x, y);
         ctx.rotate(th);
         ctx.lineCap = 'round';
         relicGlow(ctx, look);
+        if (skin && E.perf !== 'low') {
+            ctx.shadowColor = skin.fx === 'prism' ? col : skin.glow;
+            ctx.shadowBlur = 6 + (skin.fx ? 3 + Math.sin(E.time * 3.2) * 3 : 0);
+        }
         const wood = '#7a5230';
         if (cls === 'bow' && shape === 'hornbow') {
             // Seraph's Arc: a recurve with a feathered horn at each end
@@ -2065,6 +2283,29 @@
             ctx.shadowBlur = 0; ctx.strokeStyle = '#efe6cc'; ctx.lineWidth = 1.2;
             ctx.beginPath(); ctx.moveTo(4, -24); ctx.lineTo(14 - pull, 0); ctx.lineTo(4, 24); ctx.stroke();
             if (w.drawing) { ctx.strokeStyle = '#d8c7a0'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(14 - pull, 0); ctx.lineTo(40 - pull, 0); ctx.stroke(); }
+        } else if (cls === 'gun') {
+            // a revolver: grip, frame and cylinder, a long barrel. Each shot jerks it back and tips it up (w.kick, easing off),
+            // with a flash at the muzzle. The Ray Gun (opts.ray: the Arcade Set's) glows neon instead.
+            const kick = w.kick || 0, back = kick * 6;
+            ctx.rotate(-kick * 0.28 * (w.omega >= 0 ? 1 : -1));
+            ctx.fillStyle = opts.ray ? '#2a1d45' : wood;
+            ctx.beginPath(); ctx.moveTo(7 - back, 1); ctx.lineTo(14 - back, 0); ctx.lineTo(12 - back, 11); ctx.lineTo(6 - back, 10); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = col; ctx.fillRect(11 - back, -3.6, 10, 6.4);
+            ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.beginPath(); ctx.arc(16 - back, -0.4, 3.3, 0, TAU); ctx.fill();
+            ctx.fillStyle = trim || 'rgba(255,255,255,0.35)'; ctx.fillRect(14.5 - back, -2.6, 3, 1.2); ctx.fillRect(14.5 - back, 0.8, 3, 1.2);
+            ctx.fillStyle = col; ctx.fillRect(20 - back, -2.2, 17, 3.6);
+            ctx.fillStyle = 'rgba(0,0,0,0.3)'; ctx.fillRect(20 - back, 0.7, 17, 0.8);
+            ctx.fillStyle = trim || col; ctx.fillRect(34 - back, -3.8, 2, 1.8);
+            ctx.strokeStyle = 'rgba(0,0,0,0.45)'; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(12 - back, 4.5, 3, 0.2, Math.PI * 0.9); ctx.stroke(); // trigger guard
+            if (opts.ray) {
+                ctx.fillStyle = '#5ee7ff'; ctx.beginPath(); ctx.arc(37 - back, -0.4, 2.8, 0, TAU); ctx.fill();
+                ctx.strokeStyle = '#ff4fd8'; ctx.lineWidth = 1; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(23 + i * 4 - back, -3); ctx.lineTo(23 + i * 4 - back, 2.6); ctx.stroke(); }
+            }
+            if (kick > 0.55) {
+                const fl = (kick - 0.55) / 0.45, fc = opts.ray ? '255,143,230' : '255,214,110';
+                ctx.fillStyle = `rgba(${fc},${0.85 * fl})`;
+                ctx.beginPath(); ctx.moveTo(38 - back, -0.4); for (let i = 0; i < 8; i++) { const aa = i / 8 * TAU, rr = i % 2 ? 3 : 9 * fl + 3; ctx.lineTo(40 - back + Math.cos(aa) * rr, -0.4 + Math.sin(aa) * rr * 0.6); } ctx.closePath(); ctx.fill();
+            }
         } else if (cls === 'bow') {
             const pull = (w.draw || 0) * 14;
             ctx.strokeStyle = col; ctx.lineWidth = 3.5;
@@ -2150,7 +2391,7 @@
             }
         }
         // Burning Stick: the whole weapon in flames
-        if (opts.fire && cls !== 'bow') {
+        if (opts.fire && cls !== 'bow' && cls !== 'gun') {
             const end = C.hasReach(cls) ? w.r + 4 : P.len + 2, from = C.hasReach(cls) ? w.r - 60 : 6;
             ctx.globalAlpha = 0.45 + Math.sin(E.time * 23) * 0.1; ctx.strokeStyle = '#ff7b3a'; ctx.lineWidth = 9;
             ctx.beginPath(); ctx.moveTo(from, 0); ctx.lineTo(end, 0); ctx.stroke();
@@ -2172,8 +2413,19 @@
             ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
         }
     }
+    // a weapon skin bought with Holy What Happeneds (premium.js): yours (no id), or another player's shared one
+    const beanSkin = (id) => { try { return window.WHBeans && window.WHBeans.weaponSkin ? window.WHBeans.weaponSkin(id) : null; } catch (e) { return null; } };
+    // Where a skinned weapon lands a hit: its own burst (core/premium.js `hit`: [colour, count, speed, life, size, gravity] each),
+    // spraying the way the blow went. Yours on what you hit; another player's on you (world-online.js), from their shared skin.
+    A.skinHitFx = function (x, y, ang, id) {
+        const skin = beanSkin(id);
+        if (!skin || !Array.isArray(skin.hit)) return;
+        for (const [color, n, speed, life, size, grav] of skin.hit) {
+            E.burst(x, y, color, n, speed, Number.isFinite(ang) ? { angle: ang, spread: 2.6, life, size, grav } : { life, size, grav });
+        }
+    };
     A.drawPlayer = function (ctx, p) {
-        // a trail bought with Holy What Happeneds (premium.js), under the player
+        // a trail, halo or wings bought with Holy What Happeneds (premium.js), under the player
         if (window.WHBeans) { try { window.WHBeans.drawTrail(ctx, p); } catch (e) {} }
         const g = game();
         const it = weaponItem(), b = W.baseOf(it);
@@ -2186,6 +2438,8 @@
         drawArmor(ctx, p.x, p.y, p.r, { b: boots && boots.tier, c: chest && chest.tier, h: helm && helm.tier }, looks, 'rgba(0,0,0,0.5)', 1.5);
         faceImg(ctx, g.faceSrc, p.x, p.y - 1, p.r - 1);
         drawHelm(ctx, p.x, p.y, p.r, helm && helm.tier, looks.h);
+        // an outfit and headwear bought with Holy What Happeneds (premium.js), over the face
+        if (window.WHBeans && window.WHBeans.drawOver) { try { window.WHBeans.drawOver(ctx, p); } catch (e) {} }
         if (p.flash > 0) circle(ctx, p.x, p.y, p.r + 2, 'rgba(255,80,90,0.45)');
         for (const a of activeBuffs(p)) {
             if (a.reduce) circle(ctx, p.x, p.y, p.r + 5, 'rgba(185,169,138,0.22)', 'rgba(210,195,160,0.9)', 2.5);
@@ -2215,7 +2469,7 @@
         ctx.globalAlpha = 1;
         if (b) {
             drawTrail(ctx, p);
-            A.drawWeapon(ctx, p.x, p.y, p.weapon, b.cls, b.tier, { magic: b.magic, fire: !!p.ignite, look: looks.w });
+            A.drawWeapon(ctx, p.x, p.y, p.weapon, b.cls, b.tier, { magic: b.magic, fire: !!p.ignite, look: looks.w, skin: beanSkin(), ray: b.set === 'arcade' });
         }
         const shb = W.baseOf(shieldItem());
         if (shb) A.drawShield(ctx, p.x, p.y, p.shield.theta, p.shield.up, shb.tier, p.shield.brokenUntil > E.time, looks.s);
@@ -2288,18 +2542,22 @@
     A.drawRemote = function (ctx, rp, hostile, mate, clan) {
         const info = rp.info || {};
         const tc = (t) => (t ? tierColor(t) : null);
+        const looks = info.lk || {}; // their relics' looks, and in looks.p their Holy What Happeneds looks (core/world-online.js unpackLooks)
+        const bought = looks.p || null;
+        // their trail, halo or wings (premium.js), under them, as for you
+        if (bought && !rp.dead && window.WHBeans && window.WHBeans.drawLooksOf) { try { window.WHBeans.drawLooksOf(ctx, rp, bought); } catch (e) {} }
         shadow(ctx, rp.x, rp.y, rp.r);
         if (rp.dead) ctx.globalAlpha = 0.35;
-        const looks = info.lk || {}; // their relics' looks (core/world-online.js unpackLooks)
         drawArmor(ctx, rp.x, rp.y, rp.r, { b: info.b, c: info.c, h: info.h }, looks, hostile ? 'rgba(255,90,100,0.85)' : 'rgba(0,0,0,0.5)', hostile ? 2 : 1.5);
         faceImg(ctx, info.f || 'mainimage/whathappened.jpeg', rp.x, rp.y - 1, rp.r - 1);
         drawHelm(ctx, rp.x, rp.y, rp.r, info.h, looks.h);
+        if (bought && !rp.dead && window.WHBeans && window.WHBeans.drawLooksOver) { try { window.WHBeans.drawLooksOver(ctx, rp, bought); } catch (e) {} }
         if (rp.flash > 0) circle(ctx, rp.x, rp.y, rp.r + 2, 'rgba(255,255,255,0.5)');
         if (rp.protected && hostile) circle(ctx, rp.x, rp.y, rp.r + 7, 'rgba(120,200,255,0.12)', 'rgba(150,215,255,0.6)', 1.5);
         const wb = D.GEAR_BY_ID[info.w];
         if (wb && !rp.dead) {
             drawTrail(ctx, rp);
-            A.drawWeapon(ctx, rp.x, rp.y, rp.weapon, wb.cls, wb.tier, { rival: true, magic: wb.magic, look: looks.w });
+            A.drawWeapon(ctx, rp.x, rp.y, rp.weapon, wb.cls, wb.tier, { rival: true, magic: wb.magic, look: looks.w, skin: bought && bought.weapon ? beanSkin(bought.weapon) : null, ray: wb.set === 'arcade' });
         }
         const sb = D.GEAR_BY_ID[info.sh];
         if (sb && !rp.dead) A.drawShield(ctx, rp.x, rp.y, rp.shield.theta, rp.shield.up, sb.tier, false, looks.s);
@@ -2320,12 +2578,16 @@
         // every bubble (other players, your own, speaking in the Hall) goes through the chat filter here (core/chat-safety.js)
         const CS = window.WHChatSafety;
         if (CS) text = CS.display(text, CS.isOn(localStorage));
-        const w = Math.min(220, ctx.measureText(text).width + 16), h = 22;
+        // the whole message, wrapped onto as many lines as it needs (core/world-online.js wrapLines), not cut off
+        const O = window.WHWorldOnline, inner = 204, lineH = 15;
+        const lines = O && O.wrapLines ? O.wrapLines(text, (s) => ctx.measureText(s).width, inner) : [text];
+        const w = Math.min(inner, Math.max(...lines.map((l) => ctx.measureText(l).width))) + 16, h = lines.length * lineH + 7;
         ctx.fillStyle = 'rgba(15,18,27,0.9)'; ctx.strokeStyle = 'rgba(255,255,255,0.25)'; ctx.lineWidth = 1;
         ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - h - 6, w, h, 8) : ctx.rect(x - w / 2, y - h - 6, w, h); ctx.fill(); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(x - 5, y - 6); ctx.lineTo(x, y); ctx.lineTo(x + 5, y - 6); ctx.fill();
         ctx.fillStyle = '#f3f5fa';
-        ctx.fillText(text.length > 34 ? text.slice(0, 33) + '…' : text, x, y - 13);
+        ctx.textBaseline = 'middle';
+        lines.forEach((l, i) => ctx.fillText(l, x, y - h - 6 + 4 + lineH / 2 + i * lineH + 0.5));
         ctx.restore();
     };
     // A knocked-out player's dropped loot; locked for everyone but the winner for a few seconds
@@ -2504,6 +2766,61 @@
                 ctx.beginPath(); ctx.arc(x, y - 4 + bob, r, Math.PI, 0); ctx.lineTo(x + r, y + r + bob); for (let i = 0; i < 4; i++) ctx.lineTo(x + r - (i + 0.5) * r / 2, y + r * (i % 2 ? 1 : 0.6) + bob); ctx.lineTo(x - r, y + r + bob); ctx.closePath(); ctx.fill();
                 ctx.globalAlpha = 1; eyes(0.1, 2.6, '#2b1a5c'); break;
             }
+            // ---- the Neon Arcade ----
+            case 'claw_machine': case 'crane': {
+                // a claw machine: a cabinet with a glass case, prizes heaped inside and a claw swinging over them, angry eyes on
+                // the coin panel. Its claw leaves the case while it is out grabbing.
+                const w = r * 1.7, h = r * 2.2, top = y - h * 0.62;
+                ctx.fillStyle = dark; ctx.fillRect(x - w / 2, top, w, h);
+                ctx.fillStyle = col; ctx.fillRect(x - w / 2, top, w, h * 0.16);
+                ctx.fillStyle = 'rgba(190,235,255,0.32)'; ctx.fillRect(x - w / 2 + 3, top + h * 0.19, w - 6, h * 0.46);
+                for (let i = 0; i < 4; i++) circle(ctx, x - w * 0.3 + i * w * 0.2, top + h * 0.6, r * 0.16, ['#ff9fc4', '#5ee7ff', '#f8b800', '#3dff9a'][i]);
+                const out = game().projectiles.some(pr => pr.owner === m.id && pr.look === 'claw');
+                if (!out) {
+                    const sway = Math.sin(E.time * 2.2 + m.hopT * 6) * w * 0.22, cy = top + h * 0.38;
+                    ctx.strokeStyle = '#c8ced8'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x + sway, top + h * 0.19); ctx.lineTo(x + sway, cy); ctx.stroke();
+                    ctx.lineWidth = 2.5; ctx.beginPath(); ctx.moveTo(x + sway - 5, cy + 6); ctx.lineTo(x + sway, cy); ctx.lineTo(x + sway + 5, cy + 6); ctx.stroke();
+                }
+                ctx.fillStyle = '#ff3d5e'; ctx.fillRect(x - w * 0.28, top + h * 0.72, 4, 4); ctx.fillRect(x + w * 0.28 - 4, top + h * 0.72, 4, 4);
+                ctx.fillStyle = '#111'; ctx.fillRect(x - 3, top + h * 0.84, 6, 3);
+                break;
+            }
+            case 'cabinet': {
+                // a rogue arcade cabinet: its screen is its face (red while a laser charges), a joystick and two buttons
+                const w = r * 1.5, h = r * 2.1, top = y - h * 0.62;
+                const charging = m.atk && m.atk.a && m.atk.a.type === 'laser';
+                ctx.fillStyle = dark; ctx.fillRect(x - w / 2, top, w, h);
+                ctx.fillStyle = col; ctx.fillRect(x - w / 2, top, w, h * 0.12);
+                ctx.fillStyle = '#05040a'; ctx.fillRect(x - w / 2 + 3, top + h * 0.16, w - 6, h * 0.4);
+                ctx.fillStyle = charging ? `rgba(255,60,110,${0.6 + 0.4 * Math.abs(Math.sin(E.time * 20))})` : 'rgba(94,231,255,0.55)';
+                ctx.fillRect(x - w / 2 + 5, top + h * 0.18, w - 10, h * 0.36);
+                ctx.fillStyle = charging ? '#ffffff' : '#ff3d5e'; ctx.fillRect(x - w * 0.22, top + h * 0.28, 5, 5); ctx.fillRect(x + w * 0.22 - 5, top + h * 0.28, 5, 5);
+                ctx.fillStyle = '#111'; ctx.fillRect(x - w * 0.18, top + h * 0.42, w * 0.36, 2);
+                ctx.fillStyle = '#ff3d5e'; circle(ctx, x - w * 0.18, top + h * 0.68, 2.5, '#d8d8e0'); circle(ctx, x + w * 0.1, top + h * 0.7, 2.5, '#f8b800'); circle(ctx, x + w * 0.24, top + h * 0.67, 2.5, '#3dff9a');
+                break;
+            }
+            case 'glitchling': {
+                // a cluster of pixels that never quite holds still
+                const jit = (i) => ((Math.sin(E.time * 37 + i * 12.9 + m.hopT * 50) * 43758.5453) % 1);
+                const cols = ['#5ee7ff', '#ff4fd8', '#3dff9a', '#ffffff'];
+                for (let i = 0; i < 7; i++) { const q = r * (0.5 + 0.3 * (i % 3) / 2); ctx.fillStyle = cols[i % cols.length]; ctx.globalAlpha = 0.85; ctx.fillRect(x + jit(i) * r * 1.1 - q / 2, y + jit(i + 7) * r * 1.1 - q / 2, q, q); }
+                ctx.globalAlpha = 1; ctx.fillStyle = col; ctx.fillRect(x - r * 0.7, y - r * 0.7, r * 1.4, r * 1.4);
+                ctx.fillStyle = '#111'; ctx.fillRect(x - r * 0.4, y - r * 0.3, 3, 3); ctx.fillRect(x + r * 0.4 - 3, y - r * 0.3, 3, 3);
+                break;
+            }
+            case 'muncher': {
+                // a gold token with a jagged mouth that opens toward you
+                ctx.save(); ctx.translate(x, y); ctx.rotate(m.facing);
+                ctx.fillStyle = dark; ctx.beginPath(); ctx.arc(0, 0, r + 2, 0, TAU); ctx.fill();
+                ctx.fillStyle = col; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+                ctx.strokeStyle = E.shadeHex(d.color, 1.2); ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, r * 0.65, 0, TAU); ctx.stroke();
+                const open = 0.25 + 0.2 * Math.abs(Math.sin(E.time * 9 + m.hopT * 5));
+                ctx.fillStyle = '#2a1608'; ctx.beginPath(); ctx.moveTo(r * 0.15, 0); ctx.lineTo(r * 1.05, -r * open * 1.6); ctx.lineTo(r * 1.05, r * open * 1.6); ctx.closePath(); ctx.fill();
+                ctx.fillStyle = '#fff6d8'; for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.moveTo(r * (0.45 + i * 0.2), -r * open * (0.6 + i * 0.35)); ctx.lineTo(r * (0.55 + i * 0.2), 0); ctx.lineTo(r * (0.65 + i * 0.2), -r * open * (0.6 + i * 0.35)); ctx.fill(); }
+                circle(ctx, -r * 0.1, -r * 0.45, 2.5, '#111');
+                ctx.restore();
+                break;
+            }
             case 'dummy': {
                 ctx.strokeStyle = '#6b4423'; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(x, y + r); ctx.lineTo(x, y - r); ctx.moveTo(x - r, y - r * 0.2); ctx.lineTo(x + r, y - r * 0.2); ctx.stroke();
                 circle(ctx, x, y - r * 0.6, r * 0.6, m.flash > 0 ? '#fff' : '#d9b98a', '#6b4423', 2);
@@ -2575,12 +2892,51 @@
                     ctx.strokeStyle = '#7fd36b'; ctx.lineWidth = 10; ctx.lineCap = 'round';
                     ctx.beginPath(); ctx.moveTo(a.x + Math.cos(k.cur) * a.r, a.y + Math.sin(k.cur) * a.r); ctx.lineTo(a.x + Math.cos(k.cur) * at.reach, a.y + Math.sin(k.cur) * at.reach); ctx.stroke();
                 }
+            } else if (at.type === 'laser' || at.type === 'lasers') {
+                // aiming: a thin flickering line; once fixed, a solid line that thickens until it fires; firing: the beam
+                const beams = k.phase === 'windup' ? laserBeams(a, k) : (k.beams || laserBeams(a, k));
+                const locked = at.type === 'lasers' || k.t >= at.windup * 0.6;
+                for (const bm of beams) {
+                    const c = Math.cos(bm.dir), s = Math.sin(bm.dir), x0 = a.x + c * a.r, y0 = a.y + s * a.r, x1 = a.x + c * bm.len, y1 = a.y + s * bm.len;
+                    const line = () => { ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke(); };
+                    ctx.save(); ctx.lineCap = 'round';
+                    if (k.phase === 'windup') {
+                        ctx.strokeStyle = locked ? `rgba(255,60,110,${0.35 + 0.45 * f})` : `rgba(255,60,110,${0.25 + 0.25 * Math.abs(Math.sin(E.time * 22))})`;
+                        ctx.lineWidth = locked ? 2 + at.width * 0.6 * f : 1.5;
+                        line();
+                    } else {
+                        ctx.strokeStyle = 'rgba(255,60,140,0.3)'; ctx.lineWidth = at.width * 1.9; line();
+                        ctx.strokeStyle = 'rgba(255,110,200,0.9)'; ctx.lineWidth = at.width; line();
+                        ctx.strokeStyle = '#ffffff'; ctx.lineWidth = Math.max(2, at.width * 0.3); line();
+                    }
+                    ctx.restore();
+                }
+            } else if (at.type === 'claw' && k.phase === 'windup') {
+                // the grabber about to fly: a dashed line where it goes
+                const len = (at.range || 300) * f;
+                ctx.save(); ctx.setLineDash([6, 6]); ctx.strokeStyle = `rgba(255,180,230,${0.3 + 0.5 * f})`; ctx.lineWidth = 2.5;
+                ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + Math.cos(k.dir) * len, a.y + Math.sin(k.dir) * len); ctx.stroke(); ctx.restore();
+                circle(ctx, a.x, a.y, a.r + 6 + 6 * f, null, `rgba(255,200,80,${0.3 + 0.5 * f})`, 3);
             } else if (k.phase === 'windup' && (at.type === 'shoot' || at.type === 'ring' || at.type === 'summon' || at.type === 'clone' || at.type === 'wave' || at.type === 'targets' || at.type === 'spikes' || at.type === 'pull' || at.type === 'push' || at.type === 'orbs')) {
                 circle(ctx, a.x, a.y, a.r + 6 + 6 * f, null, `rgba(255,200,80,${0.3 + 0.5 * f})`, 3);
             }
         }
         for (const h of g.hazards) {
-            if (h.kind === 'circle') {
+            if (h.kind === 'circle' && h.pixel) {
+                // the Neon Arcade's pixels: a block dropping onto its shadow, then a burst of squares
+                const f = Math.min(1, h.t / h.windup), s = h.r * 0.8;
+                if (!h.done) {
+                    ctx.fillStyle = `rgba(255,79,216,${0.12 + 0.25 * f})`; ctx.fillRect(h.x - h.r * f, h.y - h.r * f, h.r * 2 * f, h.r * 2 * f);
+                    ctx.strokeStyle = 'rgba(255,120,220,0.85)'; ctx.lineWidth = 1.5; ctx.strokeRect(h.x - h.r, h.y - h.r, h.r * 2, h.r * 2);
+                    const drop = (1 - f) * 160;
+                    ctx.fillStyle = ['#ff4fd8', '#5ee7ff', '#f8b800'][Math.floor(h.x + h.y) % 3]; ctx.globalAlpha = 0.35 + 0.65 * f;
+                    ctx.fillRect(h.x - s / 2, h.y - s / 2 - drop, s, s); ctx.globalAlpha = 1;
+                    ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillRect(h.x - s / 2, h.y - s / 2 - drop, s, s * 0.2);
+                } else {
+                    ctx.fillStyle = 'rgba(255,230,250,0.7)';
+                    for (let i = 0; i < 5; i++) { const q = s * (0.25 + 0.15 * (i % 2)), ox = Math.cos(i * 1.3) * h.r * 0.6, oy = Math.sin(i * 1.9) * h.r * 0.6; ctx.fillRect(h.x + ox - q / 2, h.y + oy - q / 2, q, q); }
+                }
+            } else if (h.kind === 'circle') {
                 if (!h.done) {
                     const f = Math.min(1, h.t / h.windup);
                     ctx.fillStyle = h.ice ? `rgba(140,220,255,${0.15 + 0.25 * f})` : `rgba(255,60,70,${0.12 + 0.25 * f})`;
@@ -2606,9 +2962,15 @@
                     // as it bursts, or full health); anyone else steps in to take part of the hit
                     const secs = Math.max(0, Math.ceil(h.windup - h.t));
                     const party = WHW.waves && WHW.waves.players && WHW.waves.players() > 1;
-                    const say = !h.mine ? 'Stand in it to share the hit · ' : party ? 'Burden on you: get your party in · ' : 'Burden on you: dash as it bursts · ';
+                    // its last moments, when a dash dodges it: the ring flashes white
+                    const now = h.dodge > 0 && h.windup - h.t <= h.dodge;
+                    if (now) {
+                        ctx.strokeStyle = `rgba(255,255,255,${0.55 + 0.45 * Math.abs(Math.sin(h.t * 18))})`; ctx.lineWidth = 4;
+                        ctx.beginPath(); ctx.arc(h.x, h.y, h.r, 0, TAU); ctx.stroke();
+                    }
+                    const say = now && h.mine && !party ? 'DASH NOW!' : (!h.mine ? 'Stand in it to share the hit · ' : party ? 'Burden on you: get your party in · ' : 'Burden on you: dash when it flashes · ') + secs;
                     // under the circle: the messages along the top of the screen would cover it above
-                    E.label(ctx, say + secs, h.x, h.y + h.r + 18, { font: '800 13px Inter, sans-serif', fill: '#dffaff', stroke: 'rgba(0,0,0,0.75)' });
+                    E.label(ctx, say, h.x, h.y + h.r + 18, { font: '800 13px Inter, sans-serif', fill: now ? '#ffffff' : '#dffaff', stroke: 'rgba(0,0,0,0.75)' });
                 }
             } else if (h.kind === 'wave') {
                 ctx.strokeStyle = h.color || 'rgba(120,200,90,0.85)'; ctx.lineWidth = h.width;
@@ -2694,6 +3056,16 @@
                 ctx.globalAlpha = 0.9 * k; ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = Math.max(2, pr.band * 0.25);
                 ctx.beginPath(); ctx.arc(pr.ox, pr.oy, pr.rad + pr.band * 0.2, pr.dir - pr.arc / 2, pr.dir + pr.arc / 2); ctx.stroke();
                 ctx.restore();
+            } else if (pr.kind === 'bullet') {
+                // a revolver's bullet: a short bright tracer streaking behind a hot point (a Ray Gun's is a pink bolt)
+                const a = Math.atan2(pr.vy, pr.vx), col = pr.ray ? '#ff8fe6' : pr.color || '#ffe6a0', len = pr.big ? 30 : 22;
+                ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(a); ctx.lineCap = 'round';
+                ctx.strokeStyle = pr.ray ? 'rgba(255,79,216,0.35)' : 'rgba(255,200,90,0.28)'; ctx.lineWidth = (pr.r + 2) * 2;
+                ctx.beginPath(); ctx.moveTo(-len * 0.6, 0); ctx.lineTo(0, 0); ctx.stroke();
+                ctx.strokeStyle = col; ctx.lineWidth = Math.max(1.5, pr.r);
+                ctx.beginPath(); ctx.moveTo(-len, 0); ctx.lineTo(2, 0); ctx.stroke();
+                ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(2, 0, Math.max(1.5, pr.r * 0.7), 0, TAU); ctx.fill();
+                ctx.restore();
             } else if (pr.kind === 'arrow') {
                 const a = Math.atan2(pr.vy, pr.vx);
                 ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(a);
@@ -2701,6 +3073,15 @@
                 ctx.strokeStyle = pr.team === 'player' ? (pr.ability ? pr.color : '#e9e2c8') : '#3dff9a'; ctx.lineWidth = 2;
                 ctx.beginPath(); ctx.moveTo(-14, 0); ctx.lineTo(4, 0); ctx.stroke();
                 ctx.fillStyle = '#cfd6e0'; ctx.beginPath(); ctx.moveTo(8, 0); ctx.lineTo(2, -3); ctx.lineTo(2, 3); ctx.fill();
+                ctx.restore();
+            } else if (pr.look === 'claw') {
+                // a claw machine's grabber: a cable back to the machine, three prongs opening toward you
+                const own = game().actors.find(a => a.id === pr.owner && !a.dead), a = Math.atan2(pr.vy, pr.vx);
+                if (own) { ctx.strokeStyle = 'rgba(200,206,220,0.85)'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(own.x, own.y); ctx.lineTo(pr.x, pr.y); ctx.stroke(); ctx.setLineDash([]); }
+                ctx.save(); ctx.translate(pr.x, pr.y); ctx.rotate(a);
+                ctx.fillStyle = '#8a93a6'; ctx.fillRect(-6, -4, 8, 8);
+                ctx.strokeStyle = '#e4e8f0'; ctx.lineWidth = 3; ctx.lineCap = 'round';
+                for (const s of [-1, 0, 1]) { ctx.beginPath(); ctx.moveTo(2, s * 3); ctx.quadraticCurveTo(pr.r * 0.9, s * pr.r * 0.9, pr.r * 1.3, s * pr.r * 0.4); ctx.stroke(); }
                 ctx.restore();
             } else {
                 circle(ctx, pr.x, pr.y, pr.r + 3, pr.burn ? 'rgba(255,140,40,0.35)' : pr.chill ? 'rgba(160,220,255,0.35)' : 'rgba(255,255,255,0.15)');
@@ -2756,6 +3137,24 @@
             else if (d.tool === 'pickaxe') { ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.ellipse(x, y + 6, r * 0.8, r * 0.35, 0, 0, TAU); ctx.fill(); }
             return;
         }
+        if (n.type === 'old_cabinet') {
+            // the Neon Arcade's wood: a broken cabinet, its screen cracked and dark
+            shadow(ctx, x, y + 6, r);
+            ctx.fillStyle = d.trunk; ctx.fillRect(x - r * 0.8, y - r * 1.5, r * 1.6, r * 2.2);
+            ctx.fillStyle = d.color; ctx.fillRect(x - r * 0.8, y - r * 1.5, r * 1.6, r * 0.3);
+            ctx.fillStyle = '#05040a'; ctx.fillRect(x - r * 0.6, y - r * 1.1, r * 1.2, r * 0.8);
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(x - r * 0.4, y - r * 1.05); ctx.lineTo(x, y - r * 0.7); ctx.lineTo(x + r * 0.3, y - r * 0.95); ctx.moveTo(x, y - r * 0.7); ctx.lineTo(x - r * 0.1, y - r * 0.35); ctx.stroke();
+            circle(ctx, x - r * 0.3, y + r * 0.1, 2.5, '#ff3d5e'); circle(ctx, x + r * 0.3, y + r * 0.1, 2.5, '#5ee7ff');
+            return;
+        }
+        if (n.type === 'prize_bin') {
+            // a prize bin: a box heaped with plushies and tokens
+            shadow(ctx, x, y + 4, r);
+            ctx.fillStyle = '#5a3a8a'; ctx.fillRect(x - r, y - r * 0.4, r * 2, r * 1.2);
+            for (let i = 0; i < 5; i++) circle(ctx, x - r * 0.75 + i * r * 0.38, y - r * 0.5 - (i % 2) * 3, r * 0.3, ['#ff9fc4', '#f8b800', '#5ee7ff', '#3dff9a', '#ff9fc4'][i]);
+            ctx.fillStyle = '#f8b800'; ctx.fillRect(x - r, y - r * 0.4, r * 2, 2);
+            return;
+        }
         if (d.tool === 'axe') {
             shadow(ctx, x, y + 6, r);
             ctx.fillStyle = d.trunk || '#6b4423'; ctx.fillRect(x - 4, y - 2, 8, 14);
@@ -2771,19 +3170,20 @@
             }
         } else if (d.tool === 'pickaxe') {
             shadow(ctx, x, y + 2, r);
-            const rock = n.type === 'ruby_vein' || n.type === 'gold' || n.type === 'copper' || n.type === 'iron' || n.type === 'silver' || n.type === 'mithril' || n.type === 'ember' ? '#7c7f87' : n.type === 'obsidian' ? '#3a3046' : n.type === 'frost_crystal' ? '#9fb7c6' : d.color;
+            const rock = n.type === 'ruby_vein' || n.type === 'gold' || n.type === 'copper' || n.type === 'iron' || n.type === 'silver' || n.type === 'mithril' || n.type === 'ember' ? '#7c7f87' : n.type === 'obsidian' ? '#3a3046' : n.type === 'frost_crystal' ? '#9fb7c6'
+                : n.type === 'neon_vein' ? '#2a2140' : n.type === 'scrap_heap' ? '#5d6270' : d.color;
             ctx.fillStyle = rock;
             ctx.beginPath(); ctx.moveTo(x - r, y + r * 0.5); ctx.lineTo(x - r * 0.8, y - r * 0.4); ctx.lineTo(x - r * 0.1, y - r * 0.9); ctx.lineTo(x + r * 0.8, y - r * 0.5); ctx.lineTo(x + r, y + r * 0.5); ctx.closePath(); ctx.fill();
             ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.moveTo(x - r * 0.8, y - r * 0.4); ctx.lineTo(x - r * 0.1, y - r * 0.9); ctx.lineTo(x + r * 0.1, y - r * 0.2); ctx.closePath(); ctx.fill();
             if (rock !== d.color) {
                 ctx.fillStyle = d.color;
-                const crystals = n.type === 'ruby_vein' || n.type === 'frost_crystal' || n.type === 'ember';
+                const crystals = n.type === 'ruby_vein' || n.type === 'frost_crystal' || n.type === 'ember' || n.type === 'neon_vein';
                 for (let i = 0; i < 4; i++) {
                     const ox = Math.cos(i * 1.7 + v * 1.9) * r * 0.5, oy = Math.sin(i * 2.3 + v * 2.7) * r * 0.3 - 2;
                     if (crystals) { ctx.beginPath(); ctx.moveTo(x + ox - 3, y + oy + 3); ctx.lineTo(x + ox, y + oy - 7); ctx.lineTo(x + ox + 3, y + oy + 3); ctx.fill(); }
                     else ctx.fillRect(x + ox - 2.5, y + oy - 2.5, 5, 5);
                 }
-                if (n.type === 'ruby_vein' || n.type === 'ember' || n.type === 'frost_crystal') circle(ctx, x, y - 2, r + 4, n.type === 'frost_crystal' ? 'rgba(140,230,255,0.12)' : 'rgba(255,60,80,0.12)');
+                if (n.type === 'ruby_vein' || n.type === 'ember' || n.type === 'frost_crystal' || n.type === 'neon_vein') circle(ctx, x, y - 2, r + 4, n.type === 'frost_crystal' ? 'rgba(140,230,255,0.12)' : n.type === 'neon_vein' ? 'rgba(255,79,216,0.18)' : 'rgba(255,60,80,0.12)');
             }
         } else {
             // bushes and herbs

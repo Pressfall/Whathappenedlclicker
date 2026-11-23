@@ -6,7 +6,7 @@
       "v1": {
         "zones": {
           "$zone": {
-            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost|coast|storm|ruins|sky|arena|trials|(roots|deep|crypt|tomb|vault|forge|archive|cistern)_[A-Za-z0-9]{8,12})$/)",
+            ".validate": "$zone.matches(/^(town|greenwood|mines|ember|frost|coast|storm|ruins|sky|arcade|arena|trials|(roots|deep|crypt|tomb|vault|forge|archive|cistern|bonus)_[A-Za-z0-9]{8,12})$/)",
             "p": {
               ".read": "auth != null",
               "$uid": { ".write": "auth != null && auth.uid === $uid", ".validate": "newData.isString() && newData.val().length <= 120" }
@@ -36,7 +36,7 @@
                 "lk": { ".validate": "newData.isString() && newData.val().length <= 200" },
                 "say": {
                   ".validate": "newData.hasChildren(['m', 't'])",
-                  "m": { ".validate": "newData.isString() && newData.val().length <= 60" },
+                  "m": { ".validate": "newData.isString() && newData.val().length <= 150" },
                   "t": { ".validate": "newData.isNumber()" },
                   "e": { ".validate": "newData.isBoolean()" },
                   "$other": { ".validate": false }
@@ -284,7 +284,7 @@
                 ".validate": "newData.hasChildren(['u', 'n', 'm', 't'])",
                 "u": { ".validate": "newData.isString()" },
                 "n": { ".validate": "newData.isString() && newData.val().length <= 16" },
-                "m": { ".validate": "newData.isString() && newData.val().length <= 60" },
+                "m": { ".validate": "newData.isString() && newData.val().length <= 150" },
                 "t": { ".validate": "newData.isNumber()" },
                 "$other": { ".validate": false }
               }

@@ -131,6 +131,16 @@ body.leftbar-closed { margin-left: 0; }
 @keyframes ac-tap { from { transform: translateY(0); } to { transform: translateY(3px); } }
 body.ac-placing .main-image-btn, body.ac-placing #leftBar button[id^="upgrade"], body.ac-placing #divineLeftBar button[id^="divine"]:not(.menu-tab) { outline: 2px dashed #3dffb4; outline-offset: 2px; cursor: crosshair; }
 @media (prefers-reduced-motion: reduce) { .auto-clicker-badge { animation: none; } }
+/* Divine Combo Man: the running combo under the image, with a bar that empties over the 30 s left to click */
+.combo-meter { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; margin: 6px auto 10px; padding: 6px 12px; max-width: 460px; border-radius: 16px; background: var(--surface-solid); border: 1px solid rgba(255, 178, 31, 0.55); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35); color: var(--text); font-size: 13px; }
+.combo-meter[hidden] { display: none; }
+.combo-count { font-weight: 800; color: #ffb21f; font-variant-numeric: tabular-nums; }
+.combo-count b { font-size: 16px; }
+.combo-bonus { color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.combo-timer { flex: 1 1 100%; height: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.12); overflow: hidden; }
+.combo-timer-bar { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff5a1f, #ffd700); transition: width 0.25s linear; }
+.combo-secs { color: #ffb21f; font-size: 12px; font-variant-numeric: tabular-nums; min-width: 3ch; text-align: right; }
+@media (prefers-reduced-motion: reduce) { .combo-timer-bar { transition: none; } }
 .divine-gods .divine-exchange-text div + div { margin-top: 2px; }
 .divine-exchange-row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
 .divine-exchange-label { font-size: 12px; font-weight: 700; color: var(--text-dim); }
@@ -559,6 +569,16 @@ body.perf-low .main-image, body.perf-low .gem-chip::after { animation: none; }
 .setting-inline input[type=range], .setting-inline select, .setting-inline input[type=text] { flex: 1; }
 .setting-help { font-size: 12px; color: var(--text-dim); }
 .setting-help:empty { display: none; }
+/* Settings > Profile > Name color (core/name-colors.js; main.js renderNameColorPicker) */
+.name-color-picker { display: grid; grid-template-columns: repeat(6, 30px); gap: 8px 10px; }
+.name-color-swatch { width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid transparent; background: var(--c); background-clip: padding-box;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); cursor: pointer; transition: transform 0.12s ease; }
+.name-color-swatch:hover { transform: scale(1.08); }
+.name-color-swatch[aria-pressed="true"] { border-color: var(--text); box-shadow: inset 0 0 0 2px var(--surface-solid); }
+.name-color-swatch:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.name-color-preview { padding: 6px 10px; border-radius: 8px; background: rgba(0, 0, 0, 0.3); border: 1px solid var(--border); font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.name-color-preview b { font-weight: 700; }
+@media (prefers-reduced-motion: reduce) { .name-color-swatch { transition: none; } }
 .settings-footer { display: flex; gap: 8px; justify-content: space-between; flex-wrap: wrap; }
 
 /* ========== Navigation Dropdown Side Bar ========== */
@@ -986,6 +1006,9 @@ body:has(.nav-sidebar.open) #chatFab, body:has(.settings-menu.open) #chatFab, bo
 .chat-input-row { display: flex; gap: 8px; }
 .chat-input-row input { flex: 1; }
 .side-clan-info { font-size: 13px; color: var(--text-dim); }
+.side-sys { padding: 4px 0; text-align: center; font-size: 12px; font-weight: 700; color: #9ff0c4; }
+.side-sys-red { color: #ffb3bb; }
+.side-sys-gold { color: var(--gold, #ffc83d); }
 .side-clan-info b { color: var(--gold); }
 .side-clan-info a { color: var(--blue); font-weight: 700; text-decoration: none; }
 @media (max-width: 520px) { .side-panel { width: 100vw; padding: 12px 10px; } }

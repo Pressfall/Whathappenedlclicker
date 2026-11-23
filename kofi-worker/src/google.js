@@ -7,12 +7,16 @@
  *   which is why the rules can refuse every player write that would add Holy What Happeneds.
  * - Firebase sign-in: checks a player's ID token (a JWT signed by Google's securetoken service) against Google's
  *   published keys, so the claim page knows which account is asking.
+ * - Firebase Authentication, read only (Identity Toolkit accounts:lookup): which account uses an email, and an account's
+ *   email. Needs the service account to have the "Firebase Authentication Viewer" role (docs/kofi-setup.md); without it
+ *   Google answers 403 and the lookups say { denied: true }, so the worker carries on as if nobody matched.
  *
  * Everything that goes over the network uses the `fetch` passed in (tests pass a fake).
  */
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
-const SCOPE = 'https://www.googleapis.com/auth/datastore';
+const SCOPE = 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit';
+const IDENTITY = 'https://identitytoolkit.googleapis.com/v1/';
 const JWK_URL = 'https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com';
 const FIRESTORE = 'https://firestore.googleapis.com/v1/';
 
@@ -153,7 +157,74 @@ export function createFirestore(env, deps = {}) {
         const t = Object.keys(add).map((fieldPath) => ({ fieldPath, increment: { integerValue: String(add[fieldPath]) } }));
         return { update: { name: name(path), fields: {} }, updateMask: { fieldPaths: [] }, updateTransforms: t.concat(serverTime(timeFields)) };
     }
-    return { getDoc, commit, create, patch, increment, name };
+    // the documents of a top-level collection whose `field` equals `value` (one equality filter: Firestore's automatic
+    // single-field index serves it, no composite index to set up): [{ id, fields, updateTime }]
+    async function where(collectionId, field, value, max = 50) {
+        const res = await f(FIRESTORE + root + ':runQuery', {
+            method: 'POST',
+            headers: Object.assign({ 'content-type': 'application/json' }, await auth()),
+            body: JSON.stringify({ structuredQuery: {
+                from: [{ collectionId }],
+                where: { fieldFilter: { field: { fieldPath: field }, op: 'EQUAL', value: toValue(value) } },
+                limit: max,
+            } }),
+        });
+        if (!res.ok) throw new Error('Firestore query failed (' + res.status + ')');
+        const rows = await res.json();
+        return (Array.isArray(rows) ? rows : []).filter((r) => r && r.document).map((r) => ({
+            id: String(r.document.name).split('/').pop(), fields: fromFields(r.document.fields || {}), updateTime: r.document.updateTime || '',
+        }));
+    }
+    // a whole document, made or replaced; opts.ifUpdateTime: only if nobody changed it since
+    function set(path, fields, timeFields, opts = {}) {
+        const w = { update: { name: name(path), fields: toFields(fields) } };
+        if (timeFields && timeFields.length) w.updateTransforms = serverTime(timeFields);
+        if (opts.ifUpdateTime) w.currentDocument = { updateTime: opts.ifUpdateTime };
+        return w;
+    }
+    return { getDoc, commit, create, patch, increment, where, set, name };
+}
+
+// ---------------- Firebase Authentication (read only) ----------------
+// env: GCP_SERVICE_ACCOUNT, FIREBASE_PROJECT_ID. deps: { fetch, now }
+export function createAuthReader(env, deps = {}) {
+    const f = deps.fetch || fetch;
+    const now = deps.now || Date.now;
+    const project = env.FIREBASE_PROJECT_ID;
+    if (!/^[a-z0-9-]{4,40}$/.test(project || '')) throw new Error('FIREBASE_PROJECT_ID is missing');
+    // by: { email: [..] } or { localId: [..] }. { users: [{ uid, email, emailVerified, disabled, providers }], denied }
+    async function lookup(by) {
+        const res = await f(IDENTITY + 'projects/' + project + '/accounts:lookup', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (await accessToken(env, f, now())) },
+            body: JSON.stringify(by),
+        });
+        if (res.status === 401 || res.status === 403) return { users: [], denied: true };
+        if (!res.ok) throw new Error('Firebase Auth lookup failed (' + res.status + ')');
+        const d = await res.json();
+        const users = (d && Array.isArray(d.users) ? d.users : []).map((u) => ({
+            uid: typeof u.localId === 'string' ? u.localId : '',
+            email: typeof u.email === 'string' ? u.email.trim().toLowerCase() : '',
+            emailVerified: u.emailVerified === true,
+            disabled: u.disabled === true,
+            providers: (Array.isArray(u.providerUserInfo) ? u.providerUserInfo : []).map((p) => p && p.providerId).filter((p) => typeof p === 'string'),
+        }));
+        return { users, denied: false };
+    }
+    // The one account that signs in with this email and has verified it: { uid } ('' when none, or more than one), denied
+    async function uidForEmail(email) {
+        const e = String(email || '').trim().toLowerCase();
+        if (!/^[^@\s]{1,128}@[^@\s]{1,128}$/.test(e)) return { uid: '', denied: false };
+        const r = await lookup({ email: [e] });
+        const ok = r.users.filter((u) => u.uid && u.email === e && u.emailVerified && !u.disabled);
+        return { uid: ok.length === 1 ? ok[0].uid : '', denied: r.denied };
+    }
+    // An account by its uid: { user | null, denied }
+    async function account(uid) {
+        const r = await lookup({ localId: [String(uid)] });
+        return { user: r.users.find((u) => u.uid === String(uid)) || null, denied: r.denied };
+    }
+    return { lookup, uidForEmail, account };
 }
 
 // ---------------- Firebase ID tokens ----------------
@@ -168,7 +239,7 @@ async function googleKeys(f, nowMs, force) {
     jwkCache = { keys: (data && data.keys) || [], exp: nowMs + (age ? Number(age[1]) * 1000 : 3600000) };
     return jwkCache.keys;
 }
-// The signed-in player behind an ID token: { uid, provider }, or throws.
+// The signed-in player behind an ID token: { uid, provider, email, emailVerified }, or throws. email is lower case, '' if none.
 export async function verifyIdToken(token, projectId, deps = {}) {
     const f = deps.fetch || fetch;
     const nowMs = (deps.now || Date.now)();
@@ -189,7 +260,8 @@ export async function verifyIdToken(token, projectId, deps = {}) {
     if (claims.aud !== projectId || claims.iss !== 'https://securetoken.google.com/' + projectId) throw new Error('wrong project');
     if (!(claims.exp > now) || !(claims.iat <= now + skew) || (claims.auth_time !== undefined && !(claims.auth_time <= now + skew))) throw new Error('expired');
     if (typeof claims.sub !== 'string' || !claims.sub || claims.sub.length > 128) throw new Error('no user');
-    return { uid: claims.sub, provider: (claims.firebase && claims.firebase.sign_in_provider) || '' };
+    const email = typeof claims.email === 'string' && claims.email.length <= 254 ? claims.email.trim().toLowerCase() : '';
+    return { uid: claims.sub, provider: (claims.firebase && claims.firebase.sign_in_provider) || '', email, emailVerified: !!email && claims.email_verified === true };
 }
 
 export const _internal = { b64url, fromB64url, signRS256 };

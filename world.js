@@ -23,12 +23,14 @@
     // ---------------- settings (this device only) ----------------
     // graphics: 'auto' (follows the game's Performance setting), 'high', 'medium' or 'low'; resolution: 'auto', 'full', '0.75'
     // or '0.5'; fpsCap: 30, 60 or 0 (the screen's own rate); showFps: a frame counter in the corner; touchSize: 'small', 'normal'
-    // or 'large' touch buttons; touchLefty: the touch controls mirrored (stick on the right)
-    WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false, touchSize: 'normal', touchLefty: false },
+    // or 'large' touch buttons; touchLefty: the touch controls mirrored (stick on the right); music: each zone's tune
+    // (world-music.js)
+    WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, music: true, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false, touchSize: 'normal', touchLefty: false },
         (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) { return {}; } })());
     WHW.saveSettings = () => {
         try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(WHW.settings)); } catch (e) {}
         if (WHW.jukebox) WHW.jukebox.sync(); // the volume may have changed
+        if (WHW.music) WHW.music.sync();
     };
     // The detail level 'auto' stands for: the clicker's Performance setting (Settings in the game)
     WHW.gamePerformance = () => { const v = E.readSetting('whathappened_performance', 'high'); return ['high', 'medium', 'low'].includes(v) ? v : 'high'; };
@@ -51,7 +53,16 @@
     function faceFromSkin() { return Skins.thumb(wornSkin()); }
 
     // ---------------- sound (synthesized; follows the game's sound settings) ----------------
+    // [frequency, start s, length s, wave] ('noise': a burst of noise through a band-pass at that frequency)
     const SOUNDS = {
+        laser: [[1600, 0, 0.12, 'sawtooth'], [800, 0.03, 0.2, 'square'], [400, 0.08, 0.25, 'sawtooth']],
+        // the revolver: a crack, a thump; fanned shots shorter; the cylinder spinning in, the hammer cocked, a ricochet
+        gun: [[1800, 0, 0.09, 'noise'], [600, 0, 0.16, 'noise'], [90, 0, 0.12, 'triangle']],
+        fan: [[2200, 0, 0.06, 'noise'], [700, 0, 0.1, 'noise'], [110, 0, 0.08, 'triangle']],
+        spin: [[3200, 0, 0.03, 'noise'], [3400, 0.07, 0.03, 'noise'], [3600, 0.14, 0.03, 'noise'], [3800, 0.21, 0.03, 'noise'], [4000, 0.28, 0.03, 'noise']],
+        cock: [[2600, 0, 0.03, 'noise'], [1400, 0.06, 0.05, 'noise'], [520, 0.06, 0.05, 'square']],
+        ricochet: [[2400, 0, 0.05, 'noise'], [3800, 0, 0.18, 'triangle'], [3000, 0.06, 0.16, 'triangle']],
+        boom: [[400, 0, 0.5, 'noise'], [120, 0, 0.6, 'noise'], [55, 0, 0.5, 'sine']],
         hit: [[180, 0, 0.08, 'square'], [110, 0.01, 0.1, 'triangle']],
         perfect: [[660, 0, 0.08, 'triangle'], [990, 0.05, 0.16, 'triangle']],
         tink: [[2200, 0, 0.05, 'triangle']],
@@ -75,7 +86,7 @@
         block: [[160, 0, 0.09, 'square'], [520, 0.01, 0.08, 'triangle']],
         parry: [[1760, 0, 0.08, 'triangle'], [2640, 0.04, 0.2, 'triangle'], [880, 0, 0.1, 'square']],
     };
-    let actx = null, voices = 0;
+    let actx = null, voices = 0, noiseBuf = null;
     const ms = mainSave();
     const sfxBase = typeof ms.sfxVolume === 'number' ? ms.sfxVolume : 0.8;
     const sfxMuted = !!ms.sfxMuted;
@@ -113,6 +124,17 @@
             voices++;
             let left = notes.length;
             notes.forEach(([f, at, len, type]) => {
+                if (type === 'noise') {
+                    // a burst of noise through a band-pass (gunshots, the cylinder's clicks, explosions)
+                    if (!noiseBuf) { noiseBuf = actx.createBuffer(1, Math.floor(actx.sampleRate * 0.6), actx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+                    const n = actx.createBufferSource(), bp = actx.createBiquadFilter(), g = actx.createGain();
+                    n.buffer = noiseBuf; bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = 0.9;
+                    g.gain.setValueAtTime(1.4, t0 + at); g.gain.exponentialRampToValueAtTime(0.0001, t0 + at + len);
+                    n.connect(bp); bp.connect(g); g.connect(master);
+                    n.onended = () => { n.disconnect(); bp.disconnect(); g.disconnect(); if (--left === 0) { master.disconnect(); voices = Math.max(0, voices - 1); } };
+                    n.start(t0 + at, Math.random() * 0.2); n.stop(t0 + at + len + 0.05);
+                    return;
+                }
                 const o = actx.createOscillator(), g = actx.createGain();
                 o.type = type || 'sine';
                 o.frequency.setValueAtTime(f, t0 + at);
@@ -230,6 +252,8 @@
         play(id) { WHW.settings.jukebox = id; WHW.saveSettings(); jukeSync(); },
         stop() { WHW.settings.jukebox = null; WHW.saveSettings(); jukeSync(); },
         sync: jukeSync,
+        playing: () => !!(jukeEl && !jukeEl.paused), // the zone music (world-music.js) is quiet meanwhile
+
     };
 
     // only one tab plays at a time: the lock is held for the page's lifetime; "Play here" steals it
@@ -394,7 +418,7 @@
     };
 
     // ---------------- actions (buttons and keys) ----------------
-    const reasonText = { rubies: 'Not enough rubies.', materials: 'Missing materials.', busy: 'Finish your other craft first.', full: 'Your bag of gear is full: salvage something first.', allowance: "This week's lootbox allowance is used up.", week: 'Already done this week.', cap: "Today's limit from the Wilds is reached.", unknown: 'That doesn\'t exist.' };
+    const reasonText = { rubies: 'Not enough rubies.', materials: 'Missing materials.', busy: 'Finish your other craft first.', full: 'Your bag of gear is full: salvage something first.', allowance: "This week's lootbox allowance is used up.", week: 'Already done this week.', cap: "Today's limit from the Wilds is reached.", unknown: 'That doesn\'t exist.', boost: 'You don\'t have the add-in you picked.' };
     function craftTitle(r) { return (r.name || 'Crafting'); }
     function playCraft(recipe, station, bow, after) {
         WHW.craft.open({
@@ -499,12 +523,13 @@
             if (W.potionsLeft(g.potionLimit, limitKey) <= 0) { WHW.toast('No potions left for this fight: ' + D.RULES.potionsPerMatch + ' per arena match, Pit visit or wave run.', 'bad'); return; }
             const missing = p.maxHp - p.hp;
             if (missing < 1) { WHW.toast('You are already at full health.'); return; }
-            const order = missing >= W.potionHeal('potion_small', p.maxHp) * 2 ? ['potion_big', 'potion_max', 'potion_small'] : ['potion_small', 'potion_big', 'potion_max'];
+            // (in the Arena potions heal a quarter as much, W.healMult, so the bigger ones are picked sooner)
+            const order = missing >= W.potionHeal('potion_small', p.maxHp) * W.healMult(g.zoneId) * 2 ? ['potion_big', 'potion_max', 'potion_small'] : ['potion_small', 'potion_big', 'potion_max'];
             const id = order.find(k => s.cons[k] > 0);
             if (!id) { WHW.toast('No potions. Brew them at the Rune Altar or buy them from the Trader.', 'bad'); return; }
             s.cons[id]--;
             if (limitKey) g.potionLimit = W.notePotion(g.potionLimit, limitKey);
-            p.hp = Math.min(p.maxHp, p.hp + W.potionHeal(id, p.maxHp));
+            A.healPlayer(W.potionHeal(id, p.maxHp));
             const cd = D.CONSUMABLES_BY_ID[id].cd || 1;
             g.potionCd = E.time + cd;
             g.potionCdLen = cd;
@@ -518,7 +543,9 @@
             WHW.sfx('craft'); save(); WHW.ui.renderHotbar();
         },
         startCraft(kind, id) {
-            const res = W.beginCraft(g.state, kind, id, now());
+            // the arcade add-ins picked at the station (world-ui.js) go in with it; the pick is then cleared
+            const res = W.beginCraft(g.state, kind, id, now(), WHW.craftBoosts ? [...WHW.craftBoosts] : []);
+            if (res.ok && WHW.craftBoosts) WHW.craftBoosts.clear();
             if (!res.ok) { WHW.toast(reasonText[res.reason] || 'Can\'t craft that yet.', 'bad'); return; }
             save();
             const r = res.recipe;
@@ -528,7 +555,8 @@
             });
         },
         reforge(uid) {
-            const res = W.beginReforge(g.state, uid, now());
+            const res = W.beginReforge(g.state, uid, now(), WHW.craftBoosts ? [...WHW.craftBoosts] : []);
+            if (res.ok && WHW.craftBoosts) WHW.craftBoosts.clear();
             if (!res.ok) { WHW.toast(reasonText[res.reason] || 'Can\'t reforge that.', 'bad'); return; }
             save();
             const b = W.baseOf(W.findGear(g.state, uid));
@@ -638,9 +666,9 @@
         // Said out loud inside a building (the chat box there is local): shown over your head; in the Hall, the right word
         // opens the far wall
         speak(text) {
-            const t = String(text || '').trim().slice(0, 60);
+            const t = String(text || '').trim().slice(0, O.CHAT.maxLen);
             if (!t) return;
-            g.myBubble = { m: t, until: E.time + 4 };
+            g.myBubble = { m: t, until: E.time + O.bubbleTime(t) - 2 };
             const r = W.speak(g.state, g.zoneId, t);
             if (r.opened) { openTheWall(); return; }
             if (g.map.secret && !g.map.secret.open && dist(g.player, g.map.secret.at) < 200) WHW.toast('Your voice echoes off the far wall. Nothing happens.');
@@ -670,11 +698,15 @@
             if (g.wardFight) { WHW.toast('A guardian is already awake. Beat it first.', 'bad'); return; }
             const r = W.wardState(s, g.zoneId, i);
             if (!r.ok) { WHW.toast(r.reason === 'key' ? 'The stone wants a ' + D.MATERIALS_BY_ID[r.key].name + '. Make one at the Rune Altar in town.' : r.reason === 'broken' ? 'This ward is already broken.' : "Can't do that.", 'bad'); return; }
-            const gm = A.makeMonster(z.elite, w.x, w.y + 80, { hpMult: D.WARD.hpMult, dmgMult: D.WARD.dmgMult, name: 'Ward Guardian', guardian: { zone: g.zoneId, i } });
+            // on open ground the guardian can reach you from, south of the stone if there is room (G.openSpot: a stone at an
+            // island's edge used to put it out in the open sky, off the map)
+            const near = (type, ang, d) => G.openSpot(g.map, w.x, w.y, D.MONSTERS[type].r, { ang, dist: d }) || { x: w.x + Math.cos(ang) * d, y: w.y + Math.sin(ang) * d };
+            const at = near(z.elite, Math.PI / 2, 80);
+            const gm = A.makeMonster(z.elite, at.x, at.y, { hpMult: D.WARD.hpMult, dmgMult: D.WARD.dmgMult, name: 'Ward Guardian', guardian: { zone: g.zoneId, i } });
             gm.aggro = true; E.collideTiles(gm); g.actors.push(gm);
             for (let k = 0; k < D.WARD.adds; k++) {
-                const ang = Math.PI / 2 + (k - (D.WARD.adds - 1) / 2) * 0.9;
-                const m = A.makeMonster(weightedPick(z.spawns), w.x + Math.cos(ang) * 120, w.y + Math.sin(ang) * 120, { summoned: true });
+                const ang = Math.PI / 2 + (k - (D.WARD.adds - 1) / 2) * 0.9, type = weightedPick(z.spawns), pt = near(type, ang, 120);
+                const m = A.makeMonster(type, pt.x, pt.y, { summoned: true });
                 m.aggro = true; E.collideTiles(m); g.actors.push(m);
             }
             g.wardFight = { i, zone: g.zoneId, uid: gm.id };
@@ -693,9 +725,10 @@
             const Dg = window.WHWorldDungeons, P = WHW.party, dd = Dg.def(id);
             if (!dd) return;
             const size = P && P.id ? Math.max(P.tickets.length, P.members.size) : 0;
-            const ok = Dg.mayEnter(size, W.dungeonOpen(g.state, id));
+            const ok = Dg.mayEnter(size, W.dungeonOpen(g.state, id), W.dungeonRest(g.state, id, Date.now()));
             if (!ok.ok) {
-                WHW.toast({ locked: 'Sealed. ' + D.BOSSES[D.ZONES[dd.zone].boss].name + ' must fall to you first.', size: 'At most ' + Dg.PARTY.max + ' can go in together.' }[ok.reason], 'bad');
+                WHW.toast({ locked: 'Sealed. ' + D.BOSSES[D.ZONES[dd.zone].boss].name + ' must fall to you first.', size: 'At most ' + Dg.PARTY.max + ' can go in together.',
+                    resting: dd.name + ' is resting since you beat ' + D.BOSSES[dd.boss].name + '. Back in ' + Dg.restMinutes(ok.rest) + ' min.' }[ok.reason], 'bad');
                 return;
             }
             const together = size > 1 && WHW.online && WHW.online.db && WHW.online.status === 'online';
@@ -813,6 +846,18 @@
                 }
             }
         }
+        if (z.glitch) {
+            // the Neon Arcade: now and then a block of pixels drops out of the ceiling near you (never at the camp)
+            const L = z.glitch;
+            g.glitchT = (g.glitchT === undefined ? 5 : g.glitchT) - dt;
+            if (g.glitchT <= 0) {
+                g.glitchT = L.every[0] + Math.random() * (L.every[1] - L.every[0]);
+                if (!safe) for (let i = 0; i < 3; i++) {
+                    const ang = Math.random() * Math.PI * 2, rr = i === 0 ? Math.random() * 40 : 60 + Math.random() * 90;
+                    g.hazards.push({ t: 0, kind: 'circle', pixel: true, x: p.x + (p.vx || 0) * 0.5 + Math.cos(ang) * rr, y: p.y + (p.vy || 0) * 0.5 + Math.sin(ang) * rr, r: L.r, windup: L.windup + i * 0.2, dmg: p.maxHp * L.dmg });
+                }
+            }
+        }
         if (z.gusts) {
             const G2 = z.gusts;
             g.gustT = (g.gustT === undefined ? 6 : g.gustT) - dt;
@@ -832,11 +877,17 @@
         if (r.gems) WHW.toast(`💎 ${r.gems} gem${r.gems > 1 ? 's' : ''} sent to your game.`, 'gem');
         if (r.firstToday) WHW.toast('First win today: bonus rubies!', 'gold');
         if (r.unlocked && r.firstEver) setTimeout(() => WHW.toast(`The gate to ${D.ZONES[r.unlocked].name} is open! Head back to town.`, 'gold'), 1200);
-        // a dungeon boss: its Heart, a Catalyst, the Vault's seals and Glory
-        if (r.first && b.def.dungeon) {
+        // a dungeon boss: the week's boosted first kill (its Heart, a Catalyst, boss chests, the Vault's seals and Glory), a later
+        // kill's boss chest, or (past the day's boss chests) only rubies; then the dungeon rests for 30 minutes
+        if (b.def.dungeon) {
+            const Dg = window.WHWorldDungeons, mins = Math.round(Dg.COOLDOWN_MS / 60000);
             const got = Object.entries(r.mats || {}).map(([id, n]) => (n > 1 ? n + ' ' : '') + D.MATERIALS_BY_ID[id].icon + ' ' + D.MATERIALS_BY_ID[id].name);
-            WHW.toast('This week\'s reward: ' + got.join(', ') + (r.glory ? ', +' + r.glory + ' Glory' : '') + (r.box ? ' and a Golden Chest for your game' : '') + '.', 'gold');
-        } else if (b.def.dungeon) WHW.toast('Already beaten this week: a smaller reward until next week.');
+            const rest = ' ' + D.DUNGEONS[b.def.dungeon].name + ' now rests for ' + mins + ' minutes.';
+            if (r.resting) WHW.toast('You beat this boss less than ' + mins + ' minutes ago, so it pays you nothing this time (back in ' + Dg.restMinutes(r.resting) + ' min).', 'bad');
+            else if (r.first) WHW.toast('This week\'s boosted reward: ' + got.join(', ') + (r.glory ? ', +' + r.glory + ' Glory' : '') + (r.box ? ' and a Golden Chest for your game' : '') + '.' + rest, 'gold');
+            else if (r.chest) WHW.toast('📦 The boss chest: ' + got.join(', ') + '.' + rest, 'gold');
+            else WHW.toast('Today\'s ' + Dg.REWARDS.essRoomsPerDay + ' dungeon chests are all opened: only rubies until tomorrow.' + rest);
+        }
         // the first time a zone's boss falls, the way into its hidden dungeon wakes
         const under = g.map.dungeon;
         if (under && !b.def.dungeon && r.firstEver && !g.state.dungeons.found[under.id])
@@ -921,9 +972,10 @@
             // the zone's hidden dungeon: a boulder like any other until its boss has fallen to you
             const dg = map.dungeon;
             if (!prompt && dg && W.dungeonOpen(s, dg.id)) {
-                const dd = D.DUNGEONS[dg.id], d = dist(p, dg);
+                const dd = D.DUNGEONS[dg.id], d = dist(p, dg), rest = W.dungeonRest(s, dg.id, Date.now());
                 if (d < 150 && W.noteDungeonFound(s, dg.id)) { WHW.toast(dd.icon + ' You found the way down to ' + dd.name + '!', 'gold'); WHW.sfx('boss'); save(); }
-                if (d < 60) { prompt = '<kbd>E</kbd>' + dd.icon + ' Go down into ' + esc(dd.name); if (press) WHW.actions.enterDungeon(dg.id); }
+                if (d < 60 && rest > 0) prompt = dd.icon + ' ' + esc(dd.name) + ' is resting: back in ' + window.WHWorldDungeons.restMinutes(rest) + ' min';
+                else if (d < 60) { prompt = '<kbd>E</kbd>' + dd.icon + ' Go down into ' + esc(dd.name); if (press) WHW.actions.enterDungeon(dg.id); }
             }
             if (prompt) { /* the wards and the seal */ } else if (map.exit && dist(p, map.exit) < 64) { prompt = '<kbd>E</kbd>Return to town'; if (press) enterZone('town'); }
             else if (map.camp && dist(p, map.camp) < 80) {
@@ -1424,6 +1476,25 @@
             ctx.beginPath(); ctx.moveTo(w.anchorX, w.anchorY); ctx.lineTo(E.mouse.sx, E.mouse.sy); ctx.stroke(); ctx.setLineDash([]);
             ctx.strokeStyle = w.draw >= 0.95 ? '#ffc83d' : '#fff'; ctx.lineWidth = 3;
             ctx.beginPath(); ctx.arc(w.anchorX, w.anchorY, 10, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * w.draw); ctx.stroke();
+        }
+        // the revolver: a faint sight line down the barrel (where the next shot goes: the barrel, not the cursor), gold once
+        // it has settled for a Steady shot; and the rounds left, as little pips by the player
+        if (w && w.cls === 'gun' && !p.dead) {
+            const c = A.cylinder(p), P = D.WEAPON_CLASSES.gun, sp = E.worldToScreen(p.x, p.y);
+            const steady = c.rounds > 0 && !c.reloadEnd && E.time - c.lastShot >= P.settle * g.pstats.settle && Math.abs(w.omega) <= P.steadyOmega;
+            const len = P.falloffFrom * E.zoom, cx = Math.cos(w.theta), cy = Math.sin(w.theta);
+            ctx.strokeStyle = steady ? 'rgba(255,200,61,0.55)' : 'rgba(255,255,255,0.16)'; ctx.lineWidth = steady ? 1.5 : 1; ctx.setLineDash([3, 7]);
+            ctx.beginPath(); ctx.moveTo(sp.x + cx * 30 * E.zoom, sp.y + cy * 30 * E.zoom); ctx.lineTo(sp.x + cx * len, sp.y + cy * len); ctx.stroke(); ctx.setLineDash([]);
+            const n = c.max, y0 = sp.y + (p.r + 14) * E.zoom;
+            for (let i = 0; i < n; i++) {
+                const x = sp.x + (i - (n - 1) / 2) * 7;
+                ctx.fillStyle = c.reloadEnd ? 'rgba(255,255,255,0.18)' : i < c.rounds ? '#ffd36b' : 'rgba(0,0,0,0.45)';
+                ctx.beginPath(); ctx.arc(x, y0, 2.4, 0, Math.PI * 2); ctx.fill();
+            }
+            if (c.reloadEnd) {
+                const k = 1 - (c.reloadEnd - E.time) / (P.reloadEmpty * g.pstats.reload);
+                ctx.strokeStyle = '#ffd36b'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(sp.x, y0, 9, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.max(0, Math.min(1, k))); ctx.stroke();
+            }
         }
         WHW.ui.renderPower(p);
         WHW.ui.renderAbilities();

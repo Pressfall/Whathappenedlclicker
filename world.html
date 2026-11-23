@@ -67,7 +67,7 @@
             <div class="w-prompt" id="prompt" hidden></div>
             <form class="w-chat" id="chatBar" hidden autocomplete="off">
                 <div class="w-row"><button type="button" class="btn btn-sm btn-ghost" id="chatChan" hidden title="Who hears it: the zone, or only your party">💬 Zone</button>
-                <input id="chatInput" maxlength="63" placeholder="Say something (Enter to send, Esc to close)" aria-label="Chat message"></div>
+                <input id="chatInput" maxlength="153" placeholder="Say something (Enter to send, Esc to close)" aria-label="Chat message"></div>
                 <div class="w-emotes" id="emotes"></div>
             </form>
             <button class="w-icon-btn w-chat-btn" id="btnChat" title="Chat (Enter)" aria-label="Chat">💬</button>
@@ -125,11 +125,14 @@
         <script src="core/premium-config.js"></script>
         <script src="core/kofi.js"></script>
         <script src="core/premium.js"></script>
+        <!-- one name for chat and the Wilds -->
+        <script src="core/names.js"></script>
         <script src="core/world-arena.js"></script>
         <script src="core/world-waves.js"></script>
         <script src="core/world-dungeons.js"></script>
         <script src="core/gear.js"></script>
         <script src="core/world-relics.js"></script>
+        <script src="core/world-fuse.js"></script>
         <script src="core/world-market.js"></script>
         <script src="core/world-mobs.js"></script>
         <script src="core/world-tour.js"></script>
@@ -137,6 +140,7 @@
         <script src="core/world-combat.js"></script>
         <script src="core/world-craft-score.js"></script>
         <script src="core/world-gen.js"></script>
+        <script src="core/world-music.js"></script>
         <script src="core/chat-safety.js"></script>
         <script src="core/world-online.js"></script>
         <script src="core/world-party.js"></script>
@@ -155,6 +159,7 @@
         <script src="world-waves.js"></script>
         <script src="world-mobs.js"></script>
         <script src="world.js"></script>
+        <script src="world-music.js"></script>
         <script src="premium.js"></script>
         <script src="premium-panel.js"></script>
         <script src="pwa.js"></script>
@@ -166,5 +171,8 @@
         </script>
         <!-- bought Holy What Happeneds: the signed-in account's balance (premium-cloud.js) -->
         <script type="module" src="premium-cloud.js"></script>
+        <!-- your clan from the Wilds (clan-wilds.js): monsters for a Wilds Hunt, and "In the Wilds" on the clan page -->
+        <script src="core/clan-events.js"></script>
+        <script type="module" src="clan-wilds.js"></script>
     </body>
 </html>

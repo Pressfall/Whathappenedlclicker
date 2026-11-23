@@ -38,12 +38,36 @@ test('positions pack into a short string and back; junk is refused', () => {
     for (const bad of [null, 42, 'a,b,c', '1,2,3', '1,2,3,4,5,6,7,8,9,x', '1,2,3,4,5,6,7,8,9', 'x'.repeat(200)]) assert.equal(O.unpackPos(bad), null, String(bad));
 });
 
+test('long chat lines: a full sentence fits, the bubble wraps it instead of cutting it off, and stays up long enough to read', () => {
+    assert.ok(O.CHAT.maxLen >= 150, 'a sentence fits (it was 60, which cut messages off)');
+    const rules = require('../database.rules.json').rules.wilds.v1;
+    assert.equal(Number(rules.zones.$zone.i.$uid.say.m['.validate'].match(/<= (\d+)/)[1]), O.CHAT.maxLen, 'the database takes what the game sends');
+    const html = require('fs').readFileSync(require('path').join(__dirname, '..', 'world.html'), 'utf8');
+    assert.equal(Number(/id="chatInput" maxlength="(\d+)"/.exec(html)[1]), O.CHAT.maxLen + 3, 'the chat box takes it too (with "/p " for party)');
+    // about 6.4 px a character at the bubble's 12px font, 204 px wide inside
+    const measure = (s) => s.length * 6.4, W = 204;
+    const msg = 'Meet me at the Glitch King dungeon entrance near the north arcade wall, bring potions and a shield, we go in two minutes ok';
+    const lines = O.wrapLines(msg, measure, W);
+    assert.equal(lines.join(' '), msg, 'every word is there, in order');
+    assert.ok(lines.length > 1 && lines.every((l) => measure(l) <= W));
+    assert.ok(!lines.join('').includes('…'), 'nothing cut off');
+    // one very long word is broken across lines, not dropped
+    const word = 'a'.repeat(O.CHAT.maxLen);
+    assert.equal(O.wrapLines(word, measure, W).join(''), word);
+    // only past the line limit does it end in …
+    assert.ok(O.wrapLines(msg, measure, W, 2)[1].endsWith('…'));
+    assert.deepEqual(O.wrapLines('gg', measure, W), ['gg']);
+    // short lines stay 6 s, the longest 12 s
+    assert.equal(O.bubbleTime('gg'), O.CHAT.bubbleSec);
+    assert.ok(O.bubbleTime(msg) > O.CHAT.bubbleSec && O.bubbleTime('x'.repeat(O.CHAT.maxLen)) <= O.CHAT.bubbleMax);
+});
+
 test('names, chat and faces are cleaned; the swear filter matches the game chat', () => {
     assert.equal(O.sanitizeName('  Big   Chad '), 'Big Chad');
     assert.equal(O.sanitizeName('x'), null);
     assert.equal(O.sanitizeName('<script>'), null);
     assert.equal(O.cleanChat('  hi\u0007 there  '), 'hi there');
-    assert.equal(O.cleanChat('a'.repeat(100)).length, O.CHAT.maxLen);
+    assert.equal(O.cleanChat('a'.repeat(400)).length, O.CHAT.maxLen);
     assert.equal(O.cleanChat('   '), null);
     assert.equal(O.censor('what the hell, shitty boss'), 'what the ***, *** boss');
     assert.equal(O.censor('hello shell'), 'hello shell', 'whole words only');
@@ -289,6 +313,33 @@ test('relic looks travel as one short string, and anything else in it is dropped
     assert.deepEqual(O.sanitizeInfo({ n: 'Ok Name' }).lk, {}, 'an older page: no looks');
     assert.equal(O.sanitizeInfo({ n: 'Ok Name', lk: str }).lk.w.shape, 'flamberge');
     assert.equal(O.packLooks({}), '');
+});
+
+test('the Holy What Happeneds looks (weapon skin, trail, halo or wings) travel in the same string, after the relics, and older pages skip them', () => {
+    const P = require('../core/premium.js');
+    const relics = { w: { tier: 6, shape: 'flamberge', main: '#ff3b6b', trim: '#ffe14d' }, c: { tier: 2, shape: '', main: '#a8d8ff', trim: '#4fd8d0' },
+        h: { tier: 5, shape: 'thorncrown', main: '#aaaaaa', trim: '#bbbbbb' }, b: { tier: 4, shape: 'wings', main: '#7df9ff', trim: '#ffffff' }, s: { tier: 5, shape: 'sun', main: '#ffc83d', trim: '#ff9a2a' } };
+    const str = O.packLooks(Object.assign({}, relics, { p: { weapon: 'ws_prism', trail: 'tr_feathers', head: 'hd_magehat', back: 'bk_wings', tail: 'ta_demon', outfit: 'of_easton' } }));
+    assert.ok(str.length <= O.LOOK_MAX, str.length + ' characters, with all five relics and all six looks');
+    const back = O.unpackLooks(str);
+    assert.deepEqual(back.p, { weapon: 'ws_prism', head: 'hd_magehat', back: 'bk_wings', outfit: 'of_easton', trail: 'tr_feathers', tail: 'ta_demon' });
+    assert.equal(back.w.tier, 6, 'the relics are all still there');
+    assert.equal(back.s.shape, 'sun');
+    // every id the shop sells fits (core/premium.js WILDS_KINDS)
+    for (const it of P.CATALOG.filter((c) => P.WILDS_KINDS.includes(c.kind))) {
+        const one = O.unpackLooks(O.packLooks({ p: { [it.kind]: it.id } }));
+        assert.equal(one.p[it.kind], it.id, it.id);
+    }
+    // only the looks, nothing else; each kind in its own slot
+    assert.equal(O.packLooks({ p: { weapon: 'tr_light', trail: 'evil;w6:ffffff:ffffff', head: 'hd_halo', back: 'mk_wings' } }), '~hd_halo');
+    assert.deepEqual(O.unpackLooks('~ws_gilded;~ws_rose;~xx_bad;~tr_<b>'), { p: { weapon: 'ws_gilded', head: '', back: '', outfit: '', trail: '', tail: '' } }, 'the first skin; junk dropped');
+    assert.equal(O.unpackLooks('w2:aaaaaa:bbbbbb').p, undefined, 'no bought looks: no p');
+    // a page from before them: its LOOK_RE alone, which skips the ~ parts and keeps the relics
+    const OLD_RE = /^([wchbs])([0-6])(?:\.([a-z]{2,14}))?:([0-9a-f]{6}):([0-9a-f]{6})$/;
+    assert.equal(str.split(';').filter((part) => OLD_RE.test(part)).length, 5);
+    assert.deepEqual(O.sanitizeInfo({ n: 'Ok Name', lk: '~hd_halo' }).lk, { p: { weapon: '', head: 'hd_halo', back: '', outfit: '', trail: '', tail: '' } });
+    // a page still on the old pattern, sharing the old ~mk_ ids: skipped, never misread
+    assert.deepEqual(O.unpackLooks('~mk_wings'), {});
 });
 
 test('real fights send faster: a live Arena match or the Pit at the duel rate, a co-op wave at the co-op rate', () => {

@@ -35,7 +35,7 @@
         minPlayers: 2,
         lateStartSec: 60,     // signups closed this long and the host hasn't started it: any entrant may
         openMaxSec: 3600,     // still not started this long after signups closed: it is off (fees back)
-        windowSec: 600,       // how long a pairing has to be played
+        windowSec: 1200,      // how long a pairing has to be played: room for a late opponent and a full five-round duel
         noShowSec: 150,       // an opponent not in the Arena this long after the pairing is ready: claim a walkover
         disputeSec: 30,       // a walkover claim stands unless the other player answers within this
         replaySec: 6,         // a drawn duel is played again after this

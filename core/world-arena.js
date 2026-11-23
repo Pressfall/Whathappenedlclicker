@@ -19,7 +19,7 @@
     const RULES = {
         winsNeeded: 2,          // best of three
         maxRounds: 5,           // drawn rounds don't count; after this many, the score decides (level: a draw)
-        roundSec: 90, countdownSec: 3, breakSec: 4, graceSec: 1.5,
+        roundSec: 180, countdownSec: 3, breakSec: 4, graceSec: 1.5, // a round's time limit (was 90 s until 2026-11-22)
         staleDownSec: 8,        // a participant not heard from this long is down for the round
         forfeitSec: 25,         // ...and this long (or leaving the arena) has forfeited the match
         inviteSec: 20, readySec: 6,

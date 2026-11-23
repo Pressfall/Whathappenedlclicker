@@ -76,6 +76,8 @@
             desc: 'Its head is a bolt of lightning the Stormforge caught and hammered straight. Almost straight.' },
         { id: 'seraph_arc', kind: 'wilds', cls: 'bow', name: "Seraph's Arc", shape: 'hornbow', outline: 'stars', sig: ['might', 'keen'], need: 'heart_cistern',
             desc: 'Strung with a feather from the Fallen Seraph. Arrows from it leave a trail of stars.' },
+        { id: 'jackpot_six', kind: 'wilds', cls: 'gun', name: 'The Jackpot Six', shape: 'sixshooter', outline: 'prism', sig: ['fortune', 'keen'], need: 'heart_bonus',
+            desc: 'A golden six-shooter won at the Bonus Stage. Every chamber is somebody\'s lucky number.' },
         { id: 'starweave', kind: 'wilds', cls: 'staff', name: 'Starweave Staff', shape: 'forked', outline: 'stars', sig: ['keen', 'fortune'], need: 'heart_cistern',
             desc: 'Two branches that never quite meet, with a night sky held between them.' },
         { id: 'thorn_crown', kind: 'wilds', slot: 'helmet', name: 'Crown of Thorns', shape: 'thorncrown', outline: 'thorns', sig: ['vigor', 'ward'], need: 'heart_roots',
@@ -107,6 +109,8 @@
             desc: 'Its hem is always smouldering. Critical clicks come out scorched.' },
         { id: 'hoard_ring', kind: 'game', s: 'ring', name: 'Ring of the Deep Hoard', shape: 'hoardring', outline: 'gold', sig: ['fortune', 'might'], need: 'heart_deep',
             desc: 'The Gold Tyrant wore it on his little finger. Gems find their way to whoever wears it now.' },
+        { id: 'token_ring', kind: 'game', s: 'ring', name: 'Ring of Endless Tokens', shape: 'hoardring', outline: 'prism', sig: ['fortune', 'swift'], need: 'heart_bonus',
+            desc: 'Prize tokens keep turning up in its band. The Glitch King swears it was never his.' },
         { id: 'tide_band', kind: 'game', s: 'ring', name: 'Tidebound Band', shape: 'tidering', outline: 'waves', sig: ['ward', 'swift'], need: 'heart_vault',
             desc: 'It comes and goes like the tide, and so do your earnings, mostly coming.' },
         { id: 'storm_bottle', kind: 'game', s: 'relic', name: 'Storm in a Bottle', shape: 'bottle', outline: 'storm', sig: ['swift', 'keen'], need: 'heart_forge',
@@ -211,6 +215,8 @@
         trident: 'M31 18 L33 18 L33 60 L31 60 Z M22 4 L24 18 L40 18 L42 4 L38 12 L35 4 L33 14 L31 14 L29 4 L26 12 Z',
         bolt: 'M34 2 L26 14 L33 14 L27 26 L38 12 L31 12 Z M31 26 L33 26 L33 60 L31 60 Z',
         bow: 'M24 4 Q52 32 24 60 L27 60 Q55 32 27 4 Z M25 4 L25 60',
+        sixshooter: 'M4 20 L54 20 L56 16 L62 16 L62 30 L28 30 L24 34 L26 38 L22 40 L27 58 L11 58 L15 36 L4 32 Z M30 25 A6 6 0 1 0 30.01 25 Z M8 24 L50 24',
+        gun: 'M6 22 L50 22 L52 18 L58 18 L58 30 L28 30 L24 34 L26 38 L22 40 L26 56 L12 56 L16 36 L6 32 Z M30 26 A5 5 0 1 0 30.01 26 Z',
         hornbow: 'M20 4 Q10 10 18 14 Q52 32 18 50 Q10 54 20 60 L24 58 Q56 32 24 6 Z M22 6 L22 58 M12 28 L4 24 M12 36 L4 40',
         staff: 'M31 18 L33 18 L34 60 L30 60 Z M32 4 A8 8 0 1 0 32.01 4 Z',
         forked: 'M31 26 L33 26 L34 60 L30 60 Z M31 26 Q20 16 22 4 L25 5 Q24 15 32 22 Q40 15 39 5 L42 4 Q44 16 33 26 Z M32 10 A3 3 0 1 0 32.01 10 Z',
@@ -226,7 +232,7 @@
         sun: 'M32 8 L52 14 Q52 42 32 56 Q12 42 12 14 Z M32 22 A7 7 0 1 0 32.01 22 Z M32 12 L32 16 M44 18 L41 21 M20 18 L23 21 M48 30 L44 30 M16 30 L20 30',
     };
     // a slot's or class's own shape (pieces without a unique shape)
-    const BASE_SHAPE = { cursor: 'cursor', crown: 'crown', cloak: 'cloak', ring: 'ring', relic: 'relic', sword: 'sword', dagger: 'dagger', spear: 'spear', bow: 'bow',
+    const BASE_SHAPE = { cursor: 'cursor', crown: 'crown', cloak: 'cloak', ring: 'ring', relic: 'relic', sword: 'sword', dagger: 'dagger', spear: 'spear', bow: 'bow', gun: 'gun',
         staff: 'staff', axe: 'sword', pickaxe: 'sword', helmet: 'helmet', chest: 'chest', boots: 'boots', offhand: 'shield' };
     // the edge drawn round a picture: [stroke width, dash, extra]
     const OUTLINES = {

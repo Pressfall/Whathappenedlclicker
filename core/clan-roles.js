@@ -26,9 +26,12 @@
     // what any member may change (shared progress; the numbers are still whatever the browser says, see
     // docs/trust-boundaries.md): XP and the daily check-in (clan.html clanCheckIn), the buffs bought with clan points and
     // what was given toward them (contributeClanBuff), the shop's icons, and which events' XP was paid (awardClanEventXp)
-    const MEMBER_FIELDS = ['clanXp', 'checkin', 'activeBuffs', 'activeBuff', 'buffProgress', 'cpDonated', 'clanShopIconsUnlocked', 'eventXpAwarded'];
+    // and contrib (this week's clan XP by member: core/clan-levels.js addContribution)
+    const MEMBER_FIELDS = ['clanXp', 'checkin', 'activeBuffs', 'activeBuff', 'buffProgress', 'cpDonated', 'clanShopIconsUnlocked', 'eventXpAwarded', 'contrib'];
     // what co-leaders and up may change
-    const MANAGE_FIELDS = ['description', 'clanIcon', 'clanCustomLogoUrl', 'maxMembers'];
+    // (joinMode: 'open' | 'closed', a closed clan takes no new members; minPrestige: prestiges a player needs to join, checked
+    // by the joining page only, since the number is the player's own)
+    const MANAGE_FIELDS = ['description', 'clanIcon', 'clanCustomLogoUrl', 'maxMembers', 'joinMode', 'minPrestige'];
     const MAP_FIELDS = ['roles', 'names', 'acct', 'kicks'];
     // a kick or a role change also writes act: { by, kind: 'kick' | 'role', target }: the rules can't pick the one changed
     // key out of a set, so the writer names it, and the rules check it is the one that changed
@@ -127,9 +130,11 @@
             if (!isObj(after.roles) || after.roles[to] !== 'leader' || after.roles[uid] !== 'co-leader') return no('transfer', 'shape');
             return { ok: true, action: 'transfer' };
         }
-        if (keys.includes('name')) return rank(mine) >= rank('leader') ? { ok: true, action: 'rename' } : no('rename', 'rank');
+        if (keys.includes('name')) return rank(mine) >= rank('leader') && keys.every(k => k === 'name') ? { ok: true, action: 'rename' } : no('rename', 'rank');
         if (touches(MAP_FIELDS)) {
             const r = changedKeys(before.roles, after.roles);
+            // my own name changed (a new chat / Wilds name): only my names entry, and the old name lists
+            if (!r.length && changedKeys(before.names, after.names).length) return renameSelf(before, after, uid, keys);
             // joining or leaving: only my own entry
             if (r.length === 1 && r[0] === uid) return selfEntry(before, after, uid, account, keys, false);
             if (!mine) return no('role', 'member');
@@ -165,6 +170,7 @@
             if (!isObj(after.names) || typeof after.names[uid] !== 'string') return { ok: false, action: 'join', reason: 'shape' };
             if (!!(isObj(after.acct) && after.acct[uid]) !== !!account) return { ok: false, action: 'join', reason: 'acct' };
             if (!legacy && size(after) > (Number(before.maxMembers) || 30)) return { ok: false, action: 'join', reason: 'full' };
+            if (!legacy && before.joinMode === 'closed') return { ok: false, action: 'join', reason: 'closed' };
             return { ok: true, action: 'join' };
         }
         if (was && now === undefined) {
@@ -173,7 +179,34 @@
         }
         return { ok: false, action: 'self', reason: 'shape' };
     }
+    // A member's new name (core/names.js keeps the chat name and the Wilds name the same, so either can change it): their own
+    // names entry, a valid name, nobody else's; the old name lists may swap the name, and the owner's `owner` field follows.
+    function renameSelf(before, after, uid, keys) {
+        const no = (reason) => ({ ok: false, action: 'nameself', reason });
+        if (!roleOf(before, uid)) return no('member');
+        const n = changedKeys(before.names, after.names);
+        if (n.length !== 1 || n[0] !== uid) return no('shape');
+        const name = isObj(after.names) ? after.names[uid] : null;
+        if (typeof name !== 'string' || !name.trim() || name.length > 32) return no('shape');
+        if (changedKeys(before.acct, after.acct).length || changedKeys(before.kicks, after.kicks).length) return no('shape');
+        if (!keys.every(k => ['names', 'members', 'leaders', 'owner'].includes(k))) return no('field');
+        if (keys.includes('owner') && (before.ownerUid !== uid || after.owner !== name)) return no('owner');
+        return { ok: true, action: 'nameself' };
+    }
+    // Is this player in the clan? By their sign-in id first (it survives a new name), then by name (current or earlier ones).
+    // who: { uid, names: [...] }. true / false, or null when the document lists nobody (can't tell).
+    function memberIn(c, who) {
+        const w = who || {};
+        if (w.uid && roleOf(c, w.uid)) return true;
+        let out = null;
+        for (const n of (Array.isArray(w.names) ? w.names : []).filter(Boolean)) {
+            const m = memberByName(c, n);
+            if (m) return true;
+            if (m === false) out = false;
+        }
+        return out;
+    }
 
     return { RANK_PRIORITY, ROLES, MEMBER_FIELDS, MANAGE_FIELDS, rank, roleOf, claimed, uidOfName, canAssignRole, canKick, canEditDescription, canChangeName,
-        canTransferOwnership, canPinMessages, size, memberByName, roleOfName, changedKeys, classifyClanUpdate };
+        canTransferOwnership, canPinMessages, size, memberByName, roleOfName, memberIn, changedKeys, classifyClanUpdate };
 }));

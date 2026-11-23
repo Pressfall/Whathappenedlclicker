@@ -13,8 +13,11 @@
 //                                 someone else's account. The worker reads it to know whose payment it is.
 //   kofi_payments/{txid}          every Ko-fi payment that was worth Holy What Happeneds, matched or not, for idempotency and for the owner.
 //                                 Worker only. No player can read or write it.
+//   kofi_requests/{uid}           the player's latest request to the worker: { kind: 'collect' | 'claim', status: 'pending', at,
+//                                 txid?, email? }. Written by the player (only their own, only pending); the worker answers
+//                                 every minute by replacing it with { status: 'done' | 'failed', beans, count, error }.
 //
-// HOW TO USE: copy the three `match` blocks and the functions below into your rules (Firebase console > Firestore Database >
+// HOW TO USE: copy the four `match` blocks and the functions below into your rules (Firebase console > Firestore Database >
 // Rules), inside `match /databases/{database}/documents { ... }`, next to the saves and codes blocks. Then test in the Rules
 // Playground (checklist at the bottom) and Publish. The function names start with `beans` so they can't clash with the
 // `isOwner` / `isValidSave` functions from firestore-saves.rules.
@@ -61,6 +64,14 @@ service cloud.firestore {
       allow list, update, delete: if false;
     }
 
+    // the player's request to the Ko-fi worker, which answers every minute by replacing it (kofi-worker/src/index.js
+    // runRequests). Written here rather than sent to the worker because school networks block *.workers.dev.
+    match /kofi_requests/{uid} {
+      allow get: if beansOwner(uid);
+      allow create, update: if beansOwner(uid) && beansAccount() && beansValidRequest();
+      allow list, delete: if false;
+    }
+
     match /kofi_payments/{txid} {
       allow read, write: if false;
     }
@@ -71,6 +82,15 @@ service cloud.firestore {
     // a real account (email or Google), not the Wilds' anonymous sign-in: bought Holy What Happeneds belong to an account
     function beansAccount() {
       return request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+    // a pending "collect" (nothing else in it) or "claim" (a transaction id and the email it was paid with)
+    function beansValidRequest() {
+      let d = request.resource.data;
+      return d.status == 'pending' && d.at == request.time
+        && ((d.kind == 'collect' && d.keys().hasOnly(['kind', 'status', 'at']))
+          || (d.kind == 'claim' && d.keys().hasOnly(['kind', 'status', 'at', 'txid', 'email'])
+            && d.txid is string && d.txid.size() >= 8 && d.txid.size() <= 64
+            && d.email is string && d.email.size() >= 3 && d.email.size() <= 254));
     }
     // sha256('kofi-link:' + uid) as 64 upper-case hex digits (core/kofi.js linkIdForUid takes the first 12)
     function beansLinkHex(uid) {
@@ -121,3 +141,7 @@ service cloud.firestore {
 //                                                                               ALLOW (the game shows the code: WH-XXXX-XXXX-XXXX)
 //  10. the same as 9 but with uid 'U2', or as U2, or with any other code        DENY
 //  11. the same as 9 signed in anonymously                                      DENY
+//  12. create kofi_requests/U1 as U1 with { kind: 'collect', status: 'pending', at: request.time }      ALLOW
+//  13. the same as 12 as U2, or with status 'done', or with beans: 500 added                           DENY
+//  14. create kofi_requests/U1 as U1 with { kind: 'claim', status: 'pending', at: request.time, txid: 'abcd-1234-efgh', email: 'a@b.co' }
+//                                                                                                       ALLOW

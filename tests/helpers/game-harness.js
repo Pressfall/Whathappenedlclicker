@@ -14,7 +14,7 @@ const vm = require('vm');
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/clan-levels.js', 'core/clan-events.js', 'core/clan-roles.js', 'core/gear.js', 'core/world-bridge.js', 'core/challenges.js', 'core/premium-config.js', 'core/kofi.js', 'core/premium.js', 'core/world-gods.js', 'core/world-crew.js', 'core/renown.js', 'core/world-guilds.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'clan-game.js', 'specials.js', 'items.js', 'gear-panel.js', 'renown-panel.js', 'challenges-panel.js', 'premium.js', 'premium-panel.js', 'guide.js', 'save-tools.js'];
+const SCRIPTS = ['core/calc.js', 'core/save.js', 'core/progress.js', 'core/guide.js', 'core/clan-buffs.js', 'core/clan-levels.js', 'core/clan-events.js', 'core/clan-roles.js', 'core/name-colors.js', 'core/gear.js', 'core/world-bridge.js', 'core/challenges.js', 'core/premium-config.js', 'core/kofi.js', 'core/premium.js', 'core/world-gods.js', 'core/world-crew.js', 'core/renown.js', 'core/world-guilds.js', 'followers-data.js', 'achievements-data.js', 'main.js', 'clan-game.js', 'specials.js', 'items.js', 'gear-panel.js', 'renown-panel.js', 'challenges-panel.js', 'premium.js', 'premium-panel.js', 'guide.js', 'save-tools.js'];
 
 const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 let cache = null;
@@ -35,10 +35,11 @@ function sources() {
  * @param {boolean} [opts.confirm]  what window.confirm answers (default true)
  * @param {Function} [opts.beforeInit]  called with the window once all scripts are loaded, before the game reads its save
  * @param {boolean} [opts.noRenown]  leave Renown's CPS and click boost out (for tests that pin other exact numbers)
+ * @param {string} [opts.url]  the page's address (default http://localhost/)
  */
 function loadGame(opts = {}) {
     const { html, scripts } = sources();
-    const dom = new JSDOM(html, { url: 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: false });
+    const dom = new JSDOM(html, { url: opts.url || 'http://localhost/', runScripts: 'outside-only', pretendToBeVisual: false });
     const w = dom.window;
     const ctx = dom.getInternalVMContext();
 

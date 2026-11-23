@@ -84,6 +84,19 @@
         { id: 'cloud_silk', name: 'Cloud Silk', color: '#f2f6ff', icon: '☁️', sell: 55, kind: 'part' },
         { id: 'seraph_feather', name: 'Seraph Feather', color: '#fff6d0', icon: '🕊️', sell: 85, kind: 'part' },
         { id: 'aether_core', name: 'Aether Core', color: '#b48bff', icon: '🔮', sell: 140, kind: 'part' },
+        // The Neon Arcade (past Vrill, for Starmetal gear): its own wood, ore and scrap for the Arcade Set (SETS), and the
+        // add-ins (POWERUPS) that go into any craft at the Forge, Workbench or Rune Altar
+        { id: 'cabinet_panel', name: 'Cabinet Panel', color: '#7b4fd6', icon: '🪵', sell: 60, kind: 'raw' },
+        { id: 'neon_crystal', name: 'Neon Crystal', color: '#ff4fd8', icon: '💗', sell: 190, kind: 'raw' },
+        { id: 'circuit_scrap', name: 'Circuit Scrap', color: '#4fe08a', icon: '🔌', sell: 70, kind: 'raw' },
+        { id: 'arcade_token', name: 'Arcade Token', color: '#f8b800', icon: '🪙', sell: 20, kind: 'boost' },
+        { id: 'plushie', name: 'Prize Plushie', color: '#ff9fc4', icon: '🧸', sell: 90, kind: 'part' },
+        { id: 'claw_grip', name: 'Claw Grip', color: '#c0c8d8', icon: '🦾', sell: 95, kind: 'part' },
+        { id: 'laser_lens', name: 'Laser Lens', color: '#ff3d5e', icon: '🔴', sell: 100, kind: 'part' },
+        { id: 'pixel_dust', name: 'Pixel Dust', color: '#5ee7ff', icon: '✨', sell: 80, kind: 'part' },
+        { id: 'joystick', name: 'Golden Stick', color: '#ffd24d', icon: '🕹️', sell: 160, kind: 'part' },
+        { id: 'power_chip', name: 'Power Chip', color: '#3dff9a', icon: '💾', sell: 150, kind: 'boost' },
+        { id: 'glitch_cartridge', name: 'Glitch Cartridge', color: '#b07dff', icon: '📼', sell: 400, kind: 'boost' },
         // processed (instant recipes)
         { id: 'copper_bar', name: 'Copper Bar', color: '#e08a50', icon: '🟧', sell: 6, kind: 'bar' },
         { id: 'iron_bar', name: 'Iron Bar', color: '#c8c3bb', icon: '⬜', sell: 13, kind: 'bar' },
@@ -104,6 +117,8 @@
         { id: 'adamant_bar', name: 'Adamant Bar', color: '#9aa8ff', icon: '🟦', sell: 330, kind: 'bar' },
         { id: 'soulsteel_bar', name: 'Soulsteel Bar', color: '#ff5f7a', icon: '🟥', sell: 490, kind: 'bar' },
         { id: 'starmetal_bar', name: 'Starmetal Bar', color: '#ffe98a', icon: '🟨', sell: 700, kind: 'bar' },
+        { id: 'neon_alloy', name: 'Neon Alloy', color: '#ff4fd8', icon: '🟪', sell: 900, kind: 'bar' },
+        { id: 'cabinet_plank', name: 'Cabinet Board', color: '#9a6ff0', icon: '🟪', sell: 130, kind: 'plank' },
         // boss keys: open the next zone's gate (never sold, never dropped on death)
         { id: 'sigil_greenwood', name: 'Verdant Sigil', color: '#5fd068', icon: '🍃', sell: 0, kind: 'key' },
         { id: 'sigil_mines', name: 'Gilded Sigil', color: '#ffcf4a', icon: '⚜️', sell: 0, kind: 'key' },
@@ -113,11 +128,13 @@
         { id: 'sigil_storm', name: 'Storm Sigil', color: '#c7d4ff', icon: '🌩️', sell: 0, kind: 'key' },
         { id: 'sigil_ruins', name: 'Ashen Sigil', color: '#ff5f7a', icon: '🕯️', sell: 0, kind: 'key' },
         { id: 'sigil_sky', name: 'Celestial Sigil', color: '#ffe98a', icon: '✨', sell: 0, kind: 'key' },
+        { id: 'sigil_arcade', name: 'High Score Sigil', color: '#f8b800', icon: '🏆', sell: 0, kind: 'key' },
         // Ward Keys (Rune Altar): each wakes one ward stone in its zone, and is spent only when the ward breaks
         { id: 'key_coast', name: 'Tide Key', color: '#3fa9f5', icon: '🗝️', sell: 0, kind: 'key' },
         { id: 'key_storm', name: 'Storm Key', color: '#c7d4ff', icon: '🗝️', sell: 0, kind: 'key' },
         { id: 'key_ruins', name: 'Ash Key', color: '#ff7b3a', icon: '🗝️', sell: 0, kind: 'key' },
         { id: 'key_sky', name: 'Star Key', color: '#ffe98a', icon: '🗝️', sell: 0, kind: 'key' },
+        { id: 'key_arcade', name: 'Coin Key', color: '#f8b800', icon: '🗝️', sell: 0, kind: 'key' },
         // boss trophies: each boss's own drops. They sell well; the Hall of Gods asks for the common one of each boss.
         { id: 'heartwood_seed', name: 'Heartwood Seed', color: '#7fd36b', icon: '🌰', sell: 160, kind: 'trophy' },
         { id: 'verdant_crown', name: 'Verdant Crown', color: '#4fd27a', icon: '👑', sell: 1200, kind: 'trophy' },
@@ -135,6 +152,8 @@
         { id: 'crown_of_ash', name: 'Crown of Ash', color: '#7d7570', icon: '👑', sell: 20000, kind: 'trophy' },
         { id: 'vrill_eye', name: 'Eye of Vrill', color: '#3dffb4', icon: '👁️', sell: 4000, kind: 'trophy' },
         { id: 'halo_of_vrill', name: 'Halo of Vrill', color: '#ffe98a', icon: '😇', sell: 30000, kind: 'trophy' },
+        { id: 'golden_cart', name: 'Golden Cartridge', color: '#f8b800', icon: '📀', sell: 5000, kind: 'trophy' },
+        { id: 'pixel_crown', name: 'Pixel Crown', color: '#ff4fd8', icon: '👾', sell: 40000, kind: 'trophy' },
         // Frozen WH's rarest drop, for the hidden god and the hidden room: can't be sold, never lost on death
         { id: 'hidden_shard', name: 'Shard of the Hidden', color: '#3dffb4', icon: '🌑', sell: 0, kind: 'key' },
         // the Sunken Vault's (core/world-dungeons.js): the Drowned King's first kill of each week, for the Vault Keeper's shop
@@ -189,7 +208,8 @@
         // mythic: once in a very long while, from the deepest stone
         ['heartstone', 'Heartstone', 'might', 4, '#ff3b6b'], ['chrono_shard', 'Chrono Shard', 'swift', 4, '#7df9ff'],
         ['abyssal_core', 'Abyssal Core', 'ward', 4, '#2f3cff'], ['starseed', 'Starseed', 'fortune', 4, '#fff2a8'],
-        // the hidden dungeons' own: one rare essence each (room chests) and its boss's Heart (epic, the first kill each week)
+        // the hidden dungeons' own: one rare essence each (room and boss chests) and its boss's Heart (epic: its boosted first kill
+        // each week, and now and then a later one)
         ['rootsap', 'Rootsap', 'vigor', 2, '#7bd65a'], ['heart_roots', 'Heart of the Roots', 'vigor', 3, '#4fe36a'],
         ['gilded_vein', 'Gilded Vein', 'fortune', 2, '#ffcf4a'], ['heart_deep', 'Heart of the Deep', 'fortune', 3, '#ffb82e'],
         ['cinder_ash', 'Cinder Ash', 'ember', 2, '#ff6a3a'], ['heart_crypt', 'Heart of the Crypt', 'ember', 3, '#ff3d1f'],
@@ -198,6 +218,7 @@
         ['thunder_slag', 'Thunder Slag', 'swift', 2, '#9fb4ff'], ['heart_forge', 'Heart of the Forge', 'swift', 3, '#c7d4ff'],
         ['ink_of_ages', 'Ink of Ages', 'keen', 2, '#c9a2ff'], ['heart_archive', 'Heart of the Archive', 'keen', 3, '#b07dff'],
         ['starwater', 'Starwater', 'might', 2, '#fff2a8'], ['heart_cistern', 'Heart of the Cistern', 'might', 3, '#ffe98a'],
+        ['pixel_shard', 'Pixel Shard', 'fortune', 2, '#5ee7ff'], ['heart_bonus', 'Heart of the Bonus Stage', 'fortune', 3, '#f8b800'],
     ];
     for (const [id, name, asp, rar, color] of ESSENCES) MATERIALS.push({ id, name, color, icon: ASPECTS[asp].icon, sell: 0, kind: 'essence', asp, rar });
     const ESSENCE_IDS = ESSENCES.map(e => e[0]);
@@ -225,6 +246,8 @@
         soulsteel: [['heartwood_amber', 0.012], ['lifebloom_jade', 0.0015], ['void_eye', 0.001]],
         celestite: [['glacial_core', 0.012], ['winter_heart', 0.0015], ['chrono_shard', 0.0003]],
         starmetal: [['clover_emerald', 0.015], ['fate_stone', 0.002], ['starseed', 0.0004]],
+        scrap_heap: [['copper_spark', 0.04], ['quicksilver', 0.01], ['storm_opal', 0.0012]],
+        neon_vein: [['star_sapphire', 0.015], ['fate_stone', 0.0022], ['chrono_shard', 0.0004]],
     };
 
     // consumables (kept in state.cons)
@@ -272,6 +295,21 @@
         // bow: press, pull the mouse away from the target, release
         bow: { name: 'Bow', k: 30, wMax: 26, aMax: 400, fullPull: 120, drawRate: 2.5, minDraw: 0.2, speedMin: 320, speedMax: 680,
             life: 0.9, steadyFrom: 0.15, steadyTo: 0.6, steadyMult: 1.35, shakeAfter: 1.5, spreadDeg: 6, shakeDeg: 10, moveMult: 0.6, dmg: 1, kb: 90 },
+        // revolver (core/world-combat.js gun*): a click fires down the barrel at once; each shot kicks the barrel off target
+        // (recoil rad/s on its turn) and the aim physics swing it back. A shot once the barrel has settled (settle s since the
+        // last one, turning slower than steadyOmega) is Steady: steadyMult. A single shot needs the hammer cocked (cock s after the
+        // last), and quick shots bloom (bloomBase + bloom rad per shot of heat, cooling one per settle s). Holding the trigger
+        // past fanAfter s fans the hammer (faster than any click):
+        // a shot every fanGap s, fanSpread rad either way, fanMult damage. rounds in the cylinder; with it empty the whole
+        // cylinder spins in (reloadEmpty s); otherwise, reloadIdle s after the last shot, a round slips back in every
+        // reloadRound s (the Gunslinger's reload multiplies these). Bullets: speed px/s for life s, r px; they bounce off walls
+        // `bounce` times (bounceMult damage each time) and lose damage with distance: full to falloffFrom px, falloffMin of it
+        // at falloffTo. No arrows to make, and no slowing down while you shoot. dmg: x the sword's damage of its tier.
+        // (2026-11-20: slowed on request: cock 0.18 -> 0.3, settle 0.35 -> 0.42, fanGap 0.08 -> 0.12, reloads about 60% longer;
+        // dmg 0.8 -> 1.0 a shot so Steady shooting still matches the bow, tests/world-gun.test.js)
+        gun: { name: 'Revolver', k: 32, wMax: 24, aMax: 420, dmg: 1.0, rounds: 6, recoil: 7, settle: 0.42, steadyOmega: 2.5, steadyMult: 1.3, cock: 0.3, bloomBase: 0.02, bloom: 0.1,
+            fanAfter: 0.25, fanGap: 0.12, fanSpread: 0.22, fanMult: 0.7, reloadEmpty: 1.6, reloadIdle: 0.8, reloadRound: 0.5,
+            speed: 1350, life: 0.5, r: 3, bounce: 1, bounceMult: 0.8, falloffFrom: 260, falloffTo: 560, falloffMin: 0.6, kb: 70 },
     };
     const COMBAT = {
         combo: { window: 0.7, max: 3, step: 0.1 },
@@ -311,6 +349,18 @@
         prospector: { name: 'Prospector', desc: '+15% ore, wood and rubies', slots: ['tool', 'armor'] },
         lucky: { name: 'Lucky', desc: '+10% drop luck', slots: ['armor'] },
         sturdy: { name: 'Sturdy', desc: '+10% armor', slots: ['armor'] },
+        // the Neon Arcade's (arcade: never rolled by a craft on its own; a Glitch Cartridge add-in or an Arcade Set piece gives one)
+        turbo: { name: 'Turbo', desc: '+10% swing speed and +8% swing acceleration', slots: ['weapon', 'tool'], arcade: true },
+        highscore: { name: 'High-Score', desc: '+12% rubies', slots: ['tool', 'armor'], arcade: true },
+        glitched: { name: 'Glitched', desc: '4% chance to slip through a hit', slots: ['armor'], arcade: true },
+    };
+    // Add-ins for a craft (the Neon Arcade's): put in with the materials at the Forge, Workbench or Rune Altar, and used up
+    // when the craft starts (given back if it is called off, like the materials). score: added to the minigame's score;
+    // affix: at least that many affixes from the usual ones; arcade: one of the arcade-only affixes. on: what kinds of craft take it.
+    const POWERUPS = {
+        arcade_token: { name: 'Bonus Round', desc: '+6 to the craft\'s score (never into Legendary: that has to be played)', score: 6, on: ['gear', 'reforge', 'box'] },
+        power_chip: { name: 'Power-Up', desc: 'At least one affix', affix: 1, on: ['gear', 'reforge'] },
+        glitch_cartridge: { name: 'Glitch', desc: 'An arcade-only affix: Turbo, High-Score or Glitched', arcade: 1, on: ['gear', 'reforge'] },
     };
 
     // Tier table. bar/plank: what that tier's gear is made of. extra: a monster part each tier's better pieces need.
@@ -354,6 +404,7 @@
             case 'dagger': return { station: 'forge', in: { [T.bar]: 2, leather: 1 } };
             case 'spear': return { station: 'workbench', in: { [T.plank]: 3, [T.bar]: 1, ...extraFor(1) } };
             case 'bow': return { station: 'workbench', in: { [T.plank]: 4, string: 2, ...extraFor(1) } };
+            case 'gun': return { station: 'forge', in: { [T.bar]: 3, [T.plank]: 1, ...extraFor(1) } };
             case 'helmet': return { station: 'forge', in: { [T.bar]: 4 } };
             case 'chest': return { station: 'forge', in: { [T.bar]: 7, leather: 2, ...extraFor(2) } };
             case 'boots': return { station: 'workbench', in: { leather: 3, [T.bar]: 2 } };
@@ -361,7 +412,7 @@
         }
         return null;
     }
-    const WEAPON_NAMES = { sword: 'Sword', axe: 'Axe', pickaxe: 'Pickaxe', dagger: 'Dagger', spear: 'Spear', bow: 'Bow' };
+    const WEAPON_NAMES = { sword: 'Sword', axe: 'Axe', pickaxe: 'Pickaxe', dagger: 'Dagger', spear: 'Spear', bow: 'Bow', gun: 'Revolver' };
     // ---------------- staffs ----------------
     // Each kind of staff (its gear has magic: id) casts its own spells. users: the classes that can cast with it; in anyone
     // else's hands it only has its weak blows. mat: what each tier (1-5) adds to the Rune Altar recipe.
@@ -470,6 +521,37 @@
     ];
     for (const r of RINGS) GEAR.push(Object.assign({ slot: 'ring', cls: 'ring', armor: 0, hp: r.hp || 0 }, r));
     for (const g of GEAR) if (g.recipe) g.recipe.fee = TIERS[g.tier].fee || 0;
+    // ---------------- the Arcade Set (the Neon Arcade) ----------------
+    // Starmetal-tier gear (tier 9), a little stronger than Starmetal, made from Neon Alloy and the arcade's parts. zone: kept
+    // out of the crafting lists until that zone is open. Every piece but the shield (shields take no affixes) is made with
+    // one arcade-only affix (AFFIXES arcade).
+    // The four worn pieces (pieces) add the set's bonuses as more of them are on: rubies, more health, then an Extra Life
+    // (the blow that would knock you out leaves you on a quarter of your health; once every extraLife s).
+    const SETS = {
+        arcade: { name: 'Arcade Set', color: '#ff4fd8', zone: 'arcade', pieces: ['arcade_visor', 'cabinet_plate', 'turbo_sneakers', 'coin_op_shield'],
+            bonuses: [
+                { n: 2, name: 'Insert Coin', desc: '+15% rubies', bonus: { rubies: 0.15 } },
+                { n: 3, name: 'Power-Up', desc: '+12% max health', bonus: { hpMult: 0.12 } },
+                { n: 4, name: 'Extra Life', desc: 'a blow that would knock you out leaves you on a quarter of your health instead, once every 3 minutes', bonus: { extraLife: 180 } },
+            ] },
+    };
+    {
+        const T9 = TIERS[9], up = 1.12, fee = 26000;
+        const arcade = (o) => GEAR.push(Object.assign({ tier: 9, set: 'arcade', zone: 'arcade', burn: false, chill: false }, o, { recipe: Object.assign({ fee }, o.recipe) }));
+        const weapon = (id, name, cls, station, input) => arcade({ id, name, slot: 'weapon', cls, dmg: Math.round(T9.swordDmg * WEAPON_CLASSES[cls].dmg * up * 10) / 10, tool: 0, recipe: { station, in: input } });
+        weapon('pixel_blade', 'Pixel Blade', 'sword', 'forge', { neon_alloy: 4, cabinet_plank: 2, claw_grip: 2 });
+        weapon('glitch_knife', 'Glitch Knife', 'dagger', 'forge', { neon_alloy: 3, leather: 2, pixel_dust: 3 });
+        weapon('joystick_lance', 'Joystick Lance', 'spear', 'workbench', { cabinet_plank: 6, neon_alloy: 2, joystick: 1 });
+        weapon('laser_bow', 'Laser Bow', 'bow', 'workbench', { cabinet_plank: 7, string: 3, laser_lens: 3 });
+        weapon('ray_gun', 'Ray Gun', 'gun', 'forge', { neon_alloy: 3, laser_lens: 2, circuit_scrap: 4 });
+        const armor = (id, name, slot, station, input) => arcade({ id, name, slot, cls: slot, armor: Math.round(T9.armor * ARMOR_SPLIT[slot] * 1.1), hp: Math.round(T9.hp * ARMOR_SPLIT[slot] * 1.1),
+            speed: slot === 'boots' ? 0.26 : 0, fireResist: 0.3, recipe: { station, in: input } });
+        armor('arcade_visor', 'Arcade Visor', 'helmet', 'forge', { neon_alloy: 5, laser_lens: 2 });
+        armor('cabinet_plate', 'Cabinet Plate', 'chest', 'forge', { neon_alloy: 9, leather: 4, claw_grip: 3 });
+        armor('turbo_sneakers', 'Turbo Sneakers', 'boots', 'workbench', { leather: 6, neon_alloy: 3, pixel_dust: 3 });
+        arcade({ id: 'coin_op_shield', name: 'Coin-Op Shield', slot: 'offhand', cls: 'shield', armor: 0, hp: 0, block: 0.92, arc: 145, stab: 3.6,
+            recipe: { station: 'forge', in: { neon_alloy: 5, cabinet_plank: 3, arcade_token: 12 } } });
+    }
     const GEAR_BY_ID = Object.fromEntries(GEAR.map(g => [g.id, g]));
     const STARTER_KIT = ['sword_0', 'pickaxe_0', 'axe_0'];
     const STARTER_OFFHAND = 'shield_0';
@@ -488,6 +570,9 @@
         { id: 'adamant_bar', station: 'forge', in: { adamant_ore: 6, storm_glass: 2, volt_core: 1 }, out: { adamant_bar: 2 } },
         { id: 'soulsteel_bar', station: 'forge', in: { soulsteel_ore: 6, ash_stone: 2, ghoul_fang: 1 }, out: { soulsteel_bar: 2 } },
         { id: 'starmetal_bar', station: 'forge', in: { starmetal_ore: 6, celestite: 2, cloud_silk: 1 }, out: { starmetal_bar: 2 } },
+        // the Neon Arcade's alloy: Starmetal run through with neon (for the Arcade Set)
+        { id: 'neon_alloy', station: 'forge', in: { starmetal_bar: 1, neon_crystal: 3, circuit_scrap: 2 }, out: { neon_alloy: 1 } },
+        { id: 'cabinet_plank', station: 'workbench', in: { cabinet_panel: 2 }, out: { cabinet_plank: 1 } },
         { id: 'oak_plank', station: 'workbench', in: { oak_log: 2 }, out: { oak_plank: 1 } },
         { id: 'ashwood_plank', station: 'workbench', in: { ashwood_log: 2 }, out: { ashwood_plank: 1 } },
         { id: 'frostpine_plank', station: 'workbench', in: { frostpine_log: 2 }, out: { frostpine_plank: 1 } },
@@ -508,6 +593,10 @@
         { id: 'key_storm', station: 'altar', in: { roc_feather: 2, storm_glass: 6, volt_core: 2 }, out: { key_storm: 1 } },
         { id: 'key_ruins', station: 'altar', in: { cinder_heart: 2, ash_stone: 6, knight_crest: 2 }, out: { key_ruins: 1 } },
         { id: 'key_sky', station: 'altar', in: { aether_core: 2, celestite: 6, seraph_feather: 2 }, out: { key_sky: 1 } },
+        { id: 'key_arcade', station: 'altar', in: { joystick: 2, circuit_scrap: 6, laser_lens: 2 }, out: { key_arcade: 1 } },
+        // the arcade's add-ins, made from its scrap (they also drop: tokens everywhere, chips from the Prize Crane)
+        { id: 'power_chip', station: 'altar', in: { circuit_scrap: 6, neon_crystal: 1, laser_lens: 1 }, out: { power_chip: 1 } },
+        { id: 'glitch_cartridge', station: 'altar', in: { power_chip: 3, pixel_dust: 4, plushie: 2 }, out: { glitch_cartridge: 1 } },
     ];
     const BASIC_BY_ID = Object.fromEntries(BASIC_RECIPES.map(r => [r.id, r]));
 
@@ -572,6 +661,12 @@
         cloud_puff: { name: 'Cloud Tuft', tool: 'hand', tier: 0, work: 1.6, r: 11, drops: [['cloud_silk', 1, 1, 1]], respawn: 480, color: '#f2f6ff' },
         celestite: { name: 'Celestite', tool: 'pickaxe', tier: 8, work: 18, r: 14, solid: true, drops: [['celestite', 1, 2, 1], ['star_fragment', 1, 1, 0.03]], respawn: 600, color: '#a8e6ff' },
         starmetal: { name: 'Starmetal Ore', tool: 'pickaxe', tier: 9, work: 21, r: 15, solid: true, drops: [['starmetal_ore', 1, 2, 1]], respawn: 900, color: '#ffe98a' },
+        // the Neon Arcade: broken cabinets (wood, for the Skywood axe), scrap heaps and neon (the Starmetal pickaxe), and prize
+        // bins anyone can rummage through (tokens: the Bonus Round add-in)
+        old_cabinet: { name: 'Broken Cabinet', tool: 'axe', tier: 9, work: 19, r: 16, solid: true, drops: [['cabinet_panel', 1, 2, 1], ['circuit_scrap', 1, 1, 0.25]], respawn: 600, color: '#7b4fd6', trunk: '#2a1f44' },
+        scrap_heap: { name: 'Scrap Heap', tool: 'pickaxe', tier: 9, work: 20, r: 15, solid: true, drops: [['circuit_scrap', 1, 2, 1], ['arcade_token', 1, 3, 0.4]], respawn: 660, color: '#4fe08a' },
+        neon_vein: { name: 'Neon Vein', tool: 'pickaxe', tier: 10, work: 23, r: 14, solid: true, drops: [['neon_crystal', 1, 2, 1], ['star_fragment', 1, 1, 0.04]], respawn: 960, color: '#ff4fd8' },
+        prize_bin: { name: 'Prize Bin', tool: 'hand', tier: 0, work: 1.6, r: 12, drops: [['arcade_token', 2, 4, 1], ['plushie', 1, 1, 0.3], ['power_chip', 1, 1, 0.02]], respawn: 540, color: '#ff9fc4' },
     };
     const SAVED_RESPAWN_SEC = 150; // node timers this long or longer are saved, so reloading can't farm them
 
@@ -602,29 +697,37 @@
         // ---- the Far Reaches: sized for that zone's own gear (tier = zone tier + 1); one tier behind, they are a wall.
         // stun: a hit stuns you for that long. pull: a shot that hits drags you toward the shooter (px/s, for a moment).
         // Saltspray Coast
-        crawler: { name: 'Reef Crawler', hp: 600, dmg: 75, speed: 75, r: 18, armor: 60, shell: 0.3, color: '#c4734f', move: 'chase', attacks: [{ type: 'arc', range: 58, windup: 0.55, active: 0.12, cooldown: 1.4, arc: 1.6, reach: 66 }], rubies: [30, 50], drops: [['crawler_shell', 1, 1, 0.5], ['coral', 1, 2, 0.3]] },
-        drowned: { name: 'Drowned Sailor', hp: 670, dmg: 66, speed: 95, r: 14, color: '#6f8f86', move: 'chase', group: 2, attacks: [{ type: 'arc', range: 52, windup: 0.5, active: 0.12, cooldown: 1.3, arc: 1.75, reach: 58 }, { type: 'lunge', range: 140, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 420 }], rubies: [28, 45], drops: [['sea_salt', 1, 2, 0.5], ['bone', 1, 2, 0.4], ['pearl', 1, 1, 0.04]] },
-        siren: { name: 'Siren', hp: 500, dmg: 60, speed: 100, r: 13, color: '#62d2e8', move: 'kite', keep: [160, 250], attacks: [{ type: 'shoot', range: 320, windup: 0.5, active: 0.1, cooldown: 2.0, speed: 300, pr: 8, pull: 260 }], rubies: [32, 52], drops: [['siren_scale', 1, 1, 0.45], ['pearl', 1, 1, 0.05]] },
-        gull: { name: 'Storm Gull', hp: 280, dmg: 48, speed: 170, r: 10, color: '#e8eef2', move: 'erratic', group: 3, attacks: [{ type: 'lunge', range: 150, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 450 }], rubies: [15, 25], drops: [['sea_salt', 1, 1, 0.3], ['fiber', 1, 2, 0.3]] },
-        tidecaller: { name: 'Tidecaller', elite: true, hp: 4500, dmg: 110, speed: 70, r: 26, armor: 50, color: '#3fa9f5', move: 'chase', attacks: [{ type: 'slam', range: 90, windup: 0.85, active: 0.15, cooldown: 2.0, radius: 105 }, { type: 'ring', range: 280, windup: 0.8, active: 0.1, cooldown: 4.0, count: 12, speed: 230, pr: 9, pull: 120 }, { type: 'charge', range: 260, windup: 0.7, active: 0.6, cooldown: 4.5, speed: 400, stunOnWall: 1.5 }], rubies: [140, 220], drops: [['tide_essence', 1, 1, 0.55], ['coral', 2, 3, 1], ['pearl', 1, 1, 0.25], ['crawler_shell', 1, 2, 0.6]] },
+        crawler: { name: 'Reef Crawler', hp: 470, dmg: 65, speed: 75, r: 18, armor: 60, shell: 0.3, color: '#c4734f', move: 'chase', attacks: [{ type: 'arc', range: 58, windup: 0.55, active: 0.12, cooldown: 1.4, arc: 1.6, reach: 66 }], rubies: [30, 50], drops: [['crawler_shell', 1, 1, 0.5], ['coral', 1, 2, 0.3]] },
+        drowned: { name: 'Drowned Sailor', hp: 450, dmg: 55, speed: 95, r: 14, color: '#6f8f86', move: 'chase', group: 2, attacks: [{ type: 'arc', range: 52, windup: 0.5, active: 0.12, cooldown: 1.3, arc: 1.75, reach: 58 }, { type: 'lunge', range: 140, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 420 }], rubies: [28, 45], drops: [['sea_salt', 1, 2, 0.5], ['bone', 1, 2, 0.4], ['pearl', 1, 1, 0.04]] },
+        siren: { name: 'Siren', hp: 450, dmg: 55, speed: 100, r: 13, color: '#62d2e8', move: 'kite', keep: [160, 250], attacks: [{ type: 'shoot', range: 320, windup: 0.5, active: 0.1, cooldown: 2.0, speed: 300, pr: 8, pull: 260 }], rubies: [32, 52], drops: [['siren_scale', 1, 1, 0.45], ['pearl', 1, 1, 0.05]] },
+        gull: { name: 'Storm Gull', hp: 250, dmg: 40, speed: 170, r: 10, color: '#e8eef2', move: 'erratic', group: 3, attacks: [{ type: 'lunge', range: 150, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 450 }], rubies: [15, 25], drops: [['sea_salt', 1, 1, 0.3], ['fiber', 1, 2, 0.3]] },
+        tidecaller: { name: 'Tidecaller', elite: true, hp: 3700, dmg: 80, speed: 70, r: 26, armor: 50, color: '#3fa9f5', move: 'chase', attacks: [{ type: 'slam', range: 90, windup: 0.85, active: 0.15, cooldown: 2.0, radius: 105 }, { type: 'ring', range: 280, windup: 0.8, active: 0.1, cooldown: 4.0, count: 12, speed: 230, pr: 9, pull: 120 }, { type: 'charge', range: 260, windup: 0.7, active: 0.6, cooldown: 4.5, speed: 400, stunOnWall: 1.5 }], rubies: [140, 220], drops: [['tide_essence', 1, 1, 0.55], ['coral', 2, 3, 1], ['pearl', 1, 1, 0.25], ['crawler_shell', 1, 2, 0.6]] },
         // Stormspire Heights
         hawk: { name: 'Thunder Hawk', hp: 460, dmg: 90, speed: 175, r: 12, color: '#a7b4d8', move: 'erratic', attacks: [{ type: 'lunge', range: 160, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 480 }], rubies: [40, 70], drops: [['storm_glass', 1, 1, 0.25], ['fiber', 1, 2, 0.4]] },
         ram: { name: 'Storm Ram', hp: 900, dmg: 125, speed: 105, r: 17, armor: 60, color: '#d8c6a0', move: 'chase', attacks: [{ type: 'charge', range: 240, windup: 0.6, active: 0.55, cooldown: 2.4, speed: 470, stunOnWall: 1.5 }, { type: 'arc', range: 56, windup: 0.5, active: 0.12, cooldown: 1.5, arc: 1.4, reach: 62 }], rubies: [55, 90], drops: [['ram_horn', 1, 1, 0.5], ['boar_hide', 1, 2, 0.4]] },
         wisp: { name: 'Static Wisp', hp: 620, dmg: 95, speed: 115, r: 12, color: '#ffe66b', move: 'kite', keep: [170, 260], attacks: [{ type: 'shoot', range: 330, windup: 0.45, active: 0.1, cooldown: 1.9, speed: 340, pr: 7, stun: 0.5 }], rubies: [50, 85], drops: [['volt_core', 1, 1, 0.35]] },
-        sentinel: { name: 'Stone Sentinel', hp: 840, dmg: 130, speed: 55, r: 22, armor: 110, color: '#8a8f9c', move: 'chase', attacks: [{ type: 'slam', range: 75, windup: 1.0, active: 0.15, cooldown: 2.2, radius: 80 }, { type: 'ring', range: 260, windup: 0.8, active: 0.1, cooldown: 4.5, count: 8, speed: 220, pr: 7, stun: 0.3 }], rubies: [60, 100], drops: [['volt_core', 1, 1, 0.4], ['storm_glass', 1, 2, 0.5], ['adamant_ore', 1, 1, 0.15]] },
-        roc: { name: 'Tempest Roc', elite: true, hp: 7000, dmg: 175, speed: 90, r: 26, armor: 40, color: '#c7d4ff', move: 'chase', attacks: [{ type: 'charge', range: 280, windup: 0.7, active: 0.6, cooldown: 3.5, speed: 500, stunOnWall: 1.5 }, { type: 'nova', range: 110, windup: 0.8, active: 0.15, cooldown: 3.0, radius: 120, stun: 0.6 }, { type: 'ring', range: 300, windup: 0.8, active: 0.1, cooldown: 4.5, count: 10, speed: 260, pr: 8 }], rubies: [220, 340], drops: [['roc_feather', 1, 1, 0.55], ['storm_glass', 2, 3, 1], ['volt_core', 1, 2, 0.6], ['adamant_ore', 1, 2, 0.5]] },
+        sentinel: { name: 'Stone Sentinel', hp: 730, dmg: 130, speed: 55, r: 22, armor: 110, color: '#8a8f9c', move: 'chase', attacks: [{ type: 'slam', range: 75, windup: 1.0, active: 0.15, cooldown: 2.2, radius: 80 }, { type: 'ring', range: 260, windup: 0.8, active: 0.1, cooldown: 4.5, count: 8, speed: 220, pr: 7, stun: 0.3 }], rubies: [60, 100], drops: [['volt_core', 1, 1, 0.4], ['storm_glass', 1, 2, 0.5], ['adamant_ore', 1, 1, 0.15]] },
+        roc: { name: 'Tempest Roc', elite: true, hp: 6100, dmg: 135, speed: 90, r: 26, armor: 40, color: '#c7d4ff', move: 'chase', attacks: [{ type: 'charge', range: 280, windup: 0.7, active: 0.6, cooldown: 3.5, speed: 500, stunOnWall: 1.5 }, { type: 'nova', range: 110, windup: 0.8, active: 0.15, cooldown: 3.0, radius: 120, stun: 0.6 }, { type: 'ring', range: 300, windup: 0.8, active: 0.1, cooldown: 4.5, count: 10, speed: 260, pr: 8 }], rubies: [220, 340], drops: [['roc_feather', 1, 1, 0.55], ['storm_glass', 2, 3, 1], ['volt_core', 1, 2, 0.6], ['adamant_ore', 1, 2, 0.5]] },
         // The Cinder Capital
-        ghoul: { name: 'Ash Ghoul', hp: 1080, dmg: 160, speed: 110, r: 14, color: '#9a9088', move: 'chase', group: 3, drain: 30, attacks: [{ type: 'arc', range: 52, windup: 0.45, active: 0.12, cooldown: 1.2, arc: 1.7, reach: 58 }, { type: 'lunge', range: 130, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 440 }], rubies: [70, 120], drops: [['ghoul_fang', 1, 1, 0.45], ['bone', 1, 2, 0.4]] },
-        knight: { name: 'Cinder Knight', hp: 1200, dmg: 200, speed: 85, r: 17, armor: 100, shell: 0.25, color: '#c9a34a', move: 'chase', attacks: [{ type: 'arc', range: 60, windup: 0.6, active: 0.12, cooldown: 1.5, arc: 1.6, reach: 66, burn: true }, { type: 'charge', range: 220, windup: 0.7, active: 0.5, cooldown: 4.0, speed: 420, stunOnWall: 1.2 }], rubies: [90, 150], drops: [['knight_crest', 1, 1, 0.4], ['soulsteel_ore', 1, 1, 0.12], ['ash_stone', 1, 1, 0.3]] },
-        rat: { name: 'Plague Rat', hp: 380, dmg: 110, speed: 160, r: 9, color: '#6b5a4f', move: 'erratic', group: 5, attacks: [{ type: 'lunge', range: 120, windup: 0.3, active: 0.25, cooldown: 1.3, speed: 420 }], rubies: [25, 45], drops: [['bone', 1, 1, 0.3], ['charred_log', 1, 1, 0.2]] },
+        ghoul: { name: 'Ash Ghoul', hp: 740, dmg: 125, speed: 110, r: 14, color: '#9a9088', move: 'chase', group: 3, drain: 30, attacks: [{ type: 'arc', range: 52, windup: 0.45, active: 0.12, cooldown: 1.2, arc: 1.7, reach: 58 }, { type: 'lunge', range: 130, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 440 }], rubies: [70, 120], drops: [['ghoul_fang', 1, 1, 0.45], ['bone', 1, 2, 0.4]] },
+        knight: { name: 'Cinder Knight', hp: 840, dmg: 170, speed: 85, r: 17, armor: 100, shell: 0.25, color: '#c9a34a', move: 'chase', attacks: [{ type: 'arc', range: 60, windup: 0.6, active: 0.12, cooldown: 1.5, arc: 1.6, reach: 66, burn: true }, { type: 'charge', range: 220, windup: 0.7, active: 0.5, cooldown: 4.0, speed: 420, stunOnWall: 1.2 }], rubies: [90, 150], drops: [['knight_crest', 1, 1, 0.4], ['soulsteel_ore', 1, 1, 0.12], ['ash_stone', 1, 1, 0.3]] },
+        rat: { name: 'Plague Rat', hp: 330, dmg: 75, speed: 160, r: 9, color: '#6b5a4f', move: 'erratic', group: 5, attacks: [{ type: 'lunge', range: 120, windup: 0.3, active: 0.25, cooldown: 1.3, speed: 420 }], rubies: [25, 45], drops: [['bone', 1, 1, 0.3], ['charred_log', 1, 1, 0.2]] },
         witch: { name: 'Pyre Witch', hp: 900, dmg: 170, speed: 105, r: 13, color: '#ff7b3a', move: 'kite', keep: [160, 250], blink: 5, burn: true, attacks: [{ type: 'shoot', range: 330, windup: 0.5, active: 0.1, cooldown: 1.7, speed: 320, pr: 8, burn: true }], rubies: [85, 140], drops: [['ash_stone', 1, 2, 0.4], ['ghoul_fang', 1, 1, 0.2], ['herb', 1, 2, 0.4]] },
-        colossus: { name: 'Ashen Colossus', elite: true, hp: 8000, dmg: 290, speed: 65, r: 30, armor: 80, color: '#7d7570', move: 'chase', burn: true, attacks: [{ type: 'slam', range: 95, windup: 0.9, active: 0.15, cooldown: 2.0, radius: 110, burn: true }, { type: 'cone', range: 170, windup: 0.8, active: 0.8, cooldown: 4.0, arc: 0.9, reach: 180, burn: true }, { type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 5.0, count: 7, gap: 42, radius: 22, burn: true }], rubies: [330, 500], drops: [['cinder_heart', 1, 1, 0.55], ['soulsteel_ore', 1, 2, 0.6], ['knight_crest', 1, 1, 0.5], ['ash_stone', 2, 3, 1]] },
+        colossus: { name: 'Ashen Colossus', elite: true, hp: 7200, dmg: 235, speed: 65, r: 30, armor: 80, color: '#7d7570', move: 'chase', burn: true, attacks: [{ type: 'slam', range: 95, windup: 0.9, active: 0.15, cooldown: 2.0, radius: 110, burn: true }, { type: 'cone', range: 170, windup: 0.8, active: 0.8, cooldown: 4.0, arc: 0.9, reach: 180, burn: true }, { type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 5.0, count: 7, gap: 42, radius: 22, burn: true }], rubies: [330, 500], drops: [['cinder_heart', 1, 1, 0.55], ['soulsteel_ore', 1, 2, 0.6], ['knight_crest', 1, 1, 0.5], ['ash_stone', 2, 3, 1]] },
         // Skyreach Isles
-        serpent: { name: 'Sky Serpent', hp: 1680, dmg: 280, speed: 175, r: 15, color: '#7fd4ff', move: 'flank', group: 2, attacks: [{ type: 'lunge', range: 130, windup: 0.35, active: 0.25, cooldown: 1.3, speed: 500 }], rubies: [110, 180], drops: [['cloud_silk', 1, 1, 0.35]] },
-        cloud_golem: { name: 'Cloud Golem', hp: 1440, dmg: 330, speed: 60, r: 23, armor: 120, color: '#e8eef8', move: 'chase', attacks: [{ type: 'slam', range: 80, windup: 0.95, active: 0.15, cooldown: 2.2, radius: 90 }, { type: 'ring', range: 260, windup: 0.8, active: 0.1, cooldown: 4.5, count: 10, speed: 230, pr: 8 }], rubies: [140, 220], drops: [['celestite', 1, 2, 0.5], ['starmetal_ore', 1, 1, 0.12], ['cloud_silk', 1, 1, 0.3]] },
+        serpent: { name: 'Sky Serpent', hp: 1470, dmg: 265, speed: 175, r: 15, color: '#7fd4ff', move: 'flank', group: 2, attacks: [{ type: 'lunge', range: 130, windup: 0.35, active: 0.25, cooldown: 1.3, speed: 500 }], rubies: [110, 180], drops: [['cloud_silk', 1, 1, 0.35]] },
+        cloud_golem: { name: 'Cloud Golem', hp: 1210, dmg: 320, speed: 60, r: 23, armor: 120, color: '#e8eef8', move: 'chase', attacks: [{ type: 'slam', range: 80, windup: 0.95, active: 0.15, cooldown: 2.2, radius: 90 }, { type: 'ring', range: 260, windup: 0.8, active: 0.1, cooldown: 4.5, count: 10, speed: 230, pr: 8 }], rubies: [140, 220], drops: [['celestite', 1, 2, 0.5], ['starmetal_ore', 1, 1, 0.12], ['cloud_silk', 1, 1, 0.3]] },
         seraph: { name: 'Seraph', hp: 1200, dmg: 270, speed: 110, r: 14, color: '#fff6d0', move: 'kite', keep: [180, 270], attacks: [{ type: 'shoot', range: 340, windup: 0.45, active: 0.1, cooldown: 1.8, speed: 360, pr: 8 }, { type: 'ring', range: 220, windup: 0.7, active: 0.1, cooldown: 5.0, count: 8, speed: 240, pr: 7 }], rubies: [130, 210], drops: [['seraph_feather', 1, 1, 0.45]] },
         harpy: { name: 'Harpy', hp: 780, dmg: 230, speed: 165, r: 12, color: '#c58bff', move: 'erratic', group: 3, attacks: [{ type: 'lunge', range: 150, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 470 }], rubies: [70, 120], drops: [['cloud_silk', 1, 1, 0.3], ['seraph_feather', 1, 1, 0.1]] },
-        warden: { name: 'Celestial Warden', elite: true, hp: 10000, dmg: 480, speed: 70, r: 30, armor: 100, color: '#ffe98a', move: 'chase', attacks: [{ type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 4.0, count: 7, gap: 42, radius: 22 }, { type: 'ring', range: 300, windup: 0.8, active: 0.1, cooldown: 4.5, count: 12, speed: 250, pr: 9 }, { type: 'charge', range: 280, windup: 0.7, active: 0.6, cooldown: 4.0, speed: 460, stunOnWall: 1.5 }], rubies: [450, 700], drops: [['aether_core', 1, 1, 0.55], ['celestite', 2, 3, 1], ['starmetal_ore', 1, 2, 0.6], ['seraph_feather', 1, 2, 0.5]] },
+        warden: { name: 'Celestial Warden', elite: true, hp: 9700, dmg: 420, speed: 70, r: 30, armor: 100, color: '#ffe98a', move: 'chase', attacks: [{ type: 'spikes', range: 340, windup: 0.8, active: 0.5, cooldown: 4.0, count: 7, gap: 42, radius: 22 }, { type: 'ring', range: 300, windup: 0.8, active: 0.1, cooldown: 4.5, count: 12, speed: 250, pr: 9 }, { type: 'charge', range: 280, windup: 0.7, active: 0.6, cooldown: 4.0, speed: 460, stunOnWall: 1.5 }], rubies: [450, 700], drops: [['aether_core', 1, 1, 0.55], ['celestite', 2, 3, 1], ['starmetal_ore', 1, 2, 0.6], ['seraph_feather', 1, 2, 0.5]] },
+        // The Neon Arcade (built for Starmetal gear, a step past the isles). claw: a grabber on a cable (a projectile) that
+        // drags whoever it catches pullReach px toward the machine. laser: a beam along a line, aimed during the first part of
+        // its windup, then fixed (step out of the line), blocked by walls; one hit per beam.
+        claw_machine: { name: 'Claw Machine', hp: 1150, dmg: 320, speed: 55, r: 21, armor: 130, color: '#ff6fb5', move: 'chase', attacks: [{ type: 'claw', range: 300, windup: 0.75, active: 0.1, cooldown: 4.0, speed: 560, pr: 10, pull: 620, pullReach: 240, dmg: 0.6 }, { type: 'slam', range: 70, windup: 0.8, active: 0.15, cooldown: 2.0, radius: 82 }], rubies: [150, 230], drops: [['claw_grip', 1, 1, 0.45], ['plushie', 1, 1, 0.25], ['arcade_token', 1, 3, 0.6]] },
+        cabinet: { name: 'Rogue Cabinet', hp: 1180, dmg: 325, speed: 70, r: 19, armor: 125, color: '#4fa8ff', move: 'kite', keep: [190, 300], attacks: [{ type: 'laser', range: 430, windup: 0.95, active: 0.45, cooldown: 3.2, len: 460, width: 16 }], rubies: [150, 230], drops: [['laser_lens', 1, 1, 0.45], ['circuit_scrap', 1, 1, 0.35]] },
+        glitchling: { name: 'Glitchling', hp: 950, dmg: 250, speed: 170, r: 12, color: '#5ee7ff', move: 'erratic', group: 2, attacks: [{ type: 'lunge', range: 150, windup: 0.3, active: 0.3, cooldown: 1.4, speed: 480 }], rubies: [80, 130], drops: [['pixel_dust', 1, 1, 0.35], ['arcade_token', 1, 1, 0.3]] },
+        muncher: { name: 'Token Muncher', hp: 870, dmg: 270, speed: 120, r: 15, armor: 90, color: '#f8b800', move: 'flank', group: 2, attacks: [{ type: 'arc', range: 56, windup: 0.45, active: 0.12, cooldown: 1.3, arc: 1.7, reach: 62 }, { type: 'lunge', range: 140, windup: 0.4, active: 0.3, cooldown: 3.0, speed: 460 }], rubies: [120, 190], drops: [['arcade_token', 2, 4, 0.8], ['circuit_scrap', 1, 1, 0.2]] },
+        crane: { name: 'Prize Crane', elite: true, hp: 9800, dmg: 445, speed: 65, r: 31, armor: 110, color: '#ff4fd8', move: 'chase', attacks: [{ type: 'claw', range: 340, windup: 0.7, active: 0.1, cooldown: 3.5, speed: 600, pr: 12, pull: 700, pullReach: 280, dmg: 0.7 }, { type: 'slam', range: 95, windup: 0.85, active: 0.15, cooldown: 2.2, radius: 110 }, { type: 'laser', range: 420, windup: 0.9, active: 0.45, cooldown: 4.5, len: 460, width: 20 }], rubies: [520, 800], drops: [['joystick', 1, 1, 0.55], ['neon_crystal', 2, 3, 1], ['claw_grip', 1, 2, 0.6], ['power_chip', 1, 1, 0.35]] },
         // the Forge's practice target (never spawns in zones)
         dummy: { name: 'Training Dummy', hp: 999999, dmg: 0, speed: 0, r: 16, color: '#c49a6c', move: 'still', attacks: [], rubies: [0, 0], drops: [], dummy: true },
     };
@@ -681,7 +784,7 @@
         // tide: a wide wave; whirlpool: drags you in, then bursts; lightning: strikes that stun; gust: shoves you away;
         // orbs: slow homing orbs that burst; starfall: strikes anywhere in the arena
         tidal: {
-            name: 'Tidal WH', zone: 'coast', face: 'mainimage/thumbs/silverwh.webp', hp: 26000, dmg: 105, r: 46, speed: 70, armor: 60, color: '#3fa9f5',
+            name: 'Tidal WH', zone: 'coast', face: 'mainimage/thumbs/silverwh.webp', hp: 17000, dmg: 75, r: 46, speed: 70, armor: 60, color: '#3fa9f5',
             phases: [
                 ['tide', 'ring', 'charge'],
                 ['tide', 'whirlpool', 'ring', 'summon'],
@@ -692,7 +795,7 @@
             drops: [['orichalcum_ore', 4, 6, 1], ['coral', 3, 5, 1], ['pearl', 1, 2, 0.6], ['tide_essence', 1, 2, 0.8], ['abyssal_pearl', 1, 1, 0.35], ['trident_of_tides', 1, 1, 0.04]],
         },
         tempest: {
-            name: 'Storm WH', zone: 'storm', face: 'mainimage/thumbs/platinumwh.webp', hp: 36000, dmg: 170, r: 46, speed: 75, armor: 80, color: '#c7d4ff',
+            name: 'Storm WH', zone: 'storm', face: 'mainimage/thumbs/platinumwh.webp', hp: 23000, dmg: 130, r: 46, speed: 75, armor: 80, color: '#c7d4ff',
             phases: [
                 ['lightning', 'ring', 'charge'],
                 ['lightning', 'gust', 'ring', 'clone'],
@@ -702,7 +805,7 @@
             drops: [['adamant_ore', 4, 6, 1], ['storm_glass', 3, 5, 1], ['volt_core', 2, 3, 1], ['roc_feather', 1, 2, 0.8], ['thunder_heart', 1, 1, 0.35], ['eye_of_the_storm', 1, 1, 0.04]],
         },
         void_wh: {
-            name: 'Void WH', zone: 'ruins', face: 'mainimage/thumbs/voidWH.webp', hp: 46000, dmg: 280, r: 46, speed: 70, armor: 100, color: '#b07dff',
+            name: 'Void WH', zone: 'ruins', face: 'mainimage/thumbs/voidWH.webp', hp: 33000, dmg: 230, r: 46, speed: 70, armor: 100, color: '#b07dff',
             phases: [
                 ['meteors', 'breath', 'orbs'],
                 ['meteors', 'orbs', 'summon', 'breath'],
@@ -713,7 +816,7 @@
             drops: [['soulsteel_ore', 4, 6, 1], ['ash_stone', 3, 5, 1], ['knight_crest', 2, 3, 1], ['cinder_heart', 1, 2, 0.8], ['void_ember', 1, 1, 0.35], ['crown_of_ash', 1, 1, 0.04]],
         },
         vrill: {
-            name: 'Vrill WH', zone: 'sky', face: 'mainimage/thumbs/whvrill.webp', hp: 62000, dmg: 470, r: 48, speed: 80, armor: 120, color: '#3dffb4',
+            name: 'Vrill WH', zone: 'sky', face: 'mainimage/thumbs/whvrill.webp', hp: 46000, dmg: 410, r: 48, speed: 80, armor: 120, color: '#3dffb4',
             phases: [
                 ['spikes', 'ring', 'gust'],
                 ['starfall', 'spikes', 'whirlpool', 'ring', 'clone'],
@@ -721,6 +824,18 @@
             ],
             sigil: 'sigil_sky', rubiesFirst: 7000, rubies: [1400, 2000], gems: [2, 3], golden: 0.15,
             drops: [['starmetal_ore', 4, 6, 1], ['celestite', 3, 5, 1], ['seraph_feather', 2, 3, 1], ['aether_core', 1, 2, 0.8], ['vrill_eye', 1, 1, 0.35], ['halo_of_vrill', 1, 1, 0.04]],
+        },
+        // the Neon Arcade's: the 8-Bit What Happened (the game's 8-Bit WH skin). lasers: a fan of beams; claw: a grab that
+        // drags you to it; pixels: blocks raining across the arena
+        wh8bit: {
+            name: '8-Bit WH', zone: 'arcade', face: 'mainimage/thumbs/wh8bit.webp', hp: 48000, dmg: 430, r: 50, speed: 84, armor: 135, color: '#f8b800',
+            phases: [
+                ['lasers', 'ring', 'claw'],
+                ['lasers', 'pixels', 'claw', 'ring', 'clone'],
+                ['lasers', 'pixels', 'claw', 'ring', 'clone', 'charge', 'spikes'],
+            ],
+            sigil: 'sigil_arcade', rubiesFirst: 9000, rubies: [1800, 2600], gems: [2, 3], golden: 0.15,
+            drops: [['neon_crystal', 4, 6, 1], ['circuit_scrap', 3, 5, 1], ['joystick', 1, 2, 1], ['power_chip', 1, 2, 0.8], ['glitch_cartridge', 1, 1, 0.5], ['golden_cart', 1, 1, 0.35], ['pixel_crown', 1, 1, 0.04]],
         },
         // ---- the hidden dungeons' bosses (core/world-dungeons.js), one deep under each zone. dungeon: which one (they pay
         // through world-logic.js dungeonBossLoot, no drops of their own); partyScale: health grows with the players in the fight
@@ -767,7 +882,7 @@
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
         },
         drowned_king: {
-            name: 'The Drowned King', zone: 'vault', face: 'mainimage/thumbs/whblackandwhite.webp', hp: 90000, dmg: 430, r: 52, speed: 74, armor: 115, color: '#5fd3e0',
+            name: 'The Drowned King', zone: 'vault', face: 'mainimage/thumbs/whblackandwhite.webp', hp: 65000, dmg: 430, r: 52, speed: 74, armor: 115, color: '#5fd3e0',
             phases: [
                 ['tide', 'ring', 'charge', 'burden'],
                 ['tide', 'whirlpool', 'lightning', 'summon', 'burden'],
@@ -777,7 +892,7 @@
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
         },
         forge_titan: {
-            name: 'The Stormforge Titan', zone: 'forge', face: 'mainimage/thumbs/WHboss.webp', hp: 100000, dmg: 195, r: 50, speed: 76, armor: 90, color: '#9fb4ff',
+            name: 'The Stormforge Titan', zone: 'forge', face: 'mainimage/thumbs/WHboss.webp', hp: 65000, dmg: 165, r: 50, speed: 76, armor: 90, color: '#9fb4ff',
             phases: [
                 ['lightning', 'ring', 'charge'],
                 ['lightning', 'gust', 'ring', 'clone', 'burden'],
@@ -787,7 +902,7 @@
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
         },
         archivist: {
-            name: 'The Ash Archivist', zone: 'archive', face: 'mainimage/thumbs/divinesomalian.webp', hp: 125000, dmg: 320, r: 48, speed: 70, armor: 110, color: '#c9a2ff',
+            name: 'The Ash Archivist', zone: 'archive', face: 'mainimage/thumbs/divinesomalian.webp', hp: 90000, dmg: 280, r: 48, speed: 70, armor: 110, color: '#c9a2ff',
             phases: [
                 ['meteors', 'breath', 'orbs'],
                 ['meteors', 'orbs', 'summon', 'burden'],
@@ -797,13 +912,23 @@
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
         },
         fallen_seraph: {
-            name: 'The Fallen Seraph', zone: 'cistern', face: 'mainimage/thumbs/divinewh.webp', hp: 160000, dmg: 540, r: 50, speed: 82, armor: 130, color: '#fff2a8',
+            name: 'The Fallen Seraph', zone: 'cistern', face: 'mainimage/thumbs/divinewh.webp', hp: 120000, dmg: 490, r: 50, speed: 82, armor: 130, color: '#fff2a8',
             phases: [
                 ['spikes', 'ring', 'gust'],
                 ['starfall', 'spikes', 'whirlpool', 'ring', 'burden'],
                 ['starfall', 'spikes', 'whirlpool', 'gust', 'ring', 'charge', 'burden'],
             ],
             dungeon: 'cistern', partyScale: true, enrage: { sec: 420, mult: 2.5 },
+            rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
+        },
+        glitch_king: {
+            name: 'The Glitch King', zone: 'bonus', face: 'mainimage/thumbs/WHhacker.webp', hp: 135000, dmg: 505, r: 50, speed: 84, armor: 150, color: '#5ee7ff',
+            phases: [
+                ['lasers', 'ring', 'claw'],
+                ['lasers', 'pixels', 'claw', 'ring', 'burden'],
+                ['lasers', 'pixels', 'claw', 'clone', 'charge', 'burden'],
+            ],
+            dungeon: 'bonus', partyScale: true, enrage: { sec: 420, mult: 2.5 },
             rubiesFirst: 0, rubies: [0, 0], gems: [0, 0], drops: [],
         },
     };
@@ -821,11 +946,14 @@
         mines: { rival: 'hacker', tier: 2, hp: 300, sweepHz: 1.7, react: 0.55, dodge: 0.18, rubies: 60, aimErr: 0.45, lead: 0.35 },
         ember: { rival: 'bread', tier: 3, hp: 620, sweepHz: 2.0, react: 0.3, dodge: 0.25, rubies: 120 },
         frost: { rival: 'lightning', tier: 4, hp: 1100, sweepHz: 2.3, react: 0.24, dodge: 0.32, rubies: 220 },
-        // in the Far Reaches they come back harder, with a name to match (title) and that zone's gear
-        coast: { rival: 'hacker', title: 'the Castaway', tier: 6, hp: 1900, sweepHz: 2.5, react: 0.22, dodge: 0.34, rubies: 380 },
-        storm: { rival: 'lightning', title: 'Stormborn', tier: 7, hp: 3000, sweepHz: 2.7, react: 0.2, dodge: 0.36, rubies: 600 },
-        ruins: { rival: 'bread', title: 'the Charred', tier: 8, hp: 4600, sweepHz: 2.9, react: 0.18, dodge: 0.38, rubies: 900 },
-        sky: { rival: 'chad', title: 'Ascendant', tier: 9, hp: 6800, sweepHz: 3.1, react: 0.16, dodge: 0.4, rubies: 1300 },
+        // in the Far Reaches they come back harder, with a name to match (title) and that zone's gear. hit: how much of their
+        // weapon's damage a blow does (0.9 if not given); the Castaway's bow is a sure shot, so it hits softer
+        coast: { rival: 'hacker', title: 'the Castaway', tier: 6, hp: 1600, sweepHz: 2.5, react: 0.22, dodge: 0.34, rubies: 380, hit: 0.65 },
+        storm: { rival: 'lightning', title: 'Stormborn', tier: 7, hp: 2400, sweepHz: 2.7, react: 0.2, dodge: 0.36, rubies: 600 },
+        ruins: { rival: 'bread', title: 'the Charred', tier: 8, hp: 3600, sweepHz: 2.9, react: 0.18, dodge: 0.38, rubies: 900 },
+        sky: { rival: 'chad', title: 'Ascendant', tier: 9, hp: 5200, sweepHz: 3.1, react: 0.16, dodge: 0.4, rubies: 1300 },
+        // past the isles there is no better metal, so the arcade's rival is the same tier, only quicker and tougher
+        arcade: { rival: 'hacker', title: 'the Glitched', tier: 9, hp: 5800, sweepHz: 3.3, react: 0.14, dodge: 0.44, rubies: 1800 },
     };
     const RIVAL_RESPAWN_SEC = 420;
     const RIVAL_WEAPON_DROP = 0.15;
@@ -867,7 +995,7 @@
             spawns: [['crawler', 3], ['drowned', 3], ['siren', 2], ['gull', 2]], density: 36, elite: 'tidecaller', elites: 3, boss: 'tidal',
             wards: 3, wardKey: 'key_coast', hpMult: 1, dmgMult: 1, rubyMult: 1 },
         storm: { id: 'storm', name: 'Stormspire Heights', gen: 'peaks', w: 116, h: 116, tier: 6, via: 'waystone', gate: 'sigil_coast', bg: 'bgimages/thumbs/stormbg.webp',
-            lightning: { every: [7, 12], r: 54, windup: 1.1, dmg: 0.3, stun: 0.4 },
+            lightning: { every: [7, 12], r: 54, windup: 1.1, dmg: 0.22, stun: 0.4 },
             palette: { floor: '#5d6470', floor2: '#565c68', path: '#7a7f8a', wall: '#2c3038', water: '#2f4f6e', hazard: null },
             nodes: { tree_thunder: 34, storm_glass: 24, adamant: 20, rock: 18, herb: 16 },
             spawns: [['hawk', 3], ['ram', 3], ['wisp', 2], ['sentinel', 2]], density: 36, elite: 'roc', elites: 3, boss: 'tempest',
@@ -883,9 +1011,20 @@
             nodes: { tree_sky: 30, celestite: 24, cloud_puff: 24, starmetal: 20, herb: 16 },
             spawns: [['serpent', 3], ['cloud_golem', 3], ['seraph', 2], ['harpy', 2]], density: 38, elite: 'warden', elites: 3, boss: 'vrill',
             wards: 4, wardKey: 'key_sky', hpMult: 1, dmgMult: 1, rubyMult: 1 },
+        // The Neon Arcade, past Vrill: no better metal than Starmetal waits here, so its monsters are a step harder for the
+        // same gear, and what it gives is for crafting: the Arcade Set (SETS) and the add-ins (POWERUPS). glitch: the zone's
+        // weather, blocks of pixels dropping out of the ceiling near you (every [min, max] s, r px, windup s, dmg share).
+        arcade: { id: 'arcade', name: 'The Neon Arcade', gen: 'arcade', w: 120, h: 120, tier: 9, via: 'waystone', gate: 'sigil_sky', bg: 'bgimages/thumbs/stormbg.webp',
+            glitch: { every: [8, 13], r: 46, windup: 1.0, dmg: 0.18 },
+            palette: { floor: '#2a1d45', floor2: '#33245a', path: '#4a2f7a', wall: '#120c22', water: null, hazard: null, neon: '#ff4fd8' },
+            nodes: { old_cabinet: 28, scrap_heap: 24, prize_bin: 22, neon_vein: 20, herb: 14 },
+            spawns: [['claw_machine', 3], ['cabinet', 4], ['glitchling', 1], ['muncher', 2]], density: 38, elite: 'crane', elites: 3, boss: 'wh8bit',
+            wards: 4, wardKey: 'key_arcade', hpMult: 1, dmgMult: 1, rubyMult: 1 },
         // The Arena, a building in town (world-gen.js buildArena): a safe lobby, the Pit (anyone in it fights anyone) and four
         // sealed rings for duels and team battles (core/world-arena.js). pvp: 'arena' means only those count. Online, not interior.
-        arena: { id: 'arena', name: 'The Arena', gen: 'arena', w: 64, h: 54, pvp: 'arena', sub: 'Duels, teams and the Pit', banner: 'Fight other players for glory',
+        // healMult: every heal here (potions, Second Wind, Sanctuary, lifesteal, regen) gives this share of its usual
+        // health, so a Max Potion or a Guardian's self-healing can't undo a fight (core/world-logic.js healMult)
+        arena: { id: 'arena', name: 'The Arena', gen: 'arena', w: 64, h: 54, pvp: 'arena', healMult: 0.25, sub: 'Duels, teams and the Pit', banner: 'Fight other players for glory',
             bg: 'bgimages/thumbs/stonghengebg.webp',
             palette: { floor: '#b89a6a', floor2: '#ae9061', path: '#8c7350', wall: '#4a3a2a', plaza: '#9c8460', water: '#2c6f9e' } },
         // The Proving Grounds, through a gate in the Arena: co-op waves of monsters, harder with every player who joins
@@ -900,14 +1039,14 @@
             sub: 'Sacred ground', banner: 'Something old is watching you',
             palette: { floor: '#16131d', floor2: '#1a1622', path: '#2b1a24', wall: '#0b090f', plaza: '#2b1a24' } },
     };
-    const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost', 'coast', 'storm', 'ruins', 'sky'];
+    const ZONE_ORDER = ['greenwood', 'mines', 'ember', 'frost', 'coast', 'storm', 'ruins', 'sky', 'arcade'];
 
     // ---------------- the hidden dungeons (core/world-dungeons.js) ----------------
     // One under each zone, its way in hidden somewhere off the roads (world-gen.js placeEntrance) until that zone's boss has
     // fallen to you. Alone or with a party of up to 4; each party gets its own copy online. Three rooms of the zone's monsters,
     // then the dungeon's boss. Ids are short lowercase words: a party member's zone must fit /^[a-z]{2,12}$/ (world-party.js).
     // rooms: [{ name, zones (whose monsters), count, elites, champion, hp }]. essence: its rare room-chest essence, heart: its
-    // boss's Heart (epic, the first kill each week). theme: the floor's colours.
+    // boss's Heart (epic: its boosted first kill each week, now and then a later one). theme: the floor's colours.
     const dRooms = (zone, names) => [
         { name: names[0], zones: [zone], count: 8, elites: 0, hp: 1.1 },
         { name: names[1], zones: [zone], count: 10, elites: 1, hp: 1.25 },
@@ -944,6 +1083,9 @@
         cistern: { zone: 'sky', name: 'The Star Cistern', boss: 'fallen_seraph', essence: 'starwater', heart: 'heart_cistern', color: '#fff2a8', icon: '✨',
             rooms: dRooms('sky', ['The Falling Steps', 'The Mirror Pool', 'The Starwell']),
             theme: { floor: '#2a2f55', floor2: '#262a4d', path: '#4a5088', wall: '#0f1230', plaza: '#363c6a', water: '#1d2a6a' } },
+        bonus: { zone: 'arcade', name: 'The Bonus Stage', boss: 'glitch_king', essence: 'pixel_shard', heart: 'heart_bonus', color: '#5ee7ff', icon: '👾',
+            rooms: dRooms('arcade', ['Level 1-1', 'The Warp Zone', 'The Final Level']),
+            theme: { floor: '#1f1838', floor2: '#271e46', path: '#3f2a6a', wall: '#0a0716', plaza: '#2f2452', water: '#1d2a6a' } },
     };
     // each dungeon is a zone of its own (world-gen.js buildDungeon): instance: one copy per party online (world-online.js);
     // coop: its rooms are fought like the Proving Grounds' waves (world-waves.js). Nobody can hurt another player there, and a
@@ -989,15 +1131,15 @@
             daily: ['daily_cull', 'daily_elite', 'daily_rival'] },
         marla: { name: 'Old Marla', role: 'Prospector', face: 'mainimage/thumbs/mobilemanskin.webp', color: '#8d6e4a', spot: [-7, 4],
             greet: 'Forty years I dug these hills. My back says no more, so you dig and I pay.',
-            chain: ['marla_trees', 'marla_copper', 'marla_mines', 'marla_shiny', 'marla_obsidian', 'marla_star', 'marla_pearls', 'marla_starmetal'],
+            chain: ['marla_trees', 'marla_copper', 'marla_mines', 'marla_shiny', 'marla_obsidian', 'marla_star', 'marla_pearls', 'marla_starmetal', 'marla_neon'],
             daily: ['daily_harvest', 'daily_herbs', 'daily_timber'] },
         hilde: { name: 'Hilde', role: 'Master Smith', face: 'mainimage/thumbs/platinumwh.webp', color: '#7c8a99', spot: [8, 4],
             greet: 'Anyone can hit metal. Hitting it right is the trick. Show me what your hands can do.',
-            chain: ['hilde_first', 'hilde_fine', 'hilde_crate', 'hilde_master', 'hilde_ember', 'hilde_legend', 'hilde_adamant', 'hilde_starmetal'],
+            chain: ['hilde_first', 'hilde_fine', 'hilde_crate', 'hilde_master', 'hilde_ember', 'hilde_legend', 'hilde_adamant', 'hilde_starmetal', 'hilde_arcade'],
             daily: ['daily_iron', 'daily_craft', 'daily_strings'] },
         vey: { name: 'Sister Vey', role: 'Keeper of the Hall of Gods', face: 'mainimage/thumbs/voidWH.webp', color: '#5b3f8c', spot: [-2, -8],
             greet: 'The old gods sleep in the Hall behind me. Feed them, and they will remember you.',
-            chain: ['vey_hall', 'vey_offering', 'vey_overgrown', 'vey_gilded', 'vey_inferno', 'vey_frozen', 'vey_tidal', 'vey_tempest', 'vey_void', 'vey_vrill'],
+            chain: ['vey_hall', 'vey_offering', 'vey_overgrown', 'vey_gilded', 'vey_inferno', 'vey_frozen', 'vey_tidal', 'vey_tempest', 'vey_void', 'vey_vrill', 'vey_8bit'],
             daily: ['daily_boss', 'daily_purge'],
             rumor: 'On quiet nights I hear something behind the far wall of the Hall. Not one of our gods. Something older, waiting for the right word.' },
         // at the camps out in the wilds
@@ -1034,6 +1176,11 @@
             greet: 'Mind the edges. The sky here has no floor, and the wind has no manners.',
             chain: ['ilya_harpies', 'ilya_silk', 'ilya_ward', 'ilya_warden', 'ilya_seals'], daily: ['ilya_daily'],
             rumor: 'They say Vrill WH was here before the islands. Four wards keep it in its garden, and every one of them is cracking.' },
+        // the Neon Arcade's camp: The Bass, from the game's upgrades, runs the prize counter
+        bass: { name: 'The Bass', role: 'Prize Counter Keeper', zone: 'arcade', face: 'mainimage/upgrades/thumbs/seabass.webp', color: '#3f86c8', spot: [3, -1],
+            greet: 'Welcome to the arcade, friend. Tickets at the counter, prizes on the wall, and the machines bite back now.',
+            chain: ['bass_claws', 'bass_tokens', 'bass_ward', 'bass_cabinets', 'bass_power', 'bass_crane', 'bass_seals'], daily: ['bass_daily'],
+            rumor: 'Four coin slots keep the high-score room shut. Behind it sits the 8-Bit WH, and it has never once lost a game.' },
         // the Arena Master, in the Arena's lobby (spot: tiles from the lobby's centre)
         varro: { name: 'Varro', role: 'Arena Master', zone: 'arena', face: 'mainimage/thumbs/divineassassin.webp', color: '#d4a24a', spot: [0, -2], arena: true,
             greet: 'Blood on the sand pays in glory. Fight in the Pit, challenge someone to a duel, or hold the Proving Grounds with friends.',
@@ -1097,6 +1244,7 @@
         marla_star: { title: 'A Fallen Star', text: 'They say stars fall on Frostveil and freeze inside the crystals. Find me one.', goal: { kind: 'deliver', mats: { star_fragment: 1, frost_crystal: 4 } }, need: { zone: 'frost' }, rubies: 2000 },
         marla_pearls: { title: 'Pearls and Green Metal', text: 'Pearls from the coast, and that green ore that glows in the surf. I want to see it before I die.', goal: { kind: 'deliver', mats: { pearl: 3, orichalcum_ore: 10 } }, need: { zone: 'coast' }, rubies: 3200 },
         marla_starmetal: { title: 'Metal from the Sky', text: 'Starmetal. The real thing, from the isles. Bring me some and I will finally retire. Again.', goal: { kind: 'deliver', mats: { starmetal_ore: 8, celestite: 6 } }, need: { zone: 'sky' }, rubies: 9000 },
+        marla_neon: { title: 'Out of Retirement', text: 'Retired, I said. Then I heard about a rock that glows pink. Neon crystal and some of that circuit scrap, and I will retire properly.', goal: { kind: 'deliver', mats: { neon_crystal: 8, circuit_scrap: 10 } }, need: { zone: 'arcade' }, rubies: 12000 },
         // Hilde: crafting
         hilde_first: { title: 'First Forging', text: 'Make a piece of gear at the Forge or the Workbench. Any piece will do. Let me see how you work.', goal: { kind: 'craft', n: 1 }, rubies: 80 },
         hilde_fine: { title: 'Fine Work', text: 'Now make it properly: a piece of Fine quality or better.', goal: { kind: 'craft', minScore: 55, n: 1 }, rubies: 160 },
@@ -1106,6 +1254,7 @@
         hilde_legend: { title: 'Legendary', text: 'Only a handful of smiths ever made a Legendary piece. Be one of them.', goal: { kind: 'craft', minScore: 98, n: 1 }, rubies: 2200 },
         hilde_adamant: { title: 'Adamant', text: 'Adamant does not bend for anyone. Forge me a piece of it, any piece, and show me it bent for you.', goal: { kind: 'craft', tier: 7, n: 1 }, need: { zone: 'storm' }, rubies: 5000 },
         hilde_starmetal: { title: 'The Last Metal', text: 'Starmetal is the end of the road for a smith. Make something from it, and you can teach me.', goal: { kind: 'craft', tier: 9, n: 1 }, need: { zone: 'sky' }, rubies: 12000 },
+        hilde_arcade: { title: 'Neon and Steel', text: 'I said Starmetal was the end of the road. Then someone brought me Neon Alloy. Make a piece of the Arcade Set and show me how.', goal: { kind: 'craft', set: 'arcade', n: 1 }, need: { zone: 'arcade' }, rubies: 16000 },
         // Sister Vey: the gods and the bosses
         vey_hall: { title: 'The Hall of Gods', text: 'Step inside the Hall behind me. Let the gods see your face.', goal: { kind: 'visit', zone: 'hall' }, rubies: 50 },
         vey_offering: { title: 'A First Offering', text: 'Raise any statue in the Hall by one level. The gods answer offerings, not prayers.', goal: { kind: 'god', n: 1 }, rubies: 200 },
@@ -1117,6 +1266,7 @@
         vey_tempest: { title: 'Calm the Storm', text: 'Storm WH holds the heights. The gods hate thunder they did not make.', goal: { kind: 'boss', boss: 'tempest', n: 1 }, need: { zone: 'storm' }, rubies: 6500 },
         vey_void: { title: 'The Fire That Burned a City', text: 'Void WH burned the old capital and sat down in the ashes. Stand it up again, then put it down for good.', goal: { kind: 'boss', boss: 'void_wh', n: 1 }, need: { zone: 'ruins' }, rubies: 9000 },
         vey_vrill: { title: 'Older Than the Gods', text: 'Vrill WH was old when our gods were young. The isles are its garden. Show it who tends them now.', goal: { kind: 'boss', boss: 'vrill', n: 1 }, need: { zone: 'sky' }, rubies: 14000 },
+        vey_8bit: { title: 'Game Over', text: 'When Vrill fell, the Waystone found a place the gods never made: all lights and noise. Something there wears our face in little squares. End its game.', goal: { kind: 'boss', boss: 'wh8bit', n: 1 }, need: { zone: 'arcade' }, rubies: 18000 },
         // daily quests
         daily_cull: { title: 'Cull the Wilds', text: 'Fifteen monsters, any zone. Keep the roads safe today.', goal: { kind: 'kill', n: 15 }, rubies: 90, daily: true },
         daily_elite: { title: 'Elite Hunt', text: 'Bring down one elite beast today.', goal: { kind: 'kill', elite: true, n: 1 }, rubies: 150, daily: true },
@@ -1182,6 +1332,15 @@
         ilya_warden: { title: 'Celestial Wardens', text: 'Two of the great wardens drift between the isles. Ground them.', goal: { kind: 'kill', elite: true, zone: 'sky', n: 2 }, need: { zone: 'sky' }, rubies: 10000 },
         ilya_seals: { title: 'The Garden Gate', text: 'All four wards. Then Vrill WH, at the heart of its garden.', goal: { kind: 'ward', zone: 'sky', n: 4 }, need: { zone: 'sky' }, rubies: 12000 },
         ilya_daily: { title: 'Read the Sky', text: 'Fifteen monsters on the isles today.', goal: { kind: 'kill', zone: 'sky', n: 15 }, need: { zone: 'sky' }, rubies: 200, daily: true },
+        // The Bass, at the Neon Arcade's prize counter
+        bass_claws: { title: 'Out of Order', text: 'The claw machines have stopped giving prizes and started taking customers. Unplug twelve of them.', goal: { kind: 'kill', monster: 'claw_machine', n: 12 }, need: { zone: 'arcade' }, rubies: 7000 },
+        bass_tokens: { title: 'Pocket Change', text: 'The prize wall wants restocking. Tokens from the bins and the munchers, and a few plushies for the top shelf.', goal: { kind: 'deliver', mats: { arcade_token: 30, plushie: 4 } }, need: { zone: 'arcade' }, rubies: 8000 },
+        bass_ward: { title: 'Two Coins In', text: 'Coin Keys from the Rune Altar. Feed two of the coin slots and beat whatever climbs out.', goal: { kind: 'ward', zone: 'arcade', n: 2 }, need: { zone: 'arcade' }, rubies: 9500 },
+        bass_cabinets: { title: 'Lights Out', text: 'Rogue cabinets, firing lasers at the paying customers. Twelve of them, and stay out of the red lines.', goal: { kind: 'kill', monster: 'cabinet', n: 12 }, need: { zone: 'arcade' }, rubies: 10000 },
+        bass_power: { title: 'Power Player', text: 'Ever put a token in the Forge? Craft or reforge a piece of gear with an arcade add-in in it and see what comes out.', goal: { kind: 'craft', boosted: true, n: 1 }, need: { zone: 'arcade' }, rubies: 10500 },
+        bass_crane: { title: 'The Big Prize', text: 'Two Prize Cranes are loose on the floor. Nobody wins those. Be the first.', goal: { kind: 'kill', elite: true, zone: 'arcade', n: 2 }, need: { zone: 'arcade' }, rubies: 11500 },
+        bass_seals: { title: 'Insert Coin to Continue', text: 'All four coin slots. Then the high-score room opens, and the 8-Bit WH is waiting.', goal: { kind: 'ward', zone: 'arcade', n: 4 }, need: { zone: 'arcade' }, rubies: 13000 },
+        bass_daily: { title: 'Floor Patrol', text: 'Fifteen monsters on the arcade floor today.', goal: { kind: 'kill', zone: 'arcade', n: 15 }, need: { zone: 'arcade' }, rubies: 220, daily: true },
     };
     // the crew's quests (core/world-crew.js), copied so that table stays as it was written
     for (const id in Crew.QUESTS) QUESTS[id] = JSON.parse(JSON.stringify(Crew.QUESTS[id]));
@@ -1267,6 +1426,16 @@
                 { name: 'Storm', skills: ['chain_lightning', 'conduit', 'singularity', 'overcharge'] },
                 { name: 'Fire', skills: ['burning_stick', 'kindling', 'meteor', 'ember_soul'] },
                 { name: 'Frost', skills: ['ice_beam', 'blizzard', 'clarity', 'frost_nova'] },
+            ] },
+        // six shots, then a reload: it lives in the rhythm of shooting and reloading (WEAPON_CLASSES.gun)
+        gunslinger: { name: 'Gunslinger', icon: '🤠', color: '#e0a050', cost: 450, unlock: { stat: 'bulletHits', n: 30, text: 'Land 30 revolver shots' },
+            desc: 'Six shots, then a reload. Fast hands, steady aim, and every bullet counts.',
+            passive: '+15% revolver damage, reloads 25% faster, and every dash slips a round back into the cylinder.',
+            bonus: { reload: 0.75, dashReload: 1, dmg: { gun: 1.15 } },
+            branches: [
+                { name: 'High Noon', skills: ['quick_draw', 'steady_hand', 'high_noon', 'last_round'] },
+                { name: 'Trick Shot', skills: ['fan_hammer', 'bank_shot', 'ricochet', 'hot_lead'] },
+                { name: 'Outlaw', skills: ['tumble', 'fast_hands', 'dynamite', 'desperado'] },
             ] },
     };
     const CLASS_ORDER = Object.keys(CLASSES);
@@ -1359,6 +1528,21 @@
             desc: 'Swing the shaft in a full circle, hurling everything around you away.' },
         fervor:      { name: 'Fervor',      icon: '🐉', kind: 'buff',   cost: 900,  boss: 'inferno',   cd: 30, stam: 10, time: 8, speedMult: 1.3, momentum: 0.6, color: '#ffb347',
             desc: 'For 8 seconds you move 30% faster and gain a much bigger momentum bonus.' },
+        // Gunslinger (WEAPON_CLASSES.gun). reload: refills that many rounds (true: the whole cylinder). fan: every round left in
+        // the cylinder at once, spread across spread rad (count: the most there can be). deadshot: a bullet at each of up to count
+        // enemies within range in an arc toward the cursor (walls still stop them).
+        quick_draw:  { name: 'Quick Draw',  icon: '🤠', kind: 'buff',   cost: 200,  boss: null,        cd: 16, stam: 10, time: 4, crit: 0.3, reload: true, color: '#ffd36b',
+            desc: 'Spin the cylinder full at once, and for 4 seconds your shots are 30% likelier to be critical.' },
+        high_noon:   { name: 'High Noon',   icon: '🌞', kind: 'deadshot', cost: 900, boss: 'gilded',   cd: 14, stam: 25, range: 460, arc: 1.4, count: 6, speed: 1800, life: 0.35, dmg: 1.4, kb: 160, color: '#ffd36b',
+            desc: 'Mark up to 6 enemies in front of you and put a bullet in each of them at once. Walls still stop the bullets.' },
+        fan_hammer:  { name: 'Fan the Hammer', icon: '💨', kind: 'fan', cost: 200,  boss: null,        cd: 8,  stam: 20, count: 6, spread: 0.7, speed: 1300, life: 0.45, dmg: 0.85, kb: 120, color: '#ffd36b',
+            desc: 'Empty every round left in the cylinder at once in a wide fan. Needs a revolver in hand and a round in it.' },
+        ricochet:    { name: 'Ricochet',    icon: '🎱', kind: 'chain',  cost: 800,  boss: 'overgrown', cd: 9,  stam: 20, range: 380, jump: 220, jumps: 4, dmg: 1.6, falloff: 0.85, color: '#ffd36b',
+            desc: 'A trick shot at the enemy nearest your cursor that bounces on to 4 more, a little weaker each time.' },
+        tumble:      { name: 'Tumble',      icon: '🎲', kind: 'blink',  cost: 200,  boss: null,        cd: 6,  stam: 15, dist: 140, iframes: 0.3, reload: 2, color: '#e0a050',
+            desc: 'Roll toward your cursor, untouchable for a moment, and slip 2 rounds into the cylinder on the way.' },
+        dynamite:    { name: 'Dynamite',    icon: '🧨', kind: 'field',  cost: 850,  boss: 'gilded',    cd: 14, stam: 25, at: 'cursor', range: 320, r: 100, delay: 1.1, tick: 0.5, time: 1.15, dmg: 3.2, kb: 520, stun: 0.8, selfHit: 0.5, look: 'dynamite', color: '#ff6a3a',
+            desc: 'Throw a stick of dynamite. After a short fuse it blows up everything near it, and stuns what survives. Mind your own feet.' },
         // Mystic
         chain_lightning: { name: 'Chain Lightning', icon: '⚡', kind: 'chain', cost: 250, boss: null, cd: 6, stam: 20, range: 280, jump: 150, jumps: 4, dmg: 1.5, falloff: 0.8, stun: 0.3, elem: 'lightning', desperate: 1.5, color: '#bfe3ff',
             desc: 'Lightning strikes the enemy nearest your cursor and jumps to 4 more. The lower your health, the harder it hits: up to 2.5x near death.' },
@@ -1416,6 +1600,13 @@
         lethal_point: { name: 'Lethal Point', icon: '✴️', cost: 1400, boss: 'frozen', bonus: { crit: 0.08, dmg: { spear: 1.1 } }, desc: '+8% critical chance and +10% spear damage.' },
         footwork:     { name: 'Footwork',     icon: '👣', cost: 300,  boss: null,     bonus: { speed: 0.1 }, desc: '+10% move speed (more speed, more momentum).' },
         dragoon:      { name: 'Dragoon',      icon: '🐲', cost: 1200, boss: null,     bonus: { maxHp: 20, abilityDmg: 1.1 }, desc: '+20 max health, and abilities hit 10% harder.' },
+        // Gunslinger
+        steady_hand:  { name: 'Steady Hand',  icon: '✋', cost: 400,  boss: null,     bonus: { steadyBonus: 0.25, settle: 0.75 }, desc: 'Steady shots deal 25% more, and the barrel settles 25% sooner after a shot.' },
+        last_round:   { name: 'Last Round',   icon: '♠️', cost: 1300, boss: 'frozen', bonus: { lastRound: 1 }, desc: 'The last round in the cylinder always hits for double damage.' },
+        bank_shot:    { name: 'Bank Shot',    icon: '🪃', cost: 350,  boss: null,     bonus: { bounce: 1, bankShot: 1 }, desc: 'Your bullets ricochet off one more wall, and a ricochet loses no damage.' },
+        hot_lead:     { name: 'Hot Lead',     icon: '🌶️', cost: 1300, boss: 'inferno', bonus: { gunBurn: 1 }, desc: 'Your revolver shots set what they hit on fire.' },
+        fast_hands:   { name: 'Fast Hands',   icon: '👐', cost: 400,  boss: null,     bonus: { reload: 0.8 }, desc: 'Reload 20% faster.' },
+        desperado:    { name: 'Desperado',    icon: '🌵', cost: 1400, boss: 'frozen', bonus: { speed: 0.06, dodge: 0.06 }, desc: '+6% move speed, and a 6% chance to slip through any hit.' },
         // Mystic
         conduit:      { name: 'Conduit',      icon: '🔋', cost: 400,  boss: null,     bonus: { abilityCd: 0.85 }, desc: 'Abilities recharge 15% faster.' },
         overcharge:   { name: 'Overcharge',   icon: '💫', cost: 1500, boss: 'frozen', bonus: { abilityDmg: 1.15 }, desc: 'Abilities hit 15% harder.' },
@@ -1462,7 +1653,7 @@
 
     return {
         TILE, WORLD_SEED, MATERIALS, MATERIALS_BY_ID, CONSUMABLES, CONSUMABLES_BY_ID, WEAPON_CLASSES, COMBAT,
-        QUALITY, AFFIXES, TIERS, GEAR, GEAR_BY_ID, STAFF_MAGIC, STAFF_OVER, STAFF_MANA_MIN, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
+        QUALITY, AFFIXES, POWERUPS, SETS, TIERS, GEAR, GEAR_BY_ID, STAFF_MAGIC, STAFF_OVER, STAFF_MANA_MIN, RINGS, STARTER_KIT, STARTER_OFFHAND, SHIELD_STATS, BASIC_RECIPES, BASIC_BY_ID,
         BOX_RECIPES, BOX_NAMES, BOX_POINTS, BOX_COLORS, CAPS, NODES, SAVED_RESPAWN_SEC, MONSTERS, ELITE_GEM_CHANCE,
         BOSSES, RIVALS, RIVAL_TIERS, RIVAL_RESPAWN_SEC, RIVAL_WEAPON_DROP, ZONES, ZONE_ORDER, MONSTER_RESPAWN_SEC,
         ELITE_RESPAWN_SEC, WARD, CAMP, MAX_TIER, STATIONS, STARTER_CLASS, CLASSES, CLASS_ORDER, ABILITIES, ABILITY_ORDER, ABILITY_KEYS, PERKS, PERK_ORDER, NPCS, NPC_ORDER, QUESTS, HIDDEN_SHOP, TRADER_STOCK, RULES,

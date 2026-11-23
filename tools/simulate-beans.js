@@ -73,13 +73,14 @@ for (const [name, pl] of Object.entries(PLAYERS)) {
     console.log('  after a year: ' + Math.round(ms[11].total) + ' Holy What Happeneds = ' + (100 * ms[11].total / catalogTotal).toFixed(0) + '% of the whole shop'
         + '; cheapest item (' + prices[0] + ') by ' + firstAt(ms, prices[0]) + ', a median one (' + median + ') by ' + firstAt(ms, median)
         + ', the dearest (' + prices[prices.length - 1] + ') by ' + firstAt(ms, prices[prices.length - 1]));
-    // or all of it traded: gems first (up to the weekly limit), the rest for Golden
-    const gx = P.BY_ID.x_gems, ox = P.BY_ID.x_golden, monthly = ms[11].recurring;
-    const gemTrades = Math.min(Math.floor(monthly / gx.cost), Math.round(gx.perWeek * 52 / 12));
-    console.log('  or traded each month (recurring part): ' + gemTrades * gx.gems + ' gems, or ' + Math.min(Math.floor(monthly / ox.cost), Math.round(ox.perWeek * 52 / 12)) * ox.golden + ' Golden');
+    // or all of it traded: the recurring part each month on the smallest gem pack, or on Golden (at the 15 minimum)
+    const gx = P.BY_ID.g_handful, ox = P.BY_ID.x_golden, monthly = ms[11].recurring;
+    console.log('  or traded each month (recurring part): ' + Math.floor(monthly / gx.cost) * gx.gems + ' gems, or '
+        + Math.floor(monthly / ox.cost) * P.GOLDEN.min + '+ Golden (' + P.GOLDEN.mult + 'x the next prestige, at least ' + P.GOLDEN.min + ' each)');
 }
-const gx = P.BY_ID.x_gems, ox = P.BY_ID.x_golden;
 console.log('');
-console.log('Trading: ' + gx.gems + ' gems for ' + gx.cost + ' (up to ' + gx.perWeek + 'x a week = ' + gx.gems * gx.perWeek + ' gems), ' + ox.golden
-    + ' Golden for ' + ox.cost + ' (up to ' + ox.perWeek + 'x a week). For comparison the game gives up to 5 gems a week from weekly challenges, and Varro sells 3 gems for 600 Glory (2x a week) and 1 Golden for 2,500 Glory (1x a week).');
-console.log('Boost bundles: ' + P.CATALOG.filter((c) => c.kind === 'bundle').map((c) => c.name + ' ' + c.cost + ' (' + Object.entries(c.items).map(([id, n]) => n + 'x ' + id).join(', ') + '; up to ' + c.perWeek + 'x a week)').join(', ') + '.');
+console.log('Gem packs (no limit): ' + P.CATALOG.filter((c) => c.kind === 'gems').map((c) => c.gems + ' for ' + c.cost + (P.gemBonus(c) ? ' (+' + P.gemBonus(c) + '%)' : '')).join(', ')
+    + '. Golden: ' + P.BY_ID.x_golden.cost + ' for ' + P.GOLDEN.mult + 'x the next prestige (at least ' + P.GOLDEN.min + ').'
+    + ' For comparison the game gives up to 5 gems a week from weekly challenges, and Varro sells 3 gems for 600 Glory (2x a week) and 1 Golden for 2,500 Glory (1x a week).');
+console.log('Timelapses (no limit): ' + P.CATALOG.filter((c) => c.kind === 'timelapse').map((c) => c.sec / 3600 + 'h for ' + c.cost).join(', ') + '.');
+console.log('Boost bundles (no limit): ' + P.CATALOG.filter((c) => c.kind === 'bundle').map((c) => c.name + ' ' + c.cost + ' (' + Object.entries(c.items).map(([id, n]) => n + 'x ' + id).join(', ') + ')').join(', ') + '.');

@@ -70,6 +70,62 @@
         return st.day === utcDay(now) || st.day === utcDay(now, -1) ? (Number(st.streak) || 0) : 0;
     }
 
+    // ---- clan XP from the game's daily and weekly challenges (core/challenges.js) ----
+    // Each challenge a member finishes gives their clan XP once (clan-game.js keeps which ones in whathappened_clan_quests):
+    // at most 3 dailies and 3 weeklies, so 30 XP a day and 90 a week from one member, next to the check-in's 25 a day.
+    const QUEST_XP = { day: 10, week: 30 };
+    const QUESTS_KEY = 'whathappened_clan_quests';
+    // The challenges claimed in a core/challenges.js state ({ day|week: { key, ids, claimed: { id: true } } }) that haven't
+    // given the clan XP yet: [{ key, period, xp }] (key: '<period key>:<challenge id>', so the same challenge another day counts
+    // again). given: the stored list of keys already paid.
+    function questXpOwed(challengeState, given) {
+        const st = challengeState && typeof challengeState === 'object' ? challengeState : {};
+        const done = new Set(Array.isArray(given) ? given : []), out = [];
+        for (const period of ['day', 'week']) {
+            const p = st[period] && typeof st[period] === 'object' ? st[period] : null;
+            if (!p || typeof p.key !== 'string' || !p.key || !Array.isArray(p.ids) || !p.claimed || typeof p.claimed !== 'object') continue;
+            for (const id of p.ids.slice(0, 3)) {
+                if (typeof id !== 'string' || p.claimed[id] !== true) continue;
+                const key = p.key + ':' + id;
+                if (!done.has(key)) out.push({ key, period, xp: QUEST_XP[period] });
+            }
+        }
+        return out;
+    }
+    // the stored list with `keys` added (only the newest 60 kept: older periods can't come back)
+    function withQuestsGiven(given, keys) {
+        const list = (Array.isArray(given) ? given : []).filter((k) => typeof k === 'string');
+        for (const k of keys || []) if (!list.includes(k)) list.push(k);
+        return list.slice(-60);
+    }
+
+    // ---- this week's contributions (the clan document's contrib: { week, by: { name: xp } }) ----
+    // Weeks start on Monday, UTC, so the whole clan shares one. Check-ins, finished challenges and event wins add to it.
+    function weekKey(ms) {
+        const d = new Date(Number(ms) || 0), day = (d.getUTCDay() + 6) % 7; // 0 = Monday
+        return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - day)).toISOString().slice(0, 10);
+    }
+    const CONTRIB_MAX = 60;
+    // contrib after `name` added `xp` (last week's list is dropped; the list never grows past CONTRIB_MAX names)
+    function addContribution(contrib, name, xp, now) {
+        const week = weekKey(now), who = String(name || '').slice(0, 32), add = Math.max(0, Math.floor(Number(xp) || 0));
+        const cur = contrib && typeof contrib === 'object' && contrib.week === week && contrib.by && typeof contrib.by === 'object' ? contrib.by : {};
+        const by = {};
+        for (const k of Object.keys(cur)) { const v = Number(cur[k]); if (v > 0) by[k] = Math.floor(v); }
+        if (who && add) by[who] = (by[who] || 0) + add;
+        const keys = Object.keys(by);
+        if (keys.length > CONTRIB_MAX) keys.sort((a, b) => by[a] - by[b]).slice(0, keys.length - CONTRIB_MAX).forEach((k) => { if (k !== who) delete by[k]; });
+        return { week, by };
+    }
+    // this week's contributors, most first: [[name, xp]]
+    function contributors(contrib, now) {
+        if (!contrib || typeof contrib !== 'object' || contrib.week !== weekKey(now) || !contrib.by || typeof contrib.by !== 'object') return [];
+        return Object.keys(contrib.by).map((n) => [n, Math.floor(Number(contrib.by[n]) || 0)]).filter((e) => e[1] > 0).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+    }
+    // when this week's board starts over
+    function weekEndsAt(now) { return Date.parse(weekKey(now) + 'T00:00:00Z') + 7 * 864e5; }
+
     return { MAX_LEVEL, XP_BASE, XP_GROWTH, PERKS, levelInfo, levelFromXp, xpForLevel, perk, perkParts, perkText, eventGems,
-        CHECKIN_XP, checkinReward, utcDay, nextStreak, currentStreak };
+        CHECKIN_XP, checkinReward, utcDay, nextStreak, currentStreak,
+        QUEST_XP, QUESTS_KEY, questXpOwed, withQuestsGiven, weekKey, addContribution, contributors, weekEndsAt, CONTRIB_MAX };
 }));

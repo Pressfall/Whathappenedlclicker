@@ -26,10 +26,16 @@ test('every Wilds achievement reads a number the snapshot really has, and can be
     assert.equal(target('w_class5'), D.CLASS_ORDER.length - 1, 'every class besides the Warrior you start as');
     assert.equal(target('w_boss4'), 4, 'the first four bosses');
     // (the hidden dungeons' bosses, the Drowned King among them, are counted by their own achievements: not the zones' bosses)
-    assert.equal(target('w_boss8'), Object.keys(D.BOSSES).filter(b => !D.BOSSES[b].dungeon).length, 'every boss');
+    const zoneBosses = Object.keys(D.BOSSES).filter(b => !D.BOSSES[b].dungeon);
+    assert.equal(target('w_boss8'), D.ZONE_ORDER.indexOf('sky') + 1, 'every boss up to Vrill');
+    assert.equal(target('w_boss9'), zoneBosses.length, 'every boss');
     assert.equal(target('w_frost'), D.ZONE_ORDER.indexOf('frost') + 2, 'town and every zone up to Frostveil');
-    assert.equal(target('w_sky'), D.ZONE_ORDER.length + 1, 'town and every zone');
-    assert.equal(target('w_wards_all'), D.ZONE_ORDER.reduce((n, z) => n + (D.ZONES[z].wards || 0), 0), 'every ward stone');
+    assert.equal(target('w_sky'), D.ZONE_ORDER.indexOf('sky') + 2, 'town and every zone up to the isles');
+    assert.equal(target('w_arcade'), D.ZONE_ORDER.length + 1, 'town and every zone');
+    const wards = (zones) => zones.reduce((n, z) => n + (D.ZONES[z].wards || 0), 0);
+    assert.equal(target('w_wards_all'), wards(D.ZONE_ORDER.slice(0, D.ZONE_ORDER.indexOf('sky') + 1)), 'every ward stone up to the isles');
+    assert.equal(target('w_coins'), wards(D.ZONE_ORDER), 'every ward stone');
+    assert.equal(target('w_dungeons_all'), Object.keys(D.DUNGEONS).length, 'every hidden dungeon');
     assert.equal(target('w_god6'), require('../core/world-gods').HALL_GODS.length);
     g.close();
 });

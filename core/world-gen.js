@@ -336,6 +336,15 @@
                     if (t !== T.WALL && a < 0.15) t = T.LAVA;
                 }
                 else if (def.gen === 'isles') { if (a * 0.75 + b * 0.25 < 0.4) t = T.VOID; else if (nC(x, y) > 0.82) t = T.WALL; }
+                else if (def.gen === 'arcade') {
+                    // the Neon Arcade: a checked carpet in 2x2 squares, and rows of cabinets (walls) in a loose grid of 9x8
+                    // blocks, some rows across and a few down, with gaps to walk through
+                    t = (((x >> 1) + (y >> 1)) & 1) ? T.FLOOR2 : T.FLOOR;
+                    const bx = x % 9, by = y % 8, v = valueBlock(seed, Math.floor(x / 9), Math.floor(y / 8));
+                    const across = v > 0.42 && by === 0 && bx >= 1 && bx <= 7;
+                    const down = v < 0.16 && bx === 4 && by >= 2 && by <= 6;
+                    if ((across || down) && wob(x * 3, y * 3) < 0.7) t = T.WALL;
+                }
                 set(m, x, y, t);
             }
             border(m, 3);
@@ -444,6 +453,41 @@
         m.lair.open = true;
         for (const [x, y, t] of m.lair.tiles) set(m, x, y, t);
         return m;
+    }
+    // Somewhere for a monster of radius r (world px) to appear near (x, y): ground a monster can walk on under all of it
+    // (no wall, water, building or open sky) and nothing in the way from (x, y) to it. The preferred spot (opts.ang, opts.dist)
+    // when it is free, else the nearest free one around (x, y). opts.within { x, y, r }: stay inside that circle (a boss's
+    // arena). Returns { x, y }, or null when nothing near is free. (A ward's guardian used to appear a fixed 80 px south of
+    // its stone: on the Skyreach Isles one stone stands at the island's southern edge, so its guardian appeared out in the
+    // open sky past the map's edge, where nobody could reach it, and that lair could never open. Others landed in walls.)
+    function openSpot(m, x, y, r, opts = {}) {
+        const ang = opts.ang === undefined ? Math.PI / 2 : opts.ang, dist = opts.dist === undefined ? 80 : opts.dist, within = opts.within || null;
+        const ox = Math.floor(x / TILE), oy = Math.floor(y / TILE);
+        const fits = (cx, cy) => {
+            if (cx - r < 0 || cy - r < 0 || cx + r > m.w * TILE || cy + r > m.h * TILE) return false;
+            if (within && Math.hypot(cx - within.x, cy - within.y) > within.r - r) return false;
+            for (let ty = Math.floor((cy - r) / TILE); ty <= Math.floor((cy + r) / TILE); ty++) for (let tx = Math.floor((cx - r) / TILE); tx <= Math.floor((cx + r) / TILE); tx++) {
+                if (!blocksWalk(get(m, tx, ty))) continue;
+                const nx = Math.max(tx * TILE, Math.min(cx, tx * TILE + TILE)), ny = Math.max(ty * TILE, Math.min(cy, ty * TILE + TILE));
+                if (Math.hypot(cx - nx, cy - ny) < r) return false;
+            }
+            return true;
+        };
+        // walkable the whole way out from (x, y), whose own tile may be solid (a ward stone)
+        const clear = (cx, cy) => {
+            const n = Math.ceil(Math.hypot(cx - x, cy - y) / 8);
+            for (let i = 1; i <= n; i++) {
+                const tx = Math.floor((x + (cx - x) * i / n) / TILE), ty = Math.floor((y + (cy - y) * i / n) / TILE);
+                if ((tx !== ox || ty !== oy) && blocksWalk(get(m, tx, ty))) return false;
+            }
+            return true;
+        };
+        for (const f of [1, 0.75, 1.3, 0.55, 1.7, 2.2, 2.8]) for (let k = 0; k < 24; k++) {
+            const a = ang + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI / 12, d = dist * f;
+            const cx = x + Math.cos(a) * d, cy = y + Math.sin(a) * d;
+            if (fits(cx, cy) && clear(cx, cy)) return { x: cx, y: cy };
+        }
+        return null;
     }
 
     // ---------------- the Arena ----------------
@@ -587,5 +631,5 @@
     }
     function tileAt(m, wx, wy) { return get(m, Math.floor(wx / TILE), Math.floor(wy / TILE)); }
 
-    return { T, SOLID, isSolid, blocksWalk, hashStr, mulberry32, valueNoise, generateZone, openSecret, openLair, setVaultDoor, flood, mapHash, tileAt, get };
+    return { T, SOLID, isSolid, blocksWalk, hashStr, mulberry32, valueNoise, generateZone, openSecret, openLair, openSpot, setVaultDoor, flood, mapHash, tileAt, get };
 }));

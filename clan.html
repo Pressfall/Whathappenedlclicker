@@ -13,6 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bungee&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="clans.css">
+  <link rel="stylesheet" href="premium.css">
 </head>
 <body>
   <a id="backToGameBtn" class="page-back" href="index.html">← Back to game</a>
@@ -20,7 +21,7 @@
     <header class="clan-head">
       <div>
         <h1 class="page-title">Clans</h1>
-        <p class="clan-sub">Team up with other players: level your clan together, share buffs and take on weekly events.</p>
+        <p class="clan-sub">Team up with other players: level your clan together with check-ins and challenges, share buffs, and take on events in the game and in the Wilds.</p>
       </div>
       <div id="playerClanStatus" class="me-chip"></div>
     </header>
@@ -47,6 +48,7 @@
               <option value="open">Most open spots</option>
               <option value="name">Name</option>
             </select>
+            <label class="chat-safe find-filter"><input type="checkbox" id="clanJoinableOnly"> Only ones I can join</label>
           </div>
         </div>
         <div id="searchResults" class="clan-grid" aria-live="polite"></div>
@@ -76,6 +78,12 @@
 
   <script src="achievements-data.js"></script>
   <script src="core/chat-safety.js"></script>
+  <!-- name colours in chat (chosen in the game's Settings), one name for chat and the Wilds, and chat effects bought with Holy
+       What Happeneds (shown as in the game's chat) -->
+  <script src="core/name-colors.js"></script>
+  <script src="core/names.js"></script>
+  <script src="core/premium-config.js"></script>
+  <script src="core/premium.js"></script>
   <script src="core/clan-roles.js"></script>
   <script src="core/clan-levels.js"></script>
   <script src="core/clan-buffs.js"></script>

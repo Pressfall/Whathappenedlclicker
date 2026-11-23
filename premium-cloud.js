@@ -6,7 +6,11 @@
  * - Spending: one transaction that lowers the balance and logs the spend (wallets/{uid}/spends/{id}). firestore-premium.rules
  *   accepts exactly that and nothing that would raise the balance.
  * - The link code: kofi_links/<12 hex> -> { uid }, made the first time the player opens Get more while signed in.
- * - Claims (a payment sent without the code) go to the worker, with the player's ID token so it knows whose they are.
+ * - The worker matches a Ko-fi payment to the account that signs in with the email it was paid with (a Shop order can't
+ *   carry the link code), by itself, when Ko-fi tells it about the payment.
+ * - Collecting (payments made before the account existed or verified its email) and claims (a payment made with another
+ *   email) are requests written to kofi_requests/{uid}; the worker answers them within a minute by replacing the request.
+ *   The game never calls the worker itself: school networks block *.workers.dev, and most players play at school.
  * The page side is premium.js (window.WHBeans); core/premium.js explains the two pools.
  */
 import { watchAuth } from './cloud.js';
@@ -26,6 +30,8 @@ const state = {
     error: '',         // 'rules' (the Firestore rules refuse: not published yet) or 'network'
     linkId: '',        // 12 hex digits; the code shown is Kofi.formatLinkCode(linkId)
     link: 'none',      // 'none' | 'checking' | 'ready' | 'error'
+    collect: 'none',   // 'none' | 'busy' | 'done' | 'error': asking the worker for purchases made with the account's email
+    collected: null,   // what the last collect() returned
 };
 let unsub = null, restored = '';
 const emit = () => { try { window.dispatchEvent(new Event('whbeans-cloud')); } catch (e) {} };
@@ -37,7 +43,7 @@ const why = (e) => {
 watchAuth(async (u) => {
     if (unsub) { try { unsub(); } catch (e) {} unsub = null; }
     state.user = u && !u.isAnonymous ? u : null;
-    state.live = false; state.balance = 0; state.error = ''; state.linkId = ''; state.link = 'none';
+    state.live = false; state.balance = 0; state.error = ''; state.linkId = ''; state.link = 'none'; state.collect = 'none'; state.collected = null;
     state.ready = true;
     emit();
     if (!state.user) return;
@@ -117,27 +123,61 @@ async function history() {
     } catch (e) { return []; }
 }
 
-// A payment that came without a link code: { ok, beans } or { ok: false, message }
+// A payment made with another email, or without the link code: { ok, beans } or { ok: false, message }
 async function claim(txid, email) {
     const u = state.user;
     if (!u) return { ok: false, message: 'Sign in to your account first.' };
-    if (Config.isPlaceholder(Config.workerUrl)) return { ok: false, message: 'Claiming isn\'t set up yet.' };
-    try {
-        const res = await fetch(Config.workerUrl.replace(/\/+$/, '') + '/claim', {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', authorization: 'Bearer ' + (await u.getIdToken()) },
-            body: JSON.stringify({ txid: String(txid || '').trim(), email: String(email || '').trim() }),
-        });
-        let body = {};
-        try { body = await res.json(); } catch (e) {}
-        if (res.ok && body.ok) return { ok: true, beans: Number(body.beans) || 0 };
-        return { ok: false, message: body.error || 'That didn\'t work. Try again in a minute.' };
-    } catch (e) {
-        return { ok: false, message: 'Couldn\'t reach the server. Check your connection and try again.' };
-    }
+    if (!Config.buyingOpen()) return { ok: false, message: 'Claiming isn\'t set up yet.' };
+    const t = String(txid || '').trim(), e = String(email || '').trim().toLowerCase();
+    if (!Kofi.TXID_RE.test(t) || !/^[^@\s]{1,128}@[^@\s]{1,128}$/.test(e)) return { ok: false, message: 'Enter the transaction ID and the email you paid with.' };
+    try { return asked(await ask(u, 'claim', { txid: t, email: e }), (a) => ({ ok: true, beans: Number(a.beans) || 0 })); }
+    catch (err) { return asked({ status: 'error', reason: why(err) }); }
 }
 
-window.WHBeansCloud = Object.assign(Object.create(null), {
+// A request to the Ko-fi worker, through Firestore (kofi_requests/{uid}): the worker looks every minute and answers by
+// replacing it. Resolves with the answer ({ status: 'done', beans, count } or { status: 'failed', error, reason }), or
+// { status: 'waiting' } if none came within `ms` (it is still answered: anything it hands over arrives by itself).
+async function ask(u, kind, extra, ms = 150000) {
+    const ref = doc(db, 'kofi_requests', u.uid);
+    await setDoc(ref, Object.assign({ kind, status: 'pending', at: serverTimestamp() }, extra || {}));
+    return new Promise((resolve) => {
+        let off = null, done = false, timer = null;
+        const finish = (v) => { if (done) return; done = true; clearTimeout(timer); if (off) off(); resolve(v); };
+        timer = setTimeout(() => finish({ status: 'waiting' }), ms);
+        off = onSnapshot(ref, (snap) => {
+            const d = snap.exists() ? snap.data() : null;
+            if (d && d.kind === kind && d.status && d.status !== 'pending') finish(d);
+        }, (e) => finish({ status: 'error', reason: why(e) }));
+        if (done) off();
+    });
+}
+const WAITING = 'The server hasn\'t answered yet (it looks every minute). Anything it finds arrives by itself, so check back in a few minutes.';
+const asked = (a, ok) => (a.status === 'done' ? ok(a)
+    : a.status === 'failed' ? { ok: false, reason: a.reason || 'server', message: a.error || 'That didn\'t work. Try again in a minute.' }
+    : a.status === 'waiting' ? { ok: false, reason: 'waiting', message: WAITING }
+    : { ok: false, reason: a.reason || 'network', message: a.reason === 'rules' ? 'The server isn\'t ready for this yet. Try again later.' : 'Couldn\'t reach the server. Check your connection and try again.' });
+
+// Ko-fi payments made with this account's verified sign-in email that are still waiting (made before the account existed
+// or before its email was verified). New ones arrive by themselves. { ok, beans, count } or { ok: false, reason, message }
+async function collect() {
+    const u = state.user;
+    if (!u) return { ok: false, reason: 'signin', message: 'Sign in to your account first.' };
+    if (u.email && !u.emailVerified) { try { await u.reload(); } catch (e) {} } // verified in another tab since?
+    if (!u.email || !u.emailVerified) return { ok: false, reason: 'unverified', message: 'Verify your account\'s email first (on the Account page).' };
+    if (!Config.buyingOpen()) return { ok: false, reason: 'closed', message: 'Buying isn\'t open yet.' };
+    state.collect = 'busy'; emit();
+    let out;
+    try { out = asked(await ask(u, 'collect'), (a) => ({ ok: true, beans: Number(a.beans) || 0, count: Number(a.count) || 0 })); }
+    catch (e) { out = asked({ status: 'error', reason: why(e) }); }
+    if (state.user !== u) return out; // signed out or switched meanwhile
+    state.collect = out.ok ? 'done' : 'error'; state.collected = out;
+    emit();
+    return out;
+}
+
+// a plain object with live getters (Object.assign would copy each getter's value once, at load, and freeze it there:
+// the panel then waited for a sign-in forever)
+window.WHBeansCloud = {
     get ready() { return state.ready; },
     get user() { return state.user; },
     get live() { return state.live; },
@@ -145,6 +185,10 @@ window.WHBeansCloud = Object.assign(Object.create(null), {
     get error() { return state.error; },
     get link() { return state.link; },
     get linkCode() { return state.linkId ? Kofi.formatLinkCode(state.linkId) : ''; },
-    ensureLink, spend, history, claim,
-});
+    get email() { return state.user && state.user.email ? String(state.user.email) : ''; },
+    get emailVerified() { return !!(state.user && state.user.email && state.user.emailVerified); },
+    get collectState() { return state.collect; },
+    get collected() { return state.collected; },
+    ensureLink, spend, history, claim, collect,
+};
 emit();

@@ -51,7 +51,7 @@ function seedData(now) {
             ownerUid: 'uidMe', roles: { uidMe: 'leader', uidPal: 'member' }, names: { uidMe: 'Me', uidPal: 'Pal' }, acct: { uidMe: true, uidPal: false }, kicks: {} },
         'clans/otherclan': { name: 'Other Clan', owner: 'Zed', members: ['Zed'], leaders: ['Zed'], clanXp: 0, ownerUid: 'uidZed', roles: { uidZed: 'leader' }, names: { uidZed: 'Zed' }, acct: { uidZed: true } },
         'clans/testclan/members/Me': { lastCps: 1234, lastClickPower: 50, lastUpdate: now, gpoints: 12 },
-        'clans/testclan/members/Pal': { lastCps: 99, lastUpdate: now - 3 * 3600e3 },
+        'clans/testclan/members/Pal': { lastCps: 99, lastUpdate: now - 3 * 3600e3, wildsAt: now - 30000, wilds: { cls: 'gunslinger', r: 1234, wb: 12, k: 456 } },
         'profiles/Me': { clanId: 'testclan', clanRole: 'leader', title: '' },
         'profiles/Pal': { clanId: 'testclan', clanRole: 'member' },
         'events/config': { types: ['Bossfight', 'prestige party'] },
@@ -183,7 +183,37 @@ async function main() {
         const cp2 = (await evalJs(saveNow)).clanPoints, xp2 = await evalJs('window.__fakeFS.docs["clans/testclan"].clanXp');
         await evalJs('document.getElementById("checkinBtn").click()');
         check('check-in: +25 clan XP and Clan Points for me', await waitFor(`window.__fakeFS.docs["clans/testclan"].clanXp === ${xp2} + 25 && ${saveNow}.clanPoints === ${cp2} + 5`));
+        // the overhaul: this week's board, the stats strip, a clanmate in the Wilds with their Wilds card
+        check('overhaul: the check-in counts on the weekly board', await waitFor('/Me/.test(document.getElementById("weekCard").textContent) && /25 XP/.test(document.getElementById("weekCard").textContent)'),
+            await evalJs('document.getElementById("weekCard").textContent'));
+        check('overhaul: the stats strip under the banner', await waitFor('document.querySelectorAll("#clanStats .cs-chip").length === 5'));
+        check('overhaul: a clanmate playing the Wilds shows as In the Wilds, with class and rating', await waitFor('/In the Wilds/.test(document.querySelector("#membersList .member[data-name=Pal]").textContent) && /Gunslinger/.test(document.querySelector("#membersList .member[data-name=Pal]").textContent) && /1.23K rating/.test(document.querySelector("#membersList .member[data-name=Pal]").textContent)'),
+            await evalJs('document.querySelector("#membersList .member[data-name=Pal]").textContent'));
+        check('overhaul: the game page learns the sign-in id the clan knows me by', await evalJs('localStorage.getItem("whathappened_clan_uid") === "uidMe"'));
+        // Manage: close the clan and ask for 3 prestiges
+        await evalJs('document.getElementById("manageClanBtn").click()');
+        await waitFor('!!document.getElementById("joinModeSelect")');
+        await evalJs('(() => { document.getElementById("joinModeSelect").value = "closed"; document.getElementById("minPrestigeInput").value = "3"; document.getElementById("saveDescBtn").click(); return true; })()');
+        check('overhaul: a leader closes the clan and sets a prestige requirement', await waitFor('window.__fakeFS.docs["clans/testclan"].joinMode === "closed" && window.__fakeFS.docs["clans/testclan"].minPrestige === 3'));
+        check('overhaul: the banner says so', await waitFor('/Closed/.test(document.querySelector(".banner-title").textContent) && document.querySelector(".banner-title").textContent.includes("3+ prestiges")'));
+        // the in-page dialog instead of confirm(): Leave asks first, and Cancel keeps you in
+        await evalJs('document.getElementById("leaveClanBtn").click()');
+        check('overhaul: leaving asks in a dialog on the page', await waitFor('!!document.querySelector(".dlg-wrap .dlg") && /Leave Test Clan/.test(document.querySelector(".dlg").textContent)'));
+        await shot('clan-dialog');
+        await evalJs('document.querySelector(".dlg [data-r=no]").click()');
+        check('overhaul: Cancel keeps you in the clan', await waitFor('!document.querySelector(".dlg-wrap")') && await evalJs('localStorage.getItem("player_clanId") === "testclan"'));
         await shot('clan-page');
+        // a Wilds Hunt running: its card in the Events tab
+        await evalJs(`(() => { const d = window.__fakeFS.docs; d['events/state'].upcoming[0].name = 'Wilds Hunt';
+            d['events/wilds_hunt_progress'] = { events: { ['${NOW - DAY}']: { testclan: { total: 420, members: { Me: 300, Pal: 120 } } } } };
+            window.__fakeFS.subs.forEach((s) => s()); return true; })()`);
+        await evalJs('document.getElementById("tabEventsBtn").click()');
+        check('overhaul: a Wilds Hunt shows its monsters, tiers and hunters', await waitFor('!!document.querySelector(".ev-hero.ev-wh") && /420/.test(document.getElementById("evLive").textContent) && /monsters defeated in the Wilds/.test(document.getElementById("evLive").textContent) && /Pal/.test((document.getElementById("evPeople") || {}).textContent || "")'),
+            await evalJs('(document.getElementById("evLive") || {}).textContent'));
+        await shot('clan-hunt');
+        // back to the bossfight for the game page's checks below
+        await evalJs("(() => { window.__fakeFS.docs['events/state'].upcoming[0].name = 'Bossfight'; window.__fakeFS.subs.forEach((s) => s()); return true; })()");
+        await evalJs('document.getElementById("tabClansBtn").click()');
         const log = await evalJs('JSON.parse(localStorage.getItem("__denied") || "[]")');
         check('clan page: every write it sent is one the rules allow', log.length > 0 && !log.some((l) => /DENY/.test(l)), log);
 
@@ -207,6 +237,22 @@ async function main() {
         // (changed behind the rules' back, then the page's live listeners are told, as Firestore would after a real kick)
         await evalJs(`(() => { const c = window.__fakeFS.docs['clans/testclan']; delete c.roles.uidMe; delete c.names.uidMe; c.members = ['Pal']; c.ownerUid = 'uidPal'; window.__fakeFS.subs.forEach((s) => s()); return true; })()`);
         check('game page: a player no longer in the clan loses its perks and buffs at once', await waitFor('!localStorage.getItem("player_clanId") && window.clanBuffClickMult === 1 && getClanLevelPerk().cps === 0'));
+
+        // ---- the Wilds (clan-wilds.js): monsters for a Wilds Hunt, and "In the Wilds" on the clan page ----
+        await evalJs(`(() => { const d = window.__fakeFS.docs; d['events/state'].upcoming[0].name = 'Wilds Hunt'; delete d['events/wilds_hunt_progress'];
+            localStorage.setItem('__fake_fs_seed', JSON.stringify(d)); localStorage.setItem('player_clanId', 'testclan'); localStorage.setItem('player_clanName', 'Test Clan');
+            localStorage.removeItem('whathappened_clan_wilds_mark'); return true; })()`);
+        await navigate(`http://localhost:${PORT}/world.html?whdebug`, 'typeof window.WHWorldDebug === "object" && window._saveLoaded === true && !!window.WHClanWilds');
+        check('wilds: the clan module knows a Wilds Hunt is on', await waitFor('!!WHClanWilds.hunt()', 20000));
+        await evalJs('WHClanWilds.send()'); // the first look only marks where the counter is
+        await evalJs('(async () => { WHWorldDebug.state().stats.kills += 7; await WHClanWilds.send(); return true; })()');
+        const hunt = await evalJs(`(() => { const p = window.__fakeFS.docs['events/wilds_hunt_progress']; const b = p && p.events['${NOW - DAY}']; return b && b.testclan; })()`);
+        check('wilds: monsters defeated during the hunt reach the clan\'s total, with my share', !!hunt && hunt.total === 7 && hunt.members.Me === 7, hunt);
+        await evalJs('WHClanWilds.send()');
+        check('wilds: and are never counted twice', await evalJs(`window.__fakeFS.docs['events/wilds_hunt_progress'].events['${NOW - DAY}'].testclan.total`) === 7);
+        await evalJs('WHClanWilds.beat()');
+        check('wilds: a heartbeat with my Wilds card for the clan page', await waitFor('!!window.__fakeFS.docs["clans/testclan/members/Me"] && window.__fakeFS.docs["clans/testclan/members/Me"].wildsAt > 0 && !!window.__fakeFS.docs["clans/testclan/members/Me"].wilds'),
+            await evalJs('window.__fakeFS.docs["clans/testclan/members/Me"]'));
 
         const errs = events.filter((e) => e.method === 'Runtime.exceptionThrown').map((e) => (e.params.exceptionDetails.exception && e.params.exceptionDetails.exception.description) || e.params.exceptionDetails.text)
             .filter((e) => !/Failed to fetch|firebase|ERR_BLOCKED|Load failed|NetworkError|net::/i.test(e));

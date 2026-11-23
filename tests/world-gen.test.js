@@ -55,6 +55,40 @@ test('a sealed lair: the boss arena is out of reach until its wards are broken, 
     }
 });
 
+// world.js wakeWard puts the guardian and its adds where G.openSpot says. A Skyreach Isles stone stands at the island's
+// southern edge: its guardian used to appear in the open sky past the map's edge, so that lair could never open.
+test('a ward\'s guardian and its adds appear on ground the player can reach, never in the open sky or a wall', () => {
+    const blocked = (m, x, y) => G.blocksWalk(G.tileAt(m, x, y));
+    for (const z of D.ZONE_ORDER.filter(id => D.ZONES[id].wards)) {
+        const m = maps[z], e = tileOf(m, m.entry), seen = G.flood(m, e.x, e.y), def = D.ZONES[z];
+        for (const w of m.wards) {
+            const spots = [[def.elite, Math.PI / 2, 80]];
+            for (let k = 0; k < D.WARD.adds; k++) for (const [type] of def.spawns) spots.push([type, Math.PI / 2 + (k - (D.WARD.adds - 1) / 2) * 0.9, 120]);
+            for (const [type, ang, d] of spots) {
+                const r = D.MONSTERS[type].r, at = G.openSpot(m, w.x, w.y, r, { ang, dist: d });
+                const what = z + ' ward ' + w.i + ' ' + type;
+                assert.ok(at, what + ': somewhere to stand');
+                assert.ok(Math.hypot(at.x - w.x, at.y - w.y) < 260, what + ': near its stone');
+                for (const [dx, dy] of [[0, 0], [r - 1, 0], [-r + 1, 0], [0, r - 1], [0, -r + 1]]) assert.ok(!blocked(m, at.x + dx, at.y + dy), what + ' at ' + Math.round(at.x) + ',' + Math.round(at.y));
+                const t = tileOf(m, at);
+                assert.equal(seen[t.y * m.w + t.x], 1, what + ': reachable from the entry');
+            }
+        }
+    }
+    // the free spot itself comes first: on open ground nothing moves
+    const m = maps.greenwood, c = m.camp, at = G.openSpot(m, c.x, c.y, 10, { ang: 0, dist: 40 });
+    assert.deepEqual({ x: Math.round(at.x), y: Math.round(at.y) }, { x: c.x + 40, y: c.y });
+    // a boss's clone stays inside its arena
+    for (const z of D.ZONE_ORDER) {
+        const mm = opened[z], b = mm.boss;
+        for (let a = 0; a < 8; a++) {
+            const from = { x: b.x + Math.cos(a) * (b.r - 50), y: b.y + Math.sin(a) * (b.r - 50) };
+            const p = G.openSpot(mm, from.x, from.y, 38, { ang: a, dist: 120, within: b });
+            assert.ok(p && Math.hypot(p.x - b.x, p.y - b.y) <= b.r - 38 + 0.01, z + ' clone ' + a);
+        }
+    }
+});
+
 test('nodes stand on open ground, have stable unique keys, and every zone has what its table asks for', () => {
     for (const z of ZONES) {
         const m = maps[z];
@@ -71,7 +105,7 @@ test('nodes stand on open ground, have stable unique keys, and every zone has wh
     assert.equal(maps.town.stations.length, Object.keys(D.STATIONS).length);
     // the first four zones have gates; the Far Reaches are reached through the Waystone
     assert.deepEqual(maps.town.portals.map(p => p.to).sort(), D.ZONE_ORDER.filter(z => !D.ZONES[z].via).sort());
-    assert.ok(maps.town.waystone && D.ZONE_ORDER.filter(z => D.ZONES[z].via === 'waystone').length === 4);
+    assert.ok(maps.town.waystone && D.ZONE_ORDER.filter(z => D.ZONES[z].via === 'waystone').length === 5);
 });
 
 test('harder ores sit deeper in a zone than easier ones', () => {

@@ -101,11 +101,12 @@
         'divineSpiritLevel', 'divineSpiritCost',
         'divineSimpleVillagerLevel', 'divineSimpleVillagerCost',
         'divineBrileyismLevel', 'divineBrileyismCost',
+        'divineComboManLevel', 'divineComboManCost',
         'diamonds', 'clanPoints',
         'musicVolume', 'musicMuted', 'sfxVolume', 'sfxMuted', 'musicOwned', 'currentMusicTrack',
         'shopDivinePurchased', 'shopPlatinumPurchased', 'shopDivineWHPurchased', 'shopWHVrillPurchased', 'shopWHNaturePurchased',
         'shopVoidWHPurchased', 'shopFireWHPurchased', 'shopIceWHPurchased', 'shopWHhackerPurchased', 'shopWHchadPurchased',
-        'shopWHbreadPurchased', 'shopWHlightningPurchased', 'shopSilverPurchased', 'shopGoldPurchased',
+        'shopWHbreadPurchased', 'shopWHlightningPurchased', 'shopWH8bitPurchased', 'shopSilverPurchased', 'shopGoldPurchased',
         'shopMobileManPurchased', 'shopCasinoDealerPurchased', 'shopBgPurchased', 'shopCollectionBgPurchased', 'shopWHBWPurchased',
         'equippedShopImage', 'equippedBgImage',
         // owned by the casino page: dropping them let players re-spin the same day

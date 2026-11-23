@@ -7,12 +7,15 @@
  *   verification_token  the secret shown on ko-fi.com/manage/webhooks: checked first, anything else is refused
  *   kofi_transaction_id the payment's id: the worker credits each one once (Ko-fi retries until it gets a 200, with the
  *                       same message_id, so the same payment can arrive more than once)
- *   type                'Donation' | 'Subscription' | 'Shop Order' (anything else gives no Holy What Happeneds)
+ *   type                'Tip' | 'Subscription' | 'Shop Order' | 'Commission'. Ko-fi's webhooks page (2026-11-21) says tips come
+ *                       as 'Tip' while its own example still shows 'Donation': both are read as a tip. Anything else gives
+ *                       no Holy What Happeneds.
  *   amount, currency    e.g. "3.00" (a string) and "USD"
- *   message             the supporter's message: where the player pastes their link code
+ *   message             the supporter's message: where the player pastes their link code (a Shop Order has none)
  *   shop_items          for a Shop Order: [{ direct_link_code, variation_name, quantity }], else null
  *   tier_name           for a Subscription: the membership tier
- *   email               only used to let a player claim a payment that had no link code (kept as a keyed hash, never as text)
+ *   email               the payer's email, only ever as a keyed hash: a payment with no link code goes to the account whose
+ *                       verified sign-in email it is (kofi_emails/<hash>), or waits for that player to collect or claim it
  * The payload Ko-fi's docs show as an example has kofi_transaction_id 00000000-1111-2222-3333-444444444444: that one is
  * treated as a test and credits nothing.
  *
@@ -31,7 +34,7 @@
     const LINK_SEED = 'kofi-link:';
     const LINK_LEN = 12;
     const TEST_TXID = '00000000-1111-2222-3333-444444444444';
-    const TYPES = ['Donation', 'Subscription', 'Shop Order', 'Commission'];
+    const TYPES = ['Donation', 'Tip', 'Subscription', 'Shop Order', 'Commission'];
     const TXID_RE = /^[A-Za-z0-9-]{8,64}$/;
     // "WH-3FA9-C21B-77D0", "wh 3fa9c21b77d0", "WH3FA9C21B77D0": spaces and dashes between the groups are optional
     const LINK_RE = /\bWH[\s-]*([0-9A-F]{4})[\s-]*([0-9A-F]{4})[\s-]*([0-9A-F]{4})(?![0-9A-F])/i;
@@ -95,7 +98,7 @@
             ok: true,
             txid,
             messageId: str(p.message_id, 80),
-            type: TYPES.includes(type) ? type : 'Other',
+            type: type === 'Tip' ? 'Donation' : TYPES.includes(type) ? type : 'Other', // one name for a tip, whichever Ko-fi sends
             amount: Number.isFinite(amount) ? amount : 0,
             amountText: Number.isFinite(amount) ? amountText : '',
             currency: /^[A-Z]{3}$/.test(currency) ? currency : '',

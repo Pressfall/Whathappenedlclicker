@@ -160,18 +160,24 @@ test('the chests: deeper dungeons, later rooms, luck and a bigger party give rar
     }
 });
 
-test('a boss\'s first kill each week pays its Heart; later kills a little; the Drowned King still pays seals, Glory and a chest', () => {
-    const s = W.freshState(NOW);
+const REST = V.COOLDOWN_MS;
+const essCount = (mats) => Object.entries(mats).filter(([id]) => D.MATERIALS_BY_ID[id].kind === 'essence').reduce((a, [, n]) => a + n, 0);
+test('a boss\'s first kill each week is boosted; later kills (after the rest) pay a small boss chest; the Drowned King still pays seals, Glory and a chest', () => {
+    const s = W.freshState(NOW), B = V.REWARDS.boss;
     const first = W.dungeonBossLoot(s, 'roots', seq(0.9), NOW, null, 1);
     assert.equal(first.first, true);
     assert.equal(W.count(s, 'heart_roots'), 1);
     assert.equal(W.count(s, 'catalyst'), 0, 'no catalyst on a high roll');
-    assert.ok(first.rubies > 0);
-    const again = W.dungeonBossLoot(s, 'roots', seq(0.99), NOW + 1000, null, 1);
+    assert.equal(first.rubies, B.rubies * V.tierOf('roots'));
+    assert.equal(essCount(first.mats), 1 + 2, 'the Heart and a big boss chest of two essences');
+    const again = W.dungeonBossLoot(s, 'roots', seq(0.99), NOW + REST, null, 1);
     assert.equal(again.first, false);
-    assert.equal(W.count(s, 'heart_roots'), 1, 'one Heart a week');
-    assert.ok(again.rubies > 0 && again.rubies < first.rubies);
-    assert.equal(W.dungeonBossLoot(reload(s), 'roots', seq(0.9), NOW + 2000, null, 1).first, false, 'the week is kept on reload');
+    assert.equal(again.chest, true, 'a later kill opens a boss chest');
+    assert.equal(W.count(s, 'heart_roots'), 1, 'no Heart on a high roll');
+    assert.equal(essCount(again.mats), 1, 'a small boss chest: one essence');
+    assert.equal(again.rubies, B.repeat * V.tierOf('roots'));
+    assert.ok(again.rubies < first.rubies);
+    assert.equal(W.dungeonBossLoot(reload(s), 'roots', seq(0.9), NOW + 2 * REST, null, 1).first, false, 'the week is kept on reload');
     const lucky = W.dungeonBossLoot(s, 'deep', seq(0.01), NOW, null, 3);
     assert.equal(lucky.mats.catalyst, 1, 'a low roll: a Catalyst');
     assert.equal(W.dungeonBossLoot(s, 'roots', seq(0.9), NOW + 7 * DAY, null, 1).first, true, 'next week again');
@@ -186,9 +192,72 @@ test('a boss\'s first kill each week pays its Heart; later kills a little; the D
     assert.ok(king.rubies >= V.REWARDS.vaultKing.rubies);
     assert.equal(s.raid.kills, 1);
     assert.equal(s.raid.duo, 1, 'with exactly two players (an achievement)');
-    assert.equal(W.dungeonBossLoot(s, 'vault', seq(0.9), NOW + 1000, null, 3).rubies, V.REWARDS.kingRepeat);
+    // his later kills: rubies and a boss chest, but no more Glory, seals or Golden Chest (they stay weekly, under the caps)
+    const outbox0 = s.outbox.length, glory1 = s.arena.glory, seals1 = W.count(s, 'vault_seal');
+    const king2 = W.dungeonBossLoot(s, 'vault', seq(0.9), NOW + REST, null, 3);
+    assert.equal(king2.rubies, V.REWARDS.kingRepeat);
+    assert.equal(s.arena.glory, glory1); assert.equal(W.count(s, 'vault_seal'), seals1); assert.equal(s.outbox.length, outbox0);
     assert.equal(W.sell(s, 'vault_seal', 1), 0);
     assert.equal(W.sell(s, 'heart_vault', 1), 0, 'essences are never sold');
+});
+
+test('a dungeon rests 30 minutes after its boss falls to you, each dungeon on its own clock, and the rest survives a reload', () => {
+    const s = W.freshState(NOW);
+    s.bosses[D.ZONES.greenwood.boss] = { kills: 1 }; s.bosses[D.ZONES.mines.boss] = { kills: 1 };
+    assert.equal(W.dungeonRest(s, 'roots', NOW), 0, 'never beaten: open');
+    assert.deepEqual(V.mayEnter(1, true, W.dungeonRest(s, 'roots', NOW)), { ok: true });
+    W.dungeonBossLoot(s, 'roots', seq(0.9), NOW, null, 1);
+    assert.equal(W.dungeonRest(s, 'roots', NOW), REST);
+    assert.equal(W.dungeonRest(s, 'roots', NOW + REST - 60000), 60000);
+    const no = V.mayEnter(1, true, W.dungeonRest(s, 'roots', NOW + 10 * 60000));
+    assert.equal(no.ok, false); assert.equal(no.reason, 'resting'); assert.equal(V.restMinutes(no.rest), 20);
+    assert.equal(V.mayEnter(1, false, REST).reason, 'locked', 'a sealed way stays sealed first');
+    assert.equal(W.dungeonRest(s, 'deep', NOW), 0, 'another dungeon is not resting');
+    assert.equal(W.dungeonRest(reload(s), 'roots', NOW + 60000), REST - 60000, 'kept in the save');
+    assert.equal(W.dungeonRest(s, 'roots', NOW + REST), 0, 'rested');
+    assert.equal(V.restMinutes(1), 1, 'under a minute shows as 1');
+    assert.equal(V.restLeft(NOW + 5 * DAY, NOW), REST, 'a kill stamped in the future rests no longer than the rest');
+
+    // a boss beaten while it still rests for you (stayed down with a party): nothing at all, and the clock doesn't restart
+    const rubies0 = s.rubies, kills0 = s.dungeons.kills.roots;
+    const r = W.dungeonBossLoot(s, 'roots', seq(0.01), NOW + REST / 2, null, 2);
+    assert.equal(r.rubies, 0); assert.deepEqual(r.mats, {}); assert.equal(r.first, false); assert.equal(r.resting, REST / 2);
+    assert.equal(s.rubies, rubies0); assert.equal(s.dungeons.kills.roots, kills0);
+    assert.equal(W.dungeonRest(s, 'roots', NOW + REST), 0, 'the rest still ends on time');
+});
+
+test('later boss kills open one of the day\'s chests (rooms and bosses share them); then only a few rubies, as before', () => {
+    const s = W.freshState(NOW), B = V.REWARDS.boss, N = V.REWARDS.essRoomsPerDay;
+    for (const id of V.IDS) W.dungeonBossLoot(s, id, seq(0.9), NOW, null, 1); // every boosted kill of the week first
+    assert.equal(W.dungeonDayLeft(s, NOW).ess, N, 'the boosted kills don\'t use the day\'s chests');
+    // two rooms first: they take two of the day's chests
+    W.dungeonRoomCleared(s, 'roots', 1, NOW, Math.random, 1); W.dungeonRoomCleared(s, 'roots', 2, NOW, Math.random, 1);
+    const got = V.IDS.map((id, i) => W.dungeonBossLoot(s, id, seq(0.99), NOW + REST + i, null, 1));
+    assert.equal(got.filter(r => r.chest).length, N - 2);
+    const capped = got.filter(r => r.capped);
+    assert.equal(capped.length, V.IDS.length - (N - 2));
+    for (const [i, r] of got.entries()) if (r.capped) assert.equal(r.rubies, V.IDS[i] === 'vault' ? V.REWARDS.kingCapped : B.capped * V.tierOf(V.IDS[i]), 'past the limit: the old repeat rubies');
+    assert.equal(W.dungeonDayLeft(s, NOW + REST).ess, 0);
+    assert.deepEqual(W.dungeonRoomCleared(s, 'deep', 1, NOW + REST, Math.random, 1).mats, {}, 'and a room after them opens no chest');
+    assert.equal(reload(s).dungeons.ess, N, 'the day\'s count survives a reload');
+    assert.equal(W.dungeonDayLeft(s, NOW + DAY).ess, N, 'a new day, new chests');
+    // a lucky later kill: the Heart and a Catalyst
+    const s2 = W.freshState(NOW);
+    W.dungeonBossLoot(s2, 'crypt', seq(0.9), NOW, null, 1);
+    const lucky = W.dungeonBossLoot(s2, 'crypt', seq(0.001), NOW + REST, null, 1);
+    assert.equal(lucky.mats.heart_crypt, 1); assert.equal(lucky.mats.catalyst, 1);
+    assert.equal(W.count(s2, 'heart_crypt'), 2);
+});
+
+test('the boss chests\' odds: a big one holds two essences, a small one one, at the third room\'s rarities', () => {
+    // (each essence takes two rolls, rarity then which one; the last roll is the dungeon's own essence: under 21% in the third room)
+    for (const id of V.IDS) {
+        assert.equal(essCount(V.bossChest(id, seq(0.5, 0.3, 0.99, 0.5, 0.9), 0, 1, true)), 2);
+        assert.equal(essCount(V.bossChest(id, seq(0.5, 0.99, 0.9), 0, 1, false)), 1);
+        const own = V.bossChest(id, seq(0.5, 0.0, 0.0), 0, 1, false);
+        assert.equal(own[D.DUNGEONS[id].essence], 1, 'a low roll: the dungeon\'s own essence too');
+        assert.equal(essCount(own), 2);
+    }
 });
 
 test('the dungeon save is cleaned on load, and the Vault\'s old record keeps its numbers', () => {
@@ -205,7 +274,11 @@ test('the dungeon save is cleaned on load, and the Vault\'s old record keeps its
     assert.deepEqual(back.dungeons.weeks, { roots: '2026-W45' });
     assert.deepEqual(back.dungeons.kills, { roots: 4 });
     assert.deepEqual(back.dungeons.found, { roots: true });
-    assert.deepEqual(reload(Object.assign(W.freshState(NOW), { dungeons: null })).dungeons, { day: '', rooms: 0, ess: 0, weeks: {}, kills: {}, found: {}, run: null }, 'an old save');
+    assert.deepEqual(reload(Object.assign(W.freshState(NOW), { dungeons: null })).dungeons, { day: '', rooms: 0, ess: 0, weeks: {}, kills: {}, cool: {}, found: {}, run: null }, 'an old save');
+    // the rest's clocks: numbers only, known dungeons only
+    const c = W.freshState(NOW);
+    c.dungeons.cool = { roots: NOW, deep: 'soon', nowhere: NOW, crypt: -5, tomb: 1e20 };
+    assert.deepEqual(reload(c).dungeons.cool, { roots: NOW });
 });
 
 test('a run played alone is kept through a reload, between rooms', () => {

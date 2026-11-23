@@ -198,7 +198,8 @@ async function main() {
         // an anonymous player joins as a member
         // (a page keeps the sign-in it opened with, so each change of player opens the page again, with the clan as it is now)
         const as = async (auth, name, clanId) => {
-            await evalJs(`(() => { localStorage.setItem('__fake_auth', ${JSON.stringify(JSON.stringify(auth))}); localStorage.setItem('player_username', ${JSON.stringify(name)});
+            // (the chat name and the Wilds name are one name since core/names.js, and the Wilds' wins: both change)
+            await evalJs(`(() => { localStorage.setItem('__fake_auth', ${JSON.stringify(JSON.stringify(auth))}); localStorage.setItem('player_username', ${JSON.stringify(name)}); localStorage.setItem('whathappened_world_name', ${JSON.stringify(name)});
                 ${clanId ? `localStorage.setItem('player_clanId', '${clanId}');` : `localStorage.removeItem('player_clanId');`} localStorage.setItem('whathappened_prestige_times', '1');
                 localStorage.setItem('__fake_fs_seed', JSON.stringify(window.__fakeFS.docs)); return true; })()`);
             await navigate(`http://localhost:${PORT}/clan.html`, '!!window.__fakeFS && !!window.WHClanPage');

@@ -8,9 +8,9 @@
  * and in Node (require).
  */
 (function (root, factory) {
-    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'), require('./world-crew'), require('./renown'), require('./world-guilds'), require('./world-dungeons'), require('./world-relics'), require('./gear'), require('./world-market'));
-    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour, root.WHCrew, root.WHRenown, root.WHGuilds, root.WHWorldDungeons, root.WHWorldRelics, root.WHGear, root.WHWorldMarket);
-}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour, Crew, Renown, Guilds, Dungeons, Relics, Gear, Market) {
+    if (typeof module === 'object' && module.exports) module.exports = factory(require('./world-data'), require('./world-bridge'), require('./world-gods'), require('./world-arena'), require('./world-waves'), require('./world-tour'), require('./world-crew'), require('./renown'), require('./world-guilds'), require('./world-dungeons'), require('./world-relics'), require('./gear'), require('./world-market'), require('./world-fuse'));
+    else root.WHWorld = factory(root.WHWorldData, root.WHWorldBridge, root.WHWorldGods, root.WHWorldArena, root.WHWorldWaves, root.WHWorldTour, root.WHCrew, root.WHRenown, root.WHGuilds, root.WHWorldDungeons, root.WHWorldRelics, root.WHGear, root.WHWorldMarket, root.WHWorldFuse);
+}(typeof self !== 'undefined' ? self : this, function (D, Bridge, Gods, Arena, Waves, Tour, Crew, Renown, Guilds, Dungeons, Relics, Gear, Market, Fuse) {
     'use strict';
 
     const WORLD_VERSION = 1;
@@ -41,7 +41,7 @@
     function freshStats() {
         return { kills: 0, elites: 0, deaths: 0, crafted: 0, bestScore: 0, legendaries: 0, mined: 0, chopped: 0, gathered: 0,
             rubiesEarned: 0, playSec: 0, bossKills: 0, rivalsBeaten: 0, boxesCrafted: 0, gemsSent: 0, goldenSent: 0, lostGear: 0, pvpWins: 0, pvpLosses: 0,
-            blocks: 0, backstabs: 0, arrowHits: 0, rushHits: 0, questsDone: 0, guildsGot: 0 };
+            blocks: 0, backstabs: 0, arrowHits: 0, rushHits: 0, bulletHits: 0, questsDone: 0, guildsGot: 0 };
     }
     function freshGuilds() { return { owned: {}, sold: { period: '', ups: {} }, contract: null }; }
     function cleanGuilds(raw) {
@@ -431,15 +431,48 @@
         if (base.slot === 'ring' || base.slot === 'offhand') return null;
         return 'armor';
     }
-    function rollAffixes(base, score, rng) {
+    // opts.min: at least this many of the usual affixes (a Power Chip); opts.arcade: one arcade-only affix (a Glitch
+    // Cartridge; an Arcade Set piece always has one). The arcade-only ones never come on their own. A piece holds at most
+    // MAX_AFFIX (saves and the Auction Hall keep that many), so an arcade affix takes the second place if both are filled.
+    const MAX_AFFIX = 2;
+    const isArcadeAffix = (a) => !!(D.AFFIXES[a] && D.AFFIXES[a].arcade);
+    function rollAffixes(base, score, rng, opts = {}) {
         const group = affixGroup(base);
         if (!group) return [];
         const q = qualityOf(score);
-        const pool = Object.keys(D.AFFIXES).filter(a => D.AFFIXES[a].slots.includes(group));
+        const fits = (a) => D.AFFIXES[a].slots.includes(group);
+        const pool = Object.keys(D.AFFIXES).filter(a => fits(a) && !isArcadeAffix(a));
         const out = [];
-        const pick = () => { const left = pool.filter(a => !out.includes(a)); if (left.length) out.push(left[Math.floor(rng() * left.length) % left.length]); };
+        const pick = (list = pool) => { const left = list.filter(a => !out.includes(a)); if (left.length) out.push(left[Math.floor(rng() * left.length) % left.length]); };
         if (q.affix >= 1 || rng() < q.affix) pick();
         if (q.second && rng() < q.second) pick();
+        while (out.length < Math.min(opts.min || 0, MAX_AFFIX)) { const n = out.length; pick(); if (out.length === n) break; }
+        if (opts.arcade || base.set) addArcadeAffix(out, base, rng);
+        return out;
+    }
+    // Put one arcade-only affix into a list of affixes (when it has none), in the second place if the list is full
+    function addArcadeAffix(list, base, rng) {
+        const group = affixGroup(base);
+        if (!group || list.some(isArcadeAffix)) return list;
+        const ar = Object.keys(D.AFFIXES).filter(a => isArcadeAffix(a) && D.AFFIXES[a].slots.includes(group));
+        if (!ar.length) return list;
+        const pickA = ar[Math.floor(rng() * ar.length) % ar.length];
+        if (list.length >= MAX_AFFIX) list[MAX_AFFIX - 1] = pickA; else list.push(pickA);
+        return list;
+    }
+    // The arcade add-ins a craft of this kind (gear, reforge, box) can take, from those asked for: known ones, once each
+    function boostsFor(kind, boosts) {
+        return [...new Set(Array.isArray(boosts) ? boosts : [])].filter(id => D.POWERUPS[id] && D.POWERUPS[id].on.includes(kind));
+    }
+    // A gear set's bonuses for how many of its pieces are worn: [{ n, name, desc, bonus, on }] (on: reached)
+    function setBonuses(setId, worn) {
+        const S = D.SETS[setId];
+        return S ? S.bonuses.map(b => Object.assign({}, b, { on: worn >= b.n })) : [];
+    }
+    // How many pieces of each set are worn: { arcade: 3 }
+    function setsWorn(s) {
+        const out = {};
+        for (const slot of SLOTS) { const b = baseOf(findGear(s, s.equip[slot])); if (b && b.set && D.SETS[b.set] && D.SETS[b.set].pieces.includes(b.id)) out[b.set] = (out[b.set] || 0) + 1; }
         return out;
     }
     function gearCount(s) { return s.gear.length; }
@@ -470,8 +503,12 @@
         const out = { dmg: (b.dmg || 0) * m, armor: (b.armor || 0) * m * (a.has('sturdy') ? 1.1 : 1), hp: (b.hp || 0) * m, speed: (b.speed || 0) * m,
             tool: b.tool || 0, toolPower: m, crit: a.has('keen') ? 0.1 : 0, wMult: a.has('swift') ? 1.08 : 1, aMult: a.has('featherweight') ? 1.15 : 1,
             kbMult: a.has('weighty') ? 1.4 : 1, lifesteal: a.has('vampiric') ? 0.02 : 0, yield: a.has('prospector') ? 0.15 : 0, luck: a.has('lucky') ? 0.1 : 0,
-            rubies: b.rubies || 0, fireResist: b.fireResist || 0, stamRegen: b.stamRegen || 0, burn: !!b.burn, chill: !!b.chill };
+            rubies: b.rubies || 0, fireResist: b.fireResist || 0, stamRegen: b.stamRegen || 0, burn: !!b.burn, chill: !!b.chill, dodge: 0 };
         if (b.luck) out.luck += b.luck;
+        // the Neon Arcade's affixes
+        if (a.has('turbo')) { out.wMult *= 1.1; out.aMult *= 1.08; }
+        if (a.has('highscore')) out.rubies += 0.12;
+        if (a.has('glitched')) out.dodge += 0.04;
         // a relic's tier and boosts, and essences in its sockets (core/world-relics.js)
         if (it.r || it.k) Relics.applyAspects(out, it, b.slot);
         if (b.slot === 'offhand') {
@@ -495,7 +532,8 @@
     function classId(s) { return D.CLASSES[s.classes && s.classes.active] ? s.classes.active : D.STARTER_CLASS; }
     function classOf(s) { return D.CLASSES[classId(s)]; }
     // bonus keys that multiply (the rest add up); dmg multiplies per weapon class
-    const MULT_BONUS = { blockStam: 1, abilityCd: 1, abilityDmg: 1, abilityStam: 1, dashCd: 1, dashStam: 1, stunnedDmg: 1 };
+    // (the Gunslinger's: reload and settle multiply the revolver's reload and settling times)
+    const MULT_BONUS = { blockStam: 1, abilityCd: 1, abilityDmg: 1, abilityStam: 1, dashCd: 1, dashStam: 1, stunnedDmg: 1, reload: 1, settle: 1 };
     function addBonus(out, b) {
         for (const k in b) {
             if (k === 'dmg') { for (const w in b.dmg) out.dmgBy[w] = (out.dmgBy[w] || 1) * b.dmg[w]; }
@@ -505,21 +543,33 @@
     }
     function playerStats(s) {
         const out = { maxHp: D.COMBAT.player.hp, armor: 0, speed: 1, rubies: 0, luck: 0, yield: 0, fireResist: 0, stamRegen: 1, manaRegen: 1 };
-        let armorCrit = 0, armorSteal = 0; // relic armor's Keen and Vigor (a weapon's own work through its hits)
+        let armorCrit = 0, armorSteal = 0, armorDodge = 0; // relic armor's Keen and Vigor (a weapon's own work through its hits), Glitched
         for (const slot of SLOTS) {
             const st = gearStats(findGear(s, s.equip[slot]));
             if (!st) continue;
             out.maxHp += st.hp; out.armor += st.armor; out.speed += st.speed; out.rubies += st.rubies;
             out.luck += st.luck; out.yield += st.yield; out.fireResist += st.fireResist; out.stamRegen += st.stamRegen;
-            armorCrit += st.crit; armorSteal += st.lifesteal;
+            armorCrit += st.crit; armorSteal += st.lifesteal; armorDodge += st.dodge || 0;
+        }
+        // a gear set's bonuses (D.SETS): rubies, a share more health, an Extra Life (world-actors.js hurtPlayer)
+        let hpMult = 0, extraLife = 0;
+        const worn = setsWorn(s);
+        for (const id in worn) for (const b of setBonuses(id, worn[id])) {
+            if (!b.on) continue;
+            out.rubies += b.bonus.rubies || 0;
+            hpMult += b.bonus.hpMult || 0;
+            if (b.bonus.extraLife) extraLife = b.bonus.extraLife;
         }
         // Renown (core/renown.js), counted from both games: a little more rubies from monsters, bosses and veins
         out.rubies += Renown.bonus(clickerView.renown).rubies / 100;
-        Object.assign(out, { crit: armorCrit, dmgBy: {}, arrowSave: 0, lifesteal: armorSteal, momentum: 0, backstab: 0, regen: 0, pierce: 0, thorns: 0, dodge: 0 }, MULT_BONUS);
+        Object.assign(out, { crit: armorCrit, dmgBy: {}, arrowSave: 0, lifesteal: armorSteal, momentum: 0, backstab: 0, regen: 0, pierce: 0, thorns: 0, dodge: armorDodge, extraLife,
+            // the Gunslinger's: rounds a dash puts back, extra Steady multiplier, extra ricochets, ricochets lose nothing, the last round doubles, burning bullets
+            dashReload: 0, steadyBonus: 0, bounce: 0, bankShot: 0, lastRound: 0, gunBurn: 0 }, MULT_BONUS);
         const cid = classId(s);
         out.usesMana = !!D.CLASSES[cid].mana; // abilities and staff spells cost mana, not stamina
         addBonus(out, D.CLASSES[cid].bonus);
         for (const id in s.skills.learned) { const pk = D.PERKS[id]; if (pk && pk.cls === cid) addBonus(out, pk.bonus); }
+        out.maxHp *= 1 + hpMult;
         out.maxHp = Math.round(out.maxHp);
         out.armor = Math.round(out.armor);
         out.fireResist = Math.min(0.8, out.fireResist);
@@ -599,18 +649,27 @@
     }
     // Pay for a craft before the minigame starts. Quitting (or reloading) refunds the materials but not the fee, so
     // replaying until the score is good always costs something.
-    function beginCraft(s, kind, id, now) {
+    // boosts: the arcade add-ins (D.POWERUPS) to put in, one of each at most; taken with the materials and given back with
+    // them if the craft is called off (pendingCraft.boost says which went in)
+    // (base: the gear made; a set piece already comes with its arcade affix, so a Glitch Cartridge stays in the bag)
+    function withBoosts(s, kind, mats, boosts, base) {
+        const use = boostsFor(kind, boosts).filter(id => !(base && base.set && D.POWERUPS[id].arcade)), all = Object.assign({}, mats);
+        for (const id of use) all[id] = (all[id] || 0) + 1;
+        return { use, all };
+    }
+    function beginCraft(s, kind, id, now, boosts) {
         const c = canCraft(s, kind, id, now);
         if (!c.ok) return c;
-        const r = c.recipe;
-        take(s, r.in);
+        const r = c.recipe, { use, all } = withBoosts(s, kind, r.in, boosts, kind === 'gear' ? D.GEAR_BY_ID[id] : null);
+        if (!has(s, all)) return { ok: false, reason: 'boost', missing: missing(s, all) };
+        take(s, all);
         s.rubies -= r.fee;
         if (kind === 'box') s.caps.boxPts += r.pts; // held while crafting; given back if the craft is abandoned
-        s.pendingCraft = { kind, id, mats: Object.assign({}, r.in), fee: r.fee, uid: 0, at: now };
-        return { ok: true, recipe: r };
+        s.pendingCraft = { kind, id, mats: all, fee: r.fee, uid: 0, at: now, boost: use };
+        return { ok: true, recipe: r, boost: use };
     }
     // Reforge: replay a piece's minigame for the fee plus half its materials; the better score is kept
-    function beginReforge(s, uid, now) {
+    function beginReforge(s, uid, now, boosts) {
         const it = findGear(s, uid), b = baseOf(it);
         if (!b || !b.recipe) return { ok: false, reason: 'unknown' };
         if (s.pendingCraft) return { ok: false, reason: 'busy' };
@@ -618,10 +677,22 @@
         for (const id in b.recipe.in) part[id] = Math.max(1, Math.ceil(b.recipe.in[id] * D.RULES.reforgeShare));
         if (s.rubies < b.recipe.fee) return { ok: false, reason: 'rubies', need: b.recipe.fee - s.rubies };
         if (!has(s, part)) return { ok: false, reason: 'materials', missing: missing(s, part) };
-        take(s, part);
+        const { use, all } = withBoosts(s, 'reforge', part, boosts, b);
+        if (!has(s, all)) return { ok: false, reason: 'boost', missing: missing(s, all) };
+        take(s, all);
         s.rubies -= b.recipe.fee;
-        s.pendingCraft = { kind: 'reforge', id: it.base, mats: part, fee: b.recipe.fee, uid, at: now };
-        return { ok: true, recipe: { station: b.recipe.station, in: part, fee: b.recipe.fee, tier: b.tier, name: b.name } };
+        s.pendingCraft = { kind: 'reforge', id: it.base, mats: all, fee: b.recipe.fee, uid, at: now, boost: use };
+        return { ok: true, recipe: { station: b.recipe.station, in: part, fee: b.recipe.fee, tier: b.tier, name: b.name }, boost: use };
+    }
+    // What the add-ins put into a craft do to it: { score (added), min (affixes at least), arcade (an arcade affix) }
+    function boostEffect(boost) {
+        const out = { score: 0, min: 0, arcade: false };
+        for (const id of boost || []) {
+            const P = D.POWERUPS[id];
+            if (!P) continue;
+            out.score += P.score || 0; out.min = Math.max(out.min, P.affix || 0); out.arcade = out.arcade || !!P.arcade;
+        }
+        return out;
     }
     function abortCraft(s) {
         const p = s.pendingCraft;
@@ -643,30 +714,46 @@
     function finishCraft(s, score, rng, now, ack) {
         const p = s.pendingCraft;
         if (!p) return null;
-        const sc = int(score, 100);
+        const bx = boostEffect(p.boost);
+        // a Bonus Round adds to the minigame's score, but never lifts a craft into Legendary on its own: that has to be played
+        const LEGEND = D.QUALITY[D.QUALITY.length - 1].min;
+        const played = int(score, 100), sc = !bx.score ? played : played >= LEGEND ? Math.min(100, played + bx.score) : Math.min(LEGEND - 1, played + bx.score);
+        const boosted = !!(p.boost && p.boost.length);
         s.pendingCraft = null;
-        if (p.kind === 'relic') return finishForge(s, p, sc, rng, now);
-        if (p.kind === 'infuse') return finishInfuse(s, p, sc);
+        if (p.kind === 'relic') return finishForge(s, p, played, rng, now);
+        if (p.kind === 'infuse') return finishInfuse(s, p, played);
         s.stats.crafted++;
         s.stats.bestScore = Math.max(s.stats.bestScore, sc);
+        const aOpts = { min: bx.min, arcade: bx.arcade };
         if (p.kind === 'gear') {
             const b = D.GEAR_BY_ID[p.id];
-            const it = addGear(s, p.id, sc, rollAffixes(b, sc, rng), now);
+            const it = addGear(s, p.id, sc, rollAffixes(b, sc, rng, aOpts), now);
             if (qualityOf(sc).id === 'legendary') s.stats.legendaries++;
-            questEvent(s, { kind: 'craft', score: sc, tier: b.tier });
-            return { kind: 'gear', item: it, score: sc };
+            questEvent(s, { kind: 'craft', score: sc, tier: b.tier, set: b.set || '', boosted });
+            return { kind: 'gear', item: it, score: sc, played, boost: p.boost || [] };
         }
         if (p.kind === 'reforge') {
             const it = findGear(s, p.uid);
             if (!it) return { kind: 'reforge', item: null, score: sc };
             const improved = sc > it.score;
+            const b = baseOf(it), hadArcade = it.aff.filter(isArcadeAffix);
             if (improved) {
                 it.score = sc;
-                const fresh = rollAffixes(baseOf(it), sc, rng);
+                const fresh = rollAffixes(b, sc, rng);
                 if (fresh.length > it.aff.length) it.aff = fresh; // never lose affixes to a reforge
+                // a new roll never takes away the arcade affix the piece had
+                if (hadArcade.length && !it.aff.some(isArcadeAffix)) { if (it.aff.length >= MAX_AFFIX) it.aff[MAX_AFFIX - 1] = hadArcade[0]; else it.aff.push(hadArcade[0]); }
                 if (qualityOf(sc).id === 'legendary') s.stats.legendaries++;
             }
-            return { kind: 'reforge', item: it, score: sc, improved };
+            // the add-ins work even when the score doesn't beat the old one (that is what they went in for): a Power Chip
+            // tops the usual affixes up to one, a Glitch Cartridge adds an arcade one
+            if (bx.min && !it.aff.some(a => !isArcadeAffix(a))) {
+                const pool = Object.keys(D.AFFIXES).filter(a => !isArcadeAffix(a) && affixGroup(b) && D.AFFIXES[a].slots.includes(affixGroup(b)));
+                if (pool.length) { const a = pool[Math.floor(rng() * pool.length) % pool.length]; if (it.aff.length < MAX_AFFIX) it.aff.unshift(a); else it.aff[0] = a; }
+            }
+            if (bx.arcade) addArcadeAffix(it.aff, b, rng);
+            if (boosted) questEvent(s, { kind: 'craft', score: sc, tier: baseOf(it).tier, set: baseOf(it).set || '', boosted });
+            return { kind: 'reforge', item: it, score: sc, played, improved, boost: p.boost || [] };
         }
         if (p.kind === 'box') {
             const r = recipeFor('box', p.id);
@@ -676,7 +763,7 @@
             Bridge.push(s, { boxes, src: 'craft' }, ack, now);
             s.stats.boxesCrafted++;
             questEvent(s, { kind: 'box' });
-            return { kind: 'box', tier, baseTier: r.boxTier, score: sc };
+            return { kind: 'box', tier, baseTier: r.boxTier, score: sc, played, boost: p.boost || [] };
         }
         return null;
     }
@@ -779,8 +866,8 @@
         for (const dg of Dungeons.IDS) {
             const dd = D.DUNGEONS[dg];
             if (dd.essence === id || (mat && mat.kind === 'essence' && Dungeons.BY_RARITY[mat.rar] && Dungeons.BY_RARITY[mat.rar].includes(id))) add({ kind: 'dungeon', name: dd.name, zone: dg, chance: 0 });
-            if (dd.heart === id) add({ kind: 'boss', name: D.BOSSES[dd.boss].name, zone: dg, chance: 1, weekly: true });
-            if (id === 'catalyst') add({ kind: 'boss', name: D.BOSSES[dd.boss].name, zone: dg, chance: Dungeons.REWARDS.boss.catalyst, weekly: true });
+            if (dd.heart === id) add({ kind: 'boss', name: D.BOSSES[dd.boss].name, zone: dg, chance: 1, weekly: true, again: Dungeons.REWARDS.boss.heart });
+            if (id === 'catalyst') add({ kind: 'boss', name: D.BOSSES[dd.boss].name, zone: dg, chance: Dungeons.REWARDS.boss.catalyst, weekly: true, again: Dungeons.REWARDS.boss.repeatCatalyst });
         }
         if (id === 'vault_seal') add({ kind: 'boss', name: D.BOSSES.drowned_king.name, zone: 'vault', chance: 1, weekly: true }); // the King's first kill of each week
         for (const r of D.BASIC_RECIPES) if (r.out[id]) add({ kind: 'craft', name: D.STATIONS[r.station].name, station: r.station, inputs: r.in, n: r.out[id] });
@@ -990,10 +1077,11 @@
         if (isObj(b.n)) for (const it of D.VAULT_SHOP) if (it.perWeek) { const v = int(b.n[it.id], 1e6); if (v) r.bought.n[it.id] = v; }
         return r;
     }
-    // dungeons: today's rooms (rooms: paid in rubies, ess: with a chest of essences), each boss's last first-kill week and
-    // kills, the ways in this player has found (shown on the map from then on), and run: the run being played alone, as it
-    // stood between rooms (core/world-dungeons.js checkpoint), so a reload carries on with it
-    function freshDungeons() { return { day: '', rooms: 0, ess: 0, weeks: {}, kills: {}, found: {}, run: null }; }
+    // dungeons: today's rooms paid in rubies (rooms) and chests of essences opened (ess: by rooms and later boss kills
+    // alike), each boss's last first-kill week, kills and last kill (cool: when it fell to you, ms; the dungeon rests for
+    // core/world-dungeons.js COOLDOWN_MS from then), the ways in this player has found (shown on the map from then on), and
+    // run: the run being played alone, as it stood between rooms (core/world-dungeons.js checkpoint), so a reload carries on
+    function freshDungeons() { return { day: '', rooms: 0, ess: 0, weeks: {}, kills: {}, cool: {}, found: {}, run: null }; }
     function cleanDungeons(raw) {
         const r = freshDungeons();
         if (!isObj(raw)) return r;
@@ -1004,6 +1092,7 @@
         for (const id of Dungeons.IDS) {
             if (isObj(raw.weeks) && typeof raw.weeks[id] === 'string') r.weeks[id] = word(raw.weeks[id]);
             if (isObj(raw.kills)) { const k = int(raw.kills[id], 1e6); if (k) r.kills[id] = k; }
+            if (isObj(raw.cool)) { const t = Math.floor(Number(raw.cool[id])); if (t > 0 && t < 1e15) r.cool[id] = t; }
             if (isObj(raw.found) && raw.found[id] === true) r.found[id] = true;
         }
         return r;
@@ -1017,6 +1106,13 @@
     }
     function noteDungeonFound(s, id) { if (!D.DUNGEONS[id] || s.dungeons.found[id]) return false; s.dungeons.found[id] = true; return true; }
     function dungeonDay(s, now) { const d = s.dungeons, day = dayKey(now); if (d.day !== day) { d.day = day; d.rooms = 0; d.ess = 0; } return d; }
+    // How long dungeon id still rests for this player (ms; 0: it can be run again): COOLDOWN_MS from its boss's last fall to them
+    function dungeonRest(s, id, now) { return D.DUNGEONS[id] ? Dungeons.restLeft(s.dungeons.cool[id], now) : 0; }
+    // What today still holds: { rooms, ess } left of the day's paid rooms and chests of essences
+    function dungeonDayLeft(s, now) {
+        const d = dungeonDay(s, now), R = Dungeons.REWARDS;
+        return { rooms: Math.max(0, R.roomPaysPerDay - d.rooms), ess: Math.max(0, R.essRoomsPerDay - d.ess) };
+    }
     // A room of a dungeon was cleared with this player in it (players: how many in the party there). Rubies for the first
     // roomPaysPerDay rooms a day, a chest of essences (core/world-dungeons.js chestRoll, with this player's luck) for the
     // first essRoomsPerDay. Returns { rubies, mats, capped }
@@ -1032,25 +1128,42 @@
         if (id === 'vault') questEvent(s, { kind: 'vaultroom' });
         return { rubies, mats, capped: !rubies && !Object.keys(mats).length };
     }
-    // A dungeon's boss fell with this player in the fight (players: how many). The first kill of a week: its Heart, rubies (x
-    // the zone's tier) and maybe a Catalyst; later that week a few rubies and sometimes a common essence. The Drowned King also
-    // pays Glory (once a week, outside the daily caps), Vault Seals and a Golden Chest for the game (if the week's lootbox
-    // allowance has room). Returns what bossLoot returns (rubies, mats) plus first, glory and box.
+    // A dungeon's boss fell with this player in the fight (players: how many). The dungeon then rests for this player for
+    // COOLDOWN_MS. The first kill of a week is boosted: its Heart, rubies (x the zone's tier), a good chance of a Catalyst and
+    // a big boss chest. A later kill, while the day's chests last (rooms and bosses share them), pays a small boss chest, rubies
+    // and a small chance of the Heart and a Catalyst; past that a few rubies and sometimes a common essence. The Drowned King's
+    // first kill of a week also pays Glory (outside the daily caps), Vault Seals and a Golden Chest for the game (if the week's
+    // lootbox allowance has room). Beaten while the dungeon still rests for you: nothing (resting: the ms left).
+    // Returns what bossLoot returns (rubies, mats) plus first, glory, box, chest (a later kill's boss chest) and capped.
     function dungeonBossLoot(s, id, rng, now, ack, players) {
-        const dd = D.DUNGEONS[id], d = s.dungeons, week = weekKey(now), R = Dungeons.REWARDS;
+        const dd = D.DUNGEONS[id], d = s.dungeons, week = weekKey(now), R = Dungeons.REWARDS, B = R.boss;
         if (!dd) return { rubies: 0, mats: {}, first: false };
+        const rest = dungeonRest(s, id, now);
+        if (rest > 0) return { rubies: 0, mats: {}, first: false, resting: rest };
+        d.cool[id] = now;
         d.kills[id] = (d.kills[id] || 0) + 1;
         questEvent(s, { kind: 'dungeonboss', dungeon: id });
-        const vault = id === 'vault';
+        const vault = id === 'vault', tier = Dungeons.tierOf(id), luck = playerStats(s).luck;
         if (vault) { s.raid.kills++; if (players === 2) s.raid.duo++; questEvent(s, { kind: 'vaultking' }); }
+        const mats = {};
+        const chest = (big) => { const c = Dungeons.bossChest(id, rng, luck, players, big); for (const k in c) mats[k] = (mats[k] || 0) + c[k]; };
         if (d.weeks[id] === week) {
-            const mats = {};
-            if (rng() < R.boss.repeatEssence) { const pick = Dungeons.BY_RARITY[0]; mats[pick[Math.floor(rng() * pick.length) % pick.length]] = 1; giveAll(s, mats, true); }
-            return { rubies: addRubies(s, vault ? R.kingRepeat : R.boss.repeat * Dungeons.tierOf(id)), mats, first: false };
+            const day = dungeonDay(s, now);
+            if (day.ess < R.essRoomsPerDay) {
+                day.ess++;
+                if (rng() < B.heart) mats[dd.heart] = 1;
+                if (rng() < B.repeatCatalyst) mats.catalyst = 1;
+                chest(false);
+                giveAll(s, mats, true);
+                return { rubies: addRubies(s, vault ? R.kingRepeat : B.repeat * tier), mats, first: false, chest: true };
+            }
+            if (rng() < B.cappedEssence) { const pick = Dungeons.BY_RARITY[0]; mats[pick[Math.floor(rng() * pick.length) % pick.length]] = 1; giveAll(s, mats, true); }
+            return { rubies: addRubies(s, vault ? R.kingCapped : B.capped * tier), mats, first: false, capped: true };
         }
         d.weeks[id] = week;
-        const mats = { [dd.heart]: 1 };
-        if (rng() < R.boss.catalyst) mats.catalyst = 1;
+        mats[dd.heart] = 1;
+        if (rng() < B.catalyst) mats.catalyst = 1;
+        chest(true);
         let rubies, glory = 0, box = false;
         if (vault) {
             const K = R.vaultKing;
@@ -1097,11 +1210,11 @@
 
     // ---------------- the Crucible (core/world-relics.js, core/gear.js) ----------------
     const SATCHEL_MAX = 40;
-    function freshRelics() { return { pity: 0, forged: 0, best: -1, mythic: 0, uniques: 0, infused: 0, sent: 0, nextPid: 1, bp: Relics.BASE_MAX }; }
+    function freshRelics() { return { pity: 0, forged: 0, best: -1, mythic: 0, uniques: 0, infused: 0, sent: 0, fused: 0, fuseTries: 0, nextPid: 1, bp: Relics.BASE_MAX }; }
     function cleanRelics(raw) {
         const r = freshRelics();
         if (!isObj(raw)) return r;
-        for (const k of ['pity', 'forged', 'mythic', 'uniques', 'infused', 'sent']) r[k] = int(raw[k], 1e7);
+        for (const k of ['pity', 'forged', 'mythic', 'uniques', 'infused', 'sent', 'fused', 'fuseTries']) r[k] = int(raw[k], 1e7);
         r.best = Math.max(-1, Math.min(Gear.MAX_TIER, Math.floor(Number(raw.best)))) ;
         if (!Number.isFinite(r.best)) r.best = -1;
         r.nextPid = Math.max(1, int(raw.nextPid, 1e9));
@@ -1236,6 +1349,52 @@
         s.rubies -= cost.rubies;
         rec.lv++;
         return { ok: true, lv: rec.lv, cost, used: take1 };
+    }
+    // Fusing (core/world-fuse.js): five Wilds relics of one tier and kind, chosen by uid, fused into one a tier higher or all
+    // lost. feed: { ess: [essence ids], steps (ruby steps), catalyst (bool) } raises the chance. Returns { ok, reason?, chance,
+    // target, tier, part, rubies, mats, items }: reasons 'lent' (a tournament's lent kit is worn), 'unknown', 'equipped', those of
+    // Fuse.check, 'feed' (too many essences), 'materials', 'catalyst', 'rubies'
+    function canFuse(s, uids, feed) {
+        const f = feed || {}, list = Array.isArray(uids) ? uids : [];
+        const ids = (Array.isArray(f.ess) ? f.ess : []);
+        if (s.lent) return { ok: false, reason: 'lent' };
+        const items = list.map(uid => findGear(s, uid));
+        if (items.length === Fuse.COUNT && items.some(it => !it)) return { ok: false, reason: 'unknown' };
+        if (items.some(it => it && isEquipped(s, it.uid))) return { ok: false, reason: 'equipped' };
+        const c = Fuse.check(items, s.relics.bp);
+        if (!c.ok) return c;
+        const steps = Math.max(0, Math.min(Fuse.FEED.steps, Math.floor(Number(f.steps) || 0)));
+        const mats = {};
+        for (const id of ids) mats[id] = (mats[id] || 0) + 1;
+        if (f.catalyst) mats.catalyst = (mats.catalyst || 0) + 1;
+        const rubies = Fuse.rubyCost(c.target, steps);
+        const res = Object.assign({}, c, { ok: false, chance: Fuse.chance(c.target, { ess: ids, steps, catalyst: !!f.catalyst }), rubies, mats, items, steps });
+        if (ids.length > Fuse.FEED.maxEss || ids.some(id => !D.MATERIALS_BY_ID[id] || D.MATERIALS_BY_ID[id].kind !== 'essence')) return Object.assign(res, { reason: 'feed' });
+        if (f.catalyst && !count(s, 'catalyst')) return Object.assign(res, { reason: 'catalyst' });
+        if (!has(s, mats)) return Object.assign(res, { reason: 'materials', missing: missing(s, mats) });
+        if (s.rubies < rubies) return Object.assign(res, { reason: 'rubies', need: rubies - s.rubies });
+        return Object.assign(res, { ok: true });
+    }
+    // Fuse: everything fed in is spent and the five pieces are gone either way (essences set in their sockets come back);
+    // then the roll. Returns canFuse's answer plus fused (true: item is the new relic), back (the socketed essences returned)
+    function fuseRelics(s, uids, feed, rng, now, by) {
+        const c = canFuse(s, uids, feed);
+        if (!c.ok) return c;
+        take(s, c.mats);
+        s.rubies -= c.rubies;
+        const back = {}, gone = new Set(c.items.map(it => it.uid));
+        for (const it of c.items) for (const k of it.k || []) if (k) back[k[0]] = (back[k[0]] || 0) + 1;
+        giveAll(s, back, true);
+        s.gear = s.gear.filter(g => !gone.has(g.uid));
+        s.relics.fuseTries++;
+        if (!Fuse.roll(c.chance, rng)) return Object.assign(c, { fused: false, back, items: undefined });
+        const r = Fuse.result(c.items, rng), base = D.GEAR_BY_ID[r.base];
+        const rel = { t: r.target, l: r.lines, m: r.ess, c: r.colors, q: '', by: String(by || '').slice(0, 16), n: 0, lv: 0 };
+        const item = addGear(s, r.base, r.score, rollAffixes(base, r.score, rng), now, { r: rel });
+        s.relics.fused++;
+        s.relics.best = Math.max(s.relics.best, r.target);
+        questEvent(s, { kind: 'fuse', tier: r.target });
+        return Object.assign(c, { fused: true, item, back, items: undefined });
     }
     // Send pieces from the satchel to the game (core/world-bridge.js outbox gear; the game's gear-panel.js receives them).
     // Returns { ok, n, reason? }
@@ -1574,6 +1733,11 @@
         const c = D.CONSUMABLES_BY_ID[id];
         return c ? Math.max(c.heal || 0, (c.healPct || 0) * (maxHp || 0)) : 0;
     }
+    // The share of any heal that counts in this zone: 1, or less where the zone says so (the Arena: D.ZONES healMult)
+    function healMult(zoneId) {
+        const z = D.ZONES[zoneId], m = z && Number(z.healMult);
+        return m > 0 && m < 1 ? m : 1;
+    }
 
     // ---------------- death ----------------
     // Part of every carried stack drops where you fell; you can pick it up once. A new death replaces the old bag.
@@ -1876,6 +2040,8 @@
         if (g.tool && g.tool !== ev.tool) return false;
         if (g.minScore && !(ev.score >= g.minScore)) return false;
         if (g.tier && ev.tier !== g.tier) return false;
+        if (g.set && ev.set !== g.set) return false;          // a piece of that gear set (D.SETS)
+        if (g.boosted && !ev.boosted) return false;           // a craft with an arcade add-in in it (D.POWERUPS)
         return true;
     }
     // Something quests may count happened (a kill, a harvest, a craft...). ev: { kind, monster, elite, zone, boss, tool, score }.
@@ -2074,15 +2240,15 @@
         WORLD_VERSION, SLOTS, dayKey, weekKey, freshState, migrate, validate,
         count, has, missing, take, give, giveAll, bank, addRubies,
         tourJoin, tourLeave, tourSeen, tourPrune, lendKit, returnKit,
-        qualityOf, qualityMult, rollAffixes, addGear, findGear, baseOf, gearStats, gearName, gearCount, playerStats, materialSources,
+        qualityOf, qualityMult, rollAffixes, boostsFor, boostEffect, setBonuses, setsWorn, addGear, findGear, baseOf, gearStats, gearName, gearCount, playerStats, materialSources,
         equip, unequip, isEquipped, salvage, toolPower,
         recipeFor, craftBasic, canCraft, beginCraft, beginReforge, abortCraft, finishCraft, boxTierShift, boxAllowanceLeft,
         refreshCaps, gemsLeftToday, goldenLeftToday, grantGems, grantGolden,
         rollLoot, rollRubies, monsterLoot, nodeLoot, bossLoot, rivalLoot, die, recoverGrave, nextZoneAfter,
-        wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal,
+        wardCount, wardBroken, wardsBroken, lairOpen, wardState, breakWard, potionHeal, healMult,
         arenaEscrow, arenaResult, pitKO, pitDown, arenaBuy, arenaWeekLeft, setTitle, rollSeason, waveCleared,
-        dungeonOpen, noteDungeonFound, dungeonRoomCleared, dungeonBossLoot, vaultBuy, vaultWeekLeft, nodeEssences, isBanked,
-        SATCHEL_MAX, FORGE_KINDS, relicGearTier, canForge, beginForge, nextBlueprint, canBuyBlueprint, buyBlueprint, beginInfuse, upgradeRelic, scrapPiece, sendToGame, receivePieces, satchelRoom,
+        dungeonOpen, noteDungeonFound, dungeonRoomCleared, dungeonBossLoot, dungeonRest, dungeonDayLeft, vaultBuy, vaultWeekLeft, nodeEssences, isBanked,
+        SATCHEL_MAX, FORGE_KINDS, relicGearTier, canForge, beginForge, nextBlueprint, canBuyBlueprint, buyBlueprint, beginInfuse, upgradeRelic, canFuse, fuseRelics, scrapPiece, sendToGame, receivePieces, satchelRoom,
         takeItem, putItem, collectPending, tradesLeft, tradeStart, tradeSetOffer, tradeConfirmed, tradeReconcile, heldMatches, tradeSettle, tradeCancel, auctionList, auctionReturn, auctionPaid, auctionHold, auctionRelease, auctionWon,
         sell, buy, exchange, classId, classOf, classProgress, classState, unlockClass, setClass, skillDef, skillState, learnSkill, loadoutOf, equipAbility, unequipAbility, abilityKit, treeOrder,
         godState, upgradeGod, isHallWord, speak, hiddenShopState, buyHidden, questOffer, questProgress, acceptQuest, turnInQuest, abandonQuest, questEvent, activeQuests, furthestTier, noteNode, nodeReadyAt, pruneNodes, serialize,

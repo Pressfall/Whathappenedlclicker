@@ -40,7 +40,7 @@
         clicks: 0,           // clicks since the last send
         sched: null,         // { at, upcoming, cur } from events/state
         boss: null,          // { start, meta, total, at } for the bossfight running now (its phase decides the twist)
-        flushing: false, paying: false,
+        flushing: false, paying: false, questing: false, renaming: '',
         clanUnsub: null, watching: '', // the live listener on the clan document, and which clan it is for
         schedUnsub: null, slotTimer: null, // the live listener on events/state, and the timer for the end of the slot running
     };
@@ -65,20 +65,49 @@
             : `🛡️ You are no longer in ${name || 'your clan'}, so its perks and buffs are off.`);
         try { if (typeof updateDisplays === 'function') updateDisplays(); } catch (e) {}
     }
+    // the sign-in id the clan knows this player by (the clan page stores it), so a new name doesn't lose the clan
+    const UID_KEY = 'whathappened_clan_uid';
+    const myUid = () => String(get(UID_KEY) || '');
+    // Is the player in this clan document? By sign-in id first, then by name. While the name still matches, the id is learnt
+    // from the document (and the clan page stores it too), so a later new name (core/names.js) doesn't read as a kick.
+    function memberOf(d) {
+        if (!R) return null;
+        const user = username();
+        let uid = myUid();
+        if (!uid || !R.roleOf(d, uid)) {
+            const u = R.uidOfName(d, user);
+            if (u && R.roleOf(d, u)) { set(UID_KEY, u); uid = u; }
+        }
+        return R.memberIn ? R.memberIn(d, { uid, names: [user] }) : R.memberByName(d, user);
+    }
+    // My name changed since the clan last heard it (a new chat or Wilds name): tell the clan, so the member list, check-ins
+    // and kicks follow the new name. Only my own entry (core/clan-roles.js renameSelf); the clan page does the same.
+    async function carryRename(id, d) {
+        const uid = myUid(), user = username(), F = fs();
+        if (!uid || !user || !R.roleOf(d, uid) || !d.names || d.names[uid] === user || st.renaming === id + ':' + user) return;
+        if (!F || typeof F.updateDoc !== 'function') return;
+        st.renaming = id + ':' + user;
+        const old = d.names[uid], swap = (list) => (Array.isArray(list) ? list.map((n) => (n === old ? user : n)).filter((n, i, a) => a.indexOf(n) === i) : list);
+        const patch = { ['names.' + uid]: user };
+        if (Array.isArray(d.members)) patch.members = swap(d.members);
+        if (Array.isArray(d.leaders) && d.leaders.includes(old)) patch.leaders = swap(d.leaders);
+        if (d.ownerUid === uid) patch.owner = user;
+        try { await F.updateDoc(F.doc(F.db, 'clans', id), patch); } catch (e) { st.renaming = ''; }
+    }
     // What the clan document says: level perks, buffs, the player's role, and whether they are still in it
     function applyDoc(id, d) {
         if (id !== clanId()) return; // the player changed clan meanwhile
         const name = get('player_clanName') || '';
         if (!d) { forgetClan(name, 'gone'); return; }
-        const inIt = R ? R.memberByName(d, username()) : null;
+        const inIt = memberOf(d);
         if (inIt === false) { forgetClan(d.name || name, 'removed'); return; }
-        if (inIt) st.member = true;
+        if (inIt) { st.member = true; carryRename(id, d).catch(() => {}); }
         const level = L.levelFromXp(d.clanXp);
         window.clanLevel = level;
         set('whathappened_clan_level', String(level));
         if (typeof d.name === 'string' && d.name) set('player_clanName', d.name);
         // a promotion made by someone else shows here too (achievements read the role)
-        const role = R ? R.roleOfName(d, username()) : null;
+        const role = R ? ((myUid() && R.roleOf(d, myUid())) || R.roleOfName(d, username())) : null;
         if (role) set('player_clanRole', role);
         // Several clan buffs can run at once. The clan document is written by every member's browser, so it only says WHICH
         // buffs are on and until when: what they multiply comes from core/clan-buffs.js, never from the document.
@@ -269,6 +298,41 @@
         } catch (e) { return []; } finally { st.paying = false; }
     }
 
+    // ---- clan XP from the daily and weekly challenges (core/challenges.js; amounts in core/clan-levels.js) ----
+    // Each challenge the player claims while in a clan gives the clan XP once, and counts toward this week's contributors.
+    // Challenges claimed outside a clan are noted as done, so joining one later doesn't pour them all in.
+    function readJSON(k) { try { return JSON.parse(get(k) || 'null'); } catch (e) { return null; } }
+    async function quests() {
+        if (st.questing) return 0;
+        const given = readJSON(L.QUESTS_KEY), owed = L.questXpOwed(readJSON('whathappened_challenges'), given);
+        if (!owed.length) return 0;
+        const id = clanId(), user = username();
+        if (!id || !user || st.member === false) { set(L.QUESTS_KEY, JSON.stringify(L.withQuestsGiven(given, owed.map((o) => o.key)))); return 0; }
+        const F = fs();
+        if (st.member !== true || !F || typeof F.runTransaction !== 'function') return 0; // tried again on the next look
+        st.questing = true;
+        const xp = owed.reduce((n, o) => n + o.xp, 0);
+        let before = 1, after = 1, clanName = '';
+        try {
+            const ref = F.doc(F.db, 'clans', id);
+            await F.runTransaction(F.db, async (tx) => {
+                const snap = await tx.get(ref);
+                if (!snap.exists()) throw new Error('no clan');
+                const d = snap.data() || {}, cur = Number(d.clanXp) || 0;
+                clanName = d.name || '';
+                before = L.levelFromXp(cur); after = L.levelFromXp(cur + xp);
+                tx.update(ref, { clanXp: cur + xp, contrib: L.addContribution(d.contrib, user, xp, Date.now()) });
+            });
+            set(L.QUESTS_KEY, JSON.stringify(L.withQuestsGiven(readJSON(L.QUESTS_KEY), owed.map((o) => o.key))));
+            set('whathappened_clan_quest_xp', String((Number(get('whathappened_clan_quest_xp')) || 0) + xp)); // the Quest Giver achievement
+            say(`🛡️ Your clan got +${xp} XP from your challenge${owed.length === 1 ? '' : 's'}!`);
+            if (after > before && typeof F.addDoc === 'function' && typeof F.collection === 'function') {
+                F.addDoc(F.collection(F.db, 'clan_chat'), { clanId: id, name: 'SYSTEM', message: `🎉 ${clanName || 'The clan'} reached level ${after}!`, createdAt: F.serverTimestamp(), system: true, color: 'gold' }).catch(() => {});
+            }
+            return xp;
+        } catch (e) { return 0; } finally { st.questing = false; }
+    }
+
     // ---- what the clan page changed in the save while this tab was open ----
     const seenDeltas = new Set();
     window.addEventListener('storage', (ev) => {
@@ -300,11 +364,14 @@
         watchSchedule();
         await flushPrestiges();
         await pay();
+        setTimeout(() => { quests().catch(() => {}); }, 5000);
     }
     setInterval(() => { flush().catch(() => {}); }, FLUSH_MS);
     setInterval(() => { flushPrestiges().then(pay).catch(() => {}); }, PAY_MS);
+    // a claimed challenge reaches the clan within half a minute (the challenges panel is on this page, so no storage event)
+    setInterval(() => { quests().catch(() => {}); }, 30000);
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flush().catch(() => {}); });
 
-    window.WHClanGame = { refresh, applyBuffs, levelPerk, noteClick, flush, notePrestige, flushPrestiges, pay, start, schedule, upkeep,
+    window.WHClanGame = { refresh, applyBuffs, levelPerk, noteClick, flush, notePrestige, flushPrestiges, pay, start, schedule, upkeep, quests,
         member: () => st.member, _state: st };
 }());

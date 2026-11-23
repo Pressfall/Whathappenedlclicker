@@ -358,6 +358,31 @@
         return out;
     }
 
+    // A timelapse bought with Holy What Happeneds (premium.js): `ms` of the followers' waiting goes by at once. Eggs in the
+    // nursery get that much closer to hatching and the packs' cooldowns that much shorter (never past now: an egg is then
+    // ready, a pack can be opened). Re-reads storage first, like every other change. Returns { eggs, packs } it moved.
+    function skipTime(ms) {
+        const d = Math.max(0, Number(ms) || 0);
+        if (!d) return { eggs: 0, packs: 0 };
+        const s = loadState(), now = Date.now();
+        let eggs = 0, packs = 0;
+        for (const e of s.nursery) {
+            if (Number(e.readyAt) <= now) continue;
+            const t = Math.max(now, Number(e.readyAt) - d);
+            e.startedAt = (Number(e.startedAt) || now) - (Number(e.readyAt) - t);
+            e.readyAt = t;
+            eggs++;
+        }
+        for (const id in s.packReadyAt) {
+            const t = Number(s.packReadyAt[id]);
+            if (!(t > now)) continue;
+            s.packReadyAt[id] = Math.max(now, t - d);
+            packs++;
+        }
+        if (eggs || packs) saveState(s);
+        return { eggs, packs };
+    }
+
     // Follower packs from the Wilds (main.js applyWorldRewards: bought with Glory in the Arena), { packId: n }: they wait in
     // the save to be opened free on the Followers page. Re-reads storage first, like every other change. Returns how many.
     function grantFreePacks(map) {
@@ -886,7 +911,7 @@
         maxLevel, xpForLevel, investedXp, feedValue, previewLevel,
         bloodline, followerBuffs, computeBonuses, fmtBuff,
         NURSERY_SLOTS, HATCH_TIME_BY_RARITY,
-        openPack, packWait, grantFreePacks, breedCost, breedOdds, hatchTime, eggFor, eggReady, startBreed, claimEgg,
+        openPack, packWait, grantFreePacks, skipTime, breedCost, breedOdds, hatchTime, eggFor, eggReady, startBreed, claimEgg,
         fmtDuration, fmtSpan,
         art,
     };

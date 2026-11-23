@@ -46,8 +46,11 @@
     const TOP_PATH = 'wilds/v1/arena/top';
 
     // ---------------- who I am ----------------
+    // one name for chat and the Wilds (core/names.js): yours wins when the two differ, and the chat name fills in when you
+    // have none (over an automatic one)
     function myName() {
         let n = null;
+        try { if (window.WHNames) window.WHNames.sync(localStorage); } catch (e) {}
         try { n = O.sanitizeName(localStorage.getItem(NAME_KEY)) || O.sanitizeName(localStorage.getItem('player_username')); } catch (e) {}
         if (!n) {
             n = 'Adventurer' + Math.floor(1000 + Math.random() * 9000);
@@ -65,6 +68,8 @@
         const s = O.sanitizeName(n);
         if (!s) return false;
         try { localStorage.setItem(NAME_KEY, s); } catch (e) {}
+        // the chat name changes with it (core/names.js)
+        try { localStorage.setItem('player_username', s); } catch (e) {}
         ON.infoKey = '';
         return true;
     };
@@ -243,7 +248,9 @@
         // (a staff's spell instead: an odd shot number is a bolt, an even one a wave)
         if (r.shot >= 0 && u.shot > r.shot && ON.zone) {
             const wb = r.info && D.GEAR_BY_ID[r.info.w], sm = wb && D.STAFF_MAGIC[wb.magic], P = game().projectiles;
-            if (!sm) P.push({ kind: 'arrow', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * 900, vy: Math.sin(u.a) * 900, r: 4, life: 0.9, hit: new Set() });
+            // a revolver: a bullet for each shot since the last update (a fanned hammer fires several between two)
+            if (wb && wb.cls === 'gun') { const GP = D.WEAPON_CLASSES.gun; for (let i = 0; i < Math.min(6, u.shot - r.shot); i++) { const aa = u.a + (i ? (Math.random() - 0.5) * GP.fanSpread * 2 : 0); P.push({ kind: 'bullet', team: 'fx', x: u.x + Math.cos(aa) * 24, y: u.y + Math.sin(aa) * 24, vx: Math.cos(aa) * GP.speed, vy: Math.sin(aa) * GP.speed, r: GP.r, life: GP.life, ray: wb.set === 'arcade', hit: new Set() }); } }
+            else if (!sm) P.push({ kind: 'arrow', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * 900, vy: Math.sin(u.a) * 900, r: 4, life: 0.9, hit: new Set() });
             else if (u.shot % 2) P.push({ kind: 'bolt', team: 'fx', x: u.x, y: u.y, vx: Math.cos(u.a) * sm.thrust.speed, vy: Math.sin(u.a) * sm.thrust.speed, r: sm.thrust.r, life: sm.thrust.life, color: sm.color, look: sm.thrust.look, hit: new Set() });
             else P.push({ kind: 'wave', team: 'fx', ox: u.x, oy: u.y, dir: u.a, arc: (sm.swing.arcMin + sm.swing.arcMax) / 2, rad: 20, speed: sm.swing.speed, band: sm.swing.band, x: u.x, y: u.y, vx: 0, vy: 0, r: 0, life: sm.swing.life, color: sm.color, look: sm.swing.look, hit: new Set() });
         }
@@ -271,7 +278,7 @@
             const fresh = !r.sayT || (ON.db && ON.db.serverNow() - info.say.t < 15000);
             r.sayT = info.say.t;
             if (fresh) {
-                r.bubble = { m: info.say.m, e: info.say.e, until: E.time + O.CHAT.bubbleSec };
+                r.bubble = { m: info.say.m, e: info.say.e, until: E.time + (info.say.e ? O.CHAT.bubbleSec : O.bubbleTime(info.say.m)) };
                 logLine((ON.clanmate(r) ? '🛡️ ' : '') + info.n, info.say.m, false);
             }
         }
@@ -332,7 +339,10 @@
     }
     function sendInfo(force) {
         if (!ON.db || !ON.zone) return;
-        const looks = WHW.actors && WHW.actors.myLooks ? O.packLooks(WHW.actors.myLooks()) : '';
+        // the relics' looks, and the weapon skin, trail and halo or wings bought with Holy What Happeneds (premium.js)
+        let premium = null;
+        try { premium = window.WHBeans ? window.WHBeans.myWildsLooks() : null; } catch (e) { premium = null; }
+        const looks = WHW.actors && WHW.actors.myLooks ? O.packLooks(Object.assign({}, WHW.actors.myLooks(), { p: premium })) : '';
         const info = Object.assign(O.infoFor(game().state, myName(), game().faceSrc), WHW.arena ? WHW.arena.infoExtra() : {}, WHW.party ? WHW.party.infoExtra() : {}, { cn: myClan(), lk: looks });
         const key = JSON.stringify(info);
         if (!force && key === ON.infoKey) return;
@@ -511,6 +521,9 @@
             onParry: () => ON.db.push(Z('h/' + raw.from), { from: ON.uid, k: 'parry', t: ON.db.serverNow() }),
         });
         if (landed > 0 && sm && sm.frost) A.frostPlayer(sm.frost);
+        // their weapon skin's hit (premium.js), as they see it on their own page
+        const skin = r && r.info && r.info.lk && r.info.lk.p ? r.info.lk.p.weapon : '';
+        if (landed > 0 && skin && A.skinHitFx) A.skinHitFx(p.x, p.y, Number(raw.ang), skin);
     }
     // Another player's ability hit me. Its effects come from the game's table (v.ability), not from what they sent.
     function takeAbility(raw, v, r, last) {
@@ -602,7 +615,7 @@
         chatLimits.note(emote ? 'emote' : 'say', emote ? '' : m, now);
         ON.sayAt = E.time;
         ON.db.update(Z('i/' + ON.uid), { say: { m, t: ON.db.serverNow(), e: !!emote } });
-        ON.myBubble = { m, e: !!emote, until: E.time + O.CHAT.bubbleSec };
+        ON.myBubble = { m, e: !!emote, until: E.time + (emote ? O.CHAT.bubbleSec : O.bubbleTime(m)) };
         logLine(myName(), m, true);
         return true;
     };

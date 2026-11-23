@@ -514,9 +514,11 @@ test('material tooltips: every material and supply says where it comes from', ()
 test('every class has a tree of three branches, four skills deep, and every skill is sound', () => {
     const seen = new Set();
     const bossAt = (b) => (b ? D.ZONE_ORDER.indexOf(D.BOSSES[b].zone) : -1);
-    const KINDS = ['nova', 'cone', 'blink', 'charge', 'volley', 'shot', 'chain', 'smoke', 'heal', 'buff', 'leap', 'line', 'field', 'step', 'hook', 'parry', 'ignite', 'beam'];
+    const KINDS = ['nova', 'cone', 'blink', 'charge', 'volley', 'shot', 'chain', 'smoke', 'heal', 'buff', 'leap', 'line', 'field', 'step', 'hook', 'parry', 'ignite', 'beam', 'fan', 'deadshot'];
     const BONUS = ['maxHp', 'armor', 'speed', 'crit', 'dmg', 'blockStam', 'arrowSave', 'abilityCd', 'abilityDmg', 'abilityStam', 'stamRegen', 'lifesteal',
-        'dashCd', 'dashStam', 'momentum', 'backstab', 'regen', 'pierce', 'thorns', 'dodge', 'fireResist', 'stunnedDmg', 'manaRegen'];
+        'dashCd', 'dashStam', 'momentum', 'backstab', 'regen', 'pierce', 'thorns', 'dodge', 'fireResist', 'stunnedDmg', 'manaRegen',
+        // the Gunslinger's (the revolver: core/world-combat.js gun*, world-actors.js fireGun)
+        'reload', 'dashReload', 'steadyBonus', 'settle', 'bounce', 'bankShot', 'lastRound', 'gunBurn'];
     const stats = W.freshState(NOW).stats;
     for (const id of D.ABILITY_ORDER) assert.ok(!D.PERKS[id], id + ' is both an ability and a perk');
     for (const c of D.CLASS_ORDER) {

@@ -199,6 +199,7 @@ export function startEventsTab(ctx) {
         else if (kind === 'con') list = R.con.map((t) => ({ label: t.at + ' points', reward: line(t) }));
         else if (kind === 'cvc') list = [{ label: 'Win', reward: line(R.cvc.win) }, { label: 'Lose', reward: line(R.cvc.lose) }, { label: 'Draw', reward: line(R.cvc.draw) }];
         else if (kind === 'race') list = R.race.map((t) => ({ label: EV.ordinal(t.place) + ' place', reward: line(t) }));
+        else if (kind === 'wh') list = R.wh.map((t) => ({ label: fmtN(t.at) + ' monsters', reward: line(t) }));
         return `<div class="ev-sub">Rewards</div>${tiles(list)}`;
     }
     function comingUp(upcoming, now, cur) {
@@ -217,7 +218,8 @@ export function startEventsTab(ctx) {
         const now = Date.now(), upcoming = Array.isArray(st.state.upcoming) ? st.state.upcoming : [];
         const cur = EV.current(upcoming, now);
         st.curKey = cur ? EV.toMs(cur.start) : 0;
-        const keep = st.live && cur && st.live.key === EV.toMs(cur.start) + ':' + myClanId();
+        // the same event (start and kind) for the same clan: keep its listener
+        const keep = st.live && cur && st.live.key === EV.toMs(cur.start) + ':' + EV.kindOf(cur) + ':' + myClanId();
         area.innerHTML = hero(cur, upcoming, now)
             + (EV.kindOf(cur) ? '<section class="card" id="evPeople"></section>' : '')
             + comingUp(upcoming, now, cur)
@@ -233,7 +235,7 @@ export function startEventsTab(ctx) {
     async function startLive(ev) {
         stopLive();
         const kind = EV.kindOf(ev), clanId = myClanId();
-        const live = { key: EV.toMs(ev.start) + ':' + clanId, ev, kind, start: EV.toMs(ev.start), doc: EV.KINDS[kind].doc, meta: null, pairing: null, unsub: null };
+        const live = { key: EV.toMs(ev.start) + ':' + kind + ':' + clanId, ev, kind, start: EV.toMs(ev.start), doc: EV.KINDS[kind].doc, meta: null, pairing: null, unsub: null };
         st.live = live;
         live.unsub = F.onSnapshot(ref(live.doc), (snap) => { st.progress[live.doc] = snap.exists() ? (snap.data() || {}) : {}; if (st.live === live) renderLive(); },
             (err) => console.warn('event progress listener failed', err));
@@ -256,6 +258,7 @@ export function startEventsTab(ctx) {
         else if (live.kind === 'cvc') html = versusBody(live, prog, clanId);
         else if (live.kind === 'con') html = buildBody(block) + challengeCard(live, block, me);
         else if (live.kind === 'race') html = raceBody(live, prog, clanId) + challengeCard(live, block, me);
+        else if (live.kind === 'wh') html = huntBody(block, me);
         box.innerHTML = html;
         renderPeople(live, block, prog, me);
     }
@@ -306,6 +309,16 @@ export function startEventsTab(ctx) {
         return `<div class="ev-big"><b>${fmtN(total)}</b><span>points built by your clan</span></div>
           ${meter(total / top * 100, 'build', EV.REWARDS.con.map((t) => t.at / top * 100), 'Construction points')}
           <div class="ev-sub">Rewards (the highest tier reached)</div>${tiles(tiers)}`;
+    }
+    function huntBody(block, me) {
+        const total = block.total, top = EV.REWARDS.wh[EV.REWARDS.wh.length - 1].at, mine = num(block.members[me]);
+        const tiers = EV.REWARDS.wh.map((t) => ({ label: fmtN(t.at) + ' monsters', reward: rewardText(t), done: total >= t.at }));
+        const nxt = tiers.find((t) => !t.done); if (nxt) nxt.next = true;
+        return `<div class="ev-big"><b>${fmtN(total)}</b><span>monster${total === 1 ? '' : 's'} defeated in the Wilds by your clan</span></div>
+          ${meter(total / top * 100, 'hunt', EV.REWARDS.wh.map((t) => t.at / top * 100), 'Monsters defeated')}
+          <div class="ev-stat-row"><span class="muted small">${mine ? 'You have added ' + fmtN(mine) + '.' : 'Only monsters defeated while the hunt runs count.'}</span>
+            <a class="btn btn-gold btn-sm" href="world.html">🌲 Go to the Wilds</a></div>
+          <div class="ev-sub">Rewards (the highest tier reached; the top 3 hunters get a bonus)</div>${tiles(tiers)}`;
     }
     function versusBody(live, prog, clanId) {
         const p = live.pairing;
@@ -369,7 +382,7 @@ export function startEventsTab(ctx) {
         const row = (e, i) => `<div class="ev-person${e[0] === me ? ' you' : ''}"><span class="pos">${['🥇', '🥈', '🥉'][i] || i + 1}</span><b>${esc(e[0])}</b>${e[0] === me ? '<span class="muted small">(you)</span>' : ''}<span class="amt">${fmtShort(e[1])} ${esc(K.unit)}</span></div>`;
         let html = `<div class="sec-head"><h2>Your clan's contributors</h2>${bonus ? `<span class="muted small">Top 3 bonus: ${bonus.map((b, i) => EV.ordinal(i + 1) + ' +' + b.gems + ' gems').join(' · ')}</span>` : ''}</div>`;
         html += rank.length ? `<div class="ev-people">${rank.slice(0, 10).map(row).join('')}${myPos >= 10 ? row(rank[myPos], myPos) : ''}</div>`
-            : `<p class="muted">Nobody has added anything yet. ${live.kind === 'con' || live.kind === 'race' ? 'Pick a challenge above to start.' : 'Play the game to start.'}</p>`;
+            : `<p class="muted">Nobody has added anything yet. ${live.kind === 'con' || live.kind === 'race' ? 'Pick a challenge above to start.' : live.kind === 'wh' ? 'Head into the Wilds to start.' : 'Play the game to start.'}</p>`;
         if (myPos < 0 && rank.length) html += `<p class="muted small">You haven't added anything yet.</p>`;
         box.innerHTML = html;
     }
@@ -454,7 +467,7 @@ export function startEventsTab(ctx) {
         try {
             await F.runTransaction(db, async (tx) => {
                 const s = await tx.get(ref('state')), c = await tx.get(ref('config')), e = await tx.get(ref('last_ended_event')), p = await tx.get(ref('pairings'));
-                const types = c.exists() && Array.isArray((c.data() || {}).types) && c.data().types.length ? c.data().types : EV.DEFAULT_TYPES;
+                const types = EV.typesFrom(c.exists() ? (c.data() || {}) : {}).types;
                 const upcoming = s.exists() ? (s.data() || {}).upcoming || [] : [];
                 const r = fresh ? { upcoming: EV.rollSchedule([], now, types).upcoming, ended: EV.skipSchedule(upcoming, now, 0, types).ended } : EV.skipSchedule(upcoming, now, index, types);
                 const ended = r.ended.map((ev) => EV.attachResult(ev, p.exists() ? p.data() : null));

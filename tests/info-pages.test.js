@@ -168,6 +168,11 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     assert.match(guide, new RegExp('up to <b>' + Dg.REWARDS.roomPaysPerDay + ' rooms a day</b>'));
     assert.match(guide, new RegExp('first <b>' + Dg.REWARDS.essRoomsPerDay + ' rooms a day</b>'));
     assert.match(guide, new RegExp('<b>' + Dg.REWARDS.vaultKing.glory + ' Glory</b>, <b>' + Dg.REWARDS.vaultKing.seals + ' Vault Seals</b>'));
+    // the rest between runs, the week's boosted first kill and the later kills' boss chests (2026-11-22)
+    const B = Dg.REWARDS.boss, pc = (p) => Math.round(p * 100) + '%';
+    assert.match(guide, new RegExp('rests for ' + Dg.COOLDOWN_MS / 60000 + ' minutes</b>'));
+    assert.match(guide, new RegExp('a <b>' + pc(B.catalyst) + '</b> chance of a <b>Crucible Catalyst</b>'));
+    assert.match(guide, new RegExp('a <b>' + pc(B.heart) + '</b> chance of the Heart or <b>' + pc(B.repeatCatalyst) + '</b> of a Catalyst, while the day\'s chests last: <b>rooms and later boss kills share the ' + Dg.REWARDS.essRoomsPerDay + '</b>'));
     const enrage = [...new Set(Dg.IDS.map(id => Math.round(D.BOSSES[D.DUNGEONS[id].boss].enrage.sec / 60)))].sort();
     assert.match(guide, new RegExp('more than <b>' + enrage[0] + ' minutes</b> \\(' + enrage[1] + ' in'));
     const mult = [...new Set(Dg.IDS.map(id => D.BOSSES[D.DUNGEONS[id].boss].enrage.mult))];
@@ -184,7 +189,7 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     const atk = text(guide.slice(guide.indexOf('<h2 id="boss-attacks">'), guide.indexOf('<h2 id="arena">')));
     const SAYS = { sweep: 'sweeping blow', ring: 'ring of shots', charge: 'charge', summon: 'Summoned', roots: 'Roots', boulders: 'rocks', slam: 'slam',
         stalactites: 'icicles', breath: 'Fire breath', meteors: 'meteors', clone: 'copy', spikes: 'Ice spikes', tide: 'tide', whirlpool: 'whirlpool',
-        lightning: 'lightning', gust: 'gust', orbs: 'orbs', starfall: 'stars', burden: 'The Shared Burden' };
+        lightning: 'lightning', gust: 'gust', orbs: 'orbs', starfall: 'stars', burden: 'The Shared Burden', lasers: 'laser beams', claw: 'claw on a cable', pixels: 'blocks of pixels' };
     for (const m of new Set(Object.values(D.BOSSES).flatMap(b => b.phases.flat()))) {
         assert.ok(SAYS[m], 'a boss attack the guide does not explain yet: ' + m);
         assert.ok(atk.includes(SAYS[m]), m + ': "' + SAYS[m] + '" in Boss attacks');
@@ -195,7 +200,9 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     for (const it of D.VAULT_SHOP.filter(x => x.title)) assert.ok(guide.includes(it.title.replace("'", "'")), it.title);
     const stakes = Ar.RULES.stakes.filter(Boolean);
     assert.ok(g.includes(`${stakes[0].toLocaleString('en-US')} to ${stakes.at(-1).toLocaleString('en-US')} rubies each`), 'stakes');
-    for (const z of D.ZONE_ORDER.filter(id => D.ZONES[id].wards)) assert.ok(g.includes(D.TIERS[D.ZONES[z].tier + 1].name), D.TIERS[D.ZONES[z].tier + 1].name + ' gear is named');
+    // (the Neon Arcade brings no metal of its own: it is built for the top tier, Starmetal)
+    for (const z of D.ZONE_ORDER.filter(id => D.ZONES[id].wards)) { const T = D.TIERS[Math.min(D.MAX_TIER, D.ZONES[z].tier + 1)]; assert.ok(g.includes(T.name), T.name + ' gear is named'); }
+    assert.ok(g.includes('Neon Alloy') && g.includes('Extra Life') && g.includes('Glitch Cartridge'), 'the Arcade Set and the add-ins are explained');
     // the crew from the clicker: who, from which level of their upgrade; and what Renown counts
     const Crew = require('../core/world-crew'), Ren = require('../core/renown');
     assert.deepEqual(rows(read('wilds-guide.html'), 'crew-table').map(r => [r[0], Number(r[1])]), Crew.CREW.map(c => [c.name, c.arrive]));
@@ -208,6 +215,8 @@ test('the pages say what they must: no real-money purchase, Discord as the conta
     assert.ok(g.includes(`${Gu.STOCK_SIZE} guild charters`) && g.includes(`+${Gu.PER_GUILD * 100}%`) && g.includes(`all ${Gu.GUILDS.length} upgrades`), 'guilds');
     assert.ok(g.includes(`${Ar.SHOP_BY_ID.guild_chest.glory.toLocaleString('en-US')} Glory`), 'the Guild Chest');
     assert.ok(g.includes(`at most ${D.RULES.potionsPerMatch} potions per match`), 'the potion limit');
+    assert.ok(g.includes(`give only ${require('../core/world-logic').healMult('arena') * 100}% of their usual health`), 'the Arena\'s weaker healing');
+    assert.ok(g.includes(`lasts up to ${Ar.RULES.roundSec / 60} minutes`), 'an arena round\'s time limit');
     // the hidden room in the Hall of Gods stays a secret
     const WORD = Buffer.from('YnJpbGV5aXNt', 'base64').toString();
     assert.ok(!g.toLowerCase().includes(WORD), 'the Wilds guide does not give away the secret');
@@ -241,4 +250,18 @@ test('the Wilds guide prices the Crucible blueprints as the game does', () => {
         assert.ok(guide.includes('<b>' + Gr.TIERS[b.tier].name + '</b> for <b>' + price), Gr.TIERS[b.tier].name + ' blueprint price');
     }
     assert.ok(guide.includes('choose a <b>weapon</b>') && guide.includes('<b>armor</b>'));
+});
+
+test('the Wilds guide describes fusing as the game does (core/world-fuse.js)', () => {
+    const Fu = require('../core/world-fuse'), Gr = require('../core/gear');
+    const guide = read('wilds-guide.html'), pc = (p) => Math.round(p * 100) + '%';
+    assert.ok(guide.includes('put <b>' + Fu.COUNT + ' Wilds relics</b>') && guide.includes('<b>all ' + Fu.COUNT + ' are lost</b>'));
+    assert.deepEqual(rows(guide, 'fuse-table'), [1, 2, 3, 4].filter(t => t <= Fu.MAX_TARGET).map(t =>
+        [Gr.TIERS[t - 1].name, Gr.TIERS[t].name, pc(Fu.BASE[t]), pc(Fu.CAP[t]), '♦ ' + Fu.rubyCost(t, 1).toLocaleString('en-US')]));
+    assert.equal(Fu.MAX_TARGET, 4, 'the guide says it never makes Mythic or Primordial');
+    assert.ok(guide.includes('never Mythic or Primordial'));
+    // its feeding numbers: a Common and a Mythic essence toward an Uncommon, two fifths of that toward a Legendary, ruby steps, a Catalyst
+    assert.ok(guide.includes('adds ' + pc(Fu.essBoost('flint_shard', 1)) + ' for a Common up to ' + pc(Fu.essBoost('heartstone', 1)) + ' for a Mythic'));
+    assert.ok(Math.abs(Fu.essBoost('heartstone', 4) / Fu.essBoost('heartstone', 1) - 2 / 5) < 1e-9);
+    assert.ok(guide.includes('each of up to ' + Fu.FEED.steps + ' ruby steps adds ' + pc(Fu.FEED.step) + ', and a Catalyst ' + pc(Fu.FEED.catalyst)));
 });
