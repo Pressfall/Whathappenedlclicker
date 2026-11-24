@@ -307,16 +307,37 @@ test('tips: no Holy What Happeneds and nothing stored unless the owner set a rat
     assert.equal(g.plain('wallets/uid_erin').balance, 350);
 });
 
-test('memberships pay by tier name; commissions and unknown tiers pay nothing', async () => {
+test('memberships pay by tier name; other monthly payments pay by amount like a tip; commissions pay nothing', async () => {
     const { g, call, linkFor } = await setup();
     const code = await linkFor('uid_fay');
     await call(kofiPost(payload({ type: 'Subscription', is_subscription_payment: true, tier_name: 'Bean Club', kofi_transaction_id: TX(10), message: code })));
     assert.equal(g.plain('wallets/uid_fay').balance, 300);
+    // a tier with no price set pays by its amount at the flat rate ($3 x 100 here) instead of nothing
     const other = await call(kofiPost(payload({ type: 'Subscription', tier_name: 'Other Tier', kofi_transaction_id: TX(11), message: code })));
-    assert.deepEqual(await body(other), { ok: true, ignored: 'no-tier' });
+    assert.equal((await body(other)).beans, 300);
+    assert.equal(g.plain('wallets/uid_fay').balance, 600);
     const comm = await call(kofiPost(payload({ type: 'Commission', kofi_transaction_id: TX(12), message: code })));
     assert.deepEqual(await body(comm), { ok: true, ignored: 'not-a-sale' });
-    assert.equal(g.plain('wallets/uid_fay').balance, 300);
+    // with nothing that prices it (no tier, no rate in its currency) a monthly payment still credits nothing
+    const unpriced = await call(kofiPost(payload({ type: 'Subscription', tier_name: null, kofi_transaction_id: TX(13), message: code, currency: 'JPY', amount: '500' })));
+    assert.deepEqual(await body(unpriced), { ok: true, ignored: 'no-tier' });
+    assert.equal(g.plain('wallets/uid_fay').balance, 600);
+});
+
+test('a monthly tip (the tip box\'s "Make it monthly": a Subscription with no tier) pays the tip pack every month, also when a renewal has no message', async () => {
+    const { g, call, linkFor } = await setup();
+    const code = await linkFor('uid_mo');
+    const first = await call(kofiPost(payload({ type: 'Subscription', is_subscription_payment: true, is_first_subscription_payment: true, tier_name: null,
+        kofi_transaction_id: TX(14), amount: '5.00', currency: 'USD', message: code })), RealConfig);
+    assert.equal(first.status, 200);
+    assert.deepEqual(await body(first), { ok: true, beans: 550, matched: true });
+    assert.equal(g.plain('wallets/uid_mo').balance, 550);
+    assert.equal(g.plain('kofi_payments/' + TX(14)).items[0].code, 'monthly');
+    // next month's payment, with no message: kept for its payer to collect or claim, never lost
+    const renewal = await call(kofiPost(payload({ type: 'Subscription', is_subscription_payment: true, is_first_subscription_payment: false, tier_name: null,
+        kofi_transaction_id: TX(15), amount: '5.00', currency: 'USD', message: null, email: 'mo@example.com' })), RealConfig);
+    assert.deepEqual(await body(renewal), { ok: true, beans: 550, matched: false });
+    assert.equal(g.plain('kofi_payments/' + TX(15)).status, 'unmatched');
 });
 
 test('a shop order of items that are not Holy What Happeneds is ignored; one payment never credits more than the cap', async () => {

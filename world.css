@@ -12,7 +12,8 @@
     --sal: env(safe-area-inset-left, 0px);
 }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d13; color: var(--text); font-family: var(--font); }
-body { -webkit-user-select: none; user-select: none; touch-action: none; }
+/* no text picked up, no long-press menu or callout, no grey flash on taps: holding a button is part of playing */
+body { -webkit-user-select: none; user-select: none; touch-action: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 #wCanvas { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; cursor: crosshair; }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 [hidden] { display: none !important; }
@@ -278,36 +279,41 @@ button.w-load:hover { border-color: var(--border-strong); }
 
 /* ---------- touch ---------- */
 /* Touch screens (body.is-touch, set by world-engine.js): the stick appears where the left thumb lands (where it rests is only
-   a hint) and the actions sit in an arc around the right thumb's corner: dash in the corner, the shield and Use beside it,
-   the abilities and the potion further out. Each button is placed by its center (--x, --y from the corner) and its size
-   (--s), all scaled by --k: the size picked in Settings > Touch controls (--ks), a little smaller on the narrowest phones
-   (--fit). --lift is the room kept under them for the hotbar, on screens too narrow to fit it between the stick and the
-   buttons (phones held upright). */
+   a hint) and the actions sit in an arc around the right thumb's corner: Attack (the biggest) in the corner, dash, the
+   shield and Use around it, the abilities and the potion further out. Each button is placed by its center (--x, --y from
+   the corner) and its size (--s), all scaled by --k: the size picked in Settings > Touch controls (--ks), a little smaller
+   on the narrowest phones and the shortest sideways ones (--fit). --lift is the room kept under them for the hotbar, on
+   screens too narrow to fit it between the stick and the buttons (phones held upright). */
 body.is-touch { --lift: 86px; --ks: 1; --fit: 1; --k: calc(var(--ks) * var(--fit)); }
 body.is-touch.w-touch-s { --ks: 0.85; }
 body.is-touch.w-touch-l { --ks: 1.15; }
-@media (max-width: 379px) { body.is-touch { --fit: 0.9; } }
+@media (max-width: 379px), (max-height: 400px) { body.is-touch { --fit: 0.9; } }
 @media (min-width: 600px) { body.is-touch { --lift: 0px; } }
 /* under the HUD (z-index 10), so its lists and cards (the ⋯ list, invitations) open over the buttons */
 .w-touch { position: fixed; inset: 0; pointer-events: none; z-index: 9; }
 .w-stick { position: absolute; left: calc(24px + var(--sal)); bottom: calc(var(--lift) + 14px + var(--sab)); width: calc(124px * var(--k)); height: calc(124px * var(--k)); box-sizing: border-box; border-radius: 50%; background: rgba(255, 255, 255, 0.05); border: 2px solid rgba(255, 255, 255, 0.16); opacity: 0.45; pointer-events: none; }
 .w-stick.is-on { opacity: 1; background: rgba(255, 255, 255, 0.08); }
 .w-stick i { position: absolute; left: 29%; top: 29%; width: 42%; height: 42%; border-radius: 50%; background: rgba(255, 255, 255, 0.3); }
-.w-touch-btns { position: absolute; right: calc(10px + var(--sar)); bottom: calc(var(--lift) + 8px + var(--sab)); width: calc(228px * var(--k)); height: calc(228px * var(--k)); }
+.w-touch-btns { position: absolute; right: calc(10px + var(--sar)); bottom: calc(var(--lift) + 8px + var(--sab)); width: calc(212px * var(--k)); height: calc(230px * var(--k)); pointer-events: none; }
 .w-tb { position: absolute; right: calc((var(--x) - var(--s) / 2) * var(--k)); bottom: calc((var(--y) - var(--s) / 2) * var(--k)); width: calc(var(--s) * var(--k)); height: calc(var(--s) * var(--k)); display: grid; place-items: center; padding: 0; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.22); background: rgba(15, 18, 27, 0.72); color: var(--text); font: 800 calc(var(--s) * var(--k) * 0.4) var(--font); pointer-events: auto; touch-action: none; -webkit-tap-highlight-color: transparent; overflow: hidden; }
 .w-tb.is-down { transform: scale(0.9); background: rgba(255, 255, 255, 0.2); }
-.w-tb--dash { --x: 50px; --y: 50px; --s: 70px; background: rgba(36, 64, 120, 0.72); border-color: rgba(150, 195, 255, 0.55); }
-.w-tb--shield { --x: 136px; --y: 54px; --s: 58px; }
+/* Attack: what you hold, drawn big; it swings (held: keeps swinging), thrusts, draws or fires at what the weapon turned to */
+.w-tb--atk { --x: 50px; --y: 50px; --s: 78px; background: radial-gradient(circle at 50% 38%, rgba(120, 40, 52, 0.85), rgba(46, 14, 22, 0.85)); border: 3px solid rgba(255, 140, 150, 0.6); }
+.w-tb--atk .ic { display: grid; place-items: center; width: 62%; height: 62%; font-size: calc(32px * var(--k)); line-height: 1; filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6)); }
+.w-tb--atk .ic > svg, .w-tb--atk .ic .w-relic-ico, .w-tb--atk .ic .gear-svg { width: 100%; height: 100%; }
+.w-tb--atk.is-down { background: rgba(255, 120, 130, 0.45); border-color: #ffd0d4; }
+.w-tb--dash { --x: 140px; --y: 34px; --s: 56px; background: rgba(36, 64, 120, 0.72); border-color: rgba(150, 195, 255, 0.55); }
+.w-tb--shield { --x: 130px; --y: 112px; --s: 52px; }
 .w-tb--shield.is-down { border-color: #9fd0ff; box-shadow: 0 0 12px rgba(159, 208, 255, 0.6); }
 /* Use shows up only when there is something to use (the prompt above says what) */
-.w-tb--use { --x: 54px; --y: 136px; --s: 58px; background: var(--gold); border-color: #fff4d6; color: #2a1600; box-shadow: 0 0 0 4px rgba(255, 200, 61, 0.28); animation: w-tb-pop 160ms ease-out; }
+.w-tb--use { --x: 42px; --y: 138px; --s: 56px; background: var(--gold); border-color: #fff4d6; color: #2a1600; box-shadow: 0 0 0 4px rgba(255, 200, 61, 0.28); animation: w-tb-pop 160ms ease-out; }
 .w-tb--use.is-down { background: #ffe08a; }
-.w-tb--ab { --s: 54px; }
-#tAb0 { --x: 193px; --y: 96px; }
-#tAb1 { --x: 158px; --y: 154px; }
-#tAb2 { --x: 101px; --y: 191px; }
+.w-tb--ab { --s: 50px; }
+#tAb0 { --x: 187px; --y: 88px; }
+#tAb1 { --x: 168px; --y: 162px; }
+#tAb2 { --x: 104px; --y: 186px; }
 .w-tb--ab.is-on { border-color: var(--gold); box-shadow: 0 0 12px rgba(255, 200, 61, 0.55); }
-.w-tb--potion { --x: 34px; --y: 199px; --s: 48px; }
+.w-tb--potion { --x: 36px; --y: 207px; --s: 46px; }
 .w-tb--potion.is-out { opacity: 0.4; }
 .w-tb .cd { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 50%; background: rgba(0, 0, 0, 0.62); color: #fff; font-size: calc(14px * var(--k)); }
 .w-tb .ch, .w-tb .n { position: absolute; right: 14%; bottom: 6%; font-size: calc(11px * var(--k)); font-weight: 800; text-shadow: 0 1px 2px #000; }
@@ -315,6 +321,18 @@ body.is-touch.w-touch-l { --ks: 1.15; }
 .w-tb .ch:empty, .w-tb .n:empty { display: none; }
 @keyframes w-tb-pop { from { transform: scale(0.6); opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .w-tb--use { animation: none; } }
+/* Settings > Touch controls with the Attack button off (body.w-touch-classic, world.js applyTouch): the earlier controls,
+   no Attack button and every button where it was before it came (dash in the corner) */
+body.w-touch-classic #tAtk { display: none; }
+body.w-touch-classic .w-touch-btns { width: calc(228px * var(--k)); height: calc(228px * var(--k)); }
+body.w-touch-classic .w-tb--dash { --x: 50px; --y: 50px; --s: 70px; }
+body.w-touch-classic .w-tb--shield { --x: 136px; --y: 54px; --s: 58px; }
+body.w-touch-classic .w-tb--use { --x: 54px; --y: 136px; --s: 58px; }
+body.w-touch-classic .w-tb--ab { --s: 54px; }
+body.w-touch-classic #tAb0 { --x: 193px; --y: 96px; }
+body.w-touch-classic #tAb1 { --x: 158px; --y: 154px; }
+body.w-touch-classic #tAb2 { --x: 101px; --y: 191px; }
+body.w-touch-classic .w-tb--potion { --x: 34px; --y: 199px; --s: 48px; }
 /* mirrored for the left hand: the stick on the right, the buttons on the left */
 .w-lefty .w-stick { left: auto; right: calc(24px + var(--sar)); }
 .w-lefty .w-touch-btns { right: auto; left: calc(10px + var(--sal)); }
@@ -326,7 +344,7 @@ body.is-touch .w-slot { width: 46px; height: 46px; font-size: 22px; }
 body.is-touch .w-prompt { bottom: calc(var(--lift) + 244px * var(--k) + var(--sab)); width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box; white-space: normal; text-align: center; pointer-events: none; }
 body.is-touch .w-prompt.is-act { pointer-events: auto; border-color: var(--gold); }
 /* phones held upright but short: above the controls would be on top of you, so just above your head instead */
-@media (max-width: 599px) and (max-height: 779px) { body.is-touch .w-prompt { bottom: auto; top: calc(50% - 66px); } }
+@media (max-width: 599px) and (max-height: 779px) { body.is-touch .w-prompt { bottom: auto; top: calc(41% - 72px); } } /* the camera keeps you at 41% (world-engine.js camLift) */
 /* wider screens: just above the hotbar, between the stick and the buttons */
 @media (min-width: 600px) { body.is-touch .w-prompt { bottom: calc(90px + var(--sab)); max-width: min(440px, calc(100vw - 36px - 440px * var(--k))); } }
 /* chat opens at the top, clear of the controls and the on-screen keyboard; on screens big enough for the full HUD (tablets)
@@ -500,6 +518,43 @@ body.is-touch .w-chat { bottom: auto; top: calc(54px + var(--sat)); }
     .w-back { padding: 6px 10px; }
     .w-back span { display: none; }
     .w-rubies { padding: 4px 9px; gap: 5px; font-size: 14px; }
+    /* the zone in one short line (the banner says the rest as you arrive), so the world shows more */
+    .w-zone { padding: 3px 9px; font-size: 12px; }
+    .w-zone small { display: none; }
+    .w-quests { padding: 5px 8px; font-size: 11px; }
+    /* menus fill the screen like an app's: a sheet from the bottom held upright, the whole screen sideways. The tabs stay
+       on one line that scrolls sideways, the title bar is slim and the close button is a thumb's size. */
+    .w-modal { padding: 0; place-items: end stretch; }
+    .w-modal-panel, .w-modal-panel.is-wide, .w-modal-panel.is-game { width: 100%; max-height: calc(100% - 10px - var(--sat)); border-radius: 18px 18px 0 0; border-width: 1px 0 0; }
+    .w-modal-head { padding: 8px calc(10px + var(--sar)) 8px calc(16px + var(--sal)); }
+    .w-modal-head h2 { font-size: 17px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .w-modal-head .modal-close { width: 40px; height: 40px; flex-basis: 40px; font-size: 17px; }
+    .w-modal-body { padding: 10px calc(12px + var(--sar)) calc(18px + var(--sab)) calc(12px + var(--sal)); overscroll-behavior: contain; }
+    .w-tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -12px 10px; padding: 0 12px 2px; scrollbar-width: none; }
+    .w-tabs::-webkit-scrollbar { display: none; }
+    .w-tab { flex: 0 0 auto; padding: 8px 14px; }
+    .w-grid { grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); }
+    .w-section h3 { font-size: 12px; }
+    /* in a menu a double tap is two taps, never a zoom */
+    .w-modal-body, .w-modal-head, .w-tabs { touch-action: manipulation; }
+    /* typing: 16px, or a phone zooms the page in to read it */
+    .w-modal input:not([type=checkbox]):not([type=range]), .w-modal select, .w-modal textarea, .w-chat input { font-size: 16px; }
+    /* a minigame keeps its whole board in view */
+    .w-game canvas { width: min(100%, calc((100vh - 150px) * 16 / 9)); }
+    /* notes from the game: under the bars and buttons instead of on top of your health */
+    .w-toasts { top: calc(132px + var(--sat)); width: min(92vw, 420px); }
+    .w-toast { max-width: 100%; box-sizing: border-box; font-size: 12.5px; padding: 6px 12px; }
+    .w-banner b { font-size: clamp(24px, 8vw, 40px); }
+    .w-banner span { font-size: 13px; }
+}
+/* sideways: the menus take the whole screen (there is little height to spare), the bars a little narrower */
+@media (max-height: 500px) {
+    .w-modal-panel, .w-modal-panel.is-wide, .w-modal-panel.is-game { height: 100%; max-height: none; border-radius: 0; border: 0; }
+    .w-modal-head { padding-top: calc(6px + var(--sat)); padding-bottom: 6px; }
+    .w-modal-body { padding-top: 8px; }
+    .w-hud-tl { width: min(230px, 34vw); }
+    .w-toasts { top: calc(54px + var(--sat)); width: min(40vw, 380px); }
+    .w-banner { top: 18%; }
 }
 /* held upright: the boss bar under the minimap, clear of the health bars; the match, wave and tournament bars below them */
 @media (max-width: 640px) {

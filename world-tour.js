@@ -191,7 +191,7 @@
     let hudKey = '';
     function renderHud(list) {
         let e = document.getElementById('tourHud');
-        if (!e) { const hud = document.getElementById('wHud'); if (!hud) return; e = document.createElement('div'); e.id = 'tourHud'; e.className = 'w-tour-hud'; hud.appendChild(e); }
+        if (!e) { const hud = document.getElementById('wHud'); if (!hud) return; e = document.createElement('div'); e.id = 'tourHud'; e.className = 'w-tour-hud'; e.hidden = true; hud.appendChild(e); }
         let html = '';
         const now = sNow();
         for (const { tour, br, pair } of list || []) {

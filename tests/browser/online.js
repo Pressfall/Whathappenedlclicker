@@ -433,9 +433,10 @@ async function main() {
         await b.evalJs('(() => { const k = WHW.game.map.boss; WHWorldDebug.teleport(k.x + 40, k.y + k.r - 70); return true; })()');
         await sleep(1500); await a.shot('vault-king');
         check('vault: his health is for a party of two', await a.waitFor('(() => { const s = WHW.online.boss; return !!s && s.max === WHWorldDungeons.bossHp(WHWorldData.BOSSES.drowned_king.hp, 2); })()', 15000), await a.evalJs('WHW.online.boss && WHW.online.boss.max'));
-        // both hit him, in rounds (each needs a share of the damage to be paid)
-        for (let i = 0; i < 4 && await a.evalJs('WHW.game.actors.some(x => x.kind === "boss" && !x.dead)'); i++) {
-            for (const p of [a, b]) await p.evalJs('(() => { const k = WHW.game.actors.find(x => x.kind === "boss" && !x.dead); if (k) WHW.actors.damage(k, 1.2e5, { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return !!k; })()');
+        // both hit him, in rounds of 30% of his health each (each needs a share of the damage to be paid, so no single hit may
+        // fell him before the other's damage has reached the shared record)
+        for (let i = 0; i < 6 && await a.evalJs('WHW.game.actors.some(x => x.kind === "boss" && !x.dead)'); i++) {
+            for (const p of [a, b]) await p.evalJs('(() => { const k = WHW.game.actors.find(x => x.kind === "boss" && !x.dead); if (k) WHW.actors.damage(k, Math.ceil(WHW.online.boss.max * 0.3), { from: WHW.game.player, kbAngle: 0, kb: 0, s: 1 }); return !!k; })()');
             await sleep(900);
         }
         check("vault: the King falls and pays both their week's reward (3 Vault Seals and his Heart)", await a.waitFor('WHWorld.count(WHW.game.state, "vault_seal") === 3 && WHW.game.state.raid.kills === 1 && WHWorld.count(WHW.game.state, "heart_vault") === 1', 15000) &&

@@ -9,7 +9,7 @@
     <!-- Meta, title, favicon, ads -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="version" content="1.2.0">
+    <meta name="version" content="1.3.0">
     <!-- AdSense site verification only: this tag loads nothing and sets no cookies. The ad code itself waits for consent (core/consent.js). -->
     <meta name="google-adsense-account" content="ca-pub-7259344384263515">
     <title>WHAT HAPPENED clicker</title>
@@ -56,7 +56,7 @@
     <div id="leftBarOverlay" onclick="closeLeftBar()"></div>
     <aside id="leftBar">
         <div class="leftBarScroll">
-            <!-- Normal / Divine menu switcher; then upgrade buttons 1–30 -->
+            <!-- Normal / Divine menu switcher; then upgrade buttons 1–31 -->
             <ul>
         <li>
             <div class="menu-tabs">
@@ -242,6 +242,12 @@
             <button id="upgrade30" class="upgrade-full-btn" onclick="buyUpgrade30()" style="display:none;">
                 <span class="upgrade-label">Mincecraft Man</span>
                 <img class="upgrade-img" src="mainimage/upgrades/thumbs/mincecraftman.webp" loading="lazy" decoding="async" alt="Mincecraft Man" height="50" width="50">
+            </button>
+        </li>
+        <li>
+            <button id="upgrade31" class="upgrade-full-btn" onclick="buyUpgrade31()" style="display:none;">
+                <span class="upgrade-label">Kim Jong Un</span>
+                <img class="upgrade-img" src="mainimage/upgrades/thumbs/kimjongun.webp" loading="lazy" decoding="async" alt="Kim Jong Un" height="50" width="50">
             </button>
         </li>
             </ul>
@@ -512,7 +518,7 @@
         </li>
         <li>
             <button id="divineComboManBtn" onclick="buyDivineComboMan()">
-                <img class="upgrade-img" src="mainimage/thumbs/comboman.svg" loading="lazy" decoding="async" alt="Divine Combo Man" width="52" height="52">
+                <img class="upgrade-img" src="mainimage/thumbs/comboman.webp" loading="lazy" decoding="async" alt="Divine Combo Man" width="52" height="52">
                 <div class="divine-info">
                     <div class="divine-name">Divine Combo Man</div>
                     <div class="divine-level">Level: <span id="divineComboManLevel">0</span></div>

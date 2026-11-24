@@ -123,10 +123,14 @@ test('the follower pack and lootbox tables match the game', () => {
     assert.match(items, /LURE = \{ cost: 15, ms: 15 \* 60000, mult: 3 \}/, 'lure on the page');
 });
 
-test('the pages say what they must: no real-money purchase, Discord as the contact, the Wilds limits', () => {
+test('the pages say what they must: the one optional purchase, Discord as the contact, the Wilds limits', () => {
     const t = (f) => text(read(f));
-    assert.match(t('upgrades-followers-gems.html'), /There is no real-money purchase anywhere in the game\./);
-    assert.match(t('faq.html'), /There are no real-money purchases/);
+    // Holy What Happeneds can be bought (core/premium-config.js), so no page may say nothing can be
+    for (const f of PAGES) assert.ok(!/no real-money purchase|nothing to pay for|Nothing can be bought with money/i.test(t(f)), f + ' does not say nothing can be bought');
+    assert.match(t('faq.html'), /The one thing you can pay for is optional: Holy What Happeneds/);
+    assert.match(t('faq.html'), /lootboxes \(which have random contents\) and casino bets/);
+    assert.match(t('faq.html'), /Under 18\? Ask a parent or guardian/);
+    assert.match(t('upgrades-followers-gems.html'), /The one optional purchase is Holy What Happeneds/);
     const invite = read('index.html').match(/https:\/\/discord\.gg\/\w+/)[0];
     for (const f of ['about.html', 'faq.html']) assert.ok(read(f).includes(`href="${invite}"`), f + ' uses the Discord invite from Settings');
     const D = require('../core/world-data');

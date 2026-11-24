@@ -324,7 +324,7 @@
 
     // ---------------- getting more on Ko-fi ----------------
     // what each kind of Ko-fi payment is called in "Your Ko-fi purchases" (the worker stores Ko-fi's own names)
-    const KIND_NAMES = { 'Shop Order': 'Shop pack', Donation: 'Tip', Subscription: 'Membership', Manual: 'Added by the game' };
+    const KIND_NAMES = { 'Shop Order': 'Shop pack', Donation: 'Tip', Subscription: 'Monthly', Manual: 'Added by the game' }; // Monthly: a monthly tip or a membership
     function getHtml() {
         if (!C.buyingOpen()) return `<div class="bn-note">Buying ${esc(CUR.many)} isn't open yet. Everything in the shop can be earned by playing: see the Earn tab.</div>`;
         const c = cloud();
@@ -384,7 +384,7 @@
             ${tipHtml}
             ${tips}
             <p class="bn-sub">Your code only says whose account the ${esc(CUR.many)} go to. It works for every purchase you make, and sharing it can't cost you anything: someone else using it would only be buying ${esc(CUR.many)} for you.</p>
-            <p class="bn-sub">They arrive within a minute or two of paying.</p>`;
+            <p class="bn-sub">They arrive within a minute or two of paying. A tip made monthly on Ko-fi pays the same again every month: pay with the email you sign in with here${c.emailVerified ? '' : ' (verified on the Account page)'}, so the later months find your account by themselves.</p>`;
         const hasTips = tipPacks.length > 0 || rates.length > 0;
         return `<div class="bn-note bn-note--parent">Under 18? Ask a parent or guardian before buying anything.</div>
             ${packs.length ? `<h4>Buy a pack</h4>${shopHtml}${emailHtml}

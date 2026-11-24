@@ -92,7 +92,7 @@ function notify(msg, kind) {
 window.alert = notify;
 
 function fmtShort(v) {
-    const n = Number(v) || 0, units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const n = Number(v) || 0, units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid']; // the game's, main.js NUMBER_SUFFIXES
     let i = 0, x = Math.abs(n);
     while (x >= 1000 && i < units.length - 1) { x /= 1000; i++; }
     if (i === 0) return String(Math.floor(n));

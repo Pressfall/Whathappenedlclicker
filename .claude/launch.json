@@ -6,6 +6,13 @@
       "runtimeExecutable": "node",
       "runtimeArgs": ["server.js"],
       "port": 8000
+    },
+    {
+      "name": "game-8001",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server.js"],
+      "env": { "PORT": "8001" },
+      "port": 8001
     }
   ]
 }

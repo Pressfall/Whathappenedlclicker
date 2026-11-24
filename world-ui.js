@@ -343,6 +343,13 @@
                 : `<button class="w-slot w-slot--cons w-abil is-empty" data-abil="${i}" title="Nothing on ${k}: learn and equip abilities in the Classes menu (K)" aria-label="Key ${k}: no ability. Open the Classes menu"><span class="k">${k}</span>+</button>`;
         });
         el.innerHTML = html;
+        // the touch Attack button shows what you hold
+        const ta = $('tAtk');
+        if (ta) {
+            const it = W.findGear(s, s.hotbar[s.sel]), b = W.baseOf(it);
+            ta.querySelector('.ic').innerHTML = b ? iconFor(b, it) : '✊';
+            ta.setAttribute('aria-label', b ? 'Attack with ' + W.gearName(it) : 'Attack');
+        }
         const sb = $('btnSkills');
         if (sb) { sb.textContent = cls.icon; sb.title = cls.name + ': classes and skills (K)'; }
         el.querySelectorAll('[data-abil]').forEach(b => b.addEventListener('click', () => (b.classList.contains('is-empty') ? openSkills() : WHW.actions.castAbility(Number(b.dataset.abil)))));
@@ -1505,7 +1512,8 @@
         modal('📜 How the Wilds work', `<div class="w-help">
             <h3>Moving and fighting</h3>
             <p><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> to move, <kbd>Space</kbd> or <kbd>Shift</kbd> to dash (you can't be hit during a dash), <kbd>1</kbd>–<kbd>5</kbd> or the mouse wheel to switch what you hold, <kbd>Z</kbd> for a potion (then a short wait before the next: longer after stronger ones), <kbd>E</kbd> to use things, <kbd>I</kbd> for your bag, <kbd>M</kbd> for the map.</p>
-            ${E.isTouch ? `<p><b>On a touch screen</b>, put your thumb down anywhere on the ${WHW.settings.touchLefty ? 'right' : 'left'} side to move (the stick comes to it), and drag anywhere else to swing: quick swipes hit hardest. The round buttons by your other thumb dash, raise your shield (hold it), cast your abilities and drink a potion. A gold <b>E</b> button shows up when there's something to use; tapping the note above the buttons does the same. Settings has bigger or smaller buttons and a left-handed layout.</p>` : ''}
+            ${E.isTouch && WHW.settings.touchAttack === false ? `<p><b>On a touch screen</b>, put your thumb down anywhere on the ${WHW.settings.touchLefty ? 'right' : 'left'} side to move (the stick comes to it), and drag anywhere else to swing: quick swipes hit hardest. The round buttons by your other thumb dash, raise your shield (hold it), cast your abilities and drink a potion. A gold <b>E</b> button shows up when there's something to use; tapping the note above the buttons does the same. Settings has bigger or smaller buttons, a left-handed layout, and an Attack button that aims for you.</p>`
+            : E.isTouch ? `<p><b>On a touch screen</b>, put your thumb down anywhere on the ${WHW.settings.touchLefty ? 'right' : 'left'} side to move (the stick comes to it). Your weapon turns by itself to the nearest enemy (or, holding a pickaxe or axe, the nearest rock or tree it can work). The big <b>Attack</b> button in the corner swings at it: hold it to keep swinging back and forth. With a spear it thrusts; with a staff, hold to draw it back (a Mystic charges a spell) and let go to cast; with a bow, hold to draw and let go to shoot; a revolver fires (hold to fan the hammer).${D.COMBAT.touch.mult < 1 ? ` Swings from the button do ${Math.round(D.COMBAT.touch.mult * 100)}% damage.` : ''} You can also drag anywhere on the other side of the screen to swing by hand, where quick swipes hit hardest. The buttons around it dash, raise your shield (hold it), cast your abilities and drink a potion. A gold <b>E</b> button shows up when there's something to use; tapping the note above the buttons does the same. Settings has bigger or smaller buttons, a left-handed layout, and a switch back to the earlier drag-to-swing controls.</p>` : ''}
             <p><b>Your weapon follows the mouse.</b> To hit hard you have to <b>swing</b>: move the mouse quickly across the target, like the real thing. A slow drag just bumps it. The swing meter under your hotbar shows how fast your blade is moving: past the first mark it hurts, past the second it's a <b style="color:#ffc83d">Perfect</b> hit. Slashing back and forth builds a combo; the tip of the blade hits harder than the hilt. Heavy weapons like axes turn slower but hit harder.</p>
             <ul><li><b>Shields</b>: hold <kbd>right-click</kbd> (or <kbd>F</kbd>) to raise your shield toward the mouse. Hits from in front are mostly blocked but cost stamina; if you run out, your guard breaks. Raise it <i>just</i> as a hit lands to <b style="color:#ffc83d">parry</b>: no damage, the attacker is stunned and projectiles fly back. You can't attack with your weapon while blocking. Falling rocks and meteors can't be blocked.</li>
             <li><b>Quests</b>: four townsfolk stand around the plaza. Talk to them (<kbd>E</kbd>) for quests that pay rubies: a story for each, then a new daily quest every day. A <b style="color:#ffc83d">!</b> over someone's head means a new quest, a <b style="color:#ffc83d">?</b> means one is ready to hand in.</li>
@@ -1550,12 +1558,13 @@
         const opts = (list, cur) => list.map(([v, label]) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`).join('');
         const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
         const body = modal('Settings', `
-            <label class="w-setting"><span>Assisted swings<small>Click to swing automatically (70% damage). For trackpads and touch screens.</small></span><input type="checkbox" id="setAssist" ${S.assist ? 'checked' : ''}></label>
+            <label class="w-setting"><span>Assisted swings<small>Click to swing automatically (70% damage). For trackpads${!E.isTouch ? '' : S.touchAttack !== false ? ' (on touch, the Attack button already aims and swings for you)' : ' and touch screens'}.</small></span><input type="checkbox" id="setAssist" ${S.assist ? 'checked' : ''}></label>
             <label class="w-setting"><span>Damage numbers</span><input type="checkbox" id="setNums" ${S.dmgNumbers ? 'checked' : ''}></label>
             <label class="w-setting"><span>Screen shake and hit pause</span><input type="checkbox" id="setShake" ${S.shake ? 'checked' : ''}></label>
             <label class="w-setting"><span>Sound volume<small>Also follows the game's sound settings.</small></span><input type="range" id="setVol" min="0" max="1" step="0.05" value="${S.volume}"></label>
             <label class="w-setting"><span>Music<small>A tune for every zone, and another when a boss fight starts. Its volume follows the game's music volume too.</small></span><input type="checkbox" id="setMusic" ${S.music !== false ? 'checked' : ''}></label>
             ${E.isTouch ? `<h3 class="w-setting-h">Touch controls</h3>
+            <label class="w-setting"><span>Attack button and auto-aim<small>Your weapon turns to the nearest enemy by itself and a big Attack button swings at it. Off: the earlier controls, where you drag on the screen to aim and swing.</small></span><input type="checkbox" id="setTouchAttack" ${S.touchAttack !== false ? 'checked' : ''}></label>
             <label class="w-setting"><span>Button size</span>
                 <select id="setTouchSize">${opts([['small', 'Small'], ['normal', 'Normal'], ['large', 'Large']], S.touchSize)}</select></label>
             <label class="w-setting"><span>Left-handed<small>The stick on the right, the buttons on the left.</small></span><input type="checkbox" id="setLefty" ${S.touchLefty ? 'checked' : ''}></label>` : ''}
@@ -1577,9 +1586,10 @@
         body.querySelector('#setVol').addEventListener('input', (e) => { S.volume = Number(e.target.value); save(); });
         body.querySelector('#setMusic').addEventListener('change', (e) => { S.music = e.target.checked; save(); });
         const touch = (key, val) => { S[key] = val; save(); WHW.applyTouch(); };
-        const ts = body.querySelector('#setTouchSize'), tl = body.querySelector('#setLefty');
+        const ts = body.querySelector('#setTouchSize'), tl = body.querySelector('#setLefty'), ta = body.querySelector('#setTouchAttack');
         if (ts) ts.addEventListener('change', (e) => touch('touchSize', e.target.value));
         if (tl) tl.addEventListener('change', (e) => touch('touchLefty', e.target.checked));
+        if (ta) ta.addEventListener('change', (e) => touch('touchAttack', e.target.checked));
         const gfx = (key, val) => { S[key] = val; save(); WHW.applyGraphics(); };
         body.querySelector('#setGfx').addEventListener('change', (e) => gfx('graphics', e.target.value));
         body.querySelector('#setRes').addEventListener('change', (e) => gfx('resolution', e.target.value));

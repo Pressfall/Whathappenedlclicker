@@ -83,7 +83,7 @@
         // ---- upgrades ----
         { key: 'x_upgrade_100', cat: 'Upgrades', name: 'Triple Digits', desc: 'Get any upgrade to level 100.', title: 'Dedicated', rarity: 'common', badge: '💯', stat: 'upgradeMax', target: 100 },
         { key: 'x_levels_5000', cat: 'Upgrades', name: 'Level Hoarder', desc: 'Have 5,000 total upgrade levels in one run.', title: 'Grinder', rarity: 'rare', badge: '📊', stat: 'upgradeTotal', target: 5000 },
-        { key: 'x_roster', cat: 'Upgrades', name: 'Full Roster', desc: 'Own at least one of all 30 upgrades.', title: 'What Collector', rarity: 'epic', badge: '📚', stat: 'upgradesOwned', target: 30 },
+        { key: 'x_roster', cat: 'Upgrades', name: 'Full Roster', desc: 'Own at least one of all 31 upgrades.', title: 'What Collector', rarity: 'epic', badge: '📚', stat: 'upgradesOwned', target: 31 },
         { key: 'x_opmouse_1000', cat: 'Upgrades', name: 'Mouse Supremacy', desc: 'Get OP mouse to level 1000.', title: 'Click Lord', rarity: 'epic', badge: '🖱️', stat: s => s.upgrades[1], target: 1000 },
         { key: 'x_goonsaw_1000', cat: 'Upgrades', name: 'Saw It All', desc: 'Get Goonsaw Man to level 1000.', title: 'Lumberjack', rarity: 'epic', badge: '🪚', stat: s => s.upgrades[3], target: 1000 },
         { key: 'x_grape_1000', cat: 'Upgrades', name: 'Wine Not?', desc: 'Get Grape God to level 1000.', title: 'Sommelier', rarity: 'epic', badge: '🍇', stat: s => s.upgrades[6], target: 1000 },
@@ -240,7 +240,7 @@
         const W = window.WHF;
         const sp = id => (W && W.SPECIES_BY_ID[id]) || null;
         const upgrades = [0];
-        for (let i = 1; i <= 30; i++) upgrades.push(Number(s['upgrade' + i + 'Level']) || 0);
+        for (let i = 1; i <= 31; i++) upgrades.push(Number(s['upgrade' + i + 'Level']) || 0);
         const divine = {
             divineArgon: Number(s.divineArgonLevel) || 0, divineSomalian: Number(s.divineSomalianLevel) || 0,
             divineAssassin: Number(s.divineAssassinLevel) || 0, divineCollector: Number(s.divineCollectorLevel) || 0,

@@ -2,7 +2,8 @@
 <html lang="en">
     <head>
         <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+        <!-- maximum-scale: a phone must not zoom the game in when the chat box (or a menu's) is tapped (iOS does, under 16px type) -->
+        <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover" />
         <title>The Wilds — What Happened</title>
         <link rel="icon" type="image/png" href="mainimage/upgrades/argoonion.png">
         <link rel="manifest" href="manifest.webmanifest">
@@ -80,6 +81,8 @@
         <div class="w-touch" id="touchUi" hidden>
             <div class="w-stick" id="touchStick" aria-hidden="true"><i id="touchKnob"></i></div>
             <div class="w-touch-btns">
+                <!-- Attack: at whatever the weapon is turned to (it turns by itself to the nearest enemy); the icon is what you hold -->
+                <button class="w-tb w-tb--atk" id="tAtk" aria-label="Attack"><span class="ic">⚔️</span></button>
                 <button class="w-tb w-tb--dash" id="tDash" aria-label="Dash">💨</button>
                 <button class="w-tb w-tb--shield" id="tShield" aria-label="Hold to block with your shield" hidden>🛡️</button>
                 <button class="w-tb w-tb--use" id="tUse" aria-label="Use" hidden>E</button>

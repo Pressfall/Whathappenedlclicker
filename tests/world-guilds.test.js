@@ -123,8 +123,8 @@ test('the Glory shop: rubies, gems and Golden inside the daily caps, follower pa
     s.arena.glory = 1e6;
     assert.equal(Ar.SHOP_BY_ID.guild_chest.glory, 15000);
     const r = W.arenaBuy(s, 'guild_chest', NOW, 0, () => 0.999);
-    assert.equal(r.guild, 30);
-    assert.equal(s.guilds.owned[30], 1);
+    assert.equal(r.guild, 31, 'the last guild (Kim Jong Un\'s since 2026-11-23)');
+    assert.equal(s.guilds.owned[31], 1);
     assert.equal(W.arenaBuy(s, 'guild_chest', NOW, 0, () => 0).guild, 1, 'any guild can come out');
     const before = s.rubies;
     W.arenaBuy(s, 'rubies_l', NOW, 0);

@@ -13,7 +13,7 @@
  *   amount, currency    e.g. "3.00" (a string) and "USD"
  *   message             the supporter's message: where the player pastes their link code (a Shop Order has none)
  *   shop_items          for a Shop Order: [{ direct_link_code, variation_name, quantity }], else null
- *   tier_name           for a Subscription: the membership tier
+ *   tier_name           for a Subscription: the membership tier (none for a monthly tip, the tip box's "Make it monthly")
  *   email               the payer's email, only ever as a keyed hash: a payment with no link code goes to the account whose
  *                       verified sign-in email it is (kofi_emails/<hash>), or waits for that player to collect or claim it
  * The payload Ko-fi's docs show as an example has kofi_transaction_id 00000000-1111-2222-3333-444444444444: that one is
@@ -111,6 +111,15 @@
         };
     }
 
+    // What an amount paid is worth as a tip: a tip in the page's currency is priced by the tip packs; another currency by the
+    // flat donationRate, if any. 0 when neither prices it.
+    function tipWorth(n, C) {
+        const packed = typeof C.tipBeans === 'function' ? C.tipBeans(n.amount, n.currency, C) : 0;
+        if (packed > 0) return packed;
+        const rate = Object.prototype.hasOwnProperty.call(C.donationRate || {}, n.currency) ? Number(C.donationRate[n.currency]) : 0;
+        return rate > 0 && n.amount > 0 ? Math.floor(n.amount * rate + 1e-9) : 0;
+    }
+
     // How many Holy What Happeneds a payment is worth under `cfg` (core/premium-config.js). Returns { beans, lines, reason }: lines say where
     // they came from (one per shop item). reason when it is 0: 'tip' (a tip with no rate set), 'unknown-items',
     // 'no-tier', 'not-a-sale'.
@@ -129,18 +138,17 @@
             }
             if (!beans) reason = 'unknown-items';
         } else if (n.type === 'Donation') {
-            // a tip in the page's currency is priced by the tip packs; another currency by the flat donationRate, if any
-            const packed = typeof C.tipBeans === 'function' ? C.tipBeans(n.amount, n.currency, C) : 0;
-            if (packed > 0) { beans = packed; lines.push({ code: 'tip', qty: 1, beans }); }
-            else {
-                const rate = Object.prototype.hasOwnProperty.call(C.donationRate || {}, n.currency) ? Number(C.donationRate[n.currency]) : 0;
-                if (rate > 0 && n.amount > 0) { beans = Math.floor(n.amount * rate + 1e-9); lines.push({ code: 'tip', qty: 1, beans }); }
-            }
-            if (!beans) reason = 'tip';
+            beans = tipWorth(n, C);
+            if (beans) lines.push({ code: 'tip', qty: 1, beans });
+            else reason = 'tip';
         } else if (n.type === 'Subscription') {
+            // a membership tier the owner priced (subscriptionTiers) pays that. Any other monthly payment pays by its amount,
+            // like a tip, every month: a monthly tip (the tip box's "Make it monthly", which Ko-fi sends with no tier name)
+            // or a tier with no price set. Before, both credited nothing and weren't even stored.
             const tiers = C.subscriptionTiers || {};
-            const b = Object.prototype.hasOwnProperty.call(tiers, n.tier) ? Math.floor(Number(tiers[n.tier])) : 0;
+            const b = n.tier && Object.prototype.hasOwnProperty.call(tiers, n.tier) ? Math.floor(Number(tiers[n.tier])) : 0;
             if (b > 0) { beans = b; lines.push({ code: 'tier', qty: 1, beans }); }
+            else { beans = tipWorth(n, C); if (beans) lines.push({ code: 'monthly', qty: 1, beans }); }
             if (!beans) reason = 'no-tier';
         } else reason = 'not-a-sale';
         if (!Number.isFinite(beans) || beans < 0) beans = 0;

@@ -18,13 +18,16 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 function pickRandom(arr) { return Array.isArray(arr) && arr.length ? arr[Math.floor(Math.random() * arr.length)] : ''; }
 function escapeHtml(s) { return String(s).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[c]); }
 
+// the game's short names (main.js NUMBER_SUFFIXES), up to Qid: late upgrades cost far more than a decillion
+const UNITS = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc', 'Ud', 'Dd', 'Td', 'Qad', 'Qid'];
 // compact number: 1234567 -> "1.23M"
 function shortNum(v) {
     const n = Number(v) || 0;
-    const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const units = UNITS;
     let i = 0, x = Math.abs(n);
     while (x >= 1000 && i < units.length - 1) { x /= 1000; i++; }
     if (i === 0) return String(Math.floor(n));
+    if (Number(x.toFixed(x < 100 ? 2 : 0)) >= 1000 && i < units.length - 1) { x /= 1000; i++; } // 999.6K is "1M", not "1000K"
     if (x >= 1000) return n.toExponential(2);
     let digits = x.toFixed(x < 100 ? 2 : 0);
     if (digits.indexOf('.') !== -1) digits = digits.replace(/0+$/, '').replace(/\.$/, '');
@@ -33,7 +36,7 @@ function shortNum(v) {
 const signed = n => (n > 0 ? '+' : n < 0 ? '−' : '') + shortNum(Math.abs(n));
 
 // "2.5k", "1,000", "3M", "1e9" -> number (NaN if it isn't one)
-const SUFFIX = { k: 1e3, m: 1e6, b: 1e9, t: 1e12, q: 1e15, qa: 1e15, qi: 1e18, sx: 1e21, sp: 1e24, oc: 1e27, no: 1e30, dc: 1e33 };
+const SUFFIX = { k: 1e3, m: 1e6, b: 1e9, t: 1e12, q: 1e15, qa: 1e15, qi: 1e18, sx: 1e21, sp: 1e24, oc: 1e27, no: 1e30, dc: 1e33, ud: 1e36, dd: 1e39, td: 1e42, qad: 1e45, qid: 1e48 };
 function parseAmount(text) {
     const t = String(text || '').trim().toLowerCase().replace(/[,\s_]/g, '');
     const m = t.match(/^(\d*\.?\d+(?:e[+-]?\d+)?)([a-z]*)$/);
@@ -45,7 +48,7 @@ function parseAmount(text) {
 function amountText(n) {
     n = Math.floor(n);
     if (n < 1e6) return String(n);
-    const units = ['', 'K', 'M', 'B', 'T', 'Q', 'Qi', 'Sx', 'Sp', 'Oc', 'No', 'Dc'];
+    const units = UNITS;
     let i = 0, x = n;
     while (x >= 1000 && i < units.length - 1) { x /= 1000; i++; }
     return x >= 1000 ? n.toExponential(3) : (x.toFixed(3).replace(/0+$/, '').replace(/\.$/, '') + units[i]);

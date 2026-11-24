@@ -56,10 +56,10 @@ test('Siberian Hitman special purchases apply their own-tier multiplier and pers
 test('achievement snapshots include Siberian Hitman in the full roster count', () => {
     const g = withSave({ version: 3, upgrade29Level: 1 });
     const snap = g.window.WHA.snapshot();
-    assert.equal(snap.upgrades.length, 31);
+    assert.equal(snap.upgrades.length, 32); // [0, upgrade 1..31]
     assert.equal(snap.upgradesOwned, 1);
     const roster = g.window.WHA.ACHIEVEMENTS.find((achievement) => achievement.key === 'x_roster');
-    assert.equal(roster.target, 30);
+    assert.equal(roster.target, 31);
 });
 
 test('Mincecraft Man (upgrade 30): level, specials and multiplier survive save/load, and the specials multiply its CPS', () => {

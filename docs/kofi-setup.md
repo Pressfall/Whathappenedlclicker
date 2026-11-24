@@ -181,7 +181,10 @@ Only `workerUrl` is left to fill in (it is marked `OWNER`):
 - `tipCurrency`, `tipPacks`: the packs from step 1 (set).
 - `packs`: the Ko-fi Shop items that sell Holy What Happeneds (step 1). Matched to the buyer by the email they paid with.
 - Optional `donationRate`: a flat rate for tips in other currencies than `tipCurrency`, e.g. `{ EUR: 100, GBP: 120 }`.
-- Optional `subscriptionTiers`: Holy What Happeneds per membership payment, by the tier's exact name on Ko-fi.
+- Optional `subscriptionTiers`: Holy What Happeneds per membership payment, by the tier's exact name on Ko-fi. Every other
+  monthly payment (a monthly tip from the tip box's "Make it monthly", which Ko-fi sends as a `Subscription` with no tier
+  name, or a tier not listed) pays by its amount like a tip, every month. A renewal may come without the first month's
+  message: then it finds the player by the email it was paid with, or waits for them to collect or claim it.
 - `workerUrl`: fill in after step 4.
 
 Until the Ko-fi page, the worker address and at least one way to buy are filled in, the game's Get more tab says buying

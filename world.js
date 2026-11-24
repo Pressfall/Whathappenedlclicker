@@ -23,9 +23,10 @@
     // ---------------- settings (this device only) ----------------
     // graphics: 'auto' (follows the game's Performance setting), 'high', 'medium' or 'low'; resolution: 'auto', 'full', '0.75'
     // or '0.5'; fpsCap: 30, 60 or 0 (the screen's own rate); showFps: a frame counter in the corner; touchSize: 'small', 'normal'
-    // or 'large' touch buttons; touchLefty: the touch controls mirrored (stick on the right); music: each zone's tune
-    // (world-music.js)
-    WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, music: true, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false, touchSize: 'normal', touchLefty: false },
+    // or 'large' touch buttons; touchLefty: the touch controls mirrored (stick on the right); touchAttack: the touch Attack
+    // button and auto-aim (off: the earlier controls, a finger dragging on the screen aims and swings); music: each zone's
+    // tune (world-music.js)
+    WHW.settings = Object.assign({ assist: false, dmgNumbers: true, shake: true, volume: 0.8, music: true, online: true, graphics: 'auto', resolution: 'auto', fpsCap: 60, showFps: false, touchSize: 'normal', touchLefty: false, touchAttack: true },
         (() => { try { return JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'); } catch (e) { return {}; } })());
     WHW.saveSettings = () => {
         try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(WHW.settings)); } catch (e) {}
@@ -1598,14 +1599,24 @@
                 enterZone(g.state.zone, { pos: g.state.pos, silent: true });
             });
         });
-        // touch buttons act as the finger lands (is-down shows it pressed until it lifts)
+        // touch buttons act as the finger lands (is-down shows it pressed until it lifts). The button keeps the finger
+        // (pointer capture), so lifting it over something else (a menu that opened meanwhile) still lets the button go.
         const tb = (id, down, up) => {
             const el = document.getElementById(id);
             if (!el) return;
-            el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.classList.add('is-down'); down(); });
-            const lift = () => { el.classList.remove('is-down'); if (up) up(); };
-            el.addEventListener('pointerup', lift); el.addEventListener('pointercancel', lift);
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault();
+                if (e.pointerType === 'touch') E.mouse.type = 'touch'; // aimed by touch (world-actors.js), not at where a mouse last was
+                try { el.setPointerCapture(e.pointerId); } catch (err) {}
+                el.classList.add('is-down'); down();
+            });
+            const lift = () => { if (!el.classList.contains('is-down')) return; el.classList.remove('is-down'); if (up) up(); };
+            el.addEventListener('pointerup', lift); el.addEventListener('pointercancel', lift); el.addEventListener('lostpointercapture', lift);
+            el.addEventListener('contextmenu', (e) => e.preventDefault()); // a long press is a hold, not a menu
         };
+        // Attack: swings, thrusts, draws or fires at what the weapon is turned to (world-actors.js touch)
+        tb('tAtk', () => A.attackDown(), () => A.attackUp());
+        window.addEventListener('blur', () => A.attackUp());
         tb('tDash', () => g.player && A.tryDash(g.player, E.moveInput()));
         const use = () => { g.usePressed = true; g.useHeld = true; }, unuse = () => { g.useHeld = false; };
         tb('tUse', use, unuse);
@@ -1620,13 +1631,15 @@
         document.getElementById('hudMore').addEventListener('click', () => showMore(false));
         document.addEventListener('pointerdown', (ev) => { if (tr.classList.contains('is-more') && !tr.contains(ev.target)) showMore(false); }, true);
     }
-    // Touch controls: their size and side (Settings > Touch controls)
+    // Touch controls: their size and side, and the Attack button with auto-aim or the earlier controls (Settings > Touch controls)
     WHW.applyTouch = () => {
         const S = WHW.settings, b = document.body.classList;
         b.toggle('w-touch-s', S.touchSize === 'small');
         b.toggle('w-touch-l', S.touchSize === 'large');
         b.toggle('w-lefty', !!S.touchLefty);
+        b.toggle('w-touch-classic', S.touchAttack === false); // world.css: no Attack button, the buttons where they were before
         E.touch.lefty = !!S.touchLefty;
+        if (S.touchAttack === false) A.attackUp();
     };
 
     // ---------------- rubies from the game (Golden traded in its Divine menu, rubies codes) ----------------

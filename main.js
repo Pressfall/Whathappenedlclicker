@@ -5,7 +5,7 @@
  * - Decimal/currency helpers, core state (count, clickPower, cps)
  * - Clan sync (syncClanStats), main image size, formatNumber
  * - Achievements, titles, batch cost, level multipliers, effective CPS
- * - Upgrade tooltips, upgrade state and buy functions (1–30, divine, specials)
+ * - Upgrade tooltips, upgrade state and buy functions (1–31, divine, specials)
  * - Prestige, save/load, increment (click handler + mainClicks for clan events)
  * - UI: falling images, displays, shop, settings, init
  */
@@ -197,7 +197,6 @@ function applyMainImageMaxWidth() {
     if (val) val.innerText = mainImageMaxWidth;
     const slider = document.getElementById('imageSizeSlider');
     if (slider) slider.value = mainImageMaxWidth;
-    console.log('applyMainImageMaxWidth applied', mainImageMaxWidth);
 }
 
 // Defer applying main image width until after the page has loaded and
@@ -277,8 +276,12 @@ function formatNumber(n) {
             return sign + Number(num).toExponential(3);
         }
     }
-    // show one decimal if value < 100, otherwise no decimals
-    const decimals = v < 100 ? 1 : 0;
+    // show one decimal if value < 100, otherwise no decimals. Rounded first: 999.96K printed as "1000K" and 99.96K as "100.0K"
+    let decimals = v < 100 ? 1 : 0;
+    if (Number(v.toFixed(decimals)) >= 1000) {
+        if (unitIndex + 1 >= units.length) return sign + Number(num).toExponential(3);
+        v = v / 1000; unitIndex++; decimals = 1;
+    } else if (decimals === 1 && Number(v.toFixed(1)) >= 100) decimals = 0;
     return sign + v.toFixed(decimals) + (unitIndex >= 0 ? units[unitIndex] : '');
 }
 
@@ -660,6 +663,7 @@ function getUpgradeLevel(idx) {
         case 28: return upgrade28Level || 0;
         case 29: return upgrade29Level || 0;
         case 30: return upgrade30Level || 0;
+        case 31: return upgrade31Level || 0;
         default: return 0;
     }
 }
@@ -987,24 +991,25 @@ UPGRADE_DESCRIPTIONS.upgrade23 = 'Mobile Man 38: A mobile service that produces 
 UPGRADE_DESCRIPTIONS.upgrade24 = 'Easton Bundy: An exceptional operator who provides powerful passive cps generation.';
 UPGRADE_DESCRIPTIONS.upgrade25 = 'Tom Pearl turns the phonk all the way up. Nobody has ever seen him without the shades.';
 UPGRADE_DESCRIPTIONS.upgrade26 = 'A diagram so powerful it rewires the entire economy. Anything above the arrow is a catch.';
-UPGRADE_DESCRIPTIONS.upgrade27 = 'The Somalian Pirate had a twin all along. This one does not ask for a price. (Meant to be reached after a few prestiges.)';
-UPGRADE_DESCRIPTIONS.upgrade28 = "O'algo has read Logical Fallacies for Dummies cover to cover. Your CPS can no longer be argued with. (Meant to be reached after many prestiges.)";
+UPGRADE_DESCRIPTIONS.upgrade27 = 'The Somalian Pirate had a twin all along. This one does not ask for a price.';
+UPGRADE_DESCRIPTIONS.upgrade28 = "O'algo has read Logical Fallacies for Dummies cover to cover. Your CPS can no longer be argued with.";
 UPGRADE_DESCRIPTIONS.upgrade29 = 'The Siberian Hitman has arrived from the cold, bringing precise and relentless What Happened production.';
-UPGRADE_DESCRIPTIONS.upgrade30 = 'The Mincecraft Man ran the Orange County XC Championships and never stopped. Every stride mines more What Happeneds. (Meant to be reached after many prestiges.)';
+UPGRADE_DESCRIPTIONS.upgrade30 = 'The Mincecraft Man ran the Orange County XC Championships and never stopped. Every stride mines more What Happeneds.';
+UPGRADE_DESCRIPTIONS.upgrade31 = 'The Supreme Leader has declared What Happened production a matter of national pride. Every quota is met, and then some.';
 
-// Display names for upgrades 1..30 (index 0 unused), used in the left-bar button labels
+// Display names for upgrades 1..31 (index 0 unused), used in the left-bar button labels
 const UPGRADE_NAMES = [null, 'OP mouse', 'Somalian Pirate', 'Goonsaw Man', 'Diddy blud', 'Argonian Autist', 'Grape God', 'Skippie Toilet', 'Mysterious Island',
     'Tribal Camp', 'The Phonk Man', 'Jonathan', 'CR lurker', 'ropingnecurse', 'skibbidi scimitar', 'What Happened Beats', 'ez villager', 'scp wish I knew.',
     'The Goatis', 'goatises raw liver', 'The Landon Stream', 'The Bass', 'Good Noodles', 'Mobile Man 38', 'Easton Bundy',
-    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo", 'Siberian Hitman', 'Mincecraft Man'];
+    'Tom Pearl', 'Hypergamy', 'Evil Somalian Pirate', "O'algo", 'Siberian Hitman', 'Mincecraft Man', 'Kim Jong Un'];
 const UPGRADE_COUNT = UPGRADE_NAMES.length - 1;
 
-// Balance tables for upgrades 1..30 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
+// Balance tables for upgrades 1..31 (index 0 unused). Upgrade 1 adds click power per level, every other upgrade adds CPS.
 // Each level costs 10% more than the last for upgrades 1-10 and 15% more from upgrade 11 on.
 // Later upgrades take longer to pay for themselves, so each new one is a goal rather than an instant unlock.
 const UPGRADE_CPS = [0, 1, 1, 5, 20, 100, 500, 5000, 20000, 100000, 500000, 1500000, 5000000,
     20000000, 50000000, 500000000, 2000000000, 10000000000, 150000000000, 2000000000000, 50000000000000, 1e15, 5e16, 5e17, 1e18,
-    1e19, 1e20, 5e21, 1e22, 1e23, 1e24];
+    1e19, 1e20, 5e21, 1e22, 1e23, 1e24, 1e25];
 // (Evil Somalian Pirate, 27, was buffed from 1e21 to 5e21 per level on 2026-11-21: still under O'algo's 1e22, and his pay-back
 // time drops from 3e10 to 6e9 seconds of his own income, between Hypergamy's and O'algo's)
 // Costs from CR lurker (12) on were tuned with a simulated player so each new upgrade takes a bit longer to reach than the last
@@ -1013,7 +1018,10 @@ const UPGRADE_CPS = [0, 1, 1, 5, 20, 100, 500, 5000, 20000, 100000, 500000, 1500
 // 2 prestiges, O'algo several prestiges later, and each gets quicker to reach as your Divine upgrades grow.
 const UPGRADE_BASE_COSTS = [0, 100, 500, 1000, 3000, 10000, 250000, 1000000, 5000000, 20000000, 100000000, 500000000, 4.3e10,
     4e13, 1.5e14, 3.6e14, 1.2e15, 3.3e16, 1.7e19, 1.3e20, 3.1e20, 7e22, 6.8e23, 6e25, 1.8e26,
-    8.5e26, 4.2e27, 3e31, 1e33, 3e34, 1e36];
+    8.5e26, 4.2e27, 3e31, 1e33, 3e34, 1e36, 3.3e37];
+// Kim Jong Un (31, added 2026-11-23) continues the curve of 28-30: x10 the income of the one before and about x33 the price,
+// so the time a level takes to pay for itself grows x3.3 again (1e11, 3e11, 1e12 -> 3.3e12 s) and his first level costs
+// what Mincecraft Man's 25th does, as Mincecraft Man's first costs what Siberian Hitman's 25th does.
 function upgradeCostRate(i) { return i <= 10 ? 1.1 : 1.15; }
 
 // Special upgrade prices: a multiple of what the level that unlocks the special costs, so a special is never pocket change
@@ -1253,8 +1261,9 @@ let upgrade27Cost = UPGRADE_BASE_COSTS[27], upgrade27Level = 0;
 let upgrade28Cost = UPGRADE_BASE_COSTS[28], upgrade28Level = 0;
 let upgrade29Cost = UPGRADE_BASE_COSTS[29], upgrade29Level = 0;
 let upgrade30Cost = UPGRADE_BASE_COSTS[30], upgrade30Level = 0;
+let upgrade31Cost = UPGRADE_BASE_COSTS[31], upgrade31Level = 0;
 // each one's specials multiply only its own CPS
-let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1, siberianHitmanMultiplier = 1, mincecraftMultiplier = 1;
+let tomPearlMultiplier = 1, hypergamyMultiplier = 1, evilPirateMultiplier = 1, oalgoMultiplier = 1, siberianHitmanMultiplier = 1, mincecraftMultiplier = 1, kimJongUnMultiplier = 1;
 function lateTierMultiplier(i) {
     switch (i) {
         case 25: return Number(tomPearlMultiplier) || 1;
@@ -1263,6 +1272,7 @@ function lateTierMultiplier(i) {
         case 28: return Number(oalgoMultiplier) || 1;
         case 29: return Number(siberianHitmanMultiplier) || 1;
         case 30: return Number(mincecraftMultiplier) || 1;
+        case 31: return Number(kimJongUnMultiplier) || 1;
         default: return 1;
     }
 }
@@ -1279,6 +1289,8 @@ let siberianHitman1Cost = specialCost(29, 10, 'own'), siberianHitman2Cost = spec
 let siberianHitman1Purchased = false, siberianHitman2Purchased = false, siberianHitman3Purchased = false, siberianHitman4Purchased = false;
 let mincecraft1Cost = specialCost(30, 10, 'own'), mincecraft2Cost = specialCost(30, 25, 'own'), mincecraft3Cost = specialCost(30, 50, 'own'), mincecraft4Cost = specialCost(30, 100, 'own');
 let mincecraft1Purchased = false, mincecraft2Purchased = false, mincecraft3Purchased = false, mincecraft4Purchased = false;
+let kimJongUn1Cost = specialCost(31, 10, 'own'), kimJongUn2Cost = specialCost(31, 25, 'own'), kimJongUn3Cost = specialCost(31, 50, 'own'), kimJongUn4Cost = specialCost(31, 100, 'own');
+let kimJongUn1Purchased = false, kimJongUn2Purchased = false, kimJongUn3Purchased = false, kimJongUn4Purchased = false;
 // Landon Stream specials (one-time multipliers that apply to upgrade20 contribution)
 let landon1Cost = specialCost(20, 10, 'own');
 let landon2Cost = specialCost(20, 25, 'own');
@@ -1896,9 +1908,15 @@ let divineComboManLevel = 0;
 let divineComboManCost = 1;
 const DIVINE_COMBO_PER_LEVEL = 0.0001; // +0.01% per level, per combo point
 const COMBO_TIMEOUT_MS = 30000;
+// The combo stops growing here (+100% per level): without a cap an auto-clicker left running grew CPS and click power
+// without end, and click income grows with the square of the combo. 10,000 is about 20 minutes of steady clicking.
+const COMBO_MAX = 10000;
 let comboCount = 0;          // the combo now (0 when there is none)
 let comboLastClickAt = 0;    // when it last grew (ms)
 let _comboMultApplied = 1;   // the combo multiplier updateDisplays last put into cps and clickPower
+// the short-lived CPS boosts updateDisplays last put into cps (a clan shop buff, the casino's spin, the Mystery prize, running
+// consumables): time skips leave them out (cpsForTimeSkip), as offline gains do
+let _tempCpsMultApplied = 1;
 
 // Golden cost of the next level of each Divine upgrade, from its current level.
 //  Argonian / Somalian: x3 per level (each level roughly doubles CPS / multiplies click power by 5)
@@ -1937,7 +1955,7 @@ function comboNow(now) {
 // +0.01% CPS and click power per level per combo point, as a fraction (0.25 = +25%)
 function getComboBonus(level, combo) {
     const L = lvlOr(level, divineComboManLevel);
-    const n = combo === undefined ? comboNow() : Math.max(0, Number(combo) || 0);
+    const n = Math.min(COMBO_MAX, combo === undefined ? comboNow() : Math.max(0, Number(combo) || 0));
     return L > 0 && n > 0 ? DIVINE_COMBO_PER_LEVEL * L * n * getBrileyismBoost() : 0;
 }
 function getComboMult(level, combo) { return 1 + getComboBonus(level, combo); }
@@ -2429,10 +2447,12 @@ function updateDisplays() {
         // apply Divine Argonian multiplier if purchased (percent is additive percentage e.g. 300 -> +300%)
         cps = cps * goldenMultiplier * getDivineCpsMult();
     }
+    let tempCps = 1;
     // Clan buff (temporary, bought in the clan shop) and clan level perks (permanent, from clan XP)
     try {
         applyClanBuffMults();
         const cpsMult = (typeof window.clanBuffCpsMult === 'number' && window.clanBuffCpsMult > 0) ? window.clanBuffCpsMult : 1;
+        tempCps *= cpsMult;
         const clickMult = (typeof window.clanBuffClickMult === 'number' && window.clanBuffClickMult > 0) ? window.clanBuffClickMult : 1;
         const perk = getClanLevelPerk();
         const totalCpsMult = cpsMult * (1 + perk.cps / 100);
@@ -2462,12 +2482,14 @@ function updateDisplays() {
         if (buff && buff.type === 'cpsBoost') {
             if (hasDecimal) cps = (isDecimalInstance(cps) ? cps : D(cps)).times(D(buff.mult || 10));
             else cps = cps * (buff.mult || 10);
+            tempCps *= buff.mult || 10;
         }
     } catch (e) {}
     // Mystery buff (the "???" daily-spin prize): index.html updates these multipliers while it is active
     try {
         const mysteryCps = Number(window._mysteryCpsMult) || 1;
         const mysteryClick = Number(window._mysteryClickMult) || 1;
+        tempCps *= mysteryCps;
         if (hasDecimal) {
             cps = cps.times(D(mysteryCps));
             clickPower = clickPower.times(D(mysteryClick));
@@ -2492,6 +2514,7 @@ function updateDisplays() {
     try {
         const ib = getItemBonuses(), hb = getHolyBoosts();
         const iCps = (1 + (ib.cps || 0) / 100) * (ib.cpsMult || 1) * hb.cps, iClick = (1 + (ib.click || 0) / 100) * (ib.clickMult || 1) * hb.click;
+        tempCps *= ib.cpsMult || 1;
         if (hasDecimal) {
             cps = cps.times(D(iCps));
             clickPower = clickPower.times(D(iClick));
@@ -2531,6 +2554,7 @@ function updateDisplays() {
             clickPower = clickPower * rClick;
         }
     } catch (e) {}
+    _tempCpsMultApplied = tempCps > 0 && Number.isFinite(tempCps) ? tempCps : 1;
     // Divine Combo Man: the click combo raises CPS and click power while it lasts. Applied last and remembered, so offline
     // gains, timelapses and the saved stats can leave it out (cpsWithoutCombo).
     try {
@@ -2783,7 +2807,7 @@ function updateDisplays() {
         if (cmBtn) {
             const lvl = numericLevel(divineComboManLevel);
             const per = (L) => formatComboPct(getComboBonus(L, 1) * 100);
-            setHtmlIfChanged(cmBtn.querySelector('.upgrade-label'), divineCardHtml('Divine Combo Man', lvl, `Per combo click: +${per(lvl)}% → +${per(lvl + 1)}% CPS & click power`, divineComboManCost || 1));
+            setHtmlIfChanged(cmBtn.querySelector('.upgrade-label'), divineCardHtml('Divine Combo Man', lvl, `Per combo click (up to ${COMBO_MAX.toLocaleString('en-US')}): +${per(lvl)}% → +${per(lvl + 1)}% CPS & click power`, divineComboManCost || 1));
             cmBtn.disabled = !goldenCanAfford(divineComboManCost);
             if (cmBtn.disabled) { cmBtn.setAttribute('disabled', 'true'); cmBtn.style.opacity = '0.6'; }
             else { cmBtn.removeAttribute('disabled'); cmBtn.style.opacity = ''; cmBtn.tabIndex = 0; }
@@ -2815,7 +2839,7 @@ function updateDisplays() {
     // show batch cost for the selected bulk amount (in Max mode: as many levels as the player can afford)
     const upgradeCosts = [null, upgrade1Cost, upgrade2Cost, upgrade3Cost, upgrade4Cost, upgrade5Cost, upgrade6Cost, upgrade7Cost, upgrade8Cost, upgrade9Cost, upgrade10Cost, upgrade11Cost, upgrade12Cost,
         upgrade13Cost, upgrade14Cost, upgrade15Cost, upgrade16Cost, upgrade17Cost, upgrade18Cost, upgrade19Cost, upgrade20Cost, upgrade21Cost, upgrade22Cost, upgrade23Cost, upgrade24Cost,
-        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost, upgrade29Cost, upgrade30Cost];
+        upgrade25Cost, upgrade26Cost, upgrade27Cost, upgrade28Cost, upgrade29Cost, upgrade30Cost, upgrade31Cost];
     for (let i = 1; i <= UPGRADE_COUNT; i++) {
         const rate = upgradeCostRate(i);
         const levels = bulkLevelsFor(upgradeCosts[i], rate);
@@ -3048,7 +3072,7 @@ let _comboDirty = false;
 try {
     const v = JSON.parse(localStorage.getItem(COMBO_KEY) || 'null');
     const n = v && Math.floor(Number(v.n)), at = v && Number(v.at), now = Date.now();
-    if (n > 0 && Number.isFinite(n) && at <= now && now - at < COMBO_TIMEOUT_MS) { comboCount = n; comboLastClickAt = at; }
+    if (n > 0 && Number.isFinite(n) && at <= now && now - at < COMBO_TIMEOUT_MS) { comboCount = Math.min(COMBO_MAX, n); comboLastClickAt = at; }
 } catch (e) {}
 function saveComboState() {
     _comboDirty = false;
@@ -3057,11 +3081,12 @@ function saveComboState() {
 setInterval(() => { if (_comboDirty) saveComboState(); }, 2000);
 try { window.addEventListener('beforeunload', saveComboState); } catch (e) {}
 try { document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') saveComboState(); }); } catch (e) {}
-// One of your clicks: the combo goes up by 1 (starting again from 1 if it had run out)
+// One of your clicks: the combo goes up by 1 (starting again from 1 if it had run out), up to COMBO_MAX; a click at the
+// cap still keeps it from running out
 function noteComboClick(now) {
     if (numericLevel(divineComboManLevel) <= 0) return;
     const t = now === undefined ? Date.now() : now;
-    comboCount = comboNow(t) + 1;
+    comboCount = Math.min(COMBO_MAX, comboNow(t) + 1);
     comboLastClickAt = t;
     _comboDirty = true;
     renderCombo();
@@ -3112,7 +3137,7 @@ function renderCombo() {
     const key = n + '|' + getComboBonus();
     if (key !== _comboShown) {
         _comboShown = key;
-        if (E.count) E.count.textContent = n.toLocaleString('en-US');
+        if (E.count) E.count.textContent = n.toLocaleString('en-US') + (n >= COMBO_MAX ? ' MAX' : '');
         if (E.bonus) E.bonus.textContent = '+' + formatComboPct(getComboBonus() * 100) + '% CPS & click power';
     }
     if (E.bar) E.bar.style.width = (left / COMBO_TIMEOUT_MS * 100).toFixed(1) + '%';
@@ -4258,7 +4283,7 @@ function syncUpgradeCostsFromLevels() {
     upgrade22Cost = costForLevel(22, upgrade22Level); upgrade23Cost = costForLevel(23, upgrade23Level); upgrade24Cost = costForLevel(24, upgrade24Level);
     upgrade25Cost = costForLevel(25, upgrade25Level); upgrade26Cost = costForLevel(26, upgrade26Level); upgrade27Cost = costForLevel(27, upgrade27Level);
     upgrade28Cost = costForLevel(28, upgrade28Level); upgrade29Cost = costForLevel(29, upgrade29Level);
-    upgrade30Cost = costForLevel(30, upgrade30Level);
+    upgrade30Cost = costForLevel(30, upgrade30Level); upgrade31Cost = costForLevel(31, upgrade31Level);
 }
 // Bulk-buy loop shared by upgrades 25+ (their CPS comes from the level, so a level only changes level and cost).
 // `levelUp` adds one level and raises the stored cost.
@@ -4285,6 +4310,7 @@ function buyUpgrade27() { buyUpgradeLevels(27, () => upgrade27Cost, () => { upgr
 function buyUpgrade28() { buyUpgradeLevels(28, () => upgrade28Cost, () => { upgrade28Level = numericLevel(upgrade28Level) + 1; upgrade28Cost = nextUpgradeCost(upgrade28Cost, 28); }); }
 function buyUpgrade29() { buyUpgradeLevels(29, () => upgrade29Cost, () => { upgrade29Level = numericLevel(upgrade29Level) + 1; upgrade29Cost = nextUpgradeCost(upgrade29Cost, 29); }); }
 function buyUpgrade30() { buyUpgradeLevels(30, () => upgrade30Cost, () => { upgrade30Level = numericLevel(upgrade30Level) + 1; upgrade30Cost = nextUpgradeCost(upgrade30Cost, 30); }); }
+function buyUpgrade31() { buyUpgradeLevels(31, () => upgrade31Cost, () => { upgrade31Level = numericLevel(upgrade31Level) + 1; upgrade31Cost = nextUpgradeCost(upgrade31Cost, 31); }); }
 
 // Purchase flow shared by the one-time specials of upgrades 25+: level gate, cost, then `apply` sets the flag and multiplier
 function buyOneTimeSpecial(upgradeIdx, unlockLevel, owned, cost, apply) {
@@ -4319,6 +4345,10 @@ function buyMincecraft1() { buyOneTimeSpecial(30, 10, mincecraft1Purchased, minc
 function buyMincecraft2() { buyOneTimeSpecial(30, 25, mincecraft2Purchased, mincecraft2Cost, () => { mincecraft2Purchased = true; mincecraftMultiplier *= 2; }); }
 function buyMincecraft3() { buyOneTimeSpecial(30, 50, mincecraft3Purchased, mincecraft3Cost, () => { mincecraft3Purchased = true; mincecraftMultiplier *= 2.5; }); }
 function buyMincecraft4() { buyOneTimeSpecial(30, 100, mincecraft4Purchased, mincecraft4Cost, () => { mincecraft4Purchased = true; mincecraftMultiplier *= 3; }); }
+function buyKimJongUn1() { buyOneTimeSpecial(31, 10, kimJongUn1Purchased, kimJongUn1Cost, () => { kimJongUn1Purchased = true; kimJongUnMultiplier *= 1.5; }); }
+function buyKimJongUn2() { buyOneTimeSpecial(31, 25, kimJongUn2Purchased, kimJongUn2Cost, () => { kimJongUn2Purchased = true; kimJongUnMultiplier *= 2; }); }
+function buyKimJongUn3() { buyOneTimeSpecial(31, 50, kimJongUn3Purchased, kimJongUn3Cost, () => { kimJongUn3Purchased = true; kimJongUnMultiplier *= 2.5; }); }
+function buyKimJongUn4() { buyOneTimeSpecial(31, 100, kimJongUn4Purchased, kimJongUn4Cost, () => { kimJongUn4Purchased = true; kimJongUnMultiplier *= 3; }); }
 
 // SCP special purchases (each doubles SCP contribution)
 function buyScp1() {
@@ -4873,7 +4903,7 @@ function buyBeats3() {
 
 function buyDivineArgon() {
     if (goldenWhat < divineArgonCost) {
-        notify('Not enough Golden What Happeneds — need ' + divineArgonCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineArgonCost) + '.');
         return;
     }
     // spend golden currency
@@ -4888,7 +4918,7 @@ function buyDivineArgon() {
 
 function buyDivineSomalian() {
     if (goldenWhat < divineSomalianCost) {
-        notify('Not enough Golden What Happeneds — need ' + divineSomalianCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineSomalianCost) + '.');
         return;
     }
     // spend golden currency
@@ -4907,7 +4937,7 @@ function buyDivineAssassin() {
         return;
     }
     if (goldenWhat < divineAssassinCost) {
-        notify('Not enough Golden What Happeneds — need ' + divineAssassinCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineAssassinCost) + '.');
         return;
     }
     goldenWhat -= divineAssassinCost;
@@ -4921,7 +4951,7 @@ function buyDivineAssassin() {
 function buyDivineCollector() {
     if (typeof divineCollectorCost === 'undefined') divineCollectorCost = 1;
     if (goldenWhat < divineCollectorCost) {
-        notify('Not enough Golden What Happeneds — need ' + divineCollectorCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineCollectorCost) + '.');
         return;
     }
     goldenWhat -= divineCollectorCost;
@@ -4935,7 +4965,7 @@ function buyDivineCollector() {
 function buyDivineMoneyMan() {
     if (typeof divineMoneyManCost === 'undefined') divineMoneyManCost = 1;
     if (goldenWhat < divineMoneyManCost) {
-        notify('Not enough Golden What Happeneds — need ' + divineMoneyManCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineMoneyManCost) + '.');
         return;
     }
     goldenWhat -= divineMoneyManCost;
@@ -4948,11 +4978,9 @@ function buyDivineMoneyMan() {
 
 function buyDivineSpirit() {
     try {
-        console.log('Attempting buyDivineSpirit', { goldenWhat, divineSpiritCost, hasDecimal });
         if (typeof divineSpiritCost === 'undefined') divineSpiritCost = (hasDecimal ? D(1) : 1);
         if (!goldenCanAfford(divineSpiritCost)) {
-            console.warn('buyDivineSpirit: insufficient golden', { goldenWhat, cost: divineSpiritCost });
-            notify('Not enough Golden What Happeneds — need ' + (typeof divineSpiritCost === 'object' && typeof divineSpiritCost.toString === 'function' ? divineSpiritCost.toString() : String(divineSpiritCost)) + '.');
+            notify('Not enough Golden What Happeneds — need ' + formatNumber(divineSpiritCost) + '.');
             return;
         }
         // spend golden and increase level (Decimal-aware)
@@ -4973,7 +5001,6 @@ function buyDivineSpirit() {
         divineSpiritCost = (hasDecimal ? D(nextCost) : nextCost);
         saveGame();
         updateDisplays();
-        console.log('buyDivineSpirit: success', { goldenWhat, divineSpiritLevel, divineSpiritCost });
     } catch (err) {
         console.error('buyDivineSpirit error', err);
         notify('Something went wrong buying Divine Spirit. Try again.');
@@ -4983,7 +5010,7 @@ function buyDivineSpirit() {
 function buyDivineSimpleVillager() {
     if (typeof divineSimpleVillagerCost === 'undefined') divineSimpleVillagerCost = 1;
     if (goldenWhat < divineSimpleVillagerCost) {
-        notify('Not enough Golden What Happeneds — need ' + divineSimpleVillagerCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineSimpleVillagerCost) + '.');
         return;
     }
     // spend golden and increase level
@@ -4997,7 +5024,7 @@ function buyDivineSimpleVillager() {
 
 function buyDivineBrileyism() {
     if (!goldenCanAfford(divineBrileyismCost)) {
-        notify('Not enough Golden What Happeneds — need ' + divineBrileyismCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineBrileyismCost) + '.');
         return;
     }
     goldenWhat -= divineBrileyismCost;
@@ -5008,7 +5035,7 @@ function buyDivineBrileyism() {
 
 function buyDivineComboMan() {
     if (!goldenCanAfford(divineComboManCost)) {
-        notify('Not enough Golden What Happeneds — need ' + divineComboManCost + '.');
+        notify('Not enough Golden What Happeneds — need ' + formatNumber(divineComboManCost) + '.');
         return;
     }
     goldenWhat -= divineComboManCost;
@@ -6477,8 +6504,8 @@ function initApp() {
     if (slider) {
         slider.min = 400; slider.max = 1400; slider.step = 50;
         slider.value = mainImageMaxWidth;
-        slider.addEventListener('input', (ev) => { setMainImageMaxWidth(ev.target.value); console.log('imageSizeSlider input', ev.target.value); });
-        slider.addEventListener('change', (ev) => { setMainImageMaxWidth(ev.target.value); console.log('imageSizeSlider change', ev.target.value); });
+        slider.addEventListener('input', (ev) => { setMainImageMaxWidth(ev.target.value); });
+        slider.addEventListener('change', (ev) => { setMainImageMaxWidth(ev.target.value); });
     }
     // wire up background music (controls in settings)
     try {
@@ -6940,8 +6967,15 @@ function spendGems(cost, details) {
 }
 // Rewards from items.js consumables
 // Instantly earn `seconds` of the current CPS (without the Divine Combo Man combo: it lasts seconds, not hours). Returns the amount added.
+// What a time skip (an Hourglass or Time Machine, a Holy timelapse) pays per second: the income without the combo and
+// without the short boosts running now, as offline gains leave them out. With them, starting the casino's x10 CPS spin
+// first made an 8-hour Time Machine pay 80 hours.
+function cpsForTimeSkip() {
+    const c = cpsWithoutCombo();
+    return _tempCpsMultApplied > 1 ? c / _tempCpsMultApplied : c;
+}
 function addCpsSeconds(seconds) {
-    const gain = hasDecimal ? D(cpsWithoutCombo()).times(Number(seconds) || 0) : cpsWithoutCombo() * (Number(seconds) || 0);
+    const gain = hasDecimal ? D(cpsForTimeSkip()).times(Number(seconds) || 0) : cpsForTimeSkip() * (Number(seconds) || 0);
     addToCount(gain);
     try { updateDisplays(); } catch (e) {}
     return gain;
@@ -7807,14 +7841,15 @@ function buildSaveObject() {
                     eastonBundy4Purchased,
                     eastonBundyMultiplier,
             // upgrades 25-28 (Tom Pearl, Hypergamy, Evil Somalian Pirate, O'algo) and their specials
-            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level, upgrade29Cost, upgrade29Level, upgrade30Cost, upgrade30Level,
-            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier, siberianHitmanMultiplier, mincecraftMultiplier,
+            upgrade25Cost, upgrade25Level, upgrade26Cost, upgrade26Level, upgrade27Cost, upgrade27Level, upgrade28Cost, upgrade28Level, upgrade29Cost, upgrade29Level, upgrade30Cost, upgrade30Level, upgrade31Cost, upgrade31Level,
+            tomPearlMultiplier, hypergamyMultiplier, evilPirateMultiplier, oalgoMultiplier, siberianHitmanMultiplier, mincecraftMultiplier, kimJongUnMultiplier,
             tomPearl1Purchased, tomPearl2Purchased, tomPearl3Purchased, tomPearl4Purchased,
             hypergamy1Purchased, hypergamy2Purchased, hypergamy3Purchased, hypergamy4Purchased,
             evilPirate1Purchased, evilPirate2Purchased, evilPirate3Purchased, evilPirate4Purchased,
             oalgo1Purchased, oalgo2Purchased, oalgo3Purchased, oalgo4Purchased,
             siberianHitman1Purchased, siberianHitman2Purchased, siberianHitman3Purchased, siberianHitman4Purchased,
             mincecraft1Purchased, mincecraft2Purchased, mincecraft3Purchased, mincecraft4Purchased,
+            kimJongUn1Purchased, kimJongUn2Purchased, kimJongUn3Purchased, kimJongUn4Purchased,
             // phonk state
             phonkBaseCps, phonkOtherMultiplier, phonkMultiplier,
             upgrade10Cost, upgrade10Level,
@@ -8162,18 +8197,21 @@ function loadGame() {
         upgrade28Cost = normalizeNumericValue(s.upgrade28Cost ?? upgrade28Cost, upgrade28Cost); upgrade28Level = numericLevel(s.upgrade28Level);
         upgrade29Cost = normalizeNumericValue(s.upgrade29Cost ?? upgrade29Cost, upgrade29Cost); upgrade29Level = numericLevel(s.upgrade29Level);
         upgrade30Cost = normalizeNumericValue(s.upgrade30Cost ?? upgrade30Cost, upgrade30Cost); upgrade30Level = numericLevel(s.upgrade30Level);
+        upgrade31Cost = normalizeNumericValue(s.upgrade31Cost ?? upgrade31Cost, upgrade31Cost); upgrade31Level = numericLevel(s.upgrade31Level);
         if (Number(s.tomPearlMultiplier) > 0) tomPearlMultiplier = Number(s.tomPearlMultiplier);
         if (Number(s.hypergamyMultiplier) > 0) hypergamyMultiplier = Number(s.hypergamyMultiplier);
         if (Number(s.evilPirateMultiplier) > 0) evilPirateMultiplier = Number(s.evilPirateMultiplier);
         if (Number(s.oalgoMultiplier) > 0) oalgoMultiplier = Number(s.oalgoMultiplier);
         if (Number(s.siberianHitmanMultiplier) > 0) siberianHitmanMultiplier = Number(s.siberianHitmanMultiplier);
         if (Number(s.mincecraftMultiplier) > 0) mincecraftMultiplier = Number(s.mincecraftMultiplier);
+        if (Number(s.kimJongUnMultiplier) > 0) kimJongUnMultiplier = Number(s.kimJongUnMultiplier);
         tomPearl1Purchased = !!s.tomPearl1Purchased; tomPearl2Purchased = !!s.tomPearl2Purchased; tomPearl3Purchased = !!s.tomPearl3Purchased; tomPearl4Purchased = !!s.tomPearl4Purchased;
         hypergamy1Purchased = !!s.hypergamy1Purchased; hypergamy2Purchased = !!s.hypergamy2Purchased; hypergamy3Purchased = !!s.hypergamy3Purchased; hypergamy4Purchased = !!s.hypergamy4Purchased;
         evilPirate1Purchased = !!s.evilPirate1Purchased; evilPirate2Purchased = !!s.evilPirate2Purchased; evilPirate3Purchased = !!s.evilPirate3Purchased; evilPirate4Purchased = !!s.evilPirate4Purchased;
         oalgo1Purchased = !!s.oalgo1Purchased; oalgo2Purchased = !!s.oalgo2Purchased; oalgo3Purchased = !!s.oalgo3Purchased; oalgo4Purchased = !!s.oalgo4Purchased;
         siberianHitman1Purchased = !!s.siberianHitman1Purchased; siberianHitman2Purchased = !!s.siberianHitman2Purchased; siberianHitman3Purchased = !!s.siberianHitman3Purchased; siberianHitman4Purchased = !!s.siberianHitman4Purchased;
         mincecraft1Purchased = !!s.mincecraft1Purchased; mincecraft2Purchased = !!s.mincecraft2Purchased; mincecraft3Purchased = !!s.mincecraft3Purchased; mincecraft4Purchased = !!s.mincecraft4Purchased;
+        kimJongUn1Purchased = !!s.kimJongUn1Purchased; kimJongUn2Purchased = !!s.kimJongUn2Purchased; kimJongUn3Purchased = !!s.kimJongUn3Purchased; kimJongUn4Purchased = !!s.kimJongUn4Purchased;
         // phonk purchased flags and state
         phonk1Purchased = !!s.phonk1Purchased; phonk2Purchased = !!s.phonk2Purchased; phonk3Purchased = !!s.phonk3Purchased; phonk4Purchased = !!s.phonk4Purchased; phonk5Purchased = !!s.phonk5Purchased;
         if (typeof s.phonkBaseCps === 'string') phonkBaseCps = hasDecimal ? D(s.phonkBaseCps) : Number(s.phonkBaseCps);

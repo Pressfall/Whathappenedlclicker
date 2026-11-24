@@ -100,6 +100,7 @@ test('Divine prices follow their documented curves', () => {
     assert.deepEqual(row('moneyMan', 6), [1, 2, 3, 5, 9, 17]);
     assert.deepEqual(row('spirit', 6), [1, 2, 3, 5, 8, 13]);
     assert.deepEqual(row('brileyism', 6), [2, 4, 6, 9, 14, 21]);
+    assert.deepEqual(row('comboMan', 6), [1, 2, 3, 5, 7, 11]);
     assert.equal(calc.divineCostFor('unknown', 3), 1);
     assert.equal(calc.divineCostFor('argon', -5), 1, 'a negative level counts as 0');
     assert.equal(calc.divineCostFor('argon', '2'), 9);

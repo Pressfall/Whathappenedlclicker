@@ -58,7 +58,8 @@
         donationRate: {},
 
         // OWNER (optional): Holy What Happeneds for each Ko-fi membership payment ("Subscription"), by the tier's exact name on Ko-fi,
-        // e.g. { 'Holy Club': 300 }. Empty: memberships give no Holy What Happeneds.
+        // e.g. { 'Holy Club': 300 }. A monthly payment not listed here (a monthly tip, the tip box's "Make it monthly", or a
+        // tier left out) pays by its amount like a tip, every month.
         subscriptionTiers: {},
 
         // Safety net: no single payment credits more than this (a typo in a rate can't flood an account).

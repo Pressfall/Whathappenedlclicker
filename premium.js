@@ -130,10 +130,11 @@
         if (it.kind === 'buff') return true; // kept in this state, so either page
         return false;
     }
-    // what the game makes per second now (main.js's cps without the Divine Combo Man combo, which lasts seconds; 0 off the game page)
+    // what a timelapse pays per second now (main.js cpsForTimeSkip: cps without the Divine Combo Man combo and the short boosts
+    // running now; 0 off the game page)
     function cpsNow() {
         let c = 0;
-        try { c = typeof window.cpsWithoutCombo === 'function' ? Number(window.cpsWithoutCombo()) : Number(typeof cps !== 'undefined' ? cps : 0); } catch (e) { c = 0; } // eslint-disable-line no-undef
+        try { c = typeof window.cpsForTimeSkip === 'function' ? Number(window.cpsForTimeSkip()) : typeof window.cpsWithoutCombo === 'function' ? Number(window.cpsWithoutCombo()) : Number(typeof cps !== 'undefined' ? cps : 0); } catch (e) { c = 0; } // eslint-disable-line no-undef
         return Number.isFinite(c) && c > 0 ? c : 0;
     }
     // what one of a repeat item gives right now: { n, text } (n: gems, Golden or What Happeneds; text for the shop)

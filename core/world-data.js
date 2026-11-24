@@ -324,6 +324,15 @@
         player: { hp: 100, speed: 150, radius: 13, regenTown: 25 },
         hitStop: 0.04,
         assist: { arc: 2.1, time: 0.18, mult: 0.7 },
+        // touch screens (world-actors.js, touch): the weapon turns by itself toward the nearest enemy within range px
+        // (rangeFar with a bow, a revolver or a Mystic's staff), else toward the nearest thing the tool in hand can work within
+        // nodeRange px, else the way you walk. turn: how fast (rad/s) that aim follows while you aren't attacking, too slow
+        // for the blade to cut anything on its way round. The Attack button: a swing plays the assisted sweep (assist) for
+        // mult of the damage (full, chosen 2026-11-23; the desktop click-assist stays at assist.mult), gap s between held
+        // swings; a thrust holds the tip out
+        // thrustTime s, every thrustEvery s while held; a staff waits up to castWait s to point at its target before the thrust
+        // that casts, a revolver up to fireWait s for the barrel to come within fireAim rad of it.
+        touch: { range: 240, rangeFar: 460, nodeRange: 60, turn: 3, mult: 1, gap: 0.04, thrustTime: 0.2, thrustEvery: 0.5, castWait: 0.3, fireAim: 0.12, fireWait: 0.25 },
         tinkSpeed: 60,   // contact this slow makes no spark at all
         // shields: hold to raise toward the mouse. Hits from inside the arc are blocked for stamina; raising one just before a
         // hit lands (parryWindow s) is a parry: no damage, no stamina, the attacker is stunned and projectiles fly back.

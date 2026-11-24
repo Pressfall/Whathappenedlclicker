@@ -80,5 +80,13 @@
         else window.addEventListener('load', () => setTimeout(register, 1500));
     }
     window.WHPwa = { installed, canPrompt: () => !!deferred, install, refresh };
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+    // once the HTML is parsed: DOMContentLoaded also waits for the game page's Firebase modules to download, which can take
+    // a long while on a slow connection (the Install row stayed hidden), so like guide.js, start on readystatechange too
+    if (document.readyState !== 'loading') init();
+    else {
+        let done = false;
+        const go = () => { if (!done) { done = true; init(); } };
+        document.addEventListener('readystatechange', () => { if (document.readyState !== 'loading') go(); });
+        document.addEventListener('DOMContentLoaded', go);
+    }
 })();

@@ -97,6 +97,24 @@ test('a running consumable boost does not pay out while you are away', () => {
     assert.ok(r.cps > plain.cps * 9, 'live CPS has the boost');
 });
 
+test('time skips (Hourglass, Time Machine, Holy timelapses) pay CPS without the short boosts running now', () => {
+    const g = player();
+    g.eval('updateDisplays();');
+    const base = Number(g.eval('cps'));
+    // a x3 consumable, the casino's x10 CPS spin and a x2 clan shop buff, all running
+    g.eval(`window.WHI.bonuses = () => ({ cps: 0, click: 0, critChance: 0, critDmg: 0, gems: 0, boxRate: 0, offline: 0, cpsMult: 3, clickMult: 1 });
+        getActiveCasinoBuff = () => ({ type: 'cpsBoost', mult: 10, expiresAt: Date.now() + 60000 });
+        applyClanBuffMults = () => { window.clanBuffCpsMult = 2; window.clanBuffClickMult = 1; };
+        updateDisplays();`);
+    const live = Number(g.eval('cps'));
+    assert.ok(Math.abs(live / base - 60) < 1e-9, 'live CPS has all three: x' + live / base);
+    assert.ok(Math.abs(g.eval('cpsForTimeSkip()') - base) < 1e-9 * base);
+    const before = Number(g.eval('count'));
+    g.eval('addCpsSeconds(3600)');
+    assert.ok(Math.abs(Number(g.eval('count')) - before - base * 3600) < 1e-6 * base * 3600, 'an hour at the CPS without them');
+    g.close();
+});
+
 test('the Welcome back panel appears after a minute away and not before', () => {
     assert.equal(welcomeShown(comeBack(player(), 59 * 1000).page), false);
     assert.equal(welcomeShown(comeBack(player(), 61 * 1000).page), true);

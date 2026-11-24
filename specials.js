@@ -44,6 +44,7 @@
         oalgo: 'O\'algo CPS',
         siberianHitman: 'Siberian Hitman CPS',
         mincecraft: 'Mincecraft Man CPS',
+        kimJongUn: 'Kim Jong Un CPS',
     };
     const CREW_NOTE = 'Crew = every upgrade except the Pirate, Jonathan, CR lurker and The Phonk Man.';
     const TIER_NUMERALS = ['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'];
@@ -235,6 +236,12 @@
             ['mincecraft2', 25, 'buyMincecraft2', 'mincecraft2Purchased', 'mincecraft2Cost', 'mincecraft', 'mincecraftMultiplier', 2, 'Championship Tee', 'Orange County XC Championships. He wears it like armor.'],
             ['mincecraft3', 50, 'buyMincecraft3', 'mincecraft3Purchased', 'mincecraft3Cost', 'mincecraft', 'mincecraftMultiplier', 2.5, 'Second Wind', 'Mile three, uphill, and he only gets faster.'],
             ['mincecraft4', 100, 'buyMincecraft4', 'mincecraft4Purchased', 'mincecraft4Cost', 'mincecraft', 'mincecraftMultiplier', 3, 'Hands on Hips', 'The victory pose. Mincecraft Man output triples.'],
+        ] },
+        { key: 'kimJongUn', up: 31, img: 'kimjongun.webp', items: [
+            ['kimJongUn1', 10, 'buyKimJongUn1', 'kimJongUn1Purchased', 'kimJongUn1Cost', 'kimJongUn', 'kimJongUnMultiplier', 1.5, 'Five-Year Plan', 'A What Happened quota for every province. Somehow it is always exceeded.'],
+            ['kimJongUn2', 25, 'buyKimJongUn2', 'kimJongUn2Purchased', 'kimJongUn2Cost', 'kimJongUn', 'kimJongUnMultiplier', 2, 'Military Parade', 'Row after row of What Happeneds march past in perfect step.'],
+            ['kimJongUn3', 50, 'buyKimJongUn3', 'kimJongUn3Purchased', 'kimJongUn3Cost', 'kimJongUn', 'kimJongUnMultiplier', 2.5, 'Rocket Man', 'Launched straight into orbit. They come back down by the billion.'],
+            ['kimJongUn4', 100, 'buyKimJongUn4', 'kimJongUn4Purchased', 'kimJongUn4Cost', 'kimJongUn', 'kimJongUnMultiplier', 3, 'Supreme Leader', 'Every What Happened now answers to him. Kim Jong Un output triples.'],
         ] },
     ];
 

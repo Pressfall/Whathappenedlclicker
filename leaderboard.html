@@ -155,7 +155,7 @@
       } catch (e) { n = NaN; }
       try {
         if (Number.isFinite(n)) {
-          const units = ['K','M','B','T','Q','Qi','Sx','Sp','Oc','No','Dc'];
+          const units = ['K','M','B','T','Q','Qi','Sx','Sp','Oc','No','Dc','Ud','Dd','Td','Qad','Qid'];
           let v = Math.abs(n), u = -1;
           while (v >= 1000 && u < units.length - 1) { v /= 1000; u++; }
           if (u < 0) return formatNumber(Math.round(n));

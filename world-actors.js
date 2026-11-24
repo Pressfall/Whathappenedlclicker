@@ -476,7 +476,7 @@
         // what it costs: mana for a class with mana (the Mystic), stamina for the rest
         const stam = a.stam * ps.abilityStam, pool = ps.usesMana ? p.mana : p.stam;
         if (pool.val < stam) { WHW.hint('Not enough ' + (ps.usesMana ? 'mana' : 'stamina') + ' for ' + a.name + '.'); return false; }
-        const aim = E.aimPoint(p.x, p.y);
+        const aim = E.aimPoint(p.x, p.y) || A.autoFoe(p); // on touch, at the enemy the weapon is turning to
         const ang = aim && Math.hypot(aim.x - p.x, aim.y - p.y) > 8 ? angTo(p, aim) : p.facing;
         // Shadowstep needs someone to step behind; with nobody in reach nothing is spent
         let prey = null;
@@ -912,6 +912,7 @@
             sh.up = true; sh.raisedAt = E.time;
             if (w && w.drawing) { w.drawing = false; w.draw = 0; w.fullFor = 0; } // can't hold a bow string and a shield
         } else if (!want && sh.up) sh.up = false;
+        touchStep(p, mv, dt); // on touch: what the weapon and shield turn to, and the Attack button
         C.track(sh, p.aimHold, dt, D.COMBAT.shield);
         if (sh.up) speed *= D.COMBAT.shield.moveMult;
         if (E.time < p.status.chillUntil) speed *= 0.7;
@@ -1065,7 +1066,9 @@
         let drain = 0;
         if (b.cls === 'bow') {
             if (w.drawing) {
-                const pull = E.mouse.type === 'touch' ? C.bowPull(E.touch.ax0, E.touch.ay0, E.touch.ax, E.touch.ay, P) : C.bowPull(w.anchorX, w.anchorY, E.mouse.sx, E.mouse.sy, P);
+                // drawn with the touch Attack button: a full draw toward the aim
+                const pull = tAtk.held && !E.touch.active && E.isTouch ? { angle: p.aimHold, target: 1 }
+                    : E.mouse.type === 'touch' ? C.bowPull(E.touch.ax0, E.touch.ay0, E.touch.ax, E.touch.ay, P) : C.bowPull(w.anchorX, w.anchorY, E.mouse.sx, E.mouse.sy, P);
                 if (pull) { target = pull.angle; C.bowStep(w, pull.target, dt, P); } else C.bowStep(w, 0, dt, P);
                 if (w.draw >= 0.95) drain = 6;
             }
@@ -1092,10 +1095,10 @@
             p.facing = w.theta;
             const tipV = Math.abs(w.omega) * P.len;
             if (b.cls === 'staff') {
-                C.spearStep(w, aim ? Math.hypot(aim.x - p.x, aim.y - p.y) : 40, dt, P);
+                C.spearStep(w, aim ? Math.hypot(aim.x - p.x, aim.y - p.y) : E.isTouch ? touchReach(P) : 40, dt, P);
                 drain = staffStep(p, w, P, st, b, dt, C.radialSpeed(w, dt));
             } else if (b.cls === 'spear') {
-                const ad = aim ? Math.hypot(aim.x - p.x, aim.y - p.y) : 40;
+                const ad = aim ? Math.hypot(aim.x - p.x, aim.y - p.y) : E.isTouch ? touchReach(P) : 40;
                 C.spearStep(w, ad, dt, P);
                 const vr = C.radialSpeed(w, dt);
                 if (vr >= P.vMin || tipV >= P.bashV) drain = P.stam;
@@ -1133,6 +1136,7 @@
             w.drawing = true; w.anchorX = E.mouse.sx; w.anchorY = E.mouse.sy; w.draw = 0; w.fullFor = 0;
         } else if (WHW.settings.assist) {
             C.assistStart(w, p.aimHold);
+            w.assistTouch = false;
         }
     };
     A.release = function (p) {
@@ -1156,6 +1160,132 @@
         WHW.sfx('bow');
     };
 
+    // ---------------- touch screens: auto-aim and the Attack button ----------------
+    // A finger can't hover, so on a touch screen the weapon (and with it the shield and the abilities) turns by itself
+    // toward what is worth hitting: the nearest enemy in range that no wall hides, else the nearest thing the tool in hand
+    // can work, else the way you walk (D.COMBAT.touch). A finger dragging on the screen to aim still wins. The Attack
+    // button does with that aim what a mouse would: a swing sweeps through it (held: back and forth, so combos build), a
+    // spear thrusts (held: again and again), a staff draws back while held (a Mystic's charges) and thrusts when let go, a
+    // bow draws while held and shoots when let go, a revolver fires once the barrel points there (held: fans the hammer).
+    const TOUCH = D.COMBAT.touch;
+    // held: the button is down; at: when it went down; fire: a revolver shot waiting for the barrel; cast: when a staff's
+    // thrust was asked for (waiting to point at the target); thrustUntil: the tip held out until then; next: the next
+    // held swing or thrust; target: who the aim is on (kept while it stays about as close as anything else)
+    const tAtk = A.touchAtk = { held: false, at: -9, fire: false, cast: -1, thrustUntil: -1, next: 0, target: null };
+    let autoAt = -1, autoHit = null;
+    const isFoe = (t) => !!t && t.team !== undefined;
+    // The thing the aim turns to (an enemy or a node), or null. Once per step.
+    A.autoTarget = function (p) {
+        if (autoAt === E.time) return autoHit;
+        autoAt = E.time;
+        const g = game(), it = weaponItem(), b = W.baseOf(it);
+        const far = b && (b.cls === 'bow' || b.cls === 'gun' || (b.cls === 'staff' && !!staffMagic(b)));
+        const range = far ? TOUCH.rangeFar : TOUCH.range;
+        const reach = (t) => Math.hypot(t.x - p.x, t.y - p.y) - (t.r || 0);
+        // only what is on the screen: a phone held upright shows ~250 px either side, less than a bow's range
+        const seen = (t) => { const s = E.worldToScreen(t.x, t.y), m = (t.r || 0) * E.zoom; return s.x > -m && s.y > -m && s.x < E.w + m && s.y < E.h + m; };
+        let best = null, bd = Infinity;
+        for (const t of g.actors.concat(pvpTargets())) {
+            if (t.dead || !C.canDamage('player', t.team)) continue;
+            const d = reach(t);
+            if (d > range || d >= bd || !seen(t) || E.wallBetween(p.x, p.y, t.x, t.y)) continue;
+            best = t; bd = d;
+        }
+        // stay on the one already aimed at unless another is clearly closer (no flicking between two)
+        const cur = tAtk.target;
+        if (best && isFoe(cur) && cur !== best && !cur.dead && (g.actors.includes(cur) || pvpTargets().includes(cur))) {
+            const d = reach(cur);
+            if (d <= range && d <= bd * 1.25 + 12 && seen(cur) && !E.wallBetween(p.x, p.y, cur.x, cur.y)) best = cur;
+        }
+        if (!best && b) {
+            for (const n of E.nodesNear(p.x, p.y, TOUCH.nodeRange + 40)) {
+                if (!A.nodeAlive(n) || n.def.tool === 'hand' || !W.toolPower(it, n.def)) continue;
+                const d = reach(n);
+                if (d <= TOUCH.nodeRange && d < bd) { best = n; bd = d; }
+            }
+        }
+        tAtk.target = best;
+        autoHit = best;
+        return best;
+    };
+    // The enemy an ability should go toward on touch (its position), or null
+    // Settings > Touch controls can turn the Attack button and auto-aim off (WHW.settings.touchAttack): then a finger
+    // dragging on the screen aims and swings, as before
+    const touchAttackOn = () => WHW.settings.touchAttack !== false;
+    A.autoFoe = function (p) { const t = E.isTouch && touchAttackOn() && E.mouse.type === 'touch' && !E.touch.active ? A.autoTarget(p) : null; return isFoe(t) ? t : null; };
+    function touchSwing(p, w) {
+        // start from the side the blade is already on, so the sweep cuts at once instead of first swinging round
+        w.assistDir = C.wrap(w.theta - p.aimHold) < 0 ? -1 : 1; // assistStart flips it
+        C.assistStart(w, p.aimHold);
+        w.assistTouch = true;
+        tAtk.next = E.time + D.COMBAT.assist.time + TOUCH.gap;
+    }
+    // Each step on a touch screen, before the shield and the weapon move: where to aim, and the Attack button held
+    function touchStep(p, mv, dt) {
+        if (!E.isTouch || !touchAttackOn() || E.mouse.type !== 'touch' || p.dead || E.touch.active) return;
+        const t = A.autoTarget(p);
+        let want = null;
+        if (t) want = angTo(p, t);
+        else if (Math.hypot(mv.x, mv.y) > 0.3) want = Math.atan2(mv.y, mv.x);
+        // attacking or blocking: straight onto it; otherwise turned toward it slowly, so the turn itself never hits anything
+        if (want !== null) {
+            if (tAtk.held || p.shield.up || tAtk.fire || tAtk.cast >= 0) p.aimHold = want;
+            else { const err = C.wrap(want - p.aimHold), step = TOUCH.turn * dt; p.aimHold = C.wrap(p.aimHold + Math.max(-step, Math.min(step, err))); }
+        }
+        const w = p.weapon, b = W.baseOf(weaponItem());
+        // a staff's cast or a revolver's shot still waiting when something else is taken in hand: dropped
+        if (!b || b.cls !== 'staff') tAtk.cast = -1;
+        if (!b || b.cls !== 'gun') tAtk.fire = false;
+        if (!w || !b || p.stunUntil > E.time) return;
+        if (b.cls === 'gun') {
+            if (tAtk.fire && (Math.abs(C.wrap(w.theta - p.aimHold)) <= TOUCH.fireAim || E.time - tAtk.at >= TOUCH.fireWait)) {
+                tAtk.fire = false;
+                A.press(p);
+                if (!tAtk.held) A.release(p);
+            }
+        } else if (b.cls === 'staff') {
+            const P = D.WEAPON_CLASSES.staff;
+            if (tAtk.cast >= 0 && ((Math.abs(C.wrap(w.theta - p.aimHold)) <= 0.15 && Math.abs(w.omega) < P.swingW * P.thrustTurn * 0.8) || E.time - tAtk.cast >= TOUCH.castWait)) {
+                tAtk.cast = -1;
+                tAtk.thrustUntil = E.time + TOUCH.thrustTime;
+            }
+        } else if (b.cls === 'spear') {
+            if (tAtk.held && E.time >= tAtk.next) { tAtk.thrustUntil = E.time + TOUCH.thrustTime; tAtk.next = E.time + TOUCH.thrustEvery; }
+        } else if (b.cls !== 'bow' && tAtk.held && w.assistT < 0 && E.time >= tAtk.next && !p.shield.up) touchSwing(p, w);
+    }
+    // How far out a spear or staff reaches for on touch when no finger aims it: thrusting (all the way), drawn back while
+    // the button is held (a Mystic's staff charges), or halfway (not drawn back, so a staff never charges by itself)
+    function touchReach(P) {
+        if (E.time < tAtk.thrustUntil) return P.aimFar + 30;
+        if (tAtk.held || tAtk.cast >= 0) return P.aimNear;
+        return (P.aimNear + P.aimFar) / 2;
+    }
+    A.attackDown = function () {
+        const g = game(), p = g.player;
+        if (!p || p.dead || WHW.ui.isOpen() || !touchAttackOn()) return;
+        tAtk.held = true; tAtk.at = E.time;
+        const t = A.autoTarget(p);
+        if (t) p.aimHold = angTo(p, t);
+        const w = p.weapon, b = W.baseOf(weaponItem());
+        if (!w || !b || p.stunUntil > E.time) return;
+        if (b.cls === 'gun') tAtk.fire = true;
+        else if (b.cls === 'bow') A.press(p);
+        else if (b.cls === 'spear') tAtk.next = E.time + 0.12; // a moment drawn back, then the first thrust
+        else if (b.cls !== 'staff' && !p.shield.up) touchSwing(p, w);
+    };
+    A.attackUp = function () {
+        const g = game(), p = g.player;
+        if (!tAtk.held) return;
+        tAtk.held = false;
+        if (!p) return;
+        const b = W.baseOf(weaponItem());
+        if (!b) return;
+        if (b.cls === 'gun') { if (!tAtk.fire) A.release(p); }
+        else if (b.cls === 'bow') A.release(p);
+        else if (b.cls === 'staff') tAtk.cast = E.time;
+        else if (b.cls === 'spear' && E.time < tAtk.next && E.time >= tAtk.thrustUntil) tAtk.thrustUntil = E.time + TOUCH.thrustTime; // a quick tap thrusts too
+    };
+
     function contactPoint(px, py, angle, r) { return { x: px + Math.cos(angle) * r, y: py + Math.sin(angle) * r }; }
     // A player weapon struck a combatant
     function strike(p, t, info) {
@@ -1166,7 +1296,7 @@
         const combo = C.comboHit(p.combo, dir, E.time, swingId);
         // a spear thrust gains damage from the speed you are moving toward the target (dash into it for the most)
         const mom = cls === 'spear' ? C.momentumMult(p.vx * Math.cos(angle) + p.vy * Math.sin(angle), g.pstats.momentum + buffSum(p, 'momentum')) : 1;
-        const hd = C.hitDamage(info.baseDmg, s, combo, (assist ? D.COMBAT.assist.mult : 1) * mom * dmgBuff(p) * (g.pstats.dmgBy[cls] || 1), P);
+        const hd = C.hitDamage(info.baseDmg, s, combo, (assist === 'touch' ? TOUCH.mult : assist ? D.COMBAT.assist.mult : 1) * mom * dmgBuff(p) * (g.pstats.dmgBy[cls] || 1), P);
         const critChance = st.crit + g.pstats.crit + buffSum(p, 'crit');
         const charge = mom >= 1.25 ? 'CHARGE x' + mom.toFixed(1) : '';
         if (t.kind === 'remote') {
@@ -1213,7 +1343,7 @@
     function meleeHits(p, w, P, st, b, dt) {
         const g = game();
         const reach = P.len + 40;
-        const assist = w.assistT >= 0;
+        const assist = w.assistT >= 0 ? (w.assistTouch ? 'touch' : 'click') : false; // a sweep the touch Attack button or a click played
         for (const t of g.actors.concat(pvpTargets())) {
             if (t.dead || !C.canDamage('player', t.team) || Math.abs(t.x - p.x) > reach + t.r || Math.abs(t.y - p.y) > reach + t.r) continue;
             const h = C.sweepHit(p.x, p.y, w.prevTheta, w.theta, P.r0, P.len, t.x, t.y, t.r);

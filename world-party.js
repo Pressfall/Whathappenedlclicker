@@ -201,6 +201,7 @@
             const tl = document.querySelector('.w-hud-tl');
             if (!tl) return;
             e = document.createElement('button'); e.id = 'partyHud'; e.type = 'button'; e.className = 'w-party'; e.title = 'Your party (P)';
+            e.hidden = true; // until there is a party to show (an empty one was a blank pill under the zone name)
             e.addEventListener('click', () => P.openMenu());
             tl.appendChild(e);
         }

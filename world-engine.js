@@ -45,8 +45,9 @@
         if (E.resolution === 'auto') dpr = Math.min(dpr, Math.sqrt(AUTO_MAX_PIXELS / Math.max(1, E.w * E.h)));
         else if (E.resolution !== 'full') dpr *= Number(E.resolution) || 1;
         E.dpr = Math.max(0.35, dpr);
-        // small screens see more of the world, either way up (a phone held sideways is wide but short)
-        E.zoom = E.w < 700 || E.h < 500 ? 0.85 : E.w < 1100 ? 1.1 : 1.25;
+        // small screens see more of the world, either way up (a phone held sideways is wide but short); a phone held upright
+        // a little more again, or there is little to see either side of you
+        E.zoom = E.w < 500 && E.h > E.w ? 0.78 : E.w < 700 || E.h < 500 ? 0.85 : E.w < 1100 ? 1.1 : 1.25;
         c.width = Math.round(E.w * E.dpr); c.height = Math.round(E.h * E.dpr);
         c.style.width = E.w + 'px'; c.style.height = E.h + 'px';
     }
@@ -89,7 +90,7 @@
         });
         c.addEventListener('pointermove', (ev) => {
             if (ev.pointerType === 'touch') { touchMove(ev); return; }
-            E.mouse.sx = ev.clientX; E.mouse.sy = ev.clientY; E.mouse.moved = true;
+            E.mouse.sx = ev.clientX; E.mouse.sy = ev.clientY; E.mouse.moved = true; E.mouse.type = ev.pointerType; // a mouse again (a laptop with a touch screen)
         });
         const up = (ev) => {
             if (ev.pointerType === 'touch') { touchUp(ev); return; }
@@ -134,6 +135,7 @@
     // anywhere else on the screen: drag to aim (weapons point along the drag; the bow pulls back with it)
     function touchDown(ev) {
         setTouch(true);
+        E.mouse.type = 'touch'; // the stick too: until a mouse is used again, nothing aims at where a mouse last was
         if (E.touch.stickId === null && stickZone(ev.clientX, ev.clientY)) { stickStart(ev); return; }
         if (E.touch.aimId !== null) return;
         E.touch.aimId = ev.pointerId;
@@ -159,6 +161,9 @@
     function setTouch(on) {
         if (E.isTouch === on) return;
         E.isTouch = on;
+        // a phone has no mouse: aim by touch from the start (otherwise the weapon pointed at the screen's corner, where the
+        // never-moved mouse "was", until a finger dragged on the screen)
+        if (on && E.mouse.type === 'mouse' && !E.mouse.moved) E.mouse.type = 'touch';
         const ui = document.getElementById('touchUi');
         if (ui) ui.hidden = !on;
         document.body.classList.toggle('is-touch', on); // world.css lays the HUD out around the touch controls
@@ -595,22 +600,28 @@
 
     // ---------------- loop ----------------
     let last = 0, acc = 0;
+    // A phone held upright has its thumb controls over the bottom of the screen: the camera keeps you a little above the
+    // middle, in the part you can see
+    const camLift = () => (E.isTouch && E.h > E.w * 1.2 ? viewH() * 0.09 : 0);
+    // ...and may go past a map's bottom edge by about the height the controls cover: otherwise, near that edge (where you
+    // arrive in the Greenwood, say) the camera stopped and you stood under your own Attack and ability buttons
+    const camBottomRoom = () => (E.isTouch && E.h > E.w * 1.2 ? viewH() * 0.35 : 0);
     function updateCamera(dt) {
         const p = WHW.game && WHW.game.player;
         if (!p || !E.map) return;
-        const tx = p.x - viewW() / 2, ty = p.y - viewH() / 2;
+        const tx = p.x - viewW() / 2, ty = p.y - viewH() / 2 + camLift();
         const f = 1 - Math.exp(-10 * dt);
         E.cam.x += (tx - E.cam.x) * f; E.cam.y += (ty - E.cam.y) * f;
         const mw = E.map.w * TILE, mh = E.map.h * TILE;
         E.cam.x = mw <= viewW() ? (mw - viewW()) / 2 : Math.max(0, Math.min(mw - viewW(), E.cam.x));
-        E.cam.y = mh <= viewH() ? (mh - viewH()) / 2 : Math.max(0, Math.min(mh - viewH(), E.cam.y));
+        E.cam.y = mh <= viewH() ? (mh - viewH()) / 2 : Math.max(0, Math.min(mh - viewH() + camBottomRoom(), E.cam.y));
         E.shake *= Math.exp(-12 * dt);
         if (E.shake < 0.2) E.shake = 0;
     }
     function snapCamera() {
         const p = WHW.game && WHW.game.player;
         if (!p) return;
-        E.cam.x = p.x - viewW() / 2; E.cam.y = p.y - viewH() / 2;
+        E.cam.x = p.x - viewW() / 2; E.cam.y = p.y - viewH() / 2 + camLift();
         updateCamera(1);
     }
     let fpsCount = 0, fpsAt = 0;

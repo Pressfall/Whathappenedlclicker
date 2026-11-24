@@ -195,16 +195,17 @@ async function main() {
         await sleep(1500);
         check('save reminder does not come back after a reload', await evalJs('document.getElementById("saveReminder").hidden'));
 
-        // ---- 7a. Holy What Happeneds: the chip, the shop, buying a look with earned Holy What Happeneds; buying for money stays closed with the placeholder config ----
+        // ---- 7a. Holy What Happeneds: the chip, the shop, buying a look with earned Holy What Happeneds; buying for money needs an account ----
         await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 500, earnedTotal: 500 })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
-        const bn = await evalJs(`(() => { const o = document.querySelector('.bn-overlay'); return { chip: document.querySelector('#beanChip [data-bean-short]').textContent, open: !!o && !o.hidden, cards: document.querySelectorAll('.bn-card').length }; })()`);
-        check('beans: the chip shows the balance and opens the Holy What Happeneds shop', bn && Number(bn.chip) >= 500 && bn.open && bn.cards === 23, bn);
-        await evalJs(`(() => { document.querySelector('[data-bnbuy="th_sanctum"]').click(); document.querySelector('[data-bnyes="th_sanctum"]').click(); return true; })()`);
+        const bn = await evalJs(`(() => { const o = document.querySelector('.bn-overlay'), h = document.querySelector('.bn-sec h4'); return { chip: document.querySelector('#beanChip [data-bean-short]').textContent, open: !!o && !o.hidden, cards: document.querySelectorAll('.bn-card').length, section: h && h.textContent }; })()`);
+        check('beans: the chip shows the balance and opens the Holy What Happeneds shop on its first section', bn && Number(bn.chip) >= 500 && bn.open && bn.cards > 0 && bn.section === 'Currency', bn);
+        await evalJs(`(() => { document.querySelector('[data-bncat="clicker"]').click(); document.querySelector('[data-bnbuy="th_sanctum"]').click(); document.querySelector('[data-bnyes="th_sanctum"]').click(); return true; })()`);
         await sleep(600);
         const bought = await evalJs(`({ cls: document.body.classList.contains('bn-theme-sanctum'), primary: getComputedStyle(document.body).getPropertyValue('--primary').trim(), owned: WHBeans.read().owned.th_sanctum === true, earned: WHBeans.read().earned })`);
         check('beans: buying a theme with earned Holy What Happeneds recolours the page and takes the Holy What Happeneds', bought && bought.cls && bought.primary === '#b48cff' && bought.owned && bought.earned < 500, bought);
         await evalJs(`(() => { document.querySelector('[data-bntab="get"]').click(); return true; })()`);
-        check("beans: Get more says buying isn't open while the config has placeholders", /isn't open yet/.test(await evalJs('document.querySelector(".bn-tabbody").textContent')));
+        // (signed out here, and Firebase is blocked: the account check never finishes or finds no one)
+        check('beans: Get more asks for an account before anything can be bought', /Sign in to your account first|Checking your account/.test(await evalJs('document.querySelector(".bn-tabbody").textContent')));
         // an aura on the real page: the main image's button draws Heaven's Rays behind the image, turning
         await evalJs(`(() => { WHBeans.mutate((s) => { s.owned.au_rays = true; s.equip.aura = 'au_rays'; }); return true; })()`);
         const aura = await evalJs(`(() => { const b = document.querySelector('.main-image-btn'), st = getComputedStyle(b, '::before'); return { cls: document.body.classList.contains('bn-aura-rays'), anim: st.animationName, z: st.zIndex, overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth }; })()`);
@@ -227,7 +228,7 @@ async function main() {
                     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth, links: document.querySelectorAll('.info-footer a').length,
                     rows: document.querySelectorAll('#upgradeTable tbody tr').length })`);
                 check(`${p} (${label}, no JavaScript): readable`, info && info.text > 1500 && info.h1 === 'rgb(255, 200, 61)' && info.links === 7 && info.overflow <= 0, info);
-                if (p === 'upgrades-followers-gems.html') check(`${p}: all 30 upgrades listed`, info.rows === 30, info);
+                if (p === 'upgrades-followers-gems.html') check(`${p}: all 31 upgrades listed`, info.rows === 31, info);
                 check(`${p} (${label}): nothing from Google ads or analytics requested`, !seen.slice(before).some((u) => /googlesyndication|google-analytics|googletagmanager|consent\.js/.test(u)));
                 if (SCRATCH) { const s = await send('Page.captureScreenshot', { format: 'png' }); fs.writeFileSync(path.join(SCRATCH, `shot-${label}-${p}.png`), Buffer.from(s.result.data, 'base64')); }
             }
@@ -278,8 +279,12 @@ async function main() {
         // Holy What Happeneds in the Wilds: the HUD chip opens the Holy What Happeneds shop in the Wilds' own window (which pauses the game); a bought trail is worn
         await evalJs(`(() => { localStorage.setItem('whathappened_premium', JSON.stringify({ v: 1, started: 1, earned: 7, owned: { tr_light: true, mk_wings: true }, equip: { trail: 'tr_light', mark: 'mk_wings' } })); WHBeans.renderChip(); document.getElementById('beanChip').click(); return true; })()`);
         const wb = await evalJs(`({ open: WHW.ui.isOpen(), title: document.getElementById('wModalTitle').textContent, cards: document.querySelectorAll('#wModalBody .bn-card').length, chip: document.querySelector('#beanChip [data-bean-short]').textContent, paused: WHW.engine.paused })`);
-        check('wilds: the 👼 chip shows Holy What Happeneds and opens the Holy What Happeneds shop in the Wilds window, pausing the game', wb && wb.open && /Holy What Happeneds/.test(wb.title) && wb.cards === 23 && Number(wb.chip) >= 7 && wb.paused, wb);
+        check('wilds: the 👼 chip shows Holy What Happeneds and opens the Holy What Happeneds shop in the Wilds window, pausing the game', wb && wb.open && /Holy What Happeneds/.test(wb.title) && wb.cards > 0 && Number(wb.chip) >= 7 && wb.paused, wb);
         await evalJs('WHW.ui.closeModal()');
+        // the game has hardly run unpaused yet: its first frames draw everything for the first time and come slowly on a slow
+        // machine (a step covers at most 1/12 s, so a few frames in 500 ms walked under 20 px). Let it warm up first.
+        const framesAtClose = await evalJs('WHWorldDebug.frames()');
+        await waitFor(`WHWorldDebug.frames() > ${framesAtClose} + 20`, 15000);
         const errsBeforeWalk = errors().length;
         const key = (type) => send('Input.dispatchKeyEvent', { type, key: 'd', code: 'KeyD', text: type === 'keyDown' ? 'd' : undefined, windowsVirtualKeyCode: 68 });
         const x0 = await evalJs('WHWorldDebug.player().x');
@@ -357,6 +362,9 @@ async function main() {
                     p.x = x0; p.y = y0; p.abCharges = {}; p.buffs = {}; p.stam.val = 100; p.mana.val = 100; p.hp = 40; p.pull = null; p.riposteUntil = 0; p.iframes = 0; p.ignite = null; p.beam = null;
                     d.dead = false; d.hp = d.maxHp; d.x = p.x + 40; d.y = p.y; d.status.stunUntil = 0;
                     const shots = g.projectiles.length, fields = g.fields.length;
+                    // Fan the Hammer empties the revolver in hand: hold one for it
+                    const held = p.weaponUid;
+                    if (D.ABILITIES[id].kind === 'fan') p.weaponUid = W.addGear(s, 'gun_1', 100, [], 0).uid;
                     out[id] = WHW.actors.castAbility(0);
                     hurt[id] = d.hp < d.maxHp;
                     const a = D.ABILITIES[id];
@@ -374,6 +382,7 @@ async function main() {
                     for (let k = 1; k < (a.charges || 1); k++) { p.pull = null; p.stam.val = 100; p.mana.val = 100; if (!WHW.actors.castAbility(0)) bad.push(id + ' charge ' + (k + 1)); }
                     p.pull = null; p.stam.val = 100; p.mana.val = 100;
                     if (WHW.actors.castAbility(0)) bad.push(id + ' ignored its cooldown');
+                    p.weaponUid = held;
                 }
             }
             p.x = x0; p.y = y0; p.buffs = {}; p.pull = null; p.riposteUntil = 0; p.ignite = null; p.beam = null; g.fields = []; g.projectiles = [];
@@ -381,7 +390,8 @@ async function main() {
             const instant = ['nova', 'cone', 'charge', 'leap', 'line', 'chain', 'step', 'hook'];
             return { ok: out, bad, missed: D.ABILITY_ORDER.filter(id => instant.includes(D.ABILITIES[id].kind) && !hurt[id]) };
         })()`);
-        check('wilds: all 37 abilities can be cast', Object.values(cast.ok).length === 37 && Object.values(cast.ok).every(Boolean), cast.ok);
+        const abilityCount = await evalJs('WHWorldData.ABILITY_ORDER.length');
+        check(`wilds: all ${abilityCount} abilities can be cast`, Object.values(cast.ok).length === abilityCount && Object.values(cast.ok).every(Boolean), cast.ok);
         check('wilds: novas, cones, charges, leaps, lines, lightning, hooks and Shadowstep hurt a monster in front of you', cast.missed.length === 0, cast.missed);
         check('wilds: heals, buffs, volleys, shots, areas, smoke, the Riposte guard, charges and cooldowns work', cast.bad.length === 0, cast.bad);
         // an area keeps hurting what stands in it
@@ -559,7 +569,7 @@ async function main() {
         check('waystone: it stands in town, asleep until Frozen WH falls', await evalJs('!!WHW.game.map.waystone && !WHWorldDebug.state().unlocked.zones.coast'));
         await evalJs('(() => { WHWorldDebug.unlockAll(); WHW.ui.openWaystone(); return true; })()');
         await sleep(150);
-        check('waystone: it lists the four Far Reaches, open once unlocked', await evalJs('document.querySelectorAll("[data-go]").length === 4 && document.querySelectorAll("[data-go]:not([disabled])").length === 4 && /Saltspray Coast/.test(document.getElementById("wModalBody").textContent)'));
+        check('waystone: it lists the Far Reaches and the Neon Arcade, open once unlocked', await evalJs('(() => { const n = WHWorldData.ZONE_ORDER.filter(z => WHWorldData.ZONES[z].via === "waystone").length; return n === 5 && document.querySelectorAll("[data-go]").length === n && document.querySelectorAll("[data-go]:not([disabled])").length === n && /Saltspray Coast/.test(document.getElementById("wModalBody").textContent) && /Neon Arcade/.test(document.getElementById("wModalBody").textContent); })()'));
         await evalJs('document.querySelector("[data-go=coast]").click()');
         await sleep(500);
         check('waystone: it carries you to Saltspray Coast', await evalJs('WHW.game.zoneId === "coast" && !!WHW.game.map.wards && WHW.game.map.wards.length === 3'));
@@ -585,9 +595,16 @@ async function main() {
         await evalJs('WHWorldDebug.travel("sky")');
         await sleep(400);
         // (the coast's boss was awake a moment ago: if he knocked the player out, nothing moves them any more, falls included;
-        // a knocked-out player can't travel in the game, only through this debug hook, so stand them up again first)
+        // a knocked-out player can't travel in the game, only through this debug hook, so stand them up again first; the
+        // knocked-out screen pauses the game, and closing it wakes them in town, so then come back)
+        if (await evalJs('!!WHW.game.player.dead && WHW.ui.isOpen()')) {
+            await evalJs('(() => { window.__wasDown = true; WHW.ui.closeModal(); return true; })()');
+            await sleep(400);
+            await evalJs('WHWorldDebug.travel("sky")');
+            await sleep(400);
+        }
         const fall = await evalJs(`(() => { const g = WHW.game, G = WHWorldGen, p = g.player, m = g.map;
-            window.__wasDown = !!p.dead; p.dead = false; p.maxHp = g.pstats.maxHp; p.hp = p.maxHp;
+            window.__wasDown = window.__wasDown || !!p.dead; p.dead = false; p.maxHp = g.pstats.maxHp; p.hp = p.maxHp;
             g.actors.forEach(a => { a.dead = true; }); g.hazards.length = 0; g.gustT = 999;
             // find open sky right next to an island, and step off
             for (let y = 6; y < m.h - 6; y++) for (let x = 6; x < m.w - 6; x++) if (G.get(m, x, y) === G.T.VOID && G.get(m, x - 1, y) === G.T.FLOOR && G.get(m, x - 2, y) === G.T.FLOOR) {
@@ -843,6 +860,53 @@ async function main() {
         check('golden trade: the Wilds collects the rubies when it opens', (await evalJs('WHWorldDebug.state().rubies')) === rubiesBefore + rate && (await evalJs('WHWorldDebug.state().inAck')) >= 1,
             [rubiesBefore, await evalJs('WHWorldDebug.state().rubies')]);
         check('golden trade: the game then sees nothing waiting', (await evalJs('WHWorldBridge.rubiesWaiting(localStorage)')) === 0);
+
+        // ---- the Wilds on a phone held upright: touch controls, a menu that fills the screen, and the Attack button ----
+        await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
+        await send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+        await navigate(`http://localhost:${PORT}/world.html?whdebug`, 'typeof window.WHWorldDebug === "object" && WHWorldDebug.frames() > 30');
+        await evalJs('WHW.ui.closeModal(); WHWorldDebug.travel("greenwood"); true');
+        await sleep(600);
+        const phone = await evalJs(`(() => { const r = (id) => { const e = document.getElementById(id); const b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, on: !e.hidden && b.width > 0 }; };
+            const atk = r('tAtk'), dash = r('tDash'), bar = r('hotbar'), hp = r('hpBar'), mm = r('minimap');
+            const apart = (a, b) => a.r <= b.l || b.r <= a.l || a.b <= b.t || b.b <= a.t;
+            return { touch: WHW.engine.isTouch && !document.getElementById('touchUi').hidden, atk, apart: apart(atk, bar) && apart(dash, bar) && apart(atk, mm) && apart(atk, hp),
+                icon: document.querySelector('#tAtk .ic').innerHTML.trim().length > 0, type: WHW.engine.mouse.type,
+                py: WHW.engine.worldToScreen(WHW.game.player.x, WHW.game.player.y).y, bottomGap: WHW.game.map.h * 32 - WHW.game.player.y,
+                pills: !!document.querySelector('#partyHud:not([hidden]):empty, #tourHud:not([hidden]):empty') }; })()`);
+        check('wilds on a phone: touch controls with a thumb-sized Attack button showing what you hold, clear of the hotbar, minimap and health', phone && phone.touch && phone.atk.on && phone.atk.w >= 70 && phone.apart && phone.icon, phone);
+        check('wilds on a phone: aimed by touch from the start, and no empty party or tournament pill', phone && phone.type === 'touch' && !phone.pills, phone);
+        // arriving at the Greenwood's south edge, the camera goes past the map's edge so you stand above the thumb buttons
+        check('wilds on a phone: by the bottom of the map you still stand above the Attack button', phone && phone.py < phone.atk.t - 20, { py: phone && phone.py, atkTop: phone && phone.atk.t, bottomGap: phone && phone.bottomGap });
+        await evalJs('document.getElementById("btnBag").click(); true');
+        const sheet = await evalJs(`(() => { const b = document.getElementById('wModalPanel').getBoundingClientRect(); const t = document.querySelector('#wModalBody .w-tabs'); return { w: b.width, h: b.height, oneRow: !t || getComputedStyle(t).flexWrap === 'nowrap' }; })()`);
+        check('wilds on a phone: a menu fills the screen with its tabs on one line', sheet && sheet.w === 390 && sheet.h > 700 && sheet.oneRow, sheet);
+        await evalJs('WHW.ui.closeModal(); true');
+        // a dummy below the player: the aim turns to it by itself (without hitting it), and a tap on Attack swings into it
+        await evalJs(`(() => { WHW.game.actors.length = 0; const id = WHWorldDebug.spawnDummy(); const d = WHW.game.actors.find(a => a.id === id); d.x = WHW.game.player.x; d.y = WHW.game.player.y + 40; window._dummy = id; return true; })()`);
+        // (it turns slowly on purpose, and a headless browser may run the game slowly: wait for it, up to a few seconds)
+        await waitFor('Math.abs(WHW.game.player.aimHold - Math.PI / 2) < 0.2', 6000);
+        const aimed = await evalJs('({ hp: WHWorldDebug.actorHp(window._dummy), aim: WHW.game.player.aimHold })');
+        check('wilds on a phone: the weapon turns to the nearest enemy by itself, without hurting it', aimed && aimed.hp === 500 && Math.abs(aimed.aim - Math.PI / 2) < 0.2, aimed);
+        const ab = await evalJs('(() => { const b = document.getElementById("tAtk").getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; })()');
+        await send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: ab.x, y: ab.y, id: 1 }] });
+        await sleep(120);
+        await send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+        await sleep(400);
+        check('wilds on a phone: a tap on Attack swings into it', (await evalJs('WHWorldDebug.actorHp(window._dummy)')) < 500);
+        // Settings > Touch controls can turn it off: no Attack button, dash back in the corner, no auto-aim; and on again
+        const classic = await evalJs(`(() => {
+            WHW.settings.touchAttack = false; WHW.applyTouch(); WHW.game.player.aimHold = 0;
+            const atk = document.getElementById('tAtk').getBoundingClientRect(), dash = document.getElementById('tDash').getBoundingClientRect();
+            return { atk: atk.width, dashRight: Math.round(innerWidth - dash.right), dashW: Math.round(dash.width) }; })()`);
+        await sleep(600);
+        const classicAim = await evalJs('WHW.game.player.aimHold');
+        await evalJs('WHW.settings.touchAttack = true; WHW.applyTouch(); true');
+        check('wilds on a phone: Settings can switch back to the earlier touch controls (no Attack button, dash in the corner, no auto-aim)',
+            classic && classic.atk === 0 && classic.dashW === 70 && classic.dashRight < 30 && classicAim === 0 && !(await evalJs('document.body.classList.contains("w-touch-classic")')), { classic, classicAim });
+        if (SCRATCH) fs.writeFileSync(path.join(SCRATCH, 'shot-wilds-phone.png'), Buffer.from((await send('Page.captureScreenshot', { format: 'png' })).result.data, 'base64'));
+        await send('Emulation.setTouchEmulationEnabled', { enabled: false });
+        await send('Emulation.clearDeviceMetricsOverride');
 
         const bad = errors().filter((e) => !/Failed to fetch|firebase|Firestore|ERR_BLOCKED|Load failed|NetworkError|net::/i.test(e));
         check('no uncaught page errors on any page (network noise excluded)', bad.length === 0, bad);
