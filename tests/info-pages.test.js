@@ -56,6 +56,21 @@ test('every link on the help pages goes to a file that exists (or an https site)
     }
 });
 
+// Netlify adds its own canonical header, pointing at the custom domain (whathappenedclicker.com, which only forwards its
+// front page and 404s everything else), to any page that names no canonical address itself. So every page names this
+// site, or AdSense's review of the netlify.app address is told the real site is somewhere else (2026-11-25).
+test('every page names its own netlify.app address as canonical', () => {
+    const pages = fs.readdirSync(ROOT).filter((f) => f.endsWith('.html'));
+    assert.ok(pages.length >= 14, pages.length + ' pages');
+    for (const f of pages) {
+        const found = [...read(f).matchAll(/<link rel="canonical" href="([^"]*)">/g)].map((m) => m[1]);
+        assert.deepEqual(found, [f === 'index.html' ? SITE : SITE + f], f);
+    }
+    const sitemap = read('sitemap.xml');
+    for (const [, loc] of sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)) assert.ok(loc.startsWith(SITE), 'sitemap ' + loc);
+    assert.ok(read('robots.txt').includes(`Sitemap: ${SITE}sitemap.xml`), 'robots.txt sitemap');
+});
+
 test('the game page footer links the help pages and the privacy policy, outside the ad area', () => {
     const html = read('index.html');
     const footer = html.slice(html.indexOf('<footer class="site-footer">'), html.indexOf('</footer>'));
